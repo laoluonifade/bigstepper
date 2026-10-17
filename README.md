@@ -2,51 +2,45 @@
 
 Walk more. Climb higher.
 
-A mobile-first Progressive Web App for walking and running challenges.
+Competitive running platform (Nigeria first). Free tracking and free tables available. Paid contests hard-gated pending legal and Paystack approval.
 
-## Monorepo Structure
+## Monorepo (pnpm)
 
 ```
-/
-├── apps/
-│   ├── web/          # React + Vite frontend (PWA)
-│   └── api/          # NestJS backend
-├── packages/
-│   └── shared/       # Shared types (optional)
-├── docker-compose.yml  # Postgres for local development
-└── README.md
+apps/
+  api/     # NestJS modular monolith
+  web/     # React + Vite + TanStack
+docs/
+  architecture.md
+docker-compose.yml  # Postgres + Redis
 ```
 
-## Tech Stack
+## Phase 1 Status (Repository, CI, data and auth)
 
-- **Frontend** (`apps/web`): React 18 + Vite + TypeScript + Tailwind CSS + PWA
-- **Backend** (`apps/api`): NestJS + TypeORM (or Prisma) + PostgreSQL
-- **Database**: PostgreSQL (local via Docker, production on Neon/Supabase/Render/Railway free tier)
-- **Auth**: JWT (Passport) or session-based in NestJS
-- **Payments**: Paystack (test mode)
-- **Hosting**: Vercel (frontend) + Render/Railway/Fly.io (backend + Postgres)
+- [x] pnpm workspace + docker-compose (Postgres + Redis)
+- [x] NestJS API skeleton with TypeORM
+- [x] Auth module skeleton (register/login endpoints)
+- [x] User entity
+- [x] Basic GitHub Actions CI
+- [ ] Full migrations, password hashing, JWT/session, profiles, seed data
+- [ ] Frontend moved and wired to API
 
 ## Local Development
 
 ```bash
-# Start Postgres
+# Start services
 docker compose up -d
 
-# Backend
-cd apps/api
-npm install
-npm run start:dev
+# Install
+pnpm install
 
-# Frontend
-cd apps/web
-npm install
-npm run dev
+# API
+pnpm dev:api
+
+# Web (after moving files)
+pnpm dev:web
 ```
 
-## Environment Variables
+See `docs/architecture.md` for full decisions and risks.
 
-See `apps/api/.env.example` and `apps/web/.env.example`.
-
-## Status
-
-Restructuring into monorepo. Previous Supabase setup is being migrated to NestJS + Postgres.
+**Paid contests remain disabled.**
