@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -13,8 +14,9 @@ import { AppService } from './app.service';
       password: process.env.DB_PASSWORD || 'bigstepper',
       database: process.env.DB_NAME || 'bigstepper',
       autoLoadEntities: true,
-      synchronize: process.env.NODE_ENV !== 'production', // Use migrations in prod
+      synchronize: process.env.NODE_ENV !== 'production',
     }),
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
