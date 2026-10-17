@@ -1,13 +1,12 @@
 {
   "name": "bigstepper",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev:web": "npm run dev --workspace=apps/web",
-    "dev:api": "npm run start:dev --workspace=apps/api",
-    "build": "npm run build --workspaces --if-present"
+    "dev:web": "pnpm --filter @bigstepper/web dev",
+    "dev:api": "pnpm --filter @bigstepper/api start:dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test"
   }
 }
