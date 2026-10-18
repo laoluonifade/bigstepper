@@ -8,6 +8,7 @@ export interface LeaderboardRow {
   userId: string;
   name: string;
   metres: number;
+  score?: number | null;
 }
 
 const medal: Record<number, string> = {
@@ -38,6 +39,8 @@ export function Leaderboard({
   limit = 50,
   caption,
   empty,
+  metricLabel = 'Distance',
+  formatScore,
 }: {
   rows: LeaderboardRow[];
   currentUserId?: string;
@@ -45,6 +48,8 @@ export function Leaderboard({
   limit?: number;
   caption?: ReactNode;
   empty?: ReactNode;
+  metricLabel?: string;
+  formatScore?: (row: LeaderboardRow) => ReactNode;
 }) {
   if (rows.length === 0) return <>{empty}</>;
 
@@ -65,13 +70,13 @@ export function Leaderboard({
               Runner
             </th>
             <th scope="col" className="py-2 pr-4 text-right font-bold">
-              Distance
+              {metricLabel}
             </th>
           </tr>
         </thead>
         <tbody>
           {visible.map((row, index) => (
-            <Row key={row.userId} row={row} above={visible[index - 1]} isMe={row.userId === currentUserId} unit={unit} />
+            <Row key={row.userId} row={row} above={visible[index - 1]} isMe={row.userId === currentUserId} unit={unit} formatScore={formatScore} />
           ))}
           {pinnedMe && (
             <>
@@ -80,7 +85,7 @@ export function Leaderboard({
                   · · ·
                 </td>
               </tr>
-              <Row row={pinnedMe} above={rows[meIndex - 1]} isMe unit={unit} />
+              <Row row={pinnedMe} above={rows[meIndex - 1]} isMe unit={unit} formatScore={formatScore} />
             </>
           )}
         </tbody>
@@ -89,8 +94,8 @@ export function Leaderboard({
   );
 }
 
-function Row({ row, above, isMe, unit }: { row: LeaderboardRow; above?: LeaderboardRow; isMe: boolean; unit: Unit }) {
-  const gap = isMe && above ? above.metres - row.metres : null;
+function Row({ row, above, isMe, unit, formatScore }: { row: LeaderboardRow; above?: LeaderboardRow; isMe: boolean; unit: Unit; formatScore?: (row: LeaderboardRow) => ReactNode }) {
+  const gap = !formatScore && isMe && above ? above.metres - row.metres : null;
   return (
     <tr className={cx('border-b border-line last:border-b-0', isMe ? 'bg-volt' : 'hover:bg-ink/[0.025]')}>
       <td className="py-2.5 pl-4 align-middle">
@@ -116,8 +121,9 @@ function Row({ row, above, isMe, unit }: { row: LeaderboardRow; above?: Leaderbo
         </div>
       </td>
       <td className="py-2.5 pr-4 text-right align-middle">
-        <span className="score num text-[20px]">{formatDistanceNumber(row.metres, unit)}</span>
-        <span className="ml-1 text-[11px] font-semibold text-ink-2">{unit}</span>
+        {formatScore ? formatScore(row) : (
+          <><span className="score num text-[20px]">{formatDistanceNumber(row.metres, unit)}</span><span className="ml-1 text-[11px] font-semibold text-ink-2">{unit}</span></>
+        )}
       </td>
     </tr>
   );

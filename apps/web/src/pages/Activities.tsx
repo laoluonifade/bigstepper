@@ -54,24 +54,24 @@ export function ActivitiesPage() {
     <div className="animate-rise">
       <PageHeader
         eyebrow="Activity"
-        title="Your runs"
+        title="Your activities"
         actions={
           <Link to="/run" className="btn-primary">
-            <RunIcon size={16} /> New run
+            <RunIcon size={16} /> New activity
           </Link>
         }
       />
 
       <div className="panel-strong mb-8 grid grid-cols-2 gap-y-5 p-5 sm:grid-cols-4">
         <Stat label="Verified distance" value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
-        <Stat label="Verified runs" value={activities.isLoading ? '–' : stats.verifiedRuns} />
+        <Stat label="Verified activities" value={activities.isLoading ? '–' : stats.verifiedRuns} />
         <Stat label="Longest" value={activities.isLoading ? '–' : formatDistanceNumber(stats.longestMetres, unit)} unit={unit} />
         <Stat label="Moving time" value={activities.isLoading ? '–' : formatDuration(stats.movingSeconds)} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Segmented<Filter>
-          label="Filter runs"
+          label="Filter activities"
           value={filter}
           onChange={setFilter}
           options={[
@@ -80,7 +80,7 @@ export function ActivitiesPage() {
             { value: 'attention', label: `Needs attention${attention ? ` · ${attention}` : ''}` },
           ]}
         />
-        <p className="text-[12px] text-ink-3">Showing your latest {Math.min(list.length, 100)} runs</p>
+        <p className="text-[12px] text-ink-3">Showing your latest {Math.min(list.length, 100)} activities</p>
       </div>
 
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} />
@@ -92,16 +92,16 @@ export function ActivitiesPage() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={filter === 'all' ? 'No runs yet' : 'Nothing here'}
+          title={filter === 'all' ? 'No activities yet' : 'Nothing here'}
           action={
             filter === 'all' ? (
               <Link to="/run" className="btn-primary">
-                <RunIcon size={16} /> Start a run
+                <RunIcon size={16} /> Start an activity
               </Link>
             ) : undefined
           }
         >
-          {filter === 'attention' ? 'None of your runs need attention.' : filter === 'verified' ? 'Verified runs will appear here.' : 'Record a run and it’ll show up here.'}
+          {filter === 'attention' ? 'None of your activities need attention.' : filter === 'verified' ? 'Verified activities will appear here.' : 'Record a walk or run and it’ll show up here.'}
         </EmptyState>
       ) : (
         groups.map(([month, items]) => (
@@ -117,11 +117,11 @@ export function ActivitiesPage() {
   );
 }
 
-function runName(iso: string) {
+function activityName(iso: string, type: Activity['activityType']) {
   const date = new Date(iso);
   const hour = date.getHours();
   const part = hour < 5 ? 'Night' : hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : hour < 21 ? 'Evening' : 'Night';
-  return `${date.toLocaleDateString('en-GB', { weekday: 'long' })} ${part.toLowerCase()} run`;
+  return `${date.toLocaleDateString('en-GB', { weekday: 'long' })} ${part.toLowerCase()} ${type}`;
 }
 
 export function ActivityDetailPage() {
@@ -138,8 +138,8 @@ export function ActivityDetailPage() {
   if (activity.error || !activity.data) {
     return (
       <>
-        <PageHeader title="Run not found" back={{ to: '/activities', label: 'Runs' }} />
-        <ErrorNotice error={activity.error ?? new Error('This run doesn’t exist.')} />
+        <PageHeader title="Activity not found" back={{ to: '/activities', label: 'Activities' }} />
+        <ErrorNotice error={activity.error ?? new Error('This activity doesn’t exist.')} />
       </>
     );
   }
@@ -155,9 +155,9 @@ export function ActivityDetailPage() {
   return (
     <div className="animate-rise">
       <PageHeader
-        back={{ to: '/activities', label: 'Runs' }}
+        back={{ to: '/activities', label: 'Activities' }}
         eyebrow={formatDateTime(a.startedAt)}
-        title={runName(a.startedAt)}
+        title={activityName(a.startedAt, a.activityType)}
         actions={<VerificationTag status={a.verificationStatus} />}
       />
 
@@ -192,6 +192,7 @@ export function ActivityDetailPage() {
             )}
           </div>
           <div className="grid grid-cols-2 gap-5 sm:border-l sm:border-line sm:pl-6">
+            <Stat label="Verified steps" value={verified ? a.validatedSteps.toLocaleString('en-GB') : a.recordedSteps.toLocaleString('en-GB')} />
             <Stat label="Moving time" value={formatDuration(moving)} />
             <Stat label={`Pace /${unit}`} value={pace ?? '–'} />
             <Stat label="Elapsed" value={formatDuration(a.elapsedSeconds)} />

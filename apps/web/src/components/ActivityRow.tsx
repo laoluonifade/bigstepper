@@ -34,7 +34,7 @@ export function ActivityRow({ activity, unit }: { activity: Activity; unit: Unit
           <span className="text-[12px] font-semibold text-ink-2">{unit}</span>
         </p>
         <p className="num mt-0.5 text-[12px] text-ink-2">
-          {formatTime(activity.startedAt)} · {formatDuration(activity.movingSeconds || activity.elapsedSeconds)}
+          <span className="font-bold capitalize text-ink">{activity.activityType}</span> · {formatTime(activity.startedAt)} · {formatDuration(activity.movingSeconds || activity.elapsedSeconds)}
           {pace && ` · ${pace} /${unit}`}
         </p>
       </div>

@@ -13,6 +13,10 @@ import type {
   StandingRow,
   Unit,
   VerificationReview,
+  Wallet,
+  WalletTransaction,
+  CreatorProfile,
+  CreatorEarning,
 } from './types';
 
 export const keys = {
@@ -33,6 +37,10 @@ export const keys = {
   club: (id: string) => ['club', id] as const,
   clubMembers: (id: string) => ['club', id, 'members'] as const,
   adminReviews: ['admin', 'reviews'] as const,
+  wallet: ['wallet'] as const,
+  walletTransactions: ['wallet', 'transactions'] as const,
+  creator: ['creator', 'me'] as const,
+  creatorEarnings: ['creator', 'earnings'] as const,
 };
 
 export function useProfile() {
@@ -123,4 +131,39 @@ export function useStaffAccess() {
     staleTime: 5 * 60_000,
   });
   return { isStaff: query.isSuccess, checking: query.isLoading, query };
+}
+
+export function useWallet() {
+  const { user } = useAuth();
+  return useQuery({ queryKey: keys.wallet, queryFn: () => api<Wallet>('/wallet'), enabled: Boolean(user) });
+}
+
+export function useWalletTransactions() {
+  const { user } = useAuth();
+  return useQuery({ queryKey: keys.walletTransactions, queryFn: () => api<WalletTransaction[]>('/wallet/transactions'), enabled: Boolean(user) });
+}
+
+export function useCreator() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: keys.creator,
+    queryFn: async () => {
+      try {
+        return await api<CreatorProfile>('/creators/me');
+      } catch (error) {
+        if (isApiError(error, 404)) return null;
+        throw error;
+      }
+    },
+    enabled: Boolean(user),
+    retry: false,
+  });
+}
+
+export function useCreatorEarnings(enabled = true) {
+  return useQuery({
+    queryKey: keys.creatorEarnings,
+    queryFn: () => api<CreatorEarning[]>('/creators/me/earnings'),
+    enabled,
+  });
 }

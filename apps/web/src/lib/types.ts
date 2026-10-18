@@ -41,6 +41,8 @@ export interface RunSession {
   startedAt: string;
   finishedAt: string | null;
   distanceMetres: number;
+  activityType: 'walk' | 'run';
+  stepCount: number;
   pausedAt: string | null;
   pausedSeconds: number;
   createdAt: string;
@@ -58,8 +60,11 @@ export interface Activity {
   runningSessionId: string;
   userId: string;
   verificationStatus: VerificationStatus;
+  activityType: 'walk' | 'run';
   recordedDistanceMetres: number;
   validatedDistanceMetres: number;
+  recordedSteps: number;
+  validatedSteps: number;
   elapsedSeconds: number;
   movingSeconds: number;
   gpsConfidence: number;
@@ -84,6 +89,12 @@ export interface CompetitionTable {
   scoringClosesAt: string | null;
   capacity: number | null;
   distanceCapMetres: number | null;
+  challengeType: ChallengeType;
+  scoringMethod: ScoringMethod;
+  targetDistanceMetres: number | null;
+  communityId: string | null;
+  platformFeeBps: number;
+  creatorCommissionBps: number;
   creatorId: string;
   creator?: { id: string; displayName: string | null };
   createdAt: string;
@@ -94,6 +105,8 @@ export interface StandingRow {
   userId: string;
   displayName: string;
   creditedDistanceMetres: number;
+  creditedSteps: number;
+  completionTimeSeconds: number | null;
 }
 
 export interface FinalResult {
@@ -103,7 +116,14 @@ export interface FinalResult {
   winnerUserId: string | null;
   createdAt?: string;
   algorithmVersion: string;
-  standings: Array<{ userId: string; creditedDistanceMetres: number; joinedAt: string; rank: number }>;
+  standings: Array<{
+    userId: string;
+    creditedDistanceMetres: number;
+    creditedSteps: number;
+    completionTimeSeconds: number | null;
+    joinedAt: string;
+    rank: number;
+  }>;
 }
 
 export interface CheckoutResponse {
@@ -132,6 +152,9 @@ export interface PrizeAward {
   tableId: string;
   /** Postgres bigint — may arrive as a string. */
   amountKobo: number | string;
+  grossPrizeKobo: number | string;
+  platformFeeKobo: number | string;
+  creatorCommissionKobo: number | string;
   currency: string;
   status: string;
   createdAt: string;
@@ -143,6 +166,52 @@ export interface PayoutRecipient {
   bankCode: string;
   accountLast4: string;
   currency: string;
+  availableForPayoutAt: string;
+}
+
+export type ChallengeType = 'WALK' | 'RUN' | 'DISTANCE' | 'STEP' | 'TIMED';
+export type ScoringMethod = 'MOST_STEPS' | 'FARTHEST_DISTANCE' | 'FASTEST_FIXED_DISTANCE' | 'FASTEST_TIME';
+
+export interface Wallet {
+  id: string;
+  balanceKobo: number | string;
+  currency: string;
+  withdrawable: false;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  type: 'FUNDING' | 'CHALLENGE_ENTRY' | 'REFUND';
+  amountKobo: number | string;
+  balanceAfterKobo: number | string;
+  reference: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface CreatorProfile {
+  id: string;
+  userId: string;
+  creatorType: 'influencer' | 'community_manager' | 'run_club' | 'other';
+  displayName: string;
+  socialUrl: string | null;
+  bio: string | null;
+  status: 'ACTIVE' | 'SUSPENDED';
+  commissionBps: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatorEarning {
+  id: string;
+  tableId: string;
+  grossPrizeKobo: number | string;
+  amountKobo: number | string;
+  currency: string;
+  status: string;
+  createdAt: string;
 }
 
 export interface Club {

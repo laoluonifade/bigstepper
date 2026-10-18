@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, SignalIcon, StopIcon } from '../components/icons';
-import { cx, ErrorNotice, KeyValue, Loading, Notice, PageHeader, useNow } from '../components/ui';
+import { cx, ErrorNotice, KeyValue, Loading, Notice, PageHeader, Segmented, useNow } from '../components/ui';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
 import { keys, useActivities, useUnit } from '../lib/queries';
@@ -40,6 +40,7 @@ export function RunPage() {
 function ReadyScreen() {
   const recorder = useRecorder();
   const locating = recorder.phase === 'locating';
+  const [activityType, setActivityType] = useState<'walk' | 'run'>('run');
 
   if (recorder.phase === 'blocked') {
     return (
@@ -58,7 +59,16 @@ function ReadyScreen() {
 
   return (
     <div className="mx-auto max-w-xl animate-rise">
-      <PageHeader eyebrow="Run" title="Ready when you are" />
+      <PageHeader eyebrow="Activity" title="Ready when you are" />
+
+      <div className="mb-5">
+        <Segmented<'walk' | 'run'>
+          label="Activity type"
+          value={activityType}
+          onChange={setActivityType}
+          options={[{ value: 'run', label: 'Run' }, { value: 'walk', label: 'Walk' }]}
+        />
+      </div>
 
       <div className="panel-strong overflow-hidden">
         <div className="bg-ink px-6 py-10 text-center text-paper">
@@ -67,7 +77,7 @@ function ReadyScreen() {
         </div>
         <ul className="divide-y divide-line">
           {[
-            ['Stay on this screen', 'We keep it awake while you run. Browsers pause GPS in the background, so don’t switch apps.'],
+            ['Stay on this screen', 'We keep it awake while you move. Browsers pause GPS in the background, so don’t switch apps.'],
             ['Head outdoors', 'Open sky gives the cleanest signal. Points less accurate than 50 m don’t count.'],
             ['Only verified distance scores', 'After you finish we check the route. Verified distance is what tables credit.'],
           ].map(([title, body]) => (
@@ -91,18 +101,18 @@ function ReadyScreen() {
       )}
       <ErrorNotice error={recorder.error ? new Error(recorder.error) : null} className="mt-5" />
 
-      <button type="button" className="btn-primary mt-6 min-h-16 w-full text-[16px]" onClick={() => void recorder.start()} disabled={locating}>
+      <button type="button" className="btn-primary mt-6 min-h-16 w-full text-[16px]" onClick={() => void recorder.start(activityType)} disabled={locating}>
         {locating ? (
           <>
             <span className="h-2 w-2 animate-blink rounded-full bg-ink" /> Finding GPS signal…
           </>
         ) : (
           <>
-            <RunIcon size={18} /> Start run
+            <RunIcon size={18} /> Start {activityType}
           </>
         )}
       </button>
-      <p className="mt-3 text-center text-[12px] text-ink-3">Your location is only recorded while a run is active.</p>
+      <p className="mt-3 text-center text-[12px] text-ink-3">Your location is only recorded while an activity is active.</p>
     </div>
   );
 }
@@ -127,6 +137,7 @@ function Scoreboard() {
   const pace = formatPace(recorder.distanceMetres, seconds, unit);
   const strength = signalStrength(recorder.accuracy);
   const stale = recorder.lastFixAt !== null && now - recorder.lastFixAt > 20_000;
+  const activityName = recorder.session?.activityType ?? 'run';
 
   async function finish() {
     const activity = await recorder.finish();
@@ -192,7 +203,7 @@ function Scoreboard() {
       <footer className="safe-bottom px-5 pt-4">
         {confirming ? (
           <div className="mx-auto max-w-md rounded-md border-2 border-paper/20 p-4">
-            <p className="wide text-[15px] font-extrabold uppercase">Finish this run?</p>
+            <p className="wide text-[15px] font-extrabold uppercase">Finish this {activityName}?</p>
             <p className="mt-1 text-[13px] text-paper/70">
               {formatDistance(recorder.distanceMetres, unit)} will be submitted for verification. You can’t add to it afterwards.
             </p>

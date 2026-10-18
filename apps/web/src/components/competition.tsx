@@ -56,6 +56,14 @@ export function TypeTag({ table }: { table: CompetitionTable }) {
   return <span className="tag border-ink bg-card text-ink">Free</span>;
 }
 
+function challengeLabel(table: CompetitionTable, unit: Unit) {
+  if (table.scoringMethod === 'MOST_STEPS') return `${table.challengeType === 'WALK' ? 'Walk' : 'Step'} · most steps`;
+  if (table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') {
+    return table.targetDistanceMetres ? `${table.challengeType.toLowerCase()} · fastest ${formatDistance(table.targetDistanceMetres, unit)}` : 'Fastest completion';
+  }
+  return `${table.challengeType === 'DISTANCE' ? 'Walk or run' : table.challengeType.toLowerCase()} · farthest`;
+}
+
 export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number }) {
   const phase = competitionPhase(table, now);
   const live = phase === 'open' || phase === 'upcoming';
@@ -91,6 +99,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
         <p className="mt-1.5 text-[13px] text-ink-2">
           {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community table'}
         </p>
+        <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.08em] text-ink">{challengeLabel(table, unit)}</p>
         {table.type === 'paid' && table.guaranteedPrizeKobo ? (
           <p className="mt-3 text-[13px]">
             <span className="text-ink-2">Guaranteed prize </span>

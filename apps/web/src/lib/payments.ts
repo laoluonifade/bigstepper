@@ -7,8 +7,9 @@ import { useStored } from './local';
 
 export interface SavedPayment {
   reference: string;
-  tableId: string;
-  tableCode: string;
+  purpose?: 'CHALLENGE_ENTRY' | 'WALLET_FUNDING';
+  tableId?: string;
+  tableCode?: string;
   tableTitle: string;
   amountKobo: number;
   createdAt: string;

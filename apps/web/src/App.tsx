@@ -1,14 +1,14 @@
-import { createRootRoute, createRoute, createRouter, Navigate } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
 import { AppShell, Private } from './components/Shell';
-import { useAuth } from './lib/auth';
 import { ActivitiesPage, ActivityDetailPage } from './pages/Activities';
 import { CompetitionDetailPage, CompetitionsPage, NewCompetitionPage } from './pages/Competitions';
 import { DashboardPage } from './pages/Dashboard';
+import { LandingPage } from './pages/Landing';
 import { PaymentReturnPage } from './pages/Payments';
 import { RunPage, RunSessionPage } from './pages/Run';
 import { ClubDetailPage, ClubsPage, LeagueDetailPage, LeaguesPage } from './pages/Social';
-import { NotificationsPage, ProfileSettingsPage, RewardsPage, RunnerPage } from './pages/You';
+import { CreatorPage, NotificationsPage, ProfileSettingsPage, RewardsPage, RunnerPage, WalletPage } from './pages/You';
 import { AuthLayout, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth';
 
 function protectedPage(Component: ComponentType) {
@@ -17,18 +17,12 @@ function protectedPage(Component: ComponentType) {
   };
 }
 
-function Home() {
-  const { status } = useAuth();
-  if (status === 'checking' || status === 'unreachable') return null;
-  return <Navigate to={status === 'signed-in' ? '/dashboard' : '/competitions'} replace />;
-}
-
 function AdminPlaceholder() {
   return <div className="panel p-6"><p className="eyebrow">Admin</p><h1 className="display mt-2 text-[32px]">Use the API console</h1><p className="mt-3 text-ink-2">This admin screen has not been designed yet.</p></div>;
 }
 
 const root = createRootRoute({ component: AppShell });
-const home = createRoute({ getParentRoute: () => root, path: '/', component: Home });
+const home = createRoute({ getParentRoute: () => root, path: '/', component: LandingPage });
 const competitions = createRoute({ getParentRoute: () => root, path: '/competitions', component: CompetitionsPage });
 const competition = createRoute({
   getParentRoute: () => root,
@@ -58,9 +52,11 @@ const activity = createRoute({
 });
 const leagues = createRoute({ getParentRoute: () => root, path: '/leagues', component: LeaguesPage });
 const league = createRoute({ getParentRoute: () => root, path: '/leagues/$id', component: LeagueDetailPage });
-const clubs = createRoute({ getParentRoute: () => root, path: '/clubs', component: ClubsPage });
-const club = createRoute({ getParentRoute: () => root, path: '/clubs/$id', component: ClubDetailPage });
+const clubs = createRoute({ getParentRoute: () => root, path: '/clubs', component: protectedPage(ClubsPage) });
+const club = createRoute({ getParentRoute: () => root, path: '/clubs/$id', component: protectedPage(ClubDetailPage) });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(RewardsPage) });
+const wallet = createRoute({ getParentRoute: () => root, path: '/wallet', component: protectedPage(WalletPage) });
+const creator = createRoute({ getParentRoute: () => root, path: '/creator', component: protectedPage(CreatorPage) });
 const notifications = createRoute({ getParentRoute: () => root, path: '/notifications', component: protectedPage(NotificationsPage) });
 const profile = createRoute({ getParentRoute: () => root, path: '/settings/profile', component: protectedPage(ProfileSettingsPage) });
 const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: protectedPage(PaymentReturnPage) });
@@ -80,7 +76,7 @@ const routeTree = root.addChildren([
   home, competitions, competition, runner,
   authLayout.addChildren([login, register, verify, forgot, reset]),
   dashboard, newCompetition, run, runSession, activities, activity,
-  leagues, league, clubs, club, rewards, notifications, profile, paymentReturn,
+  leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
   adminReviews, adminCompetitions, adminPayouts,
 ]);
 

@@ -68,9 +68,12 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
   useEffect(() => {
     if (!status.data) return;
     updatePaymentStatus(payment.reference, status.data.status);
-    if (status.data.status === 'SUCCEEDED') {
+    if (status.data.status === 'SUCCEEDED' && payment.tableId && payment.tableCode) {
       rememberTable(user.id, { id: payment.tableId, code: payment.tableCode, title: payment.tableTitle });
       void queryClient.invalidateQueries({ queryKey: keys.standings(payment.tableId) });
+    } else if (status.data.status === 'SUCCEEDED' && payment.purpose === 'WALLET_FUNDING') {
+      void queryClient.invalidateQueries({ queryKey: keys.wallet });
+      void queryClient.invalidateQueries({ queryKey: keys.walletTransactions });
     }
   }, [payment, queryClient, status.data, user.id]);
 
@@ -106,12 +109,17 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
         </dl>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          {succeeded && (
+          {succeeded && payment.tableCode && (
             <Link to="/competitions/$code" params={{ code: payment.tableCode }} className="btn-primary btn-sm">
               Go to table
             </Link>
           )}
-          {(value === 'FAILED' || notFound) && (
+          {succeeded && payment.purpose === 'WALLET_FUNDING' && (
+            <Link to="/wallet" className="btn-primary btn-sm">
+              View wallet
+            </Link>
+          )}
+          {(value === 'FAILED' || notFound) && payment.tableCode && (
             <Link to="/competitions/$code" params={{ code: payment.tableCode }} className="btn-secondary btn-sm">
               Back to table
             </Link>

@@ -23,12 +23,15 @@ import { useAuth, useUser } from '../lib/auth';
 import { AWARD_STATUS } from '../lib/copy';
 import { formatDate, formatMoney, formatRelative, shortId } from '../lib/format';
 import { useStored } from '../lib/local';
-import { keys, useNotifications, useProfile, useStaffAccess } from '../lib/queries';
-import type { Notification, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit, Visibility } from '../lib/types';
+import { keys, useCreator, useCreatorEarnings, useNotifications, useProfile, useStaffAccess, useWallet, useWalletTransactions } from '../lib/queries';
+import { savePayment } from '../lib/payments';
+import type { CheckoutResponse, CreatorProfile, Notification, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit, Visibility } from '../lib/types';
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
+  { to: '/wallet', label: 'Wallet' },
   { to: '/rewards', label: 'Rewards' },
+  { to: '/creator', label: 'Creator' },
   { to: '/notifications', label: 'Notifications' },
 ] as const;
 
@@ -308,7 +311,7 @@ const BANKS: Array<[string, string]> = [
   ['057', 'Zenith Bank'],
 ];
 
-type SavedRecipient = Pick<PayoutRecipient, 'accountName' | 'bankCode' | 'accountLast4'>;
+type SavedRecipient = Pick<PayoutRecipient, 'accountName' | 'bankCode' | 'accountLast4'> & { availableForPayoutAt?: string };
 
 export function RewardsPage() {
   const user = useUser();
@@ -411,6 +414,9 @@ export function RewardsPage() {
               <p className="num mt-1 text-[13px] text-ink-2">
                 {BANKS.find(([code]) => code === recipient.bankCode)?.[1] ?? `Bank ${recipient.bankCode}`} · •••• {recipient.accountLast4}
               </p>
+              {recipient.availableForPayoutAt && new Date(recipient.availableForPayoutAt) > new Date() && (
+                <p className="mt-3 text-[12px] font-semibold text-warn">Security hold until {formatDate(recipient.availableForPayoutAt, { year: 'numeric' })}</p>
+              )}
               <button type="button" className="btn-quiet btn-sm mt-4" onClick={() => setEditing(true)}>
                 Replace account
               </button>
@@ -418,7 +424,7 @@ export function RewardsPage() {
           ) : (
             <RecipientForm
               onSaved={(saved) => {
-                setRecipient({ accountName: saved.accountName, bankCode: saved.bankCode, accountLast4: saved.accountLast4 });
+                setRecipient({ accountName: saved.accountName, bankCode: saved.bankCode, accountLast4: saved.accountLast4, availableForPayoutAt: saved.availableForPayoutAt });
                 setEditing(false);
               }}
               onCancel={recipient ? () => setEditing(false) : undefined}
@@ -438,19 +444,22 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
   const [accountNumber, setAccountNumber] = useState('');
   const [bankCode, setBankCode] = useState('');
   const [otherCode, setOtherCode] = useState('');
+  const [password, setPassword] = useState('');
   const code = bankCode === 'other' ? otherCode.trim() : bankCode;
   const save = useMutation({
-    mutationFn: () => post<PayoutRecipient>('/me/payout-recipient', { accountName: accountName.trim(), accountNumber, bankCode: code }),
+    mutationFn: () => post<PayoutRecipient>('/me/payout-recipient', { accountName: accountName.trim(), accountNumber, bankCode: code, password }),
     onSuccess(saved) {
       setAccountNumber('');
+      setPassword('');
       onSaved(saved);
     },
     onError() {
       setAccountNumber('');
+      setPassword('');
     },
   });
   const numberError = accountNumber.length > 0 && !/^\d{10}$/.test(accountNumber) ? 'NUBAN account numbers are 10 digits.' : undefined;
-  const valid = accountName.trim().length >= 2 && /^\d{10}$/.test(accountNumber) && code.length >= 2;
+  const valid = accountName.trim().length >= 2 && /^\d{10}$/.test(accountNumber) && code.length >= 2 && password.length >= 8;
 
   return (
     <form
@@ -497,6 +506,9 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
           />
         )}
       </Field>
+      <Field label="Current password" hint="Required to protect bank-detail changes.">
+        {(props) => <input {...props} className="field" type="password" autoComplete="current-password" minLength={8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required />}
+      </Field>
       {save.error &&
         (isApiError(save.error, 503) ? (
           <Notice tone="warn" title="Payouts are switched off">
@@ -516,6 +528,191 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
         )}
       </div>
     </form>
+  );
+}
+
+export function WalletPage() {
+  const wallet = useWallet();
+  const transactions = useWalletTransactions();
+  const [amount, setAmount] = useState('');
+  const amountKobo = Math.round(Number(amount || 0) * 100);
+  const fund = useMutation({
+    mutationFn: () => post<CheckoutResponse>('/wallet/fund', { amountKobo }),
+    onSuccess(response) {
+      savePayment({
+        reference: response.reference,
+        purpose: 'WALLET_FUNDING',
+        tableTitle: 'Wallet funding',
+        amountKobo,
+        createdAt: new Date().toISOString(),
+      });
+      window.location.assign(response.authorizationUrl);
+    },
+  });
+
+  return (
+    <div className="animate-rise">
+      <SubNav items={[...YOU_NAV]} />
+      <PageHeader eyebrow="You" title="Wallet" description="Fund entries once and use your balance for paid challenges." />
+      <Notice tone="neutral" className="mb-6" title="Closed-loop balance">
+        Wallet funding cannot be withdrawn or transferred back. It can only be used for eligible Jump challenge entries.
+      </Notice>
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section>
+          <SectionTitle>Transactions</SectionTitle>
+          <ErrorNotice error={transactions.error} onRetry={() => void transactions.refetch()} />
+          {transactions.isLoading ? (
+            <Skeleton className="h-36" />
+          ) : (transactions.data ?? []).length === 0 ? (
+            <EmptyState mark="₦0" title="No wallet activity">Fund your wallet to see transactions here.</EmptyState>
+          ) : (
+            <ul className="divide-y divide-line border-y border-line">
+              {(transactions.data ?? []).map((item) => (
+                <li key={item.id} className="flex items-center gap-4 px-2 py-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-bold">{item.description}</p>
+                    <p className="mt-1 text-[12px] text-ink-3">{formatDate(item.createdAt, { year: 'numeric' })} · balance {formatMoney(item.balanceAfterKobo)}</p>
+                  </div>
+                  <p className={cx('score text-[24px]', Number(item.amountKobo) < 0 ? 'text-bad' : 'text-ok')}>
+                    {Number(item.amountKobo) > 0 ? '+' : '−'}{formatMoney(Math.abs(Number(item.amountKobo)))}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <aside>
+          <SectionTitle>Balance</SectionTitle>
+          <div className="panel-strong p-5">
+            <p className="eyebrow">Available for entries</p>
+            <p className="score mt-2 text-[48px]">{wallet.isLoading ? '–' : formatMoney(wallet.data?.balanceKobo ?? 0)}</p>
+            <form
+              className="mt-6 space-y-4 border-t border-line pt-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (amountKobo >= 10_000) fund.mutate();
+              }}
+            >
+              <Field label="Amount to fund" hint="Minimum ₦100.">
+                {(props) => (
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold">₦</span>
+                    <input {...props} className="field pl-8 num" type="number" inputMode="decimal" min="100" step="100" value={amount} onChange={(event) => setAmount(event.target.value)} />
+                  </div>
+                )}
+              </Field>
+              <button className="btn-primary w-full" disabled={fund.isPending || amountKobo < 10_000}>
+                {fund.isPending ? 'Opening Paystack…' : 'Fund wallet'}
+              </button>
+              {fund.error && <ErrorNotice error={fund.error} />}
+            </form>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+export function CreatorPage() {
+  const queryClient = useQueryClient();
+  const creator = useCreator();
+  const earnings = useCreatorEarnings(Boolean(creator.data));
+  const [creatorType, setCreatorType] = useState<CreatorProfile['creatorType']>('influencer');
+  const [displayName, setDisplayName] = useState('');
+  const [socialUrl, setSocialUrl] = useState('');
+  const [bio, setBio] = useState('');
+  const signup = useMutation({
+    mutationFn: () => post<CreatorProfile>('/creators/signup', {
+      creatorType,
+      displayName: displayName.trim(),
+      ...(socialUrl.trim() ? { socialUrl: socialUrl.trim() } : {}),
+      ...(bio.trim() ? { bio: bio.trim() } : {}),
+    }),
+    onSuccess(profile) {
+      queryClient.setQueryData(keys.creator, profile);
+    },
+  });
+  const payout = useMutation({
+    mutationFn: (earningId: string) => post(`/creators/me/earnings/${earningId}/payout`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.creatorEarnings }),
+  });
+
+  if (creator.isLoading) return <Loading />;
+  return (
+    <div className="animate-rise">
+      <SubNav items={[...YOU_NAV]} />
+      <PageHeader eyebrow="You" title="Creator" description="Create paid challenges for your audience and earn 5% when they settle." />
+      {!creator.data ? (
+        <form
+          className="panel-strong max-w-2xl space-y-5 p-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (displayName.trim().length >= 2) signup.mutate();
+          }}
+        >
+          <SectionTitle>Creator signup</SectionTitle>
+          <Field label="Creator type">
+            {(props) => (
+              <select {...props} className="field" value={creatorType} onChange={(event) => setCreatorType(event.target.value as CreatorProfile['creatorType'])}>
+                <option value="influencer">Influencer</option>
+                <option value="community_manager">Community manager</option>
+                <option value="run_club">Run club</option>
+                <option value="other">Other</option>
+              </select>
+            )}
+          </Field>
+          <Field label="Display name">
+            {(props) => <input {...props} className="field" minLength={2} maxLength={100} value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />}
+          </Field>
+          <Field label="Social or community URL" optional>
+            {(props) => <input {...props} className="field" type="url" placeholder="https://" value={socialUrl} onChange={(event) => setSocialUrl(event.target.value)} />}
+          </Field>
+          <Field label="About" optional>
+            {(props) => <textarea {...props} className="field min-h-28" maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} />}
+          </Field>
+          <Notice tone="neutral">Creator challenges use a 35% total deduction: Jump keeps 30%, the creator earns 5%, and the winner receives 65%.</Notice>
+          <ErrorNotice error={signup.error} />
+          <button className="btn-primary" disabled={signup.isPending || displayName.trim().length < 2}>{signup.isPending ? 'Creating…' : 'Create creator account'}</button>
+        </form>
+      ) : (
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <section>
+            <SectionTitle>Earnings</SectionTitle>
+            <ErrorNotice error={earnings.error} onRetry={() => void earnings.refetch()} />
+            {(earnings.data ?? []).length === 0 ? (
+              <EmptyState mark="5%" title="No creator earnings yet" action={<Link to="/competitions/new" className="btn-primary">Create a challenge</Link>}>
+                Earnings appear after one of your paid challenges settles.
+              </EmptyState>
+            ) : (
+              <ul className="space-y-3">
+                {(earnings.data ?? []).map((earning) => (
+                  <li key={earning.id} className="flex flex-wrap items-center gap-4 rounded-md border-[1.5px] border-ink bg-card p-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="score text-[30px]">{formatMoney(earning.amountKobo)}</p>
+                      <p className="mt-1 text-[12px] text-ink-2">5% of {formatMoney(earning.grossPrizeKobo)} · {formatDate(earning.createdAt, { year: 'numeric' })}</p>
+                    </div>
+                    <span className="tag border-ink bg-card">{earning.status}</span>
+                    {earning.status === 'EARNED' && <button className="btn-primary btn-sm" disabled={payout.isPending} onClick={() => payout.mutate(earning.id)}>Request payout</button>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {payout.error && <div className="mt-4"><ErrorNotice error={payout.error} /></div>}
+          </section>
+          <aside>
+            <SectionTitle>Creator account</SectionTitle>
+            <div className="panel p-5">
+              <p className="text-[18px] font-bold">{creator.data.displayName}</p>
+              <p className="mt-1 text-[13px] capitalize text-ink-2">{creator.data.creatorType.replace('_', ' ')} · {creator.data.status.toLowerCase()}</p>
+              {creator.data.bio && <p className="mt-4 text-[13px] leading-relaxed text-ink-2">{creator.data.bio}</p>}
+              <Link to="/competitions/new" className="btn-secondary mt-5 w-full">Create paid challenge</Link>
+              <Link to="/rewards" className="btn-quiet mt-2 w-full">Manage payout account</Link>
+            </div>
+          </aside>
+        </div>
+      )}
+    </div>
   );
 }
 

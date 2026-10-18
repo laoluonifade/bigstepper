@@ -85,7 +85,7 @@ export function validateEnvironment(env: Environment) {
     ...env,
     NODE_ENV: nodeEnv,
     PORT: integer(env.PORT, 3000, 'PORT'),
-    WEB_ORIGIN: required(env, 'WEB_ORIGIN', 'http://localhost:5173'),
+    WEB_ORIGIN: required(env, 'WEB_ORIGIN', 'http://localhost:5177'),
     DATABASE_URL: connectionUrl(databaseUrl, 'DATABASE_URL', ['postgres:', 'postgresql:']),
     REDIS_URL: connectionUrl(redisUrl, 'REDIS_URL', ['redis:', 'rediss:']),
     JWT_SECRET: jwtSecret,

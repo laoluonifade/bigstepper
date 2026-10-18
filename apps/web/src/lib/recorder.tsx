@@ -46,7 +46,7 @@ interface RecorderState {
   lastFixAt: number | null;
   gpsError: string | null;
   error: string | null;
-  start: () => Promise<void>;
+  start: (activityType?: 'walk' | 'run') => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   finish: () => Promise<Activity | null>;
@@ -271,7 +271,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
 
   useEffect(() => stopWatch, [stopWatch]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (activityType: 'walk' | 'run' = 'run') => {
     setError(null);
     setGpsError(null);
     setPhase('locating');
@@ -285,7 +285,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       return;
     }
     try {
-      const run = await post<RunSession>('/runs/start');
+      const run = await post<RunSession>('/runs/start', { activityType });
       setActiveRun({ runId: run.id, userId: user.id, startedAt: run.startedAt });
       adopt(run);
       lastPointRef.current = null;

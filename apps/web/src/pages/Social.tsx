@@ -16,7 +16,6 @@ import {
   PageHeader,
   SectionTitle,
   Skeleton,
-  SubNav,
   useNow,
 } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
@@ -25,7 +24,7 @@ import { formatCountdown, formatDate, formatDistance, ordinal, shortId } from '.
 import { rememberClub, SavedClub, storageKeys, useStored } from '../lib/local';
 import { keys, useLeagues, useLeagueStandings, useMyLeagues, useUnit } from '../lib/queries';
 import type { Club, ClubMember } from '../lib/types';
-import { COMPETE_NAV } from './Competitions';
+import { CompeteSubNav } from './Competitions';
 
 /* ───────────────────────── Leagues ───────────────────────── */
 
@@ -40,11 +39,11 @@ export function LeaguesPage() {
 
   return (
     <div className="animate-rise">
-      <SubNav items={[...COMPETE_NAV]} />
+      <CompeteSubNav />
       <PageHeader
         eyebrow="Compete"
         title="Leagues"
-        description="Season-long divisions. Every runner starts in Bronze and races everyone else in their division."
+        description="Season-long competition with runners placed into divisions returned by the live league service."
       />
       <ErrorNotice error={leagues.error} onRetry={() => void leagues.refetch()} />
       {leagues.isLoading ? (
@@ -257,7 +256,7 @@ export function ClubsPage() {
 
   return (
     <div className="animate-rise">
-      <SubNav items={[...COMPETE_NAV]} />
+      <CompeteSubNav />
       <PageHeader eyebrow="Compete" title="Clubs" description="Run with your crew. Start a club and add members by their runner ID." />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">

@@ -56,7 +56,7 @@ function PublicShell() {
     <div className="min-h-screen">
       <header className="border-b border-line bg-paper">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-          <Link to="/competitions">
+          <Link to="/">
             <Wordmark />
           </Link>
           <div className="flex items-center gap-2">
@@ -106,7 +106,9 @@ function SignedInShell() {
     {
       title: 'You',
       items: [
+        { to: '/wallet', label: 'Wallet', icon: <WalletIcon /> },
         { to: '/rewards', label: 'Rewards', icon: <WalletIcon /> },
+        { to: '/creator', label: 'Creator', icon: <UserIcon /> },
         { to: '/notifications', label: 'Notifications', icon: <BellIcon />, badge: unread },
         { to: '/settings/profile', label: 'Settings', icon: <SettingsIcon /> },
       ],

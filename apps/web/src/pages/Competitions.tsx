@@ -25,6 +25,7 @@ import { joinConflictCopy } from '../lib/copy';
 import {
   formatDate,
   formatDistance,
+  formatDuration,
   formatMoney,
   fromLocalInput,
   ordinal,
@@ -33,8 +34,8 @@ import {
 } from '../lib/format';
 import { rememberTable } from '../lib/local';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
-import { keys, useFinalResult, useStandings, useTables, useUnit } from '../lib/queries';
-import type { CheckoutResponse, CompetitionTable, Unit } from '../lib/types';
+import { keys, useCreator, useFinalResult, useStandings, useTables, useUnit, useWallet } from '../lib/queries';
+import type { ChallengeType, CheckoutResponse, CompetitionTable, ScoringMethod, Unit } from '../lib/types';
 
 export const COMPETE_NAV = [
   { to: '/competitions', label: 'Tables' },
@@ -42,7 +43,38 @@ export const COMPETE_NAV = [
   { to: '/clubs', label: 'Clubs' },
 ] as const;
 
+export function CompeteSubNav() {
+  const { user } = useAuth();
+  return <SubNav items={user ? [...COMPETE_NAV] : COMPETE_NAV.filter((item) => item.to !== '/clubs')} />;
+}
+
 type TypeFilter = 'all' | 'free' | 'paid';
+
+function scoringLabel(table: Pick<CompetitionTable, 'scoringMethod' | 'targetDistanceMetres'>, unit: Unit) {
+  switch (table.scoringMethod) {
+    case 'MOST_STEPS':
+      return 'Most verified steps';
+    case 'FASTEST_FIXED_DISTANCE':
+    case 'FASTEST_TIME':
+      return table.targetDistanceMetres ? `Fastest over ${formatDistance(table.targetDistanceMetres, unit)}` : 'Fastest completion';
+    default:
+      return 'Farthest verified distance';
+  }
+}
+
+function scoreValue(row: { creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }, method: ScoringMethod) {
+  if (method === 'MOST_STEPS') return row.creditedSteps;
+  if (method === 'FASTEST_FIXED_DISTANCE' || method === 'FASTEST_TIME') return row.completionTimeSeconds;
+  return row.creditedDistanceMetres;
+}
+
+function scoreText(row: { creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }, table: CompetitionTable, unit: Unit) {
+  if (table.scoringMethod === 'MOST_STEPS') return `${row.creditedSteps.toLocaleString('en-GB')} steps`;
+  if (table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') {
+    return row.completionTimeSeconds === null ? 'Not finished' : formatDuration(row.completionTimeSeconds);
+  }
+  return formatDistance(row.creditedDistanceMetres, unit);
+}
 
 export function CompetitionsPage() {
   const { user } = useAuth();
@@ -63,11 +95,11 @@ export function CompetitionsPage() {
 
   return (
     <div className="animate-rise">
-      <SubNav items={[...COMPETE_NAV]} />
+      <CompeteSubNav />
       <PageHeader
         eyebrow="Compete"
         title="Tables"
-        description="Race other runners on total verified distance. Join a table, run as much as you can before scoring closes, finish on top."
+        description="Compete on verified distance, steps, or completion time. Every challenge shows exactly how the winner is decided."
         actions={
           user && (
             <Link to="/competitions/new" className="btn-primary">
@@ -156,19 +188,32 @@ export function NewCompetitionPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const unit = useUnit();
+  const creator = useCreator();
+  const [mode, setMode] = useState<'free' | 'paid'>('free');
   const [title, setTitle] = useState('');
+  const [challengeType, setChallengeType] = useState<ChallengeType>('RUN');
+  const [scoringMethod, setScoringMethod] = useState<ScoringMethod>('FARTHEST_DISTANCE');
+  const [targetDistance, setTargetDistance] = useState('');
   const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date()));
   const [scoringClosesAt, setScoringClosesAt] = useState(() => toLocalInput(new Date(Date.now() + 7 * 86_400_000)));
   const [entryClosesAt, setEntryClosesAt] = useState('');
   const [capacity, setCapacity] = useState('');
   const [cap, setCap] = useState('');
   const [duration, setDuration] = useState<number | null>(7);
+  const [entryFee, setEntryFee] = useState('');
+  const [guaranteedPrize, setGuaranteedPrize] = useState('');
+  const [minimumEntrants, setMinimumEntrants] = useState('2');
 
   const startIso = fromLocalInput(startsAt);
   const scoringIso = fromLocalInput(scoringClosesAt);
   const entryIso = fromLocalInput(entryClosesAt);
   const capMetres = cap ? toMetres(Number(cap), unit) : undefined;
   const capacityNumber = capacity ? Number(capacity) : undefined;
+  const targetDistanceMetres = targetDistance ? toMetres(Number(targetDistance), unit) : undefined;
+  const entryFeeKobo = Math.round(Number(entryFee || 0) * 100);
+  const guaranteedPrizeKobo = Math.round(Number(guaranteedPrize || 0) * 100);
+  const minimumEntrantsNumber = Number(minimumEntrants || 0);
+  const needsTarget = scoringMethod === 'FASTEST_FIXED_DISTANCE' || scoringMethod === 'FASTEST_TIME';
 
   const errors = {
     title: title.trim().length > 0 && title.trim().length < 3 ? 'At least 3 characters.' : undefined,
@@ -176,18 +221,24 @@ export function NewCompetitionPage() {
     entry: entryIso && scoringIso && new Date(entryIso) > new Date(scoringIso) ? 'Entry must close before scoring closes.' : undefined,
     capacity: capacityNumber !== undefined && (capacityNumber < 2 || capacityNumber > 10000 || !Number.isInteger(capacityNumber)) ? 'Between 2 and 10,000 runners.' : undefined,
     cap: capMetres !== undefined && (capMetres < 1000 || capMetres > 500000) ? `Between ${formatDistance(1000, unit)} and ${formatDistance(500000, unit)}.` : undefined,
+    target: needsTarget && (!targetDistanceMetres || targetDistanceMetres < 100 || targetDistanceMetres > 500000) ? `Enter a target between ${formatDistance(100, unit)} and ${formatDistance(500000, unit)}.` : undefined,
+    paid: mode === 'paid' && (!creator.data || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || !capacityNumber || minimumEntrantsNumber < 2 || minimumEntrantsNumber > capacityNumber) ? 'Complete the paid challenge fields and use an active creator account.' : undefined,
   };
   const invalid = Object.values(errors).some(Boolean) || title.trim().length < 3;
 
   const create = useMutation({
     mutationFn: () =>
-      post<CompetitionTable>('/tables', {
+      post<CompetitionTable>(mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
         title: title.trim(),
+        challengeType,
+        scoringMethod,
+        ...(targetDistanceMetres ? { targetDistanceMetres } : {}),
         ...(startIso ? { startsAt: startIso } : {}),
         ...(scoringIso ? { scoringClosesAt: scoringIso } : {}),
-        ...(entryIso ? { entryClosesAt: entryIso } : {}),
+        ...(entryIso || (mode === 'paid' && scoringIso) ? { entryClosesAt: entryIso ?? scoringIso } : {}),
         ...(capacityNumber ? { capacity: capacityNumber } : {}),
-        ...(capMetres ? { distanceCapMetres: capMetres } : {}),
+        ...(mode === 'free' && capMetres ? { distanceCapMetres: capMetres } : {}),
+        ...(mode === 'paid' ? { entryFeeKobo, guaranteedPrizeKobo, minimumEntrants: minimumEntrantsNumber } : {}),
       }),
     async onSuccess(table) {
       await queryClient.invalidateQueries({ queryKey: keys.tables });
@@ -205,16 +256,22 @@ export function NewCompetitionPage() {
     id: 'preview',
     title: title.trim() || 'Your table name',
     code: '— — — —',
-    type: 'free',
+    type: mode,
     status: 'OPEN_FOR_ENTRY',
-    entryFeeKobo: 0,
-    guaranteedPrizeKobo: null,
-    minimumEntrants: 1,
+    entryFeeKobo: mode === 'paid' ? entryFeeKobo : 0,
+    guaranteedPrizeKobo: mode === 'paid' && guaranteedPrizeKobo ? guaranteedPrizeKobo : null,
+    minimumEntrants: mode === 'paid' ? minimumEntrantsNumber : 1,
     startsAt: startIso ?? null,
     entryClosesAt: entryIso ?? scoringIso ?? null,
     scoringClosesAt: scoringIso ?? null,
     capacity: capacityNumber ?? null,
     distanceCapMetres: capMetres ?? null,
+    challengeType,
+    scoringMethod,
+    targetDistanceMetres: targetDistanceMetres ?? null,
+    communityId: null,
+    platformFeeBps: mode === 'paid' ? 3500 : 3000,
+    creatorCommissionBps: mode === 'paid' ? 500 : 0,
     creatorId: user?.id ?? '',
     creator: { id: user?.id ?? '', displayName: user?.displayName ?? null },
     createdAt: new Date().toISOString(),
@@ -222,7 +279,7 @@ export function NewCompetitionPage() {
 
   return (
     <div className="animate-rise">
-      <PageHeader back={{ to: '/competitions', label: 'Tables' }} eyebrow="New table" title="Set up a table" description="Free to enter. Share the invite code and whoever runs furthest wins." />
+      <PageHeader back={{ to: '/competitions', label: 'Tables' }} eyebrow="New challenge" title="Set up a challenge" description="Choose the activity and exact scoring method before you publish." />
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <form
           className="space-y-6"
@@ -231,6 +288,17 @@ export function NewCompetitionPage() {
             if (!invalid) create.mutate();
           }}
         >
+          <Segmented<'free' | 'paid'>
+            label="Challenge type"
+            value={mode}
+            onChange={setMode}
+            options={[{ value: 'free', label: 'Free' }, { value: 'paid', label: 'Paid · creator' }]}
+          />
+          {mode === 'paid' && !creator.data && (
+            <Notice tone="warn" title="Creator account required" action={<Link to="/creator" className="btn-quiet btn-sm">Become a creator</Link>}>
+              Paid challenges earn creators 5% and must be reviewed before opening.
+            </Notice>
+          )}
           <Field label="Table name" error={errors.title}>
             {(props) => (
               <input
@@ -245,6 +313,44 @@ export function NewCompetitionPage() {
               />
             )}
           </Field>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Activity">
+              {(props) => (
+                <select
+                  {...props}
+                  className="field"
+                  value={challengeType}
+                  onChange={(event) => {
+                    const next = event.target.value as ChallengeType;
+                    setChallengeType(next);
+                    setScoringMethod(next === 'WALK' || next === 'STEP' ? 'MOST_STEPS' : next === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
+                  }}
+                >
+                  <option value="WALK">Walk</option>
+                  <option value="RUN">Run</option>
+                  <option value="DISTANCE">Distance · walk or run</option>
+                  <option value="STEP">Steps</option>
+                  <option value="TIMED">Timed activity</option>
+                </select>
+              )}
+            </Field>
+            <Field label="Winner is">
+              {(props) => (
+                <select {...props} className="field" value={scoringMethod} onChange={(event) => setScoringMethod(event.target.value as ScoringMethod)}>
+                  {(challengeType === 'WALK' || challengeType === 'STEP') && <option value="MOST_STEPS">Most verified steps</option>}
+                  {(challengeType === 'RUN' || challengeType === 'DISTANCE') && <option value="FARTHEST_DISTANCE">Farthest distance</option>}
+                  {challengeType === 'RUN' && <option value="FASTEST_FIXED_DISTANCE">Fastest fixed distance</option>}
+                  {challengeType === 'TIMED' && <option value="FASTEST_TIME">Fastest completion</option>}
+                </select>
+              )}
+            </Field>
+          </div>
+          {needsTarget && (
+            <Field label={`Target distance (${unit})`} error={errors.target} hint="The distance every participant must complete.">
+              {(props) => <input {...props} className="field num" type="number" min="0.1" step="0.1" value={targetDistance} onChange={(event) => setTargetDistance(event.target.value)} required />}
+            </Field>
+          )}
 
           <fieldset>
             <legend className="label">Length</legend>
@@ -304,17 +410,30 @@ export function NewCompetitionPage() {
                 <input {...props} type="number" inputMode="numeric" min={2} max={10000} className="field num" value={capacity} onChange={(event) => setCapacity(event.target.value)} />
               )}
             </Field>
-            <Field label={`Distance cap per run (${unit})`} optional error={errors.cap} hint="Stops one monster run from deciding everything.">
+            {mode === 'free' ? <Field label={`Distance cap per activity (${unit})`} optional error={errors.cap} hint="Stops one monster activity from deciding everything.">
               {(props) => (
                 <input {...props} type="number" inputMode="decimal" step="0.1" min={0} className="field num" value={cap} onChange={(event) => setCap(event.target.value)} />
               )}
-            </Field>
+            </Field> : <div />}
           </div>
+
+          {mode === 'paid' && (
+            <div className="panel space-y-5 p-5">
+              <SectionTitle>Paid challenge</SectionTitle>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field label="Entry fee · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} required />}</Field>
+                <Field label="Guaranteed prize · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={guaranteedPrize} onChange={(event) => setGuaranteedPrize(event.target.value)} required />}</Field>
+                <Field label="Minimum entrants">{(props) => <input {...props} className="field num" type="number" min="2" max={capacityNumber ?? 10000} value={minimumEntrants} onChange={(event) => setMinimumEntrants(event.target.value)} required />}</Field>
+              </div>
+              <p className="text-[12px] leading-relaxed text-ink-3">The draft stays pending until Jump confirms funding and rules. On settlement, 30% goes to Jump, 5% to the creator, and 65% to the winner.</p>
+            </div>
+          )}
+          {errors.paid && mode === 'paid' && <Notice tone="warn">{errors.paid}</Notice>}
 
           <ErrorNotice error={create.error} />
           <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
             <button className="btn-primary min-h-12 px-6" disabled={create.isPending || invalid}>
-              {create.isPending ? 'Creating…' : 'Create table'}
+              {create.isPending ? 'Creating…' : mode === 'paid' ? 'Submit paid draft' : 'Create challenge'}
             </button>
             <p className="text-[12px] text-ink-3">Paid challenges are reviewed by Jump staff.</p>
           </div>
@@ -350,16 +469,24 @@ export function CompetitionDetailPage() {
 
   const rows: LeaderboardRow[] = useMemo(() => {
     const names = new Map(standings.data?.map((row) => [row.userId, row.displayName]));
+    const method = table.data?.scoringMethod ?? 'FARTHEST_DISTANCE';
     if (result.data) {
       return result.data.standings.map((row) => ({
         rank: row.rank,
         userId: row.userId,
         name: row.userId === user?.id ? user.displayName ?? 'You' : names.get(row.userId) ?? 'Runner',
         metres: row.creditedDistanceMetres,
+        score: scoreValue(row, method),
       }));
     }
-    return (standings.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, metres: row.creditedDistanceMetres }));
-  }, [result.data, standings.data, user]);
+    return (standings.data ?? []).map((row) => ({
+      rank: row.rank,
+      userId: row.userId,
+      name: row.displayName,
+      metres: row.creditedDistanceMetres,
+      score: scoreValue(row, method),
+    }));
+  }, [result.data, standings.data, table.data?.scoringMethod, user]);
 
   if (table.isLoading) return <Loading />;
   if (table.error || !table.data) {
@@ -409,19 +536,25 @@ export function CompetitionDetailPage() {
                 rows={rows}
                 currentUserId={user?.id}
                 unit={unit}
+                metricLabel={t.scoringMethod === 'MOST_STEPS' ? 'Steps' : t.scoringMethod === 'FARTHEST_DISTANCE' ? 'Distance' : 'Time'}
+                formatScore={t.scoringMethod === 'FARTHEST_DISTANCE' ? undefined : (row) => (
+                  <span className="score num text-[20px]">
+                    {t.scoringMethod === 'MOST_STEPS' ? Number(row.score ?? 0).toLocaleString('en-GB') : row.score === null ? '—' : formatDuration(Number(row.score))}
+                  </span>
+                )}
                 caption={
                   isFinal
                     ? `Settled ${formatDate(result.data?.createdAt)} · version ${result.data?.version}. These standings are locked.`
-                    : 'Live verified distance. Positions can still change until the result is settled.'
+                    : `Live · ${scoringLabel(t, unit)}. Positions can still change until the result is settled.`
                 }
-                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified run puts you on top.</EmptyState>}
+                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first eligible verified activity puts you on the board.</EmptyState>}
               />
             )}
           </section>
         </div>
 
         <aside className="space-y-6">
-          <EntryPanel table={t} joinedRank={me?.rank} joinedMetres={me?.creditedDistanceMetres} entrants={standings.data?.length ?? 0} unit={unit} now={now} />
+          <EntryPanel table={t} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={standings.data?.length ?? 0} now={now} />
 
           <section className="panel p-5">
             <p className="eyebrow mb-3">Invite code</p>
@@ -449,10 +582,21 @@ export function CompetitionDetailPage() {
 }
 
 function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
+  const activity = table.challengeType === 'DISTANCE' || table.challengeType === 'STEP' || table.challengeType === 'TIMED'
+    ? 'Eligible walks and runs count.'
+    : `Only verified ${table.challengeType.toLowerCase()} activities count.`;
+  const scoring = table.scoringMethod === 'MOST_STEPS'
+    ? 'The highest total verified step count wins.'
+    : table.scoringMethod === 'FARTHEST_DISTANCE'
+      ? 'The highest total verified distance wins.'
+      : `The fastest valid completion${table.targetDistanceMetres ? ` of ${formatDistance(table.targetDistanceMetres, unit)}` : ''} wins.`;
   const items = [
-    'Only verified runs count. Flagged runs count if a reviewer approves them.',
-    'A run counts if it starts after you join and finishes before scoring closes.',
-    table.distanceCapMetres ? `Each run counts up to ${formatDistance(table.distanceCapMetres, unit)}.` : 'No per-run cap — every verified metre counts.',
+    scoring,
+    `${activity} Flagged activities count only after a reviewer approves them.`,
+    'An activity counts if it starts after you join and finishes before scoring closes.',
+    ...(table.scoringMethod === 'FARTHEST_DISTANCE'
+      ? [table.distanceCapMetres ? `Each activity counts up to ${formatDistance(table.distanceCapMetres, unit)}.` : 'No per-activity distance cap.']
+      : []),
     'Ties go to whoever joined first.',
     ...(table.type === 'paid' && table.minimumEntrants > 1 ? [`Needs at least ${table.minimumEntrants} entrants to go ahead.`] : []),
   ];
@@ -474,20 +618,19 @@ function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
 function EntryPanel({
   table,
   joinedRank,
-  joinedMetres,
+  joinedScore,
   entrants,
-  unit,
   now,
 }: {
   table: CompetitionTable;
   joinedRank?: number;
-  joinedMetres?: number;
+  joinedScore?: string;
   entrants: number;
-  unit: Unit;
   now: number;
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const wallet = useWallet();
   const payments = useSavedPayments();
   const pendingPayment = payments.find((payment) => payment.tableId === table.id && OPEN_PAYMENT_STATUSES.includes(payment.lastStatus));
   const open = canEnter(table, now);
@@ -517,6 +660,18 @@ function EntryPanel({
     },
   });
 
+  const enterWallet = useMutation({
+    mutationFn: () => post(`/challenges/${table.id}/enter-wallet`),
+    async onSuccess() {
+      if (user) rememberTable(user.id, { id: table.id, code: table.code, title: table.title });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: keys.standings(table.id) }),
+        queryClient.invalidateQueries({ queryKey: keys.wallet }),
+        queryClient.invalidateQueries({ queryKey: keys.walletTransactions }),
+      ]);
+    },
+  });
+
   if (joinedRank !== undefined) {
     return (
       <section className="rounded-md border-2 border-ink bg-volt p-5 shadow-hard">
@@ -528,13 +683,13 @@ function EntryPanel({
           <div>
             <p className="wide text-[20px] font-black uppercase leading-none">{ordinal(joinedRank)} place</p>
             <p className="num mt-1 text-[13px]">
-              {formatDistance(joinedMetres ?? 0, unit)} · of {entrants}
+              {joinedScore ?? 'No score yet'} · of {entrants}
             </p>
           </div>
         </div>
         {canEnter(table, now) || competitionPhase(table, now) === 'entry-closed' ? (
           <Link to="/run" className="btn-dark mt-5 w-full">
-            Run to climb
+            Record an activity
           </Link>
         ) : null}
       </section>
@@ -579,6 +734,11 @@ function EntryPanel({
             <button type="button" className="btn-primary w-full" onClick={() => checkout.mutate()} disabled={checkout.isPending}>
               {checkout.isPending ? 'Opening Paystack…' : `Pay ${formatMoney(table.entryFeeKobo)} & enter`}
             </button>
+            {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && (
+              <button type="button" className="btn-secondary mt-2 w-full" onClick={() => enterWallet.mutate()} disabled={enterWallet.isPending}>
+                {enterWallet.isPending ? 'Entering…' : `Use wallet · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`}
+              </button>
+            )}
             <p className="mt-2 text-[12px] text-ink-3">You’ll pay securely on Paystack. Your seat is confirmed once we verify the payment.</p>
             {checkout.error && (
               <div className="mt-4">
@@ -587,14 +747,15 @@ function EntryPanel({
                     Paid competitions are temporarily unavailable. Nothing has been charged.
                   </Notice>
                 ) : isApiError(checkout.error, 403) ? (
-                  <Notice tone="warn" title="Verify your email first" action={<Link to="/verify-email" className="btn-quiet btn-sm">Verify email</Link>}>
-                    Paid competitions need a verified email address.
+                  <Notice tone="warn" title="Paid entry unavailable">
+                    Your email, adult verification and paid-competition eligibility must all be approved before you can enter.
                   </Notice>
                 ) : (
                   <ErrorNotice error={checkout.error} />
                 )}
               </div>
             )}
+            {enterWallet.error && <div className="mt-4"><ErrorNotice error={enterWallet.error} /></div>}
           </>
         ) : (
           <>

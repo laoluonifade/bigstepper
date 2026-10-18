@@ -4,7 +4,7 @@ This document is the implementation contract for the Jump frontend. The backend 
 
 ## Local connection
 
-- Web: `http://localhost:5173`
+- Web: `http://localhost:5177`
 - API base URL: `http://localhost:9090/v1`
 - Swagger: `http://localhost:9090/docs`
 - Frontend environment variable: `VITE_API_URL=http://localhost:9090/v1`

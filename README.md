@@ -47,7 +47,7 @@ DATABASE_URL=postgresql://jump:jump@localhost:5432/jump
 REDIS_URL=redis://localhost:6379
 ```
 
-The web app runs at `http://localhost:5173`, the API at `http://localhost:9090/v1`, and Swagger at `http://localhost:9090/docs`.
+The web app runs at `http://localhost:5177`, the API at `http://localhost:9090/v1`, and Swagger at `http://localhost:9090/docs`.
 
 ## Useful commands
 
