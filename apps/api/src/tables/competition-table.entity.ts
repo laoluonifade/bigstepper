@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../users/user.entity';
+import { ChallengeType, ScoringMethod } from './challenge-types';
 
 @Entity('competition_tables')
 export class CompetitionTable {
@@ -22,7 +23,43 @@ export class CompetitionTable {
   entryFeeKobo: number;
 
   @Column({ type: 'timestamptz', nullable: true })
-  scoringClosesAt: Date;
+  scoringClosesAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  startsAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  entryClosesAt: Date | null;
+
+  @Column({ type: 'integer', nullable: true })
+  capacity: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  distanceCapMetres: number | null;
+
+  @Column({ default: 'RUN' })
+  challengeType: ChallengeType;
+
+  @Column({ default: 'FARTHEST_DISTANCE' })
+  scoringMethod: ScoringMethod;
+
+  @Column({ type: 'integer', nullable: true })
+  targetDistanceMetres: number | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  communityId: string | null;
+
+  @Column({ type: 'integer', default: 3000 })
+  platformFeeBps: number;
+
+  @Column({ type: 'integer', default: 0 })
+  creatorCommissionBps: number;
+
+  @Column({ type: 'bigint', nullable: true, transformer: { to: (value: number | null) => value, from: (value: string | null) => value === null ? null : Number(value) } })
+  guaranteedPrizeKobo: number | null;
+
+  @Column({ type: 'integer', default: 1 })
+  minimumEntrants: number;
 
   @Column()
   creatorId: string;

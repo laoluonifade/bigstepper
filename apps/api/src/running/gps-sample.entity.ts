@@ -2,7 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index } 
 import { RunningSession } from './running-session.entity';
 
 @Entity('gps_samples')
-@Index(['sessionId', 'sequence'])
+@Index(['sessionId', 'sequence'], { unique: true })
 export class GpsSample {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -25,6 +25,9 @@ export class GpsSample {
 
   @Column({ type: 'double precision', nullable: true })
   accuracy: number;
+
+  @Column({ type: 'integer', nullable: true })
+  stepCount: number | null;
 
   @Column({ type: 'timestamptz' })
   recordedAt: Date;

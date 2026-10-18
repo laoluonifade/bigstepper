@@ -8,7 +8,7 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column()
+  @Column({ select: false })
   passwordHash: string;
 
   @Column({ nullable: true })
@@ -16,6 +16,9 @@ export class User {
 
   @Column({ default: false })
   emailVerified: boolean;
+
+  @Column({ default: 'runner' })
+  role: 'runner' | 'admin' | 'compliance';
 
   @CreateDateColumn()
   createdAt: Date;

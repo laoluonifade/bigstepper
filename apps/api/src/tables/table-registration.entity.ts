@@ -25,6 +25,15 @@ export class TableRegistration {
   @Column({ type: 'integer', default: 0 })
   creditedDistanceMetres: number;
 
+  @Column({ type: 'integer', default: 0 })
+  creditedSteps: number;
+
+  @Column({ type: 'integer', nullable: true })
+  completionTimeSeconds: number | null;
+
+  @Column({ type: 'uuid', nullable: true, unique: true })
+  paymentIntentId: string | null;
+
   @CreateDateColumn()
   joinedAt: Date;
 }

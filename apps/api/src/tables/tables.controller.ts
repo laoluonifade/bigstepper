@@ -1,54 +1,52 @@
-import { Controller, Post, Get, Param, Body } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { CompetitionTable } from './competition-table.entity';
-import { TableRegistration } from './table-registration.entity';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CreateTableDto } from './dto/create-table.dto';
+import { TablesService } from './tables.service';
+import { CreateCreatorPaidChallengeDto } from '../admin/paid-table.dto';
 
-@Controller('tables')
+@Controller(['tables', 'challenges'])
 export class TablesController {
-  constructor(
-    @InjectRepository(CompetitionTable)
-    private tablesRepo: Repository<CompetitionTable>,
-    @InjectRepository(TableRegistration)
-    private regsRepo: Repository<TableRegistration>,
-  ) {}
+  constructor(private readonly tablesService: TablesService) {}
+
+  @Get()
+  list() {
+    return this.tablesService.list();
+  }
 
   @Post()
-  async create(@Body() body: { title: string; creatorId: string; type?: string }) {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const table = this.tablesRepo.create({
-      title: body.title,
-      code,
-      creatorId: body.creatorId,
-      type: body.type || 'free',
-      status: 'OPEN_FOR_ENTRY',
-    });
-    return this.tablesRepo.save(table);
+  @UseGuards(JwtAuthGuard)
+  create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateTableDto) {
+    return this.tablesService.create(user.id, body);
+  }
+
+  @Post('paid-drafts')
+  @UseGuards(JwtAuthGuard)
+  createPaidDraft(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateCreatorPaidChallengeDto) {
+    return this.tablesService.createPaidDraft(user.id, body);
   }
 
   @Post(':id/register-free')
-  async registerFree(@Param('id') tableId: string, @Body() body: { userId: string }) {
-    const reg = this.regsRepo.create({ tableId, userId: body.userId });
-    return this.regsRepo.save(reg);
+  @UseGuards(JwtAuthGuard)
+  registerFree(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) tableId: string,
+  ) {
+    return this.tablesService.registerFree(tableId, user.id);
   }
 
   @Get(':id/standings')
-  async standings(@Param('id') tableId: string) {
-    const regs = await this.regsRepo.find({
-      where: { tableId },
-      relations: ['user'],
-      order: { creditedDistanceMetres: 'DESC' },
-    });
-    return regs.map((r, i) => ({
-      rank: i + 1,
-      userId: r.userId,
-      displayName: r.user?.displayName || r.user?.email,
-      creditedDistanceMetres: r.creditedDistanceMetres,
-    }));
+  standings(@Param('id', ParseUUIDPipe) tableId: string) {
+    return this.tablesService.standings(tableId);
   }
 
   @Get(':code')
-  async getByCode(@Param('code') code: string) {
-    return this.tablesRepo.findOne({ where: { code } });
+  getByCode(@Param('code') code: string) {
+    return this.tablesService.getByCode(code);
+  }
+
+  @Get(':id/result/final')
+  result(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tablesService.result(id);
   }
 }

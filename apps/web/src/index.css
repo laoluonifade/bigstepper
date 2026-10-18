@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply m-0 min-w-80 bg-paper font-sans text-ink antialiased;
+    font-feature-settings: 'ss01';
+  }
+
+  ::selection {
+    @apply bg-volt text-ink;
+  }
+
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-ink;
+  }
+
+  input[type='datetime-local']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+  }
+}
+
+@layer components {
+  /* Type */
+  .wide {
+    font-stretch: 125%;
+  }
+  .narrow {
+    font-stretch: 72%;
+  }
+  .display {
+    @apply wide font-extrabold uppercase leading-[0.95] tracking-[-0.01em];
+  }
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-2;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .score {
+    @apply narrow font-extrabold leading-none tracking-[-0.02em];
+  }
+
+  /* Surfaces */
+  .panel {
+    @apply rounded-md border border-line bg-card;
+  }
+  .panel-strong {
+    @apply rounded-md border-2 border-ink bg-card;
+  }
+  .rule {
+    @apply border-t border-line;
+  }
+
+  /* Controls */
+  .btn {
+    @apply wide inline-flex min-h-11 select-none items-center justify-center gap-2 rounded px-4 text-[13px] font-bold uppercase tracking-[0.04em] transition-[transform,box-shadow,background-color] duration-75 disabled:pointer-events-none disabled:opacity-45;
+  }
+  .btn-primary {
+    @apply btn border-2 border-ink bg-track text-ink shadow-hard hover:bg-[#FF6331] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none;
+  }
+  .btn-secondary {
+    @apply btn border-2 border-ink bg-card text-ink shadow-hard hover:bg-white active:translate-x-[3px] active:translate-y-[3px] active:shadow-none;
+  }
+  .btn-dark {
+    @apply btn border-2 border-ink bg-ink text-paper hover:bg-[#2a2a2a];
+  }
+  .btn-quiet {
+    @apply btn border border-line bg-transparent text-ink hover:border-ink;
+  }
+  .btn-danger {
+    @apply btn border-2 border-bad bg-card text-bad hover:bg-bad-wash;
+  }
+  .btn-sm {
+    @apply min-h-9 px-3 text-[11px];
+  }
+  .link {
+    @apply font-semibold underline decoration-ink/30 decoration-2 underline-offset-4 hover:decoration-track;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[13px] font-semibold text-ink;
+  }
+  .hint {
+    @apply mt-1.5 text-[12px] leading-snug text-ink-2;
+  }
+  .field {
+    @apply block min-h-12 w-full rounded border-[1.5px] border-line bg-white px-3.5 text-[15px] text-ink outline-none transition-colors placeholder:text-ink-3 hover:border-ink-3 focus:border-ink focus:ring-0 aria-[invalid=true]:border-bad;
+  }
+  textarea.field {
+    @apply min-h-28 py-3 leading-relaxed;
+  }
+  select.field {
+    @apply appearance-none bg-[length:12px] bg-[right_14px_center] bg-no-repeat pr-10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23121212' stroke-width='1.75'/%3E%3C/svg%3E");
+  }
+
+  /* Tags */
+  .tag {
+    @apply inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 text-[10.5px] font-bold uppercase tracking-[0.08em];
+  }
+
+  /* Run screen helpers */
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

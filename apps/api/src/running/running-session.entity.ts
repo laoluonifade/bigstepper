@@ -14,7 +14,10 @@ export class RunningSession {
   user: User;
 
   @Column({ default: 'IDLE' })
-  status: string; // IDLE, RUNNING, PAUSED, COMPLETED, VERIFIED, FLAGGED
+  status: string;
+
+  @Column({ default: 'run' })
+  activityType: 'walk' | 'run';
 
   @Column({ type: 'timestamptz', nullable: true })
   startedAt: Date;
@@ -24,6 +27,15 @@ export class RunningSession {
 
   @Column({ type: 'integer', default: 0 })
   distanceMetres: number;
+
+  @Column({ type: 'integer', default: 0 })
+  stepCount: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  pausedAt: Date | null;
+
+  @Column({ type: 'integer', default: 0 })
+  pausedSeconds: number;
 
   @CreateDateColumn()
   createdAt: Date;

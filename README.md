@@ -1,46 +1,78 @@
-# Big Stepper
+# Jump
 
-Walk more. Climb higher.
+A pnpm monorepo for a mobile-first activity challenge platform. The current foundation uses a NestJS modular monolith, PostgreSQL as canonical storage, Redis/BullMQ for background jobs, and a React/Vite web app.
 
-Competitive running platform (Nigeria first). Free tracking and free tables available. Paid contests hard-gated pending legal and Paystack approval.
+Supabase is not used. Paid contests and Paystack live operations remain disabled until the legal and provider approvals described in the engineering specification are complete.
 
-## Monorepo (pnpm)
+Jump supports walk, run, distance, step, and timed challenges. Any signed-in user can start a community. Users who open a creator account can submit paid challenge drafts and earn a fixed 5% commission after an approved creator challenge settles. The total deduction from winnings is 30% for ordinary paid challenges and 35% for creator challenges; the extra 5% funds the creator commission.
 
-```
+Wallet deposits and direct platform payments are not user-withdrawable. This does not remove Jump's ability to issue required merchant refunds when an entry cannot be fulfilled, a challenge is cancelled, or law/provider rules require a reversal.
+
+## Structure
+
+```text
 apps/
-  api/     # NestJS modular monolith
-  web/     # React + Vite + TanStack
+  api/  NestJS REST API, TypeORM migrations, Redis and BullMQ
+  web/  React, Vite, TanStack Router and TanStack Query
 docs/
-  architecture.md
-docker-compose.yml  # Postgres + Redis
+docker-compose.yml
 ```
 
-## Phase 1 Status (Repository, CI, data and auth)
+## Run locally with Homebrew
 
-- [x] pnpm workspace + docker-compose (Postgres + Redis)
-- [x] NestJS API skeleton with TypeORM
-- [x] Auth module skeleton (register/login endpoints)
-- [x] User entity
-- [x] Basic GitHub Actions CI
-- [ ] Full migrations, password hashing, JWT/session, profiles, seed data
-- [ ] Frontend moved and wired to API
-
-## Local Development
+Requirements: Node.js 20+, pnpm 9, Homebrew, PostgreSQL, and Redis.
 
 ```bash
-# Start services
-docker compose up -d
+brew install postgresql@14 redis
+brew services start postgresql@14
+brew services start redis
 
-# Install
+# First-time database setup
+psql postgres -c "CREATE ROLE jump WITH LOGIN PASSWORD 'jump';"
+psql postgres -c "CREATE DATABASE jump OWNER jump;"
+
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
 pnpm install
-
-# API
-pnpm dev:api
-
-# Web (after moving files)
-pnpm dev:web
+pnpm db:migrate
+pnpm dev
 ```
 
-See `docs/architecture.md` for full decisions and risks.
+Check the local services with `brew services list`, `psql --version`, and `redis-cli ping`. The development password is only for your local machine; use managed secrets and a strong unique password outside development.
 
-**Paid contests remain disabled.**
+The API uses single connection strings rather than separate host, port, and credential variables:
+
+```dotenv
+DATABASE_URL=postgresql://jump:jump@localhost:5432/jump
+REDIS_URL=redis://localhost:6379
+```
+
+The web app runs at `http://localhost:5173`, the API at `http://localhost:9090/v1`, and Swagger at `http://localhost:9090/docs`.
+
+## Useful commands
+
+```bash
+pnpm build
+pnpm lint
+pnpm test
+pnpm db:migrate
+pnpm db:revert
+```
+
+Database schema changes must be migrations; TypeORM `synchronize` is intentionally disabled in every environment.
+
+`docker-compose.yml` remains available as an optional isolated setup, but Homebrew services are the default local workflow.
+
+## Paystack safety gates
+
+Payment code is present but fails closed by default. Sandbox testing requires an `sk_test_` secret and explicit local feature flags; approval confirmations remain false in sandbox. Production additionally requires both real approval confirmations, and the API refuses to enable financial operations without them.
+
+```dotenv
+PAYSTACK_SECRET_KEY=sk_test_...
+PAID_CONTESTS_ENABLED=false
+PRIZE_PAYOUTS_ENABLED=false
+LEGAL_APPROVAL_CONFIRMED=false
+PAYSTACK_APPROVAL_CONFIRMED=false
+```
+
+Never commit the secret key. Configure `POST /v1/webhooks/paystack` as the webhook URL in the Paystack dashboard when testing through a public HTTPS tunnel or deployed test environment. Checkout initialization intentionally does not send a per-request `callback_url`; payment completion is established by webhook processing and server-side transaction verification, not by a browser redirect.

@@ -1,12 +1,22 @@
 {
-  "name": "bigstepper",
+  "name": "jump",
   "private": true,
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev:web": "pnpm --filter @bigstepper/web dev",
-    "dev:api": "pnpm --filter @bigstepper/api start:dev",
+    "dev": "pnpm --parallel --filter @jump/api --filter @jump/web dev",
+    "dev:web": "pnpm --filter @jump/web dev",
+    "dev:api": "pnpm --filter @jump/api dev",
     "build": "pnpm -r run build",
-    "lint": "pnpm -r run lint",
-    "test": "pnpm -r run test"
+    "lint": "pnpm -r --if-present run lint",
+    "test": "pnpm -r --if-present run test",
+    "db:migrate": "pnpm --filter @jump/api migration:run",
+    "db:revert": "pnpm --filter @jump/api migration:revert"
+  },
+  "pnpm": {
+    "overrides": {
+      "js-yaml": "^4.3.2",
+      "lodash": "^4.18.0",
+      "multer": "^2.3.0"
+    }
   }
 }
