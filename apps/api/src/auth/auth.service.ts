@@ -1,4 +1,6 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { MailService } from '../mail/mail.service';
+import { passwordResetEmail, verificationEmail } from '../mail/templates';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -9,7 +11,7 @@ import { Profile } from '../profiles/profile.entity';
 import { createHash, randomBytes } from 'node:crypto';
 import { AuthActionToken } from './auth-action-token.entity';
 import { ConfigService } from '@nestjs/config';
-import { MoreThan } from 'typeorm';
+import { IsNull, MoreThan } from 'typeorm';
 
 @Injectable()
 export class AuthService {
@@ -22,6 +24,7 @@ export class AuthService {
     private readonly actionTokensRepo: Repository<AuthActionToken>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
   ) {}
 
   async register(email: string, password: string, displayName?: string) {
@@ -67,6 +70,9 @@ export class AuthService {
 
     const response = await this.generateToken(user);
     const verificationToken = await this.createActionToken(user.id, 'VERIFY_EMAIL', 24 * 60 * 60 * 1000);
+    this.mail.sendInBackground(
+      verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', verificationToken)),
+    );
     return {
       ...response,
       ...(this.config.get('NODE_ENV') === 'development' ? { developmentVerificationToken: verificationToken } : {}),
@@ -88,7 +94,7 @@ export class AuthService {
   async getSession(userId: string) {
     const user = await this.usersRepo.findOne({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Session user no longer exists');
-    return { id: user.id, email: user.email, displayName: user.displayName };
+    return { id: user.id, email: user.email, displayName: user.displayName, emailVerified: user.emailVerified };
   }
 
   async logout(sessionId: string, userId: string) {
@@ -105,10 +111,27 @@ export class AuthService {
     return { success: true };
   }
 
+  async resendVerification(userId: string) {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Session user no longer exists');
+    if (user.emailVerified) return { success: true, alreadyVerified: true };
+    // Only the newest link should work.
+    await this.actionTokensRepo.update({ userId, type: 'VERIFY_EMAIL', usedAt: IsNull() }, { usedAt: new Date() });
+    const rawToken = await this.createActionToken(userId, 'VERIFY_EMAIL', 24 * 60 * 60 * 1000);
+    await this.mail.send(verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', rawToken)));
+    return {
+      success: true,
+      alreadyVerified: false,
+      ...(this.config.get('NODE_ENV') === 'development' ? { developmentVerificationToken: rawToken } : {}),
+    };
+  }
+
   async requestPasswordReset(email: string) {
     const user = await this.usersRepo.findOne({ where: { email: email.trim().toLowerCase() } });
     if (!user) return { success: true };
     const rawToken = await this.createActionToken(user.id, 'RESET_PASSWORD', 60 * 60 * 1000);
+    // In the background so response time doesn't reveal whether the account exists.
+    this.mail.sendInBackground(passwordResetEmail({ address: user.email, name: user.displayName }, this.webUrl('/reset-password', rawToken)));
     return {
       success: true,
       ...(this.config.get('NODE_ENV') === 'development' ? { developmentResetToken: rawToken } : {}),
@@ -144,8 +167,13 @@ export class AuthService {
     const token = await this.actionTokensRepo.findOne({
       where: { tokenHash: this.hashToken(rawToken), type, expiresAt: MoreThan(new Date()) },
     });
-    if (!token || token.usedAt) throw new UnauthorizedException('Token is invalid or expired');
+    if (!token || token.usedAt) throw new BadRequestException('This link is invalid or has expired');
     return token;
+  }
+
+  private webUrl(path: string, token: string) {
+    const origin = this.config.getOrThrow<string>('WEB_ORIGIN').split(',')[0].trim().replace(/\/+$/, '');
+    return `${origin}${path}?token=${encodeURIComponent(token)}`;
   }
 
   private hashToken(rawToken: string) {
@@ -163,7 +191,7 @@ export class AuthService {
     const payload = { sub: user.id, email: user.email, jti: session.id };
     return {
       access_token: await this.jwtService.signAsync(payload),
-      user: { id: user.id, email: user.email, displayName: user.displayName },
+      user: { id: user.id, email: user.email, displayName: user.displayName, emailVerified: user.emailVerified ?? false },
     };
   }
 }

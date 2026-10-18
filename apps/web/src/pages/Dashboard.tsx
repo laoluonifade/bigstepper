@@ -14,7 +14,7 @@ import { computeMilestones, computeStreaks, nextMilestone, summariseWeek } from 
 import { useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useStandings, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
 import type { Unit } from '../lib/types';
-import { getDevVerifyToken } from './auth';
+import { getDevVerifyToken, useResendVerification } from './auth';
 
 function greeting(hour: number) {
   if (hour < 12) return 'Morning';
@@ -56,7 +56,7 @@ export function DashboardPage() {
         </Link>
       </header>
 
-      {showVerify && <VerifyPrompt userId={user.id} />}
+      {showVerify && !user.emailVerified && <VerifyPrompt userId={user.id} email={user.email} />}
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} className="mb-6" />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -159,8 +159,9 @@ export function DashboardPage() {
   );
 }
 
-function VerifyPrompt({ userId }: { userId: string }) {
+function VerifyPrompt({ userId, email }: { userId: string; email: string }) {
   const devToken = getDevVerifyToken();
+  const resend = useResendVerification();
   return (
     <Notice
       tone="info"
@@ -173,16 +174,17 @@ function VerifyPrompt({ userId }: { userId: string }) {
               Development: verify now
             </Link>
           )}
-          <Link to="/verify-email" className="btn-quiet btn-sm">
-            I have a code
-          </Link>
+          <button type="button" className="btn-secondary btn-sm" disabled={resend.isPending || resend.isSuccess} onClick={() => resend.mutate()}>
+            {resend.isPending ? 'Sending…' : resend.isSuccess ? 'Sent' : 'Resend email'}
+          </button>
           <button type="button" className="btn-quiet btn-sm" onClick={() => setFlag(storageKeys.verifyPrompt(userId), false)}>
             Dismiss
           </button>
         </div>
       }
     >
-      You’ll need a verified email to enter paid competitions. Free tables work without it.
+      We sent a link to {email}. You’ll need a verified email to enter paid competitions — free tables work without it.
+      {resend.error && <span className="mt-1 block text-bad">{resend.error.message}</span>}
     </Notice>
   );
 }

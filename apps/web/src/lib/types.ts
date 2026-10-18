@@ -5,6 +5,7 @@ export interface User {
   id: string;
   email: string;
   displayName: string | null;
+  emailVerified?: boolean;
 }
 
 export interface AuthResponse {
@@ -229,6 +230,8 @@ export interface ClubMember {
   userId: string;
   role: 'owner' | 'admin' | 'member';
   joinedAt: string;
+  username: string | null;
+  displayName: string | null;
 }
 
 export interface LeagueSeason {

@@ -1,10 +1,23 @@
-import { Link, type LinkProps } from '@tanstack/react-router';
-import { ReactNode, useEffect, useId, useState } from 'react';
+import { Link, useNavigate, type LinkProps, type NavigateOptions } from '@tanstack/react-router';
+import { ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { isApiError } from '../lib/api';
 import { VERIFICATION_LABEL } from '../lib/copy';
 import { initials } from '../lib/format';
 import type { VerificationStatus } from '../lib/types';
 import { AlertIcon, ArrowLeftIcon, CheckIcon, CopyIcon, InfoIcon, OfflineIcon } from './icons';
+
+/**
+ * Navigates once when mounted. TanStack's `<Navigate>` re-navigates whenever its props object changes,
+ * so an inline `search={{ … }}` re-fires on every render and can loop until the tab runs out of memory.
+ */
+export function Redirect(props: NavigateOptions) {
+  const navigate = useNavigate();
+  const target = useRef(props);
+  useEffect(() => {
+    void navigate({ ...target.current, replace: true });
+  }, [navigate]);
+  return null;
+}
 
 export function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');

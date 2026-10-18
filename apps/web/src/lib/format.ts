@@ -115,7 +115,7 @@ export function shortId(id: string): string {
   return id.replace(/-/g, '').slice(0, 6).toUpperCase();
 }
 
-/** Value for an `<input type="datetime-local">` in the user's local timezone. */
+/** `YYYY-MM-DDTHH:mm` in the user’s local timezone — the value format `DateTimePicker` uses. */
 export function toLocalInput(date: Date): string {
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);

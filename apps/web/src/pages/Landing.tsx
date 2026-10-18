@@ -1,12 +1,13 @@
-import { Link, Navigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { ArrowRightIcon, RunIcon } from '../components/icons';
+import { Redirect } from '../components/ui';
 import { useAuth } from '../lib/auth';
 
 export function LandingPage() {
   const { status } = useAuth();
 
   if (status === 'checking' || status === 'unreachable') return null;
-  if (status === 'signed-in') return <Navigate to="/dashboard" replace />;
+  if (status === 'signed-in') return <Redirect to="/dashboard" />;
 
   return (
     <section className="grid min-h-[calc(100vh-8rem)] items-center gap-10 py-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-16">

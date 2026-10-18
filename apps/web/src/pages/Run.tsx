@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, SignalIcon, StopIcon } from '../components/icons';
-import { cx, ErrorNotice, KeyValue, Loading, Notice, PageHeader, Segmented, useNow } from '../components/ui';
+import { cx, ErrorNotice, KeyValue, Loading, Notice, PageHeader, Redirect, Segmented, useNow } from '../components/ui';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
 import { keys, useActivities, useUnit } from '../lib/queries';
@@ -272,7 +272,7 @@ export function RunSessionPage() {
     if (activity) void navigate({ to: '/activities/$id', params: { id: activity.id }, replace: true });
   }, [activity, navigate]);
 
-  if (recorder.session?.id === id) return <Navigate to="/run" replace />;
+  if (recorder.session?.id === id) return <Redirect to="/run" />;
   if (run.isLoading) return <Loading />;
   if (run.error) return <ErrorNotice error={run.error} onRetry={() => void run.refetch()} />;
   if (!run.data) return null;

@@ -1,8 +1,9 @@
 import { useMutation } from '@tanstack/react-query';
-import { Link, Navigate, Outlet, useNavigate, useSearch } from '@tanstack/react-router';
+import { Link, Outlet, useNavigate, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Wordmark } from '../components/Shell';
-import { ErrorNotice, Field, Loading, Notice } from '../components/ui';
+import { ErrorNotice, Field, Loading, Notice, Redirect } from '../components/ui';
 import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { setFlag, storageKeys } from '../lib/local';
@@ -73,8 +74,12 @@ function AuthHeading({ eyebrow, title, children }: { eyebrow: string; title: Rea
   );
 }
 
+const AUTH_PATHS = ['/login', '/register', '/forgot-password', '/reset-password'];
+
 function safeRedirect(target: string | undefined) {
-  return target && target.startsWith('/') && !target.startsWith('//') ? target : '/dashboard';
+  if (!target || !target.startsWith('/') || target.startsWith('//')) return '/dashboard';
+  // Never bounce back into an auth screen — that is how redirect URLs nest into each other.
+  return AUTH_PATHS.some((path) => target === path || target.startsWith(`${path}?`) || target.startsWith(`${path}/`)) ? '/dashboard' : target;
 }
 
 export function LoginPage() {
@@ -84,12 +89,12 @@ export function LoginPage() {
   const login = useMutation({
     mutationFn: (values: { email: string; password: string }) => post<AuthResponse>('/auth/login', values),
     onSuccess(response) {
-      auth.authenticate(response);
-      void navigate({ to: safeRedirect(search.redirect) });
+      flushSync(() => auth.authenticate(response));
+      void navigate({ href: safeRedirect(search.redirect) });
     },
   });
 
-  if (auth.status === 'signed-in') return <Navigate to={safeRedirect(search.redirect)} replace />;
+  if (auth.status === 'signed-in') return <Redirect href={safeRedirect(search.redirect)} />;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -140,16 +145,16 @@ export function RegisterPage() {
   const register = useMutation({
     mutationFn: (values: { email: string; password: string; displayName?: string }) => post<AuthResponse>('/auth/register', values),
     onSuccess(response) {
-      auth.authenticate(response);
+      flushSync(() => auth.authenticate(response));
       setFlag(storageKeys.verifyPrompt(response.user.id), true);
       if (import.meta.env.DEV && response.developmentVerificationToken) {
         sessionStorage.setItem(DEV_VERIFY_KEY, response.developmentVerificationToken);
       }
-      void navigate({ to: safeRedirect(search.redirect) });
+      void navigate({ href: safeRedirect(search.redirect) });
     },
   });
 
-  if (auth.status === 'signed-in' && !register.isSuccess) return <Navigate to="/dashboard" replace />;
+  if (auth.status === 'signed-in' && !register.isSuccess) return <Redirect to="/dashboard" />;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -213,9 +218,13 @@ export function VerifyEmailPage() {
     mutationFn: (token: string) => post<{ success: boolean }>('/auth/verify-email', { token }),
     onSuccess() {
       sessionStorage.removeItem(DEV_VERIFY_KEY);
-      if (auth.user) setFlag(storageKeys.verifyPrompt(auth.user.id), false);
+      if (auth.user) {
+        setFlag(storageKeys.verifyPrompt(auth.user.id), false);
+        auth.updateUser({ emailVerified: true });
+      }
     },
   });
+  const resend = useResendVerification();
 
   useEffect(() => {
     if (search.token && !started.current) {
@@ -239,11 +248,48 @@ export function VerifyEmailPage() {
 
   if (search.token && verify.isPending) return <Loading label="Verifying your email" />;
 
+  if (auth.user?.emailVerified || resend.data?.alreadyVerified) {
+    return (
+      <>
+        <AuthHeading eyebrow="All set" title="Email verified">
+          {auth.user?.email ?? 'Your email'} is already verified.
+        </AuthHeading>
+        <Link to="/dashboard" className="btn-primary w-full">
+          Go to dashboard
+        </Link>
+      </>
+    );
+  }
+
   return (
     <>
       <AuthHeading eyebrow="Account" title="Verify your email">
-        Open the link in your verification email. If you have a code instead, paste it below.
+        {auth.user ? (
+          <>
+            We sent a link to <span className="font-semibold text-ink">{auth.user.email}</span>. Open it on any device to verify. Check spam if it’s not in your inbox.
+          </>
+        ) : (
+          'Open the link in your verification email. If you have a code instead, paste it below.'
+        )}
       </AuthHeading>
+      {verify.error && search.token && !manualToken && (
+        <Notice tone="warn" className="mb-6" title="That link didn’t work">
+          It may have expired or already been used.{auth.user ? ' Send a fresh one below.' : ' Log in to send a fresh one.'}
+        </Notice>
+      )}
+      {auth.user && (
+        <div className="mb-8">
+          <button type="button" className="btn-secondary w-full" disabled={resend.isPending} onClick={() => resend.mutate()}>
+            {resend.isPending ? 'Sending…' : resend.isSuccess ? 'Send another email' : 'Resend verification email'}
+          </button>
+          {resend.isSuccess && !resend.data.alreadyVerified && (
+            <Notice tone="ok" className="mt-4">
+              Sent. The new link replaces any earlier ones.
+            </Notice>
+          )}
+          <ErrorNotice error={resend.error} />
+        </div>
+      )}
       <form
         className="space-y-5"
         onSubmit={(event) => {
@@ -256,14 +302,11 @@ export function VerifyEmailPage() {
             <input {...props} className="field font-mono text-[13px]" value={manualToken} onChange={(event) => setManualToken(event.target.value)} required />
           )}
         </Field>
-        <ErrorNotice error={verify.error} />
+        <ErrorNotice error={search.token && !manualToken ? null : verify.error} />
         <button className="btn-primary w-full" disabled={verify.isPending || !manualToken.trim()}>
           {verify.isPending ? 'Verifying…' : 'Verify email'}
         </button>
       </form>
-      <Notice tone="neutral" className="mt-6">
-        Verification emails aren’t being delivered yet while we finish connecting our email provider.
-      </Notice>
     </>
   );
 }
@@ -280,8 +323,8 @@ export function ForgotPasswordPage() {
         <AuthHeading eyebrow="Request received" title="Check your inbox">
           If an account uses that email, a reset link has been issued. It expires in one hour.
         </AuthHeading>
-        <Notice tone="warn" title="Email delivery isn’t live yet">
-          We’re still connecting our email provider, so the message may not arrive. Contact support if you’re locked out.
+        <Notice tone="neutral" title="Nothing arrived?">
+          Check your spam folder, or wait a minute and request another link.
         </Notice>
         {devToken && (
           <Link to="/reset-password" search={{ token: devToken }} className="btn-secondary mt-6 w-full">
@@ -394,6 +437,19 @@ export function ResetPasswordPage() {
       </form>
     </>
   );
+}
+
+/** Sends a fresh verification link to the signed-in runner. */
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: () =>
+      post<{ success: boolean; alreadyVerified: boolean; developmentVerificationToken?: string }>('/auth/verify-email/resend'),
+    onSuccess(response) {
+      if (import.meta.env.DEV && response.developmentVerificationToken) {
+        sessionStorage.setItem(DEV_VERIFY_KEY, response.developmentVerificationToken);
+      }
+    },
+  });
 }
 
 export function getDevVerifyToken() {

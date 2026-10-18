@@ -19,6 +19,7 @@ import {
   SubNav,
   useNow,
 } from '../components/ui';
+import { DateTimePicker } from '../components/DateTimePicker';
 import { api, isApiError, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { joinConflictCopy } from '../lib/copy';
@@ -372,13 +373,12 @@ export function NewCompetitionPage() {
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Starts">
               {(props) => (
-                <input
+                <DateTimePicker
                   {...props}
-                  type="datetime-local"
-                  className="field num"
                   value={startsAt}
-                  onChange={(event) => {
-                    setStartsAt(event.target.value);
+                  min={toLocalInput(new Date())}
+                  onChange={(next) => {
+                    setStartsAt(next);
                     setDuration(null);
                   }}
                 />
@@ -386,13 +386,12 @@ export function NewCompetitionPage() {
             </Field>
             <Field label="Scoring closes" error={errors.scoring} hint="Runs must finish before this.">
               {(props) => (
-                <input
+                <DateTimePicker
                   {...props}
-                  type="datetime-local"
-                  className="field num"
                   value={scoringClosesAt}
-                  onChange={(event) => {
-                    setScoringClosesAt(event.target.value);
+                  min={startsAt || undefined}
+                  onChange={(next) => {
+                    setScoringClosesAt(next);
                     setDuration(null);
                   }}
                 />
@@ -401,7 +400,9 @@ export function NewCompetitionPage() {
           </div>
 
           <Field label="Entry closes" optional error={errors.entry} hint="Leave empty to accept new runners until scoring closes.">
-            {(props) => <input {...props} type="datetime-local" className="field num" value={entryClosesAt} onChange={(event) => setEntryClosesAt(event.target.value)} />}
+            {(props) => (
+              <DateTimePicker {...props} value={entryClosesAt} onChange={setEntryClosesAt} placeholder="Open until scoring closes" clearable />
+            )}
           </Field>
 
           <div className="grid gap-5 sm:grid-cols-2">

@@ -96,5 +96,9 @@ export function validateEnvironment(env: Environment) {
     PAYSTACK_SECRET_KEY: paystackSecretKey,
     LEGAL_APPROVAL_CONFIRMED: boolean(env.LEGAL_APPROVAL_CONFIRMED),
     PAYSTACK_APPROVAL_CONFIRMED: boolean(env.PAYSTACK_APPROVAL_CONFIRMED),
+    ZEPTOMAIL_API_KEY: env.ZEPTOMAIL_API_KEY?.trim() || '',
+    ZEPTOMAIL_API_URL: env.ZEPTOMAIL_API_URL?.trim() || 'https://api.zeptomail.com/v1.1/email',
+    ZEPTOMAIL_FROM_ADDRESS: env.ZEPTOMAIL_FROM_ADDRESS?.trim() || '',
+    ZEPTOMAIL_FROM_NAME: env.ZEPTOMAIL_FROM_NAME?.trim() || 'Jump',
   };
 }

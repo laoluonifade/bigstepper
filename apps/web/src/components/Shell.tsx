@@ -1,4 +1,4 @@
-import { Link, Navigate, Outlet, useLocation, type LinkProps } from '@tanstack/react-router';
+import { Link, Outlet, useLocation, type LinkProps } from '@tanstack/react-router';
 import { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { formatDistanceNumber, formatDuration } from '../lib/format';
@@ -21,7 +21,7 @@ import {
   UsersIcon,
   WalletIcon,
 } from './icons';
-import { cx, useNow } from './ui';
+import { cx, Redirect, useNow } from './ui';
 
 export function Wordmark({ className }: { className?: string }) {
   return (
@@ -36,7 +36,7 @@ export function Wordmark({ className }: { className?: string }) {
 export function Private({ children }: { children: ReactNode }) {
   const { status } = useAuth();
   const location = useLocation();
-  if (status === 'signed-out') return <Navigate to="/login" search={{ redirect: location.href }} replace />;
+  if (status === 'signed-out') return <Redirect to="/login" search={{ redirect: location.href }} />;
   if (status !== 'signed-in') return null;
   return <>{children}</>;
 }

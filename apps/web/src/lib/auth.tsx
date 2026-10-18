@@ -12,6 +12,8 @@ interface AuthState {
   /** True when the last session ended because the API rejected the token. */
   expired: boolean;
   authenticate: (response: AuthResponse) => void;
+  /** Patch the signed-in user locally after a change the API has confirmed. */
+  updateUser: (changes: Partial<User>) => void;
   logout: () => Promise<void>;
   retry: () => void;
 }
@@ -73,6 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(response.user);
         setExpired(false);
         setStatus('signed-in');
+      },
+      updateUser(changes) {
+        setUser((current) => (current ? { ...current, ...changes } : current));
       },
       async logout() {
         try {

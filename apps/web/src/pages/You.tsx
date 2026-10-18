@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRightIcon, BellIcon, LogoutIcon, ShieldIcon } from '../components/icons';
+import { ArrowRightIcon, BellIcon, CheckIcon, LogoutIcon, ShieldIcon } from '../components/icons';
 import {
   Avatar,
   CopyButton,
@@ -241,15 +241,21 @@ export function ProfileSettingsPage() {
               ]}
             />
             <div className="mt-4 rounded-md border border-line bg-card p-4">
-              <p className="eyebrow">Runner ID</p>
-              <p className="mt-1 break-all font-mono text-[12px]">{user.id}</p>
-              <p className="hint">Club admins use this to add you to a club.</p>
-              <CopyButton value={user.id} label="Copy ID" className="mt-3" />
+              <p className="eyebrow">Your runner handle</p>
+              <p className="wide mt-1 break-all text-[18px] font-extrabold">@{profile.data.username}</p>
+              <p className="hint">Club admins add you to a club with this.</p>
+              <CopyButton value={`@${profile.data.username}`} label="Copy handle" className="mt-3" />
             </div>
             <div className="mt-4 flex flex-col gap-2">
-              <Link to="/verify-email" className="btn-quiet justify-between">
-                Verify email <ArrowRightIcon size={16} />
-              </Link>
+              {user.emailVerified ? (
+                <p className="btn-quiet pointer-events-none justify-between text-ok">
+                  Email verified <CheckIcon size={16} />
+                </p>
+              ) : (
+                <Link to="/verify-email" className="btn-quiet justify-between">
+                  Verify email <ArrowRightIcon size={16} />
+                </Link>
+              )}
               <Link to="/forgot-password" className="btn-quiet justify-between">
                 Change password <ArrowRightIcon size={16} />
               </Link>

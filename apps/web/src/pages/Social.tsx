@@ -226,7 +226,14 @@ function slugify(value: string) {
     .slice(0, 40);
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Accepts `my-club`, `/my-club` or a pasted club link and returns the handle. */
+function clubHandle(value: string) {
+  return value.trim().toLowerCase().replace(/^.*\/clubs\//, '').replace(/^\/+|\/+$/g, '');
+}
+
+function runnerHandle(value: string) {
+  return value.trim().toLowerCase().replace(/^.*\/runners\//, '').replace(/^@/, '');
+}
 
 export function ClubsPage() {
   const user = useUser();
@@ -244,20 +251,21 @@ export function ClubsPage() {
     mutationFn: () => post<Club>('/clubs', { name: name.trim(), slug: effectiveSlug }),
     onSuccess(club) {
       rememberClub(user.id, { id: club.id, name: club.name, slug: club.slug });
-      queryClient.setQueryData(keys.club(club.id), { ...club, memberCount: 1 });
-      void navigate({ to: '/clubs/$id', params: { id: club.id } });
+      queryClient.setQueryData(keys.club(club.slug), { ...club, memberCount: 1 });
+      void navigate({ to: '/clubs/$id', params: { id: club.slug } });
     },
   });
 
   function open(event: FormEvent) {
     event.preventDefault();
-    if (UUID.test(lookup.trim())) void navigate({ to: '/clubs/$id', params: { id: lookup.trim() } });
+    const handle = clubHandle(lookup);
+    if (handle) void navigate({ to: '/clubs/$id', params: { id: handle } });
   }
 
   return (
     <div className="animate-rise">
       <CompeteSubNav />
-      <PageHeader eyebrow="Compete" title="Clubs" description="Run with your crew. Start a club and add members by their runner ID." />
+      <PageHeader eyebrow="Compete" title="Clubs" description="Run with your crew. Start a club and add members by their username." />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
@@ -268,7 +276,7 @@ export function ClubsPage() {
             <ul className="space-y-2">
               {clubs.map((club) => (
                 <li key={club.id}>
-                  <Link to="/clubs/$id" params={{ id: club.id }} className="flex items-center gap-4 rounded-md border border-line bg-card px-4 py-3 hover:border-ink">
+                  <Link to="/clubs/$id" params={{ id: club.slug }} className="flex items-center gap-4 rounded-md border border-line bg-card px-4 py-3 hover:border-ink">
                     <Avatar name={club.name} size={40} />
                     <div className="min-w-0 flex-1">
                       <p className="wide truncate text-[15px] font-extrabold uppercase">{club.name}</p>
@@ -282,11 +290,11 @@ export function ClubsPage() {
           )}
 
           <form onSubmit={open} className="mt-8">
-            <Field label="Open a club by ID" hint="Ask a club admin to share the club ID with you.">
+            <Field label="Open a club" hint="Enter the club’s handle or paste its link.">
               {(props) => (
                 <div className="flex gap-2">
-                  <input {...props} className="field font-mono text-[13px]" value={lookup} onChange={(event) => setLookup(event.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-                  <button className="btn-dark shrink-0" disabled={!UUID.test(lookup.trim())} aria-label="Open club">
+                  <input {...props} className="field" value={lookup} onChange={(event) => setLookup(event.target.value)} placeholder="lagos-road-runners" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+                  <button className="btn-dark shrink-0" disabled={!clubHandle(lookup)} aria-label="Open club">
                     <ArrowRightIcon size={18} />
                   </button>
                 </div>
@@ -339,14 +347,14 @@ export function ClubDetailPage() {
   const queryClient = useQueryClient();
   const club = useQuery({ queryKey: keys.club(id), queryFn: () => api<Club>(`/clubs/${id}`) });
   const members = useQuery({ queryKey: keys.clubMembers(id), queryFn: () => api<ClubMember[]>(`/clubs/${id}/members`) });
-  const [memberId, setMemberId] = useState('');
+  const [memberHandle, setMemberHandle] = useState('');
   const me = members.data?.find((member) => member.userId === user?.id);
   const canManage = me?.role === 'owner' || me?.role === 'admin';
 
   const add = useMutation({
-    mutationFn: () => post<ClubMember>(`/clubs/${id}/members`, { userId: memberId.trim() }),
+    mutationFn: () => post<ClubMember>(`/clubs/${id}/members`, { username: runnerHandle(memberHandle) }),
     onSuccess() {
-      setMemberId('');
+      setMemberHandle('');
       void queryClient.invalidateQueries({ queryKey: keys.clubMembers(id) });
       void queryClient.invalidateQueries({ queryKey: keys.club(id) });
     },
@@ -361,7 +369,7 @@ export function ClubDetailPage() {
     return (
       <>
         <PageHeader back={{ to: '/clubs', label: 'Clubs' }} title="Club not found" />
-        {isApiError(club.error, 404) ? <EmptyState title="No club with that ID" /> : <ErrorNotice error={club.error} onRetry={() => void club.refetch()} />}
+        {isApiError(club.error, 404) ? <EmptyState title="No club with that handle" /> : <ErrorNotice error={club.error} onRetry={() => void club.refetch()} />}
       </>
     );
   }
@@ -379,7 +387,7 @@ export function ClubDetailPage() {
             <ul className="divide-y divide-line border-b border-line">
               {members.data?.map((member) => {
                 const isMe = member.userId === user?.id;
-                const name = isMe ? user?.displayName ?? 'You' : `Runner ${shortId(member.userId)}`;
+                const name = isMe ? user?.displayName ?? 'You' : member.displayName ?? (member.username ? `@${member.username}` : 'Runner');
                 return (
                   <li key={member.id} className={cx('flex items-center gap-3 px-2 py-3', isMe && 'bg-volt')}>
                     <Avatar name={name} highlight={isMe} size={34} />
@@ -388,7 +396,9 @@ export function ClubDetailPage() {
                         {name}
                         {isMe && <span className="tag ml-2 h-5 border-ink bg-ink px-1.5 text-[9.5px] text-volt">You</span>}
                       </p>
-                      <p className="text-[12px] text-ink-2">Joined {formatDate(member.joinedAt, { year: 'numeric' })}</p>
+                      <p className="truncate text-[12px] text-ink-2">
+                        {member.username && <>@{member.username} · </>}Joined {formatDate(member.joinedAt, { year: 'numeric' })}
+                      </p>
                     </div>
                     {member.role !== 'member' && <span className="tag border-ink bg-card">{member.role}</span>}
                   </li>
@@ -396,14 +406,14 @@ export function ClubDetailPage() {
               })}
             </ul>
           )}
-          <p className="mt-3 text-[12px] text-ink-3">Member names aren’t published in club lists yet.</p>
         </section>
 
         <aside className="space-y-6">
           <section className="panel p-5">
-            <p className="eyebrow mb-2">Club ID</p>
-            <p className="break-all font-mono text-[12px]">{club.data.id}</p>
-            <CopyButton value={club.data.id} label="Copy ID" className="mt-3" />
+            <p className="eyebrow mb-2">Club handle</p>
+            <p className="wide break-all text-[18px] font-extrabold">/{club.data.slug}</p>
+            <p className="hint">Share the link so runners can find this club.</p>
+            <CopyButton value={`${window.location.origin}/clubs/${club.data.slug}`} label="Copy link" className="mt-3" />
           </section>
 
           {canManage ? (
@@ -416,21 +426,36 @@ export function ClubDetailPage() {
                   add.mutate();
                 }}
               >
-                <Field label="Runner ID" hint="Runners find their ID under You → Profile.">
-                  {(props) => <input {...props} className="field font-mono text-[12px]" value={memberId} onChange={(event) => setMemberId(event.target.value)} required />}
+                <Field label="Runner username" hint="Runners find it under You → Profile.">
+                  {(props) => (
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3">@</span>
+                      <input
+                        {...props}
+                        className="field pl-8"
+                        value={memberHandle}
+                        onChange={(event) => setMemberHandle(event.target.value)}
+                        placeholder="username"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        required
+                      />
+                    </div>
+                  )}
                 </Field>
                 {add.isSuccess && <Notice tone="ok">Member added.</Notice>}
                 <ErrorNotice error={add.error} />
-                <button className="btn-secondary w-full" disabled={add.isPending || !UUID.test(memberId.trim())}>
+                <button className="btn-secondary w-full" disabled={add.isPending || !runnerHandle(memberHandle)}>
                   {add.isPending ? 'Adding…' : 'Add member'}
                 </button>
               </form>
-              <p className="mt-4 text-[12px] text-ink-3">Invitations aren’t available yet, so members are added directly by ID.</p>
+              <p className="mt-4 text-[12px] text-ink-3">Invitations aren’t available yet, so members are added directly by username.</p>
             </section>
           ) : (
             !me && user && (
               <Notice tone="neutral" title="Want in?">
-                Send a club admin your runner ID from You → Profile. Join requests aren’t available yet.
+                Send a club admin your username from You → Profile. Join requests aren’t available yet.
               </Notice>
             )
           )}

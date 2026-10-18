@@ -39,6 +39,13 @@ export class AuthController {
     return this.authService.verifyEmail(body.token);
   }
 
+  @Post('verify-email/resend')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  resendVerification(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.resendVerification(user.id);
+  }
+
   @Post('reset-password/request')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   requestPasswordReset(@Body() body: RequestPasswordResetDto) {

@@ -19,11 +19,6 @@
   :focus-visible {
     @apply outline outline-2 outline-offset-2 outline-ink;
   }
-
-  input[type='datetime-local']::-webkit-calendar-picker-indicator {
-    cursor: pointer;
-    opacity: 0.6;
-  }
 }
 
 @layer components {
