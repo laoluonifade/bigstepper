@@ -65,6 +65,8 @@ export default {
         stride: { '0%, 100%': { transform: 'scaleY(0.35)' }, '50%': { transform: 'scaleY(1)' } },
         sweep: { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(100%)' } },
         shimmer: { from: { backgroundPosition: '200% 0' }, to: { backgroundPosition: '-200% 0' } },
+        draw: { from: { strokeDashoffset: '1' }, to: { strokeDashoffset: '0' } },
+        hop: { '0%, 100%': { transform: 'translate(0, 0)' }, '45%': { transform: 'translate(-3px, -14px)' }, '60%': { transform: 'translate(-3px, -14px)' } },
       },
       animation: {
         blink: 'blink 1.4s ease-in-out infinite',
@@ -81,6 +83,8 @@ export default {
         stride: 'stride 900ms ease-in-out infinite',
         sweep: 'sweep 1.8s linear infinite',
         shimmer: 'shimmer 1.6s linear infinite',
+        draw: 'draw 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+        hop: 'hop 900ms cubic-bezier(0.4, 0, 0.2, 1) infinite',
       },
     },
   },

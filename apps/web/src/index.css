@@ -141,6 +141,10 @@
     transform-box: fill-box;
     transform-origin: bottom;
   }
+  .origin-own-center {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
 
   /* Run screen helpers */
   .safe-bottom {

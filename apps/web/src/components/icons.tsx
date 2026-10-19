@@ -227,8 +227,8 @@ export const ShareIcon = (p: IconProps) => (
 
 /** The Jump mark: three rising steps — a podium and a bar chart at once. */
 /**
- * The Jump mark. `motion="enter"` grows the three steps in on mount; `motion="loop"` keeps them
- * stepping, for waiting states (finding GPS, loading).
+ * The Jump mark: a take-off arc with the jumper (volt dot) in the air. `motion="enter"` draws the arc and
+ * lands the dot on mount; `motion="loop"` keeps the dot hopping, for waiting states (finding GPS, loading).
  */
 export function StepMark({
   size = 28,
@@ -239,13 +239,27 @@ export function StepMark({
   className?: string;
   motion?: 'enter' | 'loop';
 }) {
-  const bar = motion === 'loop' ? 'origin-own-bottom animate-stride' : motion === 'enter' ? 'origin-own-bottom animate-grow-y' : undefined;
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className={className}>
-      <rect width="32" height="32" rx="5" fill="#121212" />
-      <rect x="6" y="18" width="6" height="8" fill="#FF4D12" className={bar} style={motion ? { animationDelay: '0ms' } : undefined} />
-      <rect x="13" y="12" width="6" height="14" fill="#FF4D12" className={bar} style={motion ? { animationDelay: motion === 'loop' ? '150ms' : '110ms' } : undefined} />
-      <rect x="20" y="6" width="6" height="20" fill="#E4FF3A" className={bar} style={motion ? { animationDelay: motion === 'loop' ? '300ms' : '220ms' } : undefined} />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true" className={className}>
+      <rect width="100" height="100" rx="22" fill="#121212" />
+      <rect x="14" y="80" width="26" height="6" rx="3" fill="#F2EFE8" opacity="0.35" className={motion === 'enter' ? 'animate-fade' : undefined} />
+      <path
+        d="M24 78 C30 46 50 26 72 26"
+        fill="none"
+        stroke="#FF4D12"
+        strokeWidth="13"
+        strokeLinecap="round"
+        pathLength={1}
+        strokeDasharray={motion === 'enter' ? 1 : undefined}
+        className={motion === 'enter' ? 'animate-draw' : undefined}
+      />
+      <circle
+        cx="80"
+        cy="25"
+        r="10"
+        fill="#E4FF3A"
+        className={['origin-own-center', motion === 'enter' && 'animate-pop [animation-delay:420ms]', motion === 'loop' && 'animate-hop'].filter(Boolean).join(' ')}
+      />
     </svg>
   );
 }

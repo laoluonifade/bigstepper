@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '../lib/format';
 import type { CompetitionTable, Unit } from '../lib/types';
-import { ArrowRightIcon, LockIcon, UsersIcon } from './icons';
+import { ArrowRightIcon, LockIcon, StepMark, UsersIcon } from './icons';
 import { cx } from './ui';
 
 export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' | 'scoring-closed' | 'final';
@@ -77,9 +77,9 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
 
 /** The card's colour comes from the activity: runs orange, walks/steps volt, anything else ink. */
 function cardTheme(table: CompetitionTable) {
-  if (table.challengeType === 'RUN') return { band: 'bg-track text-ink', accent: 'bg-ink', bars: 'bg-ink' };
-  if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: 'bg-volt text-ink', accent: 'bg-ink', bars: 'bg-ink' };
-  return { band: 'bg-ink text-paper', accent: 'bg-volt', bars: 'bg-volt' };
+  if (table.challengeType === 'RUN') return { band: 'bg-track text-ink', accent: 'bg-ink' };
+  if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: 'bg-volt text-ink', accent: 'bg-ink' };
+  return { band: 'bg-ink text-paper', accent: 'bg-volt' };
 }
 
 /** The one big thing about a challenge, from its real settings. */
@@ -132,16 +132,8 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
             </p>
             <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{hero.small}</p>
           </div>
-          {/* The Jump steps: they keep stepping while the challenge is live. */}
-          <div className="flex h-12 shrink-0 items-end gap-1 opacity-90" aria-hidden="true">
-            {[0.45, 0.72, 1].map((height, index) => (
-              <span
-                key={index}
-                className={cx('w-2.5 origin-bottom rounded-[1px]', theme.bars, live ? 'animate-stride' : 'animate-grow-y')}
-                style={{ height: `${height * 100}%`, animationDelay: `${index * 140}ms` }}
-              />
-            ))}
-          </div>
+          {/* The Jump mark: drawn on arrival, and the jumper keeps hopping while the challenge is live. */}
+          <StepMark size={46} motion={live ? 'loop' : 'enter'} className="shrink-0 rounded-[10px] shadow-hard-sm" />
         </div>
       </div>
 

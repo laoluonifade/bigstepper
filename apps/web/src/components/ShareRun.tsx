@@ -49,20 +49,35 @@ function fitRoute(route: Array<[number, number]>, box: { x: number; y: number; w
   return flat.map(([x, y]) => [offX + (x - minX) * scale, offY + (y - minY) * scale] as const);
 }
 
+/** The Jump "Leap" mark (same artwork as StepMark), drawn on a 100-unit grid scaled to `size`. */
 function drawMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
-  const u = size / 32;
+  const u = size / 100;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(u, u);
   ctx.fillStyle = INK;
-  ctx.strokeStyle = 'rgba(242,239,232,0.25)';
-  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.roundRect(x, y, size, size, 5 * u);
+  ctx.roundRect(0, 0, 100, 100, 22);
   ctx.fill();
+  ctx.strokeStyle = 'rgba(242,239,232,0.25)';
+  ctx.lineWidth = 2 / u;
   ctx.stroke();
-  ctx.fillStyle = TRACK;
-  ctx.fillRect(x + 6 * u, y + 18 * u, 6 * u, 8 * u);
-  ctx.fillRect(x + 13 * u, y + 12 * u, 6 * u, 14 * u);
+  ctx.fillStyle = 'rgba(242,239,232,0.35)';
+  ctx.beginPath();
+  ctx.roundRect(14, 80, 26, 6, 3);
+  ctx.fill();
+  ctx.strokeStyle = TRACK;
+  ctx.lineWidth = 13;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(24, 78);
+  ctx.bezierCurveTo(30, 46, 50, 26, 72, 26);
+  ctx.stroke();
   ctx.fillStyle = VOLT;
-  ctx.fillRect(x + 20 * u, y + 6 * u, 6 * u, 20 * u);
+  ctx.beginPath();
+  ctx.arc(80, 25, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function setFont(ctx: CanvasRenderingContext2D, spec: string, stretch: 'normal' | 'condensed' | 'expanded' = 'normal') {
@@ -140,15 +155,9 @@ export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, rout
     ctx.fill();
     ctx.stroke();
   } else {
-    const barW = story ? 120 : 80;
-    const gap = barW * 0.35;
-    const baseY = routeBox.y + routeBox.h * 0.85;
-    const maxH = routeBox.h * 0.7;
-    const startX = w / 2 - (barW * 3 + gap * 2) / 2;
-    [0.45, 0.72, 1].forEach((ratio, i) => {
-      ctx.fillStyle = i === 2 ? VOLT : TRACK;
-      ctx.fillRect(startX + i * (barW + gap), baseY - maxH * ratio, barW, maxH * ratio);
-    });
+    // No route to show: the Jump mark, large and centred.
+    const markSize = Math.min(routeBox.w, routeBox.h) * 0.7;
+    drawMark(ctx, w / 2 - markSize / 2, routeBox.y + (routeBox.h - markSize) / 2, markSize);
   }
 
   // Name + verified badge.
