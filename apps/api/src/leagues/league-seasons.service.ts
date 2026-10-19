@@ -52,8 +52,9 @@ export class LeagueSeasonsService {
 
     await refreshSeasonDistances(manager, season.id);
     const members = (await manager.query(
-      `SELECT "id", "userId", "divisionId", "creditedDistanceMetres" FROM "league_memberships"
-       WHERE "seasonId" = $1 ORDER BY "creditedDistanceMetres" DESC, "id" ASC`,
+      `SELECT m."id", m."userId", m."divisionId", m."creditedDistanceMetres" FROM "league_memberships" m
+       JOIN "users" u ON u."id" = m."userId" AND u."role" = 'runner'
+       WHERE m."seasonId" = $1 ORDER BY m."creditedDistanceMetres" DESC, m."id" ASC`,
       [season.id],
     )) as Array<{ id: string; userId: string; divisionId: string; creditedDistanceMetres: number }>;
 
@@ -133,6 +134,7 @@ export class LeagueSeasonsService {
          SELECT m."divisionId" FROM "league_memberships" m JOIN "league_seasons" s ON s."id" = m."seasonId"
          WHERE m."userId" = u."id" ORDER BY s."endsAt" DESC LIMIT 1
        ) last ON true
+       WHERE u."role" = 'runner'
        ON CONFLICT ("seasonId", "userId") DO NOTHING`,
       [season.id],
     );

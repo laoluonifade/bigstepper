@@ -7,10 +7,12 @@ import { EntityManager } from 'typeorm';
  * have no membership yet.
  */
 export async function refreshLeagueDistance(manager: EntityManager, userId: string) {
+  // Only runners compete: staff (admin/compliance) accounts are never placed in a league.
   await manager.query(
     `INSERT INTO "league_memberships" ("seasonId", "divisionId", "userId")
-     SELECT s."id", d."id", $1 FROM "league_seasons" s
+     SELECT s."id", d."id", u."id" FROM "league_seasons" s
      CROSS JOIN (SELECT "id" FROM "league_divisions" ORDER BY "level" ASC LIMIT 1) d
+     JOIN "users" u ON u."id" = $1 AND u."role" = 'runner'
      WHERE s."status" = 'ACTIVE'
      ON CONFLICT ("seasonId", "userId") DO NOTHING`,
     [userId],

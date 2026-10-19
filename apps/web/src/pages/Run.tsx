@@ -130,7 +130,7 @@ function Scoreboard() {
   const navigate = useNavigate();
   const unit = useUnit();
   const now = useNow(1000);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<'finish' | 'discard' | null>(null);
   const recording = recorder.phase === 'recording';
   const finishing = recorder.phase === 'finishing';
   const seconds = movingSeconds(recorder.session, now);
@@ -144,8 +144,17 @@ function Scoreboard() {
   async function finish() {
     const activity = await recorder.finish();
     if (activity) void navigate({ to: '/activities/$id', params: { id: activity.id }, search: { fresh: true } });
-    else setConfirming(false);
+    else setConfirming(null);
   }
+
+  async function discard() {
+    if (await recorder.discard()) void navigate({ to: '/run' });
+    else setConfirming(null);
+  }
+
+  // Recording with a good fix but nothing counted yet: say why, so 0.00 doesn't look broken.
+  const startedAt = recorder.session ? new Date(recorder.session.startedAt).getTime() : now;
+  const showStillHint = recording && recorder.distanceMetres < 1 && now - startedAt > 20_000 && strength >= 2 && !stale;
 
   return (
     <div className="fixed inset-0 z-50 flex animate-fade flex-col bg-ink text-paper">
@@ -210,6 +219,11 @@ function Scoreboard() {
             <p className="score num mt-1 text-[44px]">{pace ?? '–:––'}</p>
           </div>
         </div>
+        {showStillHint && !recorder.gpsError && (
+          <p className="mt-5 max-w-sm animate-rise text-[13px] text-paper/70">
+            No distance yet. It starts counting once you’ve moved a few metres at walking pace — moving around a room or a small space won’t register.
+          </p>
+        )}
         {(recorder.gpsError || stale) && (
           <p className="mt-5 max-w-sm text-[13px] text-track">{recorder.gpsError ?? 'GPS signal lost. Keep this screen open and stay outdoors.'}</p>
         )}
@@ -217,18 +231,31 @@ function Scoreboard() {
       </main>
 
       <footer className="safe-bottom px-5 pt-4">
-        {confirming ? (
+        {confirming === 'finish' ? (
           <div className="mx-auto max-w-md animate-rise rounded-md border-2 border-paper/20 p-4">
             <p className="wide text-[15px] font-extrabold uppercase">Finish this {activityName}?</p>
             <p className="mt-1 text-[13px] text-paper/70">
               {formatDistance(recorder.distanceMetres, unit)} will be submitted for verification. You can’t add to it afterwards.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <button type="button" className="btn min-h-14 border-2 border-paper/30 text-paper" onClick={() => setConfirming(false)} disabled={finishing}>
+              <button type="button" className="btn min-h-14 border-2 border-paper/30 text-paper" onClick={() => setConfirming(null)} disabled={finishing}>
                 Keep going
               </button>
               <button type="button" className="btn min-h-14 border-2 border-paper bg-paper text-ink" onClick={() => void finish()} disabled={finishing}>
                 {finishing ? 'Saving…' : 'Finish'}
+              </button>
+            </div>
+          </div>
+        ) : confirming === 'discard' ? (
+          <div className="mx-auto max-w-md animate-rise rounded-md border-2 border-track/60 p-4">
+            <p className="wide text-[15px] font-extrabold uppercase">Discard this {activityName}?</p>
+            <p className="mt-1 text-[13px] text-paper/70">It’s thrown away — nothing is saved, submitted or counted. This can’t be undone.</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button type="button" className="btn min-h-14 border-2 border-paper/30 text-paper" onClick={() => setConfirming(null)} disabled={finishing}>
+                Keep it
+              </button>
+              <button type="button" className="btn min-h-14 border-2 border-track bg-track text-ink" onClick={() => void discard()} disabled={finishing}>
+                {finishing ? 'Discarding…' : 'Discard'}
               </button>
             </div>
           </div>
@@ -251,14 +278,24 @@ function Scoreboard() {
             <button
               type="button"
               className="btn min-h-20 border-2 border-paper bg-paper text-ink"
-              onClick={() => setConfirming(true)}
+              onClick={() => setConfirming('finish')}
               disabled={finishing}
             >
               <StopIcon size={20} /> Finish
             </button>
           </div>
         )}
-        <p className="mx-auto mt-3 max-w-md text-center text-[11px] text-paper/45">
+        {!confirming && (
+          <button
+            type="button"
+            className="mx-auto mt-3 block text-[12px] font-semibold text-paper/60 underline decoration-paper/30 underline-offset-4 hover:text-paper"
+            onClick={() => setConfirming('discard')}
+            disabled={finishing}
+          >
+            Discard this {activityName}
+          </button>
+        )}
+        <p className="mx-auto mt-2 max-w-md text-center text-[11px] text-paper/45">
           Keep this screen open. Browsers pause GPS when you switch apps.
         </p>
       </footer>

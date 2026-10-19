@@ -31,11 +31,15 @@ export class LeaguesService {
   async standings(seasonId: string) {
     const exists = await this.seasons.exist({ where: { id: seasonId } });
     if (!exists) throw new NotFoundException('League season not found');
-    const rows = await this.memberships.find({
-      where: { seasonId },
-      order: { divisionId: 'ASC', creditedDistanceMetres: 'DESC', id: 'ASC' },
-      take: 1000,
-    });
+    const rows = await this.memberships
+      .createQueryBuilder('m')
+      .innerJoin('users', 'u', 'u.id = m."userId" AND u.role = :role', { role: 'runner' })
+      .where('m."seasonId" = :seasonId', { seasonId })
+      .orderBy('m."divisionId"', 'ASC')
+      .addOrderBy('m."creditedDistanceMetres"', 'DESC')
+      .addOrderBy('m.id', 'ASC')
+      .take(1000)
+      .getMany();
     // Same public fields table leaderboards show: display name and handle.
     const profiles = rows.length ? await this.profiles.find({ where: { userId: In(rows.map((row) => row.userId)) } }) : [];
     const byUser = new Map(profiles.map((profile) => [profile.userId, profile]));

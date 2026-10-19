@@ -77,6 +77,18 @@ export class RunningService {
     });
   }
 
+  async discard(userId: string, sessionId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const session = await manager.findOne(RunningSession, { where: { id: sessionId, userId }, lock: { mode: 'pessimistic_write' } });
+      if (!session) throw new NotFoundException('Run session not found');
+      if (session.status !== 'RUNNING' && session.status !== 'PAUSED') {
+        throw new ConflictException('This run is already finished. Delete it from your activities instead.');
+      }
+      await manager.delete(RunningSession, { id: session.id }); // GPS fixes go with it (ON DELETE CASCADE)
+      return { discarded: true };
+    });
+  }
+
   async finish(userId: string, sessionId: string) {
     const activity = await this.dataSource.transaction(async (manager) => {
       const session = await manager.findOne(RunningSession, {

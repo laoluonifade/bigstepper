@@ -8,7 +8,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, isApiError, post } from './api';
-import { advanceTrack, describeGeoError, getCurrentPosition, MAX_USABLE_ACCURACY_METRES, TrackAnchor } from './geo';
+import { describeGeoError, getCurrentPosition } from './geo';
+import { MAX_USABLE_ACCURACY_METRES, measureTrack, TrackPoint } from './track';
 import { keys } from './queries';
 import {
   acknowledge,
@@ -50,6 +51,8 @@ interface RecorderState {
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   finish: () => Promise<Activity | null>;
+  /** Throw the current run away: nothing is saved or submitted. */
+  discard: () => Promise<boolean>;
   retryRestore: () => void;
   clearError: () => void;
 }
@@ -76,8 +79,8 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
   const runIdRef = useRef<string | null>(null);
   const phaseRef = useRef<RecorderPhase>('restoring');
   const watchRef = useRef<number | null>(null);
-  const lastPointRef = useRef<TrackAnchor | null>(null);
-  const fastInARowRef = useRef(0);
+  /** Fixes recorded on this device for the current run, measured with the server's rule. */
+  const fixesRef = useRef<TrackPoint[]>([]);
   const lastFixTimeRef = useRef(0);
   const flushRef = useRef<Promise<boolean> | null>(null);
 
@@ -147,11 +150,9 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
 
       if (position.timestamp <= lastFixTimeRef.current) return;
       lastFixTimeRef.current = position.timestamp;
-      // Same rule the server verifies with, so the live number is the number that will count.
-      const step = advanceTrack(lastPointRef.current, { lat: latitude, lon: longitude, accuracy: acc, at: position.timestamp }, fastInARowRef.current);
-      lastPointRef.current = step.anchor;
-      fastInARowRef.current = step.fastInARow;
-      if (step.metres > 0) setLocalMetres((total) => total + step.metres);
+      // Same rule the server verifies with (trailing-only, as the future isn't known yet).
+      fixesRef.current.push({ latitude, longitude, accuracy: acc, recordedAt: new Date(position.timestamp) });
+      setLocalMetres(measureTrack(fixesRef.current, { trailing: true }).distanceMetres);
       if (acc > MAX_USABLE_ACCURACY_METRES) setGpsError(`Weak GPS (±${Math.round(acc)} m). Head outdoors with open sky — weak fixes don’t count.`);
 
       await appendSample(runId, {
@@ -186,8 +187,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
     stopWatch();
     const runId = runIdRef.current;
     runIdRef.current = null;
-    lastPointRef.current = null;
-    fastInARowRef.current = 0;
+    fixesRef.current = [];
     lastFixTimeRef.current = 0;
     clearActiveRun();
     if (runId) await clearRun(runId).catch(() => undefined);
@@ -293,8 +293,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       const run = await post<RunSession>('/runs/start', { activityType });
       setActiveRun({ runId: run.id, userId: user.id, startedAt: run.startedAt });
       adopt(run);
-      lastPointRef.current = null;
-    fastInARowRef.current = 0;
+      fixesRef.current = [];
     lastFixTimeRef.current = 0;
       setLocalMetres(0);
       phaseRef.current = 'recording';
@@ -383,6 +382,35 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
     }
   }, [flush, queryClient, reset, session?.status, startWatch, stopWatch]);
 
+  const discard = useCallback(async (): Promise<boolean> => {
+    const runId = runIdRef.current;
+    if (!runId) return false;
+    setError(null);
+    const previous = phaseRef.current;
+    stopWatch();
+    phaseRef.current = 'finishing';
+    setPhase('finishing');
+    try {
+      await post(`/runs/${runId}/discard`);
+      await reset();
+      setPhase('idle');
+      return true;
+    } catch (err) {
+      // Already gone on the server (e.g. discarded on another device): clear it here too.
+      if (isApiError(err, 404)) {
+        await reset();
+        setPhase('idle');
+        return true;
+      }
+      setError(err instanceof Error ? err.message : 'Couldn’t discard your run.');
+      const backTo = previous === 'paused' ? 'paused' : 'recording';
+      phaseRef.current = backTo;
+      setPhase(backTo);
+      if (backTo === 'recording') startWatch();
+      return false;
+    }
+  }, [reset, startWatch, stopWatch]);
+
   const value = useMemo<RecorderState>(
     () => ({
       phase,
@@ -399,10 +427,11 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       pause,
       resume,
       finish,
+      discard,
       retryRestore: () => setRestoreAttempt((n) => n + 1),
       clearError: () => setError(null),
     }),
-    [accuracy, connection, error, finish, gpsError, lastFixAt, localMetres, pause, pendingCount, phase, resume, session, start, uploadedMetres],
+    [accuracy, connection, discard, error, finish, gpsError, lastFixAt, localMetres, pause, pendingCount, phase, resume, session, start, uploadedMetres],
   );
 
   return <RecorderContext.Provider value={value}>{children}</RecorderContext.Provider>;

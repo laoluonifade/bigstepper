@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ActivitiesService } from './activities.service';
@@ -17,6 +17,11 @@ export class ActivitiesController {
   @Get(':id')
   get(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.activitiesService.get(user.id, id);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.activitiesService.remove(user.id, id);
   }
 
   @Post(':id/review-request')

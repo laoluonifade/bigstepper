@@ -32,6 +32,15 @@ export class RunningController {
     return this.runningService.finish(user.id, sessionId);
   }
 
+  /** Throw away a run that hasn't been finished: nothing is saved or submitted. */
+  @Post(':id/discard')
+  discard(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) sessionId: string,
+  ) {
+    return this.runningService.discard(user.id, sessionId);
+  }
+
   @Post(':id/pause')
   pause(
     @CurrentUser() user: AuthenticatedUser,

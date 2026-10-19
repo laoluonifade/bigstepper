@@ -1,5 +1,5 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { Link, useParams, useSearch } from '@tanstack/react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { ActivityRow, shownMetres } from '../components/ActivityRow';
 import { CheckIcon, RunIcon } from '../components/icons';
@@ -226,7 +226,51 @@ export function ActivityDetailPage() {
       )}
 
       {(a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED') && <ReviewRequest activityId={a.id} />}
+      <DeleteActivity activityId={a.id} />
     </div>
+  );
+}
+
+/** Remove a run you don't want (a test, a GPS mess). Its distance comes back out of free challenges and your league. */
+function DeleteActivity({ activityId }: { activityId: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const remove = useMutation({
+    mutationFn: () => api(`/activities/${activityId}`, { method: 'DELETE' }),
+    onSuccess() {
+      queryClient.removeQueries({ queryKey: keys.activity(activityId) });
+      void queryClient.invalidateQueries({ queryKey: keys.activities });
+      void queryClient.invalidateQueries({ queryKey: ['tables'] });
+      void queryClient.invalidateQueries({ queryKey: keys.myLeagues });
+      void navigate({ to: '/activities' });
+    },
+  });
+
+  return (
+    <section className="mt-10 border-t border-line pt-6">
+      {confirming ? (
+        <div className="animate-rise rounded-md border-[1.5px] border-bad/50 bg-bad-wash p-4">
+          <p className="text-[15px] font-bold">Delete this activity?</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
+            It’s removed for good, along with its distance in any free challenges still running and in your league. This can’t be undone.
+          </p>
+          <ErrorNotice error={remove.error} className="mt-3" />
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" className="btn btn-sm border-[1.5px] border-bad bg-bad text-white" disabled={remove.isPending} onClick={() => remove.mutate()}>
+              {remove.isPending ? 'Deleting…' : 'Delete activity'}
+            </button>
+            <button type="button" className="btn-quiet btn-sm" disabled={remove.isPending} onClick={() => setConfirming(false)}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="text-[13px] font-semibold text-bad underline decoration-bad/30 underline-offset-4 hover:decoration-bad" onClick={() => setConfirming(true)}>
+          Delete this activity
+        </button>
+      )}
+    </section>
   );
 }
 
