@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { refreshLeagueDistance } from '../leagues/league-credits';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { CompetitionTable } from '../tables/competition-table.entity';
@@ -113,6 +114,7 @@ export class AdminService {
         `INSERT INTO "admin_audit_events" ("actorUserId", "action", "targetType", "targetId", "metadata") VALUES ($1,$2,'activity_review',$3,$4)`,
         [actorUserId, `REVIEW_${input.decision}`, reviewId, JSON.stringify({ note: input.note })],
       );
+      await refreshLeagueDistance(manager, review.activity.userId);
       return { id: review.id, status: review.status };
     });
   }

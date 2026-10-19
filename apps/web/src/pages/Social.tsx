@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowRightIcon, PlusIcon } from '../components/icons';
-import { DivisionBadge, divisionRank } from '../components/league';
+import { DivisionBadge, divisionRank, leagueZone, OUTCOME_LABEL, rulesLine, ZoneTag } from '../components/league';
 import { Leaderboard } from '../components/Leaderboard';
 import {
   Avatar,
@@ -20,7 +20,7 @@ import {
 } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { useAuth, useUser } from '../lib/auth';
-import { formatCountdown, formatDate, formatDistance, ordinal, shortId } from '../lib/format';
+import { formatCountdown, formatDate, formatDistance, ordinal } from '../lib/format';
 import { rememberClub, SavedClub, storageKeys, useStored } from '../lib/local';
 import { keys, useLeagues, useLeagueStandings, useMyLeagues, useUnit } from '../lib/queries';
 import type { Club, ClubMember } from '../lib/types';
@@ -43,8 +43,9 @@ export function LeaguesPage() {
       <PageHeader
         eyebrow="Compete"
         title="Leagues"
-        description="Season-long competition with runners placed into divisions returned by the live league service."
+        description="Climb the divisions season by season. Your verified walk and run distance ranks you in your division."
       />
+      {user && <LastSeasonResult />}
       <ErrorNotice error={leagues.error} onRetry={() => void leagues.refetch()} />
       {leagues.isLoading ? (
         <Skeleton className="h-64" />
@@ -89,8 +90,8 @@ export function LeaguesPage() {
                 </li>
               ))}
             </ol>
-            <p className="mt-3 text-[12px] leading-relaxed text-ink-3">
-              Promotion and relegation between divisions aren’t live yet.
+            <p className="mt-3 text-[12px] leading-relaxed text-ink-2">
+              {rulesLine(leagues.data?.rules)} Everyone starts in {divisions[divisions.length - 1]?.name ?? 'the bottom division'}.
             </p>
           </aside>
         </div>
@@ -126,6 +127,10 @@ function MyDivision({ seasonId, unit }: { seasonId: string; unit: 'km' | 'mi' })
   const standings = useLeagueStandings(membership ? seasonId : undefined);
   const division = leagues.data?.divisions.find((item) => item.id === membership?.divisionId);
   const position = membership && standings.data ? divisionRank(standings.data, membership) : null;
+  const zone =
+    membership && position?.rank
+      ? leagueZone(position.rank, position.size, membership.creditedDistanceMetres, division, leagues.data?.divisions ?? [], leagues.data?.rules)
+      : null;
 
   if (mine.isLoading) return <Skeleton className="m-5 h-20" />;
   if (!membership) return <p className="p-5 text-[14px] text-ink-2">You haven’t been placed in this season yet.</p>;
@@ -135,6 +140,7 @@ function MyDivision({ seasonId, unit }: { seasonId: string; unit: 'km' | 'mi' })
       <div className="flex-1">
         <p className="eyebrow">Your division</p>
         <p className="wide mt-1 text-[22px] font-black uppercase">{division?.name ?? 'Division'}</p>
+        {zone && <div className="mt-2"><ZoneTag zone={zone} /></div>}
       </div>
       <div className="text-right">
         <p className="score num text-[40px]">{position?.rank ? ordinal(position.rank) : '–'}</p>
@@ -143,6 +149,34 @@ function MyDivision({ seasonId, unit }: { seasonId: string; unit: 'km' | 'mi' })
         </p>
       </div>
     </div>
+  );
+}
+
+/** The runner's result from the most recent finished season, if they took part. */
+function LastSeasonResult() {
+  const leagues = useLeagues();
+  const mine = useMyLeagues();
+  const unit = useUnit();
+  const seasons = leagues.data?.seasons ?? [];
+  const last = mine.data
+    ?.filter((item) => item.outcome)
+    .map((item) => ({ item, season: seasons.find((season) => season.id === item.seasonId) }))
+    .filter((entry) => entry.season?.status === 'FINALIZED')
+    .sort((a, b) => new Date(b.season!.endsAt).getTime() - new Date(a.season!.endsAt).getTime())[0];
+  if (!last || !last.item.outcome) return null;
+  const division = leagues.data?.divisions.find((item) => item.id === last.item.divisionId);
+  return (
+    <Notice
+      tone={last.item.outcome === 'PROMOTED' ? 'ok' : last.item.outcome === 'RELEGATED' ? 'warn' : 'info'}
+      className="mb-6"
+      title={`${last.season!.name}: ${OUTCOME_LABEL[last.item.outcome]}`}
+    >
+      You finished {last.item.finalRank ? ordinal(last.item.finalRank) : '—'} in {division?.name ?? 'your division'} with{' '}
+      {formatDistance(last.item.creditedDistanceMetres, unit)}.{' '}
+      <Link to="/leagues/$id" params={{ id: last.item.seasonId }} className="link text-ink">
+        Final standings
+      </Link>
+    </Notice>
   );
 }
 
@@ -165,7 +199,7 @@ export function LeagueDetailPage() {
         .map((row, index) => ({
           rank: index + 1,
           userId: row.userId,
-          name: row.userId === user?.id ? user.displayName ?? 'You' : `Runner ${shortId(row.userId)}`,
+          name: row.userId === user?.id ? user.displayName ?? 'You' : row.displayName ?? (row.username ? `@${row.username}` : 'Runner'),
           metres: row.creditedDistanceMetres,
         })),
     [divisionId, standings.data, user],
@@ -207,7 +241,11 @@ export function LeagueDetailPage() {
           currentUserId={user?.id}
           unit={unit}
           limit={100}
-          caption="Runner names aren’t published in league tables yet. League distance crediting isn’t live yet."
+          caption={
+            season?.status === 'FINALIZED'
+              ? 'Final standings. Verified distance only.'
+              : `Verified distance only. ${rulesLine(leagues.data?.rules)}`
+          }
           empty={<EmptyState title="Nobody in this division yet" />}
         />
       )}

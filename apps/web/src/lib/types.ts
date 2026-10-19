@@ -254,6 +254,17 @@ export interface LeagueMembership {
   divisionId: string;
   userId: string;
   creditedDistanceMetres: number;
+  /** Set once the season closes. */
+  finalRank: number | null;
+  outcome: 'PROMOTED' | 'RELEGATED' | 'STAYED' | null;
+  /** Present on standings rows. */
+  displayName?: string | null;
+  username?: string | null;
+}
+
+export interface LeagueRules {
+  promotePercent: number;
+  relegatePercent: number;
 }
 
 export interface Notification {

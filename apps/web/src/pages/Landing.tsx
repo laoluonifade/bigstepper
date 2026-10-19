@@ -1,7 +1,9 @@
 import { Link } from '@tanstack/react-router';
-import { ArrowRightIcon, RunIcon } from '../components/icons';
-import { Redirect } from '../components/ui';
+import { canEnter, CompetitionCard } from '../components/competition';
+import { ArrowRightIcon } from '../components/icons';
+import { Redirect, Skeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
+import { useTables } from '../lib/queries';
 
 export function LandingPage() {
   const { status } = useAuth();
@@ -29,27 +31,51 @@ export function LandingPage() {
         </div>
       </div>
 
-      <div className="panel-strong animate-rise overflow-hidden" aria-hidden="true">
-        <div className="bg-ink px-6 py-8 text-paper">
-          <p className="eyebrow text-paper/55">Your next challenge</p>
-          <p className="score mt-3 text-[82px] leading-none text-volt">5.00</p>
-          <p className="wide mt-1 text-[18px] font-black uppercase">kilometres</p>
-        </div>
-        <div className="grid grid-cols-2 divide-x divide-line border-b border-line">
-          <div className="p-5">
-            <p className="eyebrow text-ink-3">Compete on</p>
-            <p className="wide mt-2 text-[17px] font-black uppercase">Distance</p>
-          </div>
-          <div className="p-5">
-            <p className="eyebrow text-ink-3">Verified by</p>
-            <p className="wide mt-2 text-[17px] font-black uppercase">Your route</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-track text-ink"><RunIcon size={20} /></span>
-          <p className="text-[13px] leading-relaxed text-ink-2"><span className="font-bold text-ink">Walk or run.</span> Your eligible activity moves you up the board.</p>
-        </div>
-      </div>
+      <OpenChallenges />
     </section>
+  );
+}
+
+/** Real open challenges from the API; until there are any, an honest explainer instead of a mock-up. */
+function OpenChallenges() {
+  const tables = useTables();
+  const now = Date.now();
+  const open = (tables.data ?? []).filter((table) => canEnter(table, now)).slice(0, 2);
+
+  if (tables.isLoading) return <Skeleton className="h-72" />;
+
+  if (open.length > 0) {
+    return (
+      <div className="animate-rise space-y-3">
+        <p className="eyebrow">Open for entry now</p>
+        {open.map((table) => (
+          <CompetitionCard key={table.id} table={table} unit="km" now={now} />
+        ))}
+        <Link to="/competitions" className="link inline-block text-[14px]">
+          See all challenges
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel-strong animate-rise overflow-hidden">
+      <div className="bg-ink px-6 py-7 text-paper">
+        <p className="eyebrow text-paper/55">How it works</p>
+        <p className="wide mt-2 text-[22px] font-black uppercase leading-tight">Three steps to the board</p>
+      </div>
+      <ol className="divide-y divide-line">
+        {[
+          ['01', 'Record walks and runs with your phone’s GPS.'],
+          ['02', 'Distance is checked before it counts — no shortcuts.'],
+          ['03', 'Join a challenge and climb its standings.'],
+        ].map(([n, text]) => (
+          <li key={n} className="flex gap-4 px-6 py-4">
+            <span className="score w-7 text-[20px] text-track">{n}</span>
+            <span className="pt-0.5 text-[15px] text-ink-2">{text}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

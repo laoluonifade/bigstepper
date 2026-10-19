@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
 import { RunIcon, ArrowRightIcon } from '../components/icons';
-import { DivisionBadge, divisionRank } from '../components/league';
+import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/league';
 import { RankBadge } from '../components/Leaderboard';
 import { MilestoneBadge } from '../components/Milestones';
 import { WeekChart } from '../components/WeekChart';
@@ -384,6 +384,10 @@ function LeagueSummary({ unit }: { unit: Unit }) {
   const standings = useLeagueStandings(membership ? active?.id : undefined);
   const division = leagues.data?.divisions.find((item) => item.id === membership?.divisionId);
   const position = membership && standings.data ? divisionRank(standings.data, membership) : null;
+  const zone =
+    membership && position?.rank
+      ? leagueZone(position.rank, position.size, membership.creditedDistanceMetres, division, leagues.data?.divisions ?? [], leagues.data?.rules)
+      : null;
 
   return (
     <section>
@@ -416,10 +420,11 @@ function LeagueSummary({ unit }: { unit: Unit }) {
               {position?.rank ? `${ordinal(position.rank)} of ${position.size}` : 'Ranking…'} · {formatDistance(membership.creditedDistanceMetres, unit)}
             </p>
           </div>
+          {zone && <span className="hidden sm:block"><ZoneTag zone={zone} /></span>}
           <ArrowRightIcon size={18} className="shrink-0" />
         </Link>
       )}
-      <p className="mt-3 text-[12px] text-ink-3">League distance crediting isn’t live yet, so league standings may not move with your runs.</p>
+      <p className="mt-3 text-[12px] text-ink-3">Verified walk and run distance this season counts toward your league.</p>
     </section>
   );
 }

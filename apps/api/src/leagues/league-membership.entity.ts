@@ -17,4 +17,11 @@ export class LeagueMembership {
 
   @Column({ type: 'integer', default: 0 })
   creditedDistanceMetres: number;
+
+  /** Set when the season closes. */
+  @Column({ type: 'integer', nullable: true })
+  finalRank: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  outcome: 'PROMOTED' | 'RELEGATED' | 'STAYED' | null;
 }

@@ -1,23 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, isApiError } from './api';
 import { useAuth } from './auth';
-import type {
-  Activity,
-  CompetitionTable,
-  FinalResult,
-  LeagueDivision,
-  LeagueMembership,
-  LeagueSeason,
-  Notification,
-  Profile,
-  StandingRow,
-  Unit,
-  VerificationReview,
-  Wallet,
-  WalletTransaction,
-  CreatorProfile,
-  CreatorEarning,
-} from './types';
+import type { Activity, CompetitionTable, CreatorEarning, CreatorProfile, FinalResult, LeagueDivision, LeagueMembership, LeagueRules, LeagueSeason, Notification, Profile, StandingRow, Unit, VerificationReview, Wallet, WalletTransaction } from './types';
 
 export const keys = {
   profile: ['profile', 'me'] as const,
@@ -100,7 +84,7 @@ export function useNotifications() {
 export function useLeagues() {
   return useQuery({
     queryKey: keys.leagues,
-    queryFn: () => api<{ seasons: LeagueSeason[]; divisions: LeagueDivision[] }>('/leagues'),
+    queryFn: () => api<{ seasons: LeagueSeason[]; divisions: LeagueDivision[]; rules: LeagueRules }>('/leagues'),
     staleTime: 5 * 60_000,
   });
 }

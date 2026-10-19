@@ -7,6 +7,7 @@ import { Activity } from '../activity.entity';
 import { GpsSample } from '../gps-sample.entity';
 import { haversineMetres } from '../haversine';
 import { RunningSession } from '../running-session.entity';
+import { refreshLeagueDistance } from '../../leagues/league-credits';
 
 interface VerificationJob {
   activityId: string;
@@ -124,6 +125,7 @@ export class ActivityVerificationProcessor extends WorkerHost {
            WHERE r."id" = totals."registrationId"`,
           [activity.id],
         );
+        await refreshLeagueDistance(manager, activity.userId);
       }
     });
     this.logger.log(`Activity ${activity.id} processed as ${status}`);
