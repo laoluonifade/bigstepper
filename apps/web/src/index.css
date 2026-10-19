@@ -12,6 +12,20 @@
     font-feature-settings: 'ss01';
   }
 
+  /* Grid columns may shrink below their content, so long names truncate instead of widening the page. */
+  .grid > * {
+    min-width: 0;
+  }
+
+  /* iOS Safari zooms in on any field with text under 16px and stays zoomed. Phones get 16px fields. */
+  @media (max-width: 639px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
   ::selection {
     @apply bg-volt text-ink;
   }
