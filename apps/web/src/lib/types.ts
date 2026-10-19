@@ -66,6 +66,8 @@ export interface Activity {
   validatedDistanceMetres: number;
   recordedSteps: number;
   validatedSteps: number;
+  /** Distance from counted steps — used where GPS couldn't measure (indoors). */
+  stepDistanceMetres?: number;
   elapsedSeconds: number;
   movingSeconds: number;
   gpsConfidence: number;
@@ -98,6 +100,8 @@ export interface CompetitionTable {
   creatorCommissionBps: number;
   creatorId: string;
   creator?: { id: string; displayName: string | null };
+  /** Runners who have joined (list and detail responses). */
+  entrantCount?: number;
   createdAt: string;
 }
 

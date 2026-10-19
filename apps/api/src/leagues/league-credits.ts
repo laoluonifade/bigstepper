@@ -20,7 +20,7 @@ export async function refreshLeagueDistance(manager: EntityManager, userId: stri
   await manager.query(
     `UPDATE "league_memberships" m
      SET "creditedDistanceMetres" = COALESCE((
-       SELECT SUM(a."validatedDistanceMetres") FROM "activities" a
+       SELECT SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")) FROM "activities" a
        WHERE a."userId" = m."userId" AND a."verificationStatus" = 'VERIFIED'
          AND a."startedAt" >= s."startsAt" AND a."startedAt" < s."endsAt"
      ), 0)::integer
@@ -35,7 +35,7 @@ export async function refreshSeasonDistances(manager: EntityManager, seasonId: s
   await manager.query(
     `UPDATE "league_memberships" m
      SET "creditedDistanceMetres" = COALESCE((
-       SELECT SUM(a."validatedDistanceMetres") FROM "activities" a
+       SELECT SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")) FROM "activities" a
        WHERE a."userId" = m."userId" AND a."verificationStatus" = 'VERIFIED'
          AND a."startedAt" >= s."startsAt" AND a."startedAt" < s."endsAt"
      ), 0)::integer

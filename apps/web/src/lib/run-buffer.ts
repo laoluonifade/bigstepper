@@ -9,6 +9,8 @@ export interface BufferedSample {
   latitude: number;
   longitude: number;
   accuracy?: number;
+  /** Steps since the run started (from the motion sensors), when available. */
+  stepCount?: number;
   recordedAt: string;
 }
 

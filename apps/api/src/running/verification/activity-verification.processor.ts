@@ -5,9 +5,12 @@ import { DataSource } from 'typeorm';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../../jobs/jobs.module';
 import { Activity } from '../activity.entity';
 import { GpsSample } from '../gps-sample.entity';
-import { measureTrack } from '../track';
+import { measureTrack, stepDistanceMetres } from '../track';
 import { RunningSession } from '../running-session.entity';
 import { refreshLeagueDistance } from '../../leagues/league-credits';
+
+/** Faster than any human cadence (a sprint is about 4 steps/s); shaking a phone usually is. */
+const MAX_STEPS_PER_SECOND = 5.5;
 
 interface VerificationJob {
   activityId: string;
@@ -37,25 +40,34 @@ export class ActivityVerificationProcessor extends WorkerHost {
     const movingSeconds = track.movingSeconds;
     const confidence = track.confidence;
 
-    // Steps come from the device pedometer; check they only ever go up at a human rate.
+    // Steps come from the phone's motion sensors; check they only ever go up, at a human rate. The rate
+    // is judged over windows of at least 2 s, so a step total saved just after a GPS fix isn't misread.
     let validatedSteps = 0;
-    for (let index = 1; index < samples.length; index += 1) {
-      const previous = samples[index - 1];
-      const current = samples[index];
-      const seconds = (current.recordedAt.getTime() - previous.recordedAt.getTime()) / 1000;
-      if (seconds <= 0 || previous.stepCount === null || current.stepCount === null) continue;
-      const addedSteps = current.stepCount - previous.stepCount;
-      if (addedSteps < 0) reasons.add('NON_MONOTONIC_STEPS');
-      else if (addedSteps / seconds > 5.5) reasons.add('IMPLAUSIBLE_STEP_RATE');
+    const counted = samples.filter((sample) => sample.stepCount !== null);
+    let ref = counted[0];
+    for (let index = 1; index < counted.length; index += 1) {
+      const current = counted[index];
+      const addedSteps = current.stepCount! - ref.stepCount!;
+      if (addedSteps < 0) {
+        reasons.add('NON_MONOTONIC_STEPS');
+        ref = current;
+        continue;
+      }
+      const seconds = (current.recordedAt.getTime() - ref.recordedAt.getTime()) / 1000;
+      const last = index === counted.length - 1;
+      if (seconds < 2 && !last) continue;
+      if (seconds >= 2 && addedSteps / seconds > MAX_STEPS_PER_SECOND) reasons.add('IMPLAUSIBLE_STEP_RATE');
       else validatedSteps += addedSteps;
+      ref = current;
     }
 
-    // Inaccurate fixes are simply not counted; only flag when most of the track was unusable.
-    const status = track.usableCount >= 2
-      && !reasons.has('IMPLAUSIBLE_SPEED')
-      && !reasons.has('NON_MONOTONIC_STEPS')
-      && !reasons.has('IMPLAUSIBLE_STEP_RATE')
-      && confidence >= 0.5 ? 'VERIFIED' : 'FLAGGED';
+    // Verified by GPS, or (indoors, where GPS sees nothing) by a believable step count. Any sign of
+    // faking — car-speed travel, steps going backwards or impossibly fast — flags the activity.
+    const tampered = reasons.has('IMPLAUSIBLE_SPEED') || reasons.has('NON_MONOTONIC_STEPS') || reasons.has('IMPLAUSIBLE_STEP_RATE');
+    const gpsOk = track.usableCount >= 2 && confidence >= 0.5;
+    const stepsOk = validatedSteps > 0;
+    const status = !tampered && (gpsOk || stepsOk) ? 'VERIFIED' : 'FLAGGED';
+    const stepDistance = stepDistanceMetres(validatedSteps, activity.activityType);
 
     await this.dataSource.transaction(async (manager) => {
       await manager.update(
@@ -65,6 +77,7 @@ export class ActivityVerificationProcessor extends WorkerHost {
           verificationStatus: status,
           validatedDistanceMetres: Math.round(validatedDistance),
           validatedSteps,
+          stepDistanceMetres: stepDistance,
           movingSeconds,
           gpsConfidence: confidence,
           verificationReasons: [...reasons],
@@ -76,7 +89,9 @@ export class ActivityVerificationProcessor extends WorkerHost {
         await manager.query(
           `INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
            SELECT t."id", r."id", a."id",
-             CASE WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN LEAST(a."validatedDistanceMetres", COALESCE(t."distanceCapMetres", a."validatedDistanceMetres")) ELSE 0 END,
+             CASE WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN LEAST(
+               CASE WHEN t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
+               COALESCE(t."distanceCapMetres", 2147483647)) ELSE 0 END,
              CASE WHEN t."scoringMethod"='MOST_STEPS' THEN a."validatedSteps" ELSE 0 END,
              CASE WHEN t."scoringMethod" IN ('FASTEST_FIXED_DISTANCE','FASTEST_TIME') AND a."validatedDistanceMetres">=t."targetDistanceMetres" THEN a."movingSeconds" ELSE NULL END
            FROM "activities" a

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, SignalIcon, StepMark, StopIcon } from '../components/icons';
-import { cx, ErrorNotice, KeyValue, LiveDot, Loading, Notice, PageHeader, Redirect, Segmented, useCountUp, useNow } from '../components/ui';
+import { CountUp, cx, ErrorNotice, KeyValue, LiveDot, Loading, Notice, PageHeader, Redirect, Segmented, useCountUp, useNow } from '../components/ui';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
 import { keys, useActivities, useUnit } from '../lib/queries';
@@ -154,7 +154,7 @@ function Scoreboard() {
 
   // Recording with a good fix but nothing counted yet: say why, so 0.00 doesn't look broken.
   const startedAt = recorder.session ? new Date(recorder.session.startedAt).getTime() : now;
-  const showStillHint = recording && recorder.distanceMetres < 1 && now - startedAt > 20_000 && strength >= 2 && !stale;
+  const showStillHint = recording && recorder.distanceMetres < 1 && !recorder.steps && now - startedAt > 20_000 && strength >= 2 && !stale;
 
   return (
     <div className="fixed inset-0 z-50 flex animate-fade flex-col bg-ink text-paper">
@@ -195,13 +195,18 @@ function Scoreboard() {
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center px-5 text-center">
-        <p className="eyebrow text-paper/50">Distance · {unit}</p>
+        <p className="eyebrow text-paper/50">Distance · {unit}{recorder.distanceFromSteps ? ' · from steps' : ''}</p>
         <p
           className={cx('score num mt-1 animate-pop text-[clamp(104px,32vw,220px)] transition-colors duration-500', recording ? 'text-volt' : 'text-paper/60')}
           aria-live="off"
         >
           {formatDistanceNumber(shownMetres, unit)}
         </p>
+        {recorder.steps !== null && (
+          <p className="num -mt-1 text-[15px] font-semibold text-paper/70">
+            <CountUp value={recorder.steps} format={(n) => Math.round(n).toLocaleString('en-GB')} /> steps
+          </p>
+        )}
         <div className="h-10">
           {split && (
             <p key={split.count} className="tag h-8 animate-pop border-0 bg-volt px-3 text-[12px] text-ink" role="status">
@@ -221,7 +226,7 @@ function Scoreboard() {
         </div>
         {showStillHint && !recorder.gpsError && (
           <p className="mt-5 max-w-sm animate-rise text-[13px] text-paper/70">
-            No distance yet. It starts counting once you’ve moved a few metres at walking pace — moving around a room or a small space won’t register.
+            No distance yet. Outdoors it counts once you’ve moved a few metres; indoors, allow motion access when you start so your steps can count.
           </p>
         )}
         {(recorder.gpsError || stale) && (

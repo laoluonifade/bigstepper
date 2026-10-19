@@ -2,7 +2,9 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { refreshLeagueDistance } from '../leagues/league-credits';
+import { GpsSample } from './gps-sample.entity';
 import { RunningSession } from './running-session.entity';
+import { MAX_USABLE_ACCURACY_METRES, smoothTrack } from './track';
 import { ActivityVerificationReview } from './activity-verification-review.entity';
 import { Activity } from './activity.entity';
 
@@ -60,6 +62,21 @@ export class ActivitiesService {
       await refreshLeagueDistance(manager, userId);
       return { deleted: true };
     });
+  }
+
+  async track(userId: string, activityId: string) {
+    const activity = await this.get(userId, activityId);
+    const samples = await this.activities.manager.find(GpsSample, {
+      where: { sessionId: activity.runningSessionId },
+      order: { sequence: 'ASC' },
+    });
+    const usable = samples
+      .filter((sample) => sample.accuracy === null || sample.accuracy <= MAX_USABLE_ACCURACY_METRES)
+      .filter((sample, index, all) => index === 0 || sample.recordedAt.getTime() > all[index - 1].recordedAt.getTime());
+    const smoothed = smoothTrack(usable);
+    const step = Math.max(1, Math.ceil(smoothed.length / 400));
+    const points = smoothed.filter((_, index) => index % step === 0 || index === smoothed.length - 1);
+    return { points: points.map((point) => [Number(point.lat.toFixed(6)), Number(point.lon.toFixed(6))]) };
   }
 
   async get(userId: string, activityId: string) {

@@ -56,14 +56,6 @@ export function TypeTag({ table }: { table: CompetitionTable }) {
   return <span className="tag border-ink bg-card text-ink">Free</span>;
 }
 
-function challengeLabel(table: CompetitionTable, unit: Unit) {
-  if (table.scoringMethod === 'MOST_STEPS') return `${table.challengeType === 'WALK' ? 'Walk' : 'Step'} · most steps`;
-  if (table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') {
-    return table.targetDistanceMetres ? `${table.challengeType.toLowerCase()} · fastest ${formatDistance(table.targetDistanceMetres, unit)}` : 'Fastest completion';
-  }
-  return `${table.challengeType === 'DISTANCE' ? 'Walk or run' : table.challengeType.toLowerCase()} · farthest`;
-}
-
 export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number }) {
   const phase = competitionPhase(table, now);
   const live = phase === 'open' || phase === 'upcoming';
@@ -83,43 +75,112 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
   );
 }
 
+/** The card's colour comes from the activity: runs orange, walks/steps volt, anything else ink. */
+function cardTheme(table: CompetitionTable) {
+  if (table.challengeType === 'RUN') return { band: 'bg-track text-ink', accent: 'bg-ink', bars: 'bg-ink' };
+  if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: 'bg-volt text-ink', accent: 'bg-ink', bars: 'bg-ink' };
+  return { band: 'bg-ink text-paper', accent: 'bg-volt', bars: 'bg-volt' };
+}
+
+/** The one big thing about a challenge, from its real settings. */
+function headline(table: CompetitionTable, unit: Unit): { big: string; small: string } {
+  if (table.type === 'paid' && table.guaranteedPrizeKobo) {
+    return { big: formatMoney(table.guaranteedPrizeKobo).replace(/\.00$/, ''), small: 'guaranteed prize' };
+  }
+  if ((table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') && table.targetDistanceMetres) {
+    const value = unit === 'km' ? table.targetDistanceMetres / 1000 : table.targetDistanceMetres / 1609.344;
+    const label = Number.isInteger(Math.round(value * 10) / 10) ? String(Math.round(value)) : value.toFixed(1);
+    return { big: `${label}${unit === 'km' ? 'K' : ' MI'}`, small: `fastest ${table.challengeType === 'WALK' ? 'walk' : 'time'} wins` };
+  }
+  if (table.scoringMethod === 'MOST_STEPS') return { big: 'Steps', small: 'most steps wins' };
+  return { big: 'Farthest', small: `most ${unit} wins` };
+}
+
+/** How far through its window a challenge is, 0–1, or null when it has no end. */
+function progress(table: CompetitionTable, now: number) {
+  if (!table.scoringClosesAt) return null;
+  const start = new Date(table.startsAt ?? table.createdAt).getTime();
+  const end = new Date(table.scoringClosesAt).getTime();
+  if (end <= start) return null;
+  return Math.min(1, Math.max(0, (now - start) / (end - start)));
+}
+
 export function CompetitionCard({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+  const theme = cardTheme(table);
+  const hero = headline(table, unit);
+  const phase = competitionPhase(table, now);
+  const live = phase === 'open';
+  const done = progress(table, now);
+  const joined = table.entrantCount ?? null;
+
   return (
     <Link
       to="/competitions/$code"
       params={{ code: table.code }}
-      className="group flex flex-col rounded-md border-[1.5px] border-ink bg-card transition-[transform,box-shadow] duration-100 hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard"
+      className="group flex flex-col overflow-hidden rounded-md border-[1.5px] border-ink bg-card transition-[transform,box-shadow] duration-150 ease-out hover:-translate-x-1 hover:-translate-y-1 hover:shadow-hard active:translate-x-0 active:translate-y-0 active:shadow-none"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-        <TypeTag table={table} />
-        <PhaseTag table={table} now={now} />
-      </div>
-      <div className="flex flex-1 flex-col px-4 pb-4 pt-3.5">
-        <h3 className="wide line-clamp-2 text-[19px] font-extrabold uppercase leading-[1.05]">{table.title}</h3>
-        <p className="mt-1.5 text-[13px] text-ink-2">
-          {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community challenge'}
-        </p>
-        <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.08em] text-ink">{challengeLabel(table, unit)}</p>
-        {table.type === 'paid' && table.guaranteedPrizeKobo ? (
-          <p className="mt-3 text-[13px]">
-            <span className="text-ink-2">Guaranteed prize </span>
-            <span className="font-bold">{formatMoney(table.guaranteedPrizeKobo)}</span>
-          </p>
-        ) : null}
-        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-[12px] font-semibold text-ink-2">
-          <span className="text-ink">{phaseLine(table, now)}</span>
-          {table.capacity && (
-            <span className="inline-flex items-center gap-1">
-              <UsersIcon size={14} />
-              {table.capacity} max
-            </span>
-          )}
-          {table.distanceCapMetres && <span>Cap {formatDistance(table.distanceCapMetres, unit)}/run</span>}
+      {/* Colour band with the headline figure */}
+      <div className={cx('relative overflow-hidden px-4 pb-4 pt-3', theme.band)}>
+        <div className="relative z-10 flex items-center justify-between gap-2">
+          <TypeTag table={table} />
+          <PhaseTag table={table} now={now} />
+        </div>
+        <div className="relative z-10 mt-4 flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="score truncate text-[46px] uppercase leading-[0.85] transition-transform duration-300 ease-out group-hover:-translate-y-0.5">
+              {hero.big}
+            </p>
+            <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{hero.small}</p>
+          </div>
+          {/* The Jump steps: they keep stepping while the challenge is live. */}
+          <div className="flex h-12 shrink-0 items-end gap-1 opacity-90" aria-hidden="true">
+            {[0.45, 0.72, 1].map((height, index) => (
+              <span
+                key={index}
+                className={cx('w-2.5 origin-bottom rounded-[1px]', theme.bars, live ? 'animate-stride' : 'animate-grow-y')}
+                style={{ height: `${height * 100}%`, animationDelay: `${index * 140}ms` }}
+              />
+            ))}
+          </div>
         </div>
       </div>
+
+      <div className="flex flex-1 flex-col px-4 pb-4 pt-3.5">
+        <h3 className="wide line-clamp-2 text-[17px] font-extrabold uppercase leading-[1.05]">{table.title}</h3>
+        <p className="mt-1 truncate text-[13px] text-ink-2">
+          {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community challenge'}
+          {table.distanceCapMetres ? ` · cap ${formatDistance(table.distanceCapMetres, unit)}/run` : ''}
+        </p>
+
+        <div className="mt-auto pt-4">
+          {done !== null && (
+            <div className="relative mb-2 h-1.5 rounded-full bg-ink/10" aria-hidden="true">
+              <div className="h-full origin-left animate-grow-x rounded-full bg-ink" style={{ width: `${done * 100}%` }} />
+              {phase !== 'scoring-closed' && phase !== 'final' && (
+                <span className="absolute top-1/2 -ml-1.5 h-3 w-3 -translate-y-1/2" style={{ left: `${done * 100}%` }}>
+                  {live && <span className={cx('absolute inset-0 animate-ring rounded-full', theme.accent)} />}
+                  <span className="relative block h-full w-full rounded-full border-2 border-card bg-ink" />
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[12px] font-semibold">
+            <span className="text-ink">{phaseLine(table, now)}</span>
+            <span className="inline-flex items-center gap-1 text-ink-2">
+              <UsersIcon size={14} />
+              {joined !== null ? `${joined} joined` : ''}
+              {table.capacity ? `${joined !== null ? ' / ' : ''}${table.capacity} max` : ''}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
         <span className="font-mono text-[12px] tracking-[0.12em] text-ink-2">{table.code}</span>
-        <ArrowRightIcon size={18} className="transition-transform group-hover:translate-x-0.5" />
+        <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.1em] text-ink-2 transition-colors group-hover:text-ink">
+          {canEnter(table, now) ? 'Join' : 'View'}
+          <ArrowRightIcon size={16} className="transition-transform duration-200 group-hover:translate-x-1" />
+        </span>
       </div>
     </Link>
   );

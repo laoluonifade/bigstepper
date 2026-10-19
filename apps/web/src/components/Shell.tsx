@@ -220,15 +220,46 @@ function SignedInShell() {
   );
 }
 
+/** Which bottom tab owns a page, so "You" stays lit on Wallet, League etc. and "Compete" on Clubs. */
+const TAB_PATHS: Record<string, string[]> = {
+  Home: ['/dashboard'],
+  Compete: ['/competitions', '/clubs'],
+  Run: ['/run', '/runs'],
+  Activity: ['/activities'],
+  You: ['/settings', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
+};
+
+function useTabActive(label: string) {
+  const { pathname } = useLocation();
+  return (TAB_PATHS[label] ?? []).some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 function Tab({ to, label, icon }: { to: LinkProps['to']; label: string; icon: ReactNode }) {
+  const active = useTabActive(label);
   return (
     <Link
       to={to}
-      className="flex flex-col items-center gap-1 py-1 text-ink-3 transition-colors [&.active]:text-ink [&.active_svg]:animate-pop"
-      activeProps={{ 'aria-current': 'page' }}
+      aria-current={active ? 'page' : undefined}
+      className={cx('relative flex flex-col items-center gap-0.5 pb-1 pt-1.5 transition-colors', active ? 'text-ink' : 'text-ink-3')}
     >
-      {icon}
-      <span className="text-[10px] font-bold uppercase tracking-[0.08em]">{label}</span>
+      {/* Orange bar along the top edge of the active tab. */}
+      <span
+        className={cx(
+          'absolute -top-1.5 left-1/2 h-[3px] w-8 -translate-x-1/2 rounded-b-sm bg-track transition-opacity duration-200',
+          active ? 'opacity-100' : 'opacity-0',
+        )}
+        aria-hidden="true"
+      />
+      <span
+        key={String(active)}
+        className={cx(
+          'flex h-8 w-12 items-center justify-center rounded-md transition-colors duration-200',
+          active ? 'animate-pop bg-ink text-volt' : 'text-ink-3',
+        )}
+      >
+        {icon}
+      </span>
+      <span className={cx('text-[10px] uppercase tracking-[0.08em]', active ? 'font-black' : 'font-semibold')}>{label}</span>
     </Link>
   );
 }

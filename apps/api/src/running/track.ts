@@ -1,5 +1,12 @@
 import { haversineMetres } from './haversine';
 
+/** Metres per step, used where GPS can't measure (indoors). Steps count for leagues and free challenges only. */
+export const STRIDE_METRES = { walk: 0.72, run: 1.0 } as const;
+
+export function stepDistanceMetres(steps: number, activityType: 'walk' | 'run') {
+  return Math.round(Math.max(0, steps) * STRIDE_METRES[activityType]);
+}
+
 /** Fixes less accurate than this are ignored. */
 export const MAX_USABLE_ACCURACY_METRES = 50;
 /** Faster than this between two points isn't on foot (≈ a 1:51/km sprint). */

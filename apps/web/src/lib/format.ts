@@ -126,3 +126,11 @@ export function fromLocalInput(value: string): string | undefined {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
+
+/** "Monday evening run", from when it started. */
+export function activityName(iso: string, type: 'walk' | 'run') {
+  const date = new Date(iso);
+  const hour = date.getHours();
+  const part = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+  return `${date.toLocaleDateString('en-GB', { weekday: 'long' })} ${part} ${type}`;
+}

@@ -5,8 +5,14 @@ import { ChevronRightIcon } from './icons';
 import { cx, VerificationTag } from './ui';
 
 /** Verified runs show validated distance; anything else shows what was recorded. */
+/** Verified distance: GPS, or steps × stride when that's larger (indoors). Provisional before verification. */
 export function shownMetres(activity: Activity) {
-  return activity.verificationStatus === 'VERIFIED' ? activity.validatedDistanceMetres : activity.recordedDistanceMetres;
+  if (activity.verificationStatus !== 'VERIFIED') return activity.recordedDistanceMetres;
+  return Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0);
+}
+
+export function fromSteps(activity: Activity) {
+  return activity.verificationStatus === 'VERIFIED' && (activity.stepDistanceMetres ?? 0) > activity.validatedDistanceMetres;
 }
 
 export function ActivityRow({ activity, unit }: { activity: Activity; unit: Unit }) {

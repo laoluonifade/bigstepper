@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
-import { ActivityRow, shownMetres } from '../components/ActivityRow';
+import { ActivityRow, fromSteps, shownMetres } from '../components/ActivityRow';
+import { ShareRun } from '../components/ShareRun';
 import { CheckIcon, RunIcon } from '../components/icons';
 import { CountUp, cx, EmptyState, ErrorNotice, Field, Loading, Meter, Notice, PageHeader, Segmented, Skeleton, Stat, VerificationTag } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { describeReason } from '../lib/copy';
-import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
+import { activityName, formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
 import { lifetimeStats } from '../lib/progress';
 import { keys, useActivities, useUnit } from '../lib/queries';
 import type { Activity } from '../lib/types';
@@ -104,12 +105,6 @@ export function ActivitiesPage() {
   );
 }
 
-function activityName(iso: string, type: Activity['activityType']) {
-  const date = new Date(iso);
-  const hour = date.getHours();
-  const part = hour < 5 ? 'Night' : hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : hour < 21 ? 'Evening' : 'Night';
-  return `${date.toLocaleDateString('en-GB', { weekday: 'long' })} ${part.toLowerCase()} ${type}`;
-}
 
 export function ActivityDetailPage() {
   const { id } = useParams({ strict: false }) as { id: string };
@@ -145,7 +140,12 @@ export function ActivityDetailPage() {
         back={{ to: '/activities', label: 'Activities' }}
         eyebrow={formatDateTime(a.startedAt)}
         title={activityName(a.startedAt, a.activityType)}
-        actions={<VerificationTag status={a.verificationStatus} />}
+        actions={
+          <span className="flex items-center gap-2">
+            <VerificationTag status={a.verificationStatus} />
+            <ShareRun activity={a} unit={unit} className="btn-sm" autoOpen={Boolean(search.fresh) && verified} />
+          </span>
+        }
       />
 
       {search.fresh && verified && (
@@ -156,7 +156,7 @@ export function ActivityDetailPage() {
           <div>
             <p className="wide text-[16px] font-black uppercase">Verified. It counts.</p>
             <p className="text-[13px]">
-              {formatDistance(a.validatedDistanceMetres, unit)} credited to your league and to any challenges you joined before this run started.
+              {formatDistance(shownMetres(a), unit)} credited to your league and to any challenges you joined before this run started.
             </p>
           </div>
         </div>
@@ -165,14 +165,19 @@ export function ActivityDetailPage() {
       <section className="panel-strong overflow-hidden">
         <div className="grid gap-6 p-5 sm:grid-cols-[1.3fr_1fr] sm:p-6">
           <div>
-            <p className="eyebrow">{verified ? 'Verified distance' : pending ? 'Recorded distance · provisional' : 'Recorded distance'}</p>
+            <p className="eyebrow">{verified ? (fromSteps(a) ? 'Verified distance · from steps' : 'Verified distance') : pending ? 'Recorded distance · provisional' : 'Recorded distance'}</p>
             <p className="mt-2 flex items-baseline gap-2">
               <span className={cx('score text-[80px] sm:text-[96px]', a.verificationStatus === 'REJECTED' && 'text-ink-3 line-through decoration-4')}>
                 <CountUp value={metres} format={(m) => formatDistanceNumber(m, unit)} />
               </span>
               <span className="text-[16px] font-semibold text-ink-2">{unit}</span>
             </p>
-            {trimmed > 0 && (
+            {fromSteps(a) && (
+              <p className="text-[13px] text-ink-2">
+                Measured from {a.validatedSteps.toLocaleString('en-GB')} steps — GPS couldn’t track this one (indoors?). Counts for your league and free challenges, not paid ones.
+              </p>
+            )}
+            {trimmed > 0 && !fromSteps(a) && (
               <p className="text-[13px] text-ink-2">
                 {formatDistance(trimmed, unit)} of the {formatDistance(a.recordedDistanceMetres, unit)} recorded didn’t pass checks.
               </p>

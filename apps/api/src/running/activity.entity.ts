@@ -40,6 +40,10 @@ export class Activity {
   @Column({ type: 'integer', default: 0 })
   validatedSteps: number;
 
+  /** validatedSteps × stride: counts for leagues and free challenges where GPS can't measure (indoors). */
+  @Column({ type: 'integer', default: 0 })
+  stepDistanceMetres: number;
+
   @Column({ type: 'integer', default: 0 })
   elapsedSeconds: number;
 
