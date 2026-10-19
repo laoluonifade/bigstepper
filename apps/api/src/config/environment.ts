@@ -8,12 +8,12 @@ function integer(value: string | undefined, fallback: number, name: string): num
   return parsed;
 }
 
-function boolean(value: string | undefined, fallback = false): boolean {
-  if (value === undefined) return fallback;
-  if (value !== 'true' && value !== 'false') {
-    throw new Error(`Expected a boolean value but received "${value}"`);
+function paymentMode(value: string | undefined): 'off' | 'test' | 'live' {
+  const mode = (value?.trim() || 'off').toLowerCase();
+  if (mode !== 'off' && mode !== 'test' && mode !== 'live') {
+    throw new Error(`PAYMENTS_MODE must be off, test or live (received "${value}")`);
   }
-  return value === 'true';
+  return mode;
 }
 
 function required(env: Environment, name: string, fallback?: string): string {
@@ -56,31 +56,20 @@ export function validateEnvironment(env: Environment) {
     'REDIS_URL',
     nodeEnv === 'development' ? 'redis://localhost:6379' : undefined,
   );
-  const paidContestsEnabled = boolean(env.PAID_CONTESTS_ENABLED);
-  const prizePayoutsEnabled = boolean(env.PRIZE_PAYOUTS_ENABLED);
-  const paystackLiveEnabled = boolean(env.PAYSTACK_LIVE_ENABLED);
   const paystackSecretKey = env.PAYSTACK_SECRET_KEY?.trim() || '';
-  if ((paidContestsEnabled || prizePayoutsEnabled) && !paystackSecretKey) {
-    throw new Error('PAYSTACK_SECRET_KEY is required when financial features are enabled');
+  const paymentsMode = paymentMode(env.PAYMENTS_MODE);
+  if (paymentsMode === 'test') {
+    if (nodeEnv === 'production') throw new Error('PAYMENTS_MODE=test cannot run in production — use live or off');
+    if (!paystackSecretKey.startsWith('sk_test_')) throw new Error('PAYMENTS_MODE=test requires a Paystack test key (sk_test_…)');
   }
-  if (
-    nodeEnv === 'production' &&
-    (paidContestsEnabled || prizePayoutsEnabled) &&
-    (!boolean(env.LEGAL_APPROVAL_CONFIRMED) || !boolean(env.PAYSTACK_APPROVAL_CONFIRMED))
-  ) {
-    throw new Error('Production financial features require legal and Paystack approval confirmations');
+  if (paymentsMode === 'live') {
+    if (nodeEnv !== 'production') throw new Error('PAYMENTS_MODE=live only runs in production');
+    if (!paystackSecretKey.startsWith('sk_live_')) throw new Error('PAYMENTS_MODE=live requires a live Paystack key (sk_live_…)');
   }
-  if (nodeEnv === 'production' && (paidContestsEnabled || prizePayoutsEnabled)) {
-    if (!paystackLiveEnabled || !paystackSecretKey.startsWith('sk_live_')) {
-      throw new Error('Production financial features require PAYSTACK_LIVE_ENABLED=true and a live Paystack key');
-    }
-  }
-  if (nodeEnv !== 'production' && paystackLiveEnabled) {
-    throw new Error('PAYSTACK_LIVE_ENABLED can only be true in production');
-  }
-  if (nodeEnv !== 'production' && (paidContestsEnabled || prizePayoutsEnabled) && !paystackSecretKey.startsWith('sk_test_')) {
-    throw new Error('Non-production financial features require a Paystack test key');
-  }
+  // One switch drives every money gate. `live` is the operator's confirmation that legal and
+  // Paystack approvals are in place; `test` is sandbox-only and never confirms them.
+  const moneyEnabled = paymentsMode !== 'off';
+  const live = paymentsMode === 'live';
   return {
     ...env,
     NODE_ENV: nodeEnv,
@@ -89,13 +78,13 @@ export function validateEnvironment(env: Environment) {
     DATABASE_URL: connectionUrl(databaseUrl, 'DATABASE_URL', ['postgres:', 'postgresql:']),
     REDIS_URL: connectionUrl(redisUrl, 'REDIS_URL', ['redis:', 'rediss:']),
     JWT_SECRET: jwtSecret,
-    PAID_CONTESTS_ENABLED: paidContestsEnabled,
-    PAYSTACK_LIVE_ENABLED: paystackLiveEnabled,
-    PRIZE_PAYOUTS_ENABLED: prizePayoutsEnabled,
-    VARIABLE_PRIZE_POOLS_ENABLED: boolean(env.VARIABLE_PRIZE_POOLS_ENABLED),
+    PAYMENTS_MODE: paymentsMode,
+    PAID_CONTESTS_ENABLED: moneyEnabled,
+    PRIZE_PAYOUTS_ENABLED: moneyEnabled,
+    PAYSTACK_LIVE_ENABLED: live,
+    LEGAL_APPROVAL_CONFIRMED: live,
+    PAYSTACK_APPROVAL_CONFIRMED: live,
     PAYSTACK_SECRET_KEY: paystackSecretKey,
-    LEGAL_APPROVAL_CONFIRMED: boolean(env.LEGAL_APPROVAL_CONFIRMED),
-    PAYSTACK_APPROVAL_CONFIRMED: boolean(env.PAYSTACK_APPROVAL_CONFIRMED),
     ZEPTOMAIL_API_KEY: env.ZEPTOMAIL_API_KEY?.trim() || '',
     ZEPTOMAIL_API_URL: env.ZEPTOMAIL_API_URL?.trim() || 'https://api.zeptomail.com/v1.1/email',
     ZEPTOMAIL_FROM_ADDRESS: env.ZEPTOMAIL_FROM_ADDRESS?.trim() || '',

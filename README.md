@@ -65,14 +65,15 @@ Database schema changes must be migrations; TypeORM `synchronize` is intentional
 
 ## Paystack safety gates
 
-Payment code is present but fails closed by default. Sandbox testing requires an `sk_test_` secret and explicit local feature flags; approval confirmations remain false in sandbox. Production additionally requires both real approval confirmations, and the API refuses to enable financial operations without them.
+Payment code is present but fails closed by default. One setting controls it:
 
 ```dotenv
+PAYMENTS_MODE=off            # off | test | live
 PAYSTACK_SECRET_KEY=sk_test_...
-PAID_CONTESTS_ENABLED=false
-PRIZE_PAYOUTS_ENABLED=false
-LEGAL_APPROVAL_CONFIRMED=false
-PAYSTACK_APPROVAL_CONFIRMED=false
 ```
+
+- `off` (default): paid competitions, payouts and webhooks are disabled.
+- `test`: Paystack sandbox. Requires an `sk_test_` key and refuses to start in production.
+- `live`: real money. Requires `NODE_ENV=production` and an `sk_live_` key. Setting it is your confirmation that legal and Paystack approvals are in place.
 
 Never commit the secret key. Configure `POST /v1/webhooks/paystack` as the webhook URL in the Paystack dashboard when testing through a public HTTPS tunnel or deployed test environment. Checkout initialization intentionally does not send a per-request `callback_url`; payment completion is established by webhook processing and server-side transaction verification, not by a browser redirect.

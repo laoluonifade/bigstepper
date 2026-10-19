@@ -37,8 +37,10 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
   }
 
-  await app.listen(port);
-  Logger.log(`API listening on http://localhost:${port}/v1`, 'Bootstrap');
+  // Behind a reverse proxy, set HOST=127.0.0.1 so the port isn't reachable from outside.
+  const host = config.get<string>('HOST') || '0.0.0.0';
+  await app.listen(port, host);
+  Logger.log(`API listening on http://${host}:${port}/v1`, 'Bootstrap');
 }
 
 void bootstrap();
