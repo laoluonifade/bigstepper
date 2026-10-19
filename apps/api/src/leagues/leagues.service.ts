@@ -35,8 +35,9 @@ export class LeaguesService {
       .createQueryBuilder('m')
       .innerJoin('users', 'u', 'u.id = m."userId" AND u.role = :role', { role: 'runner' })
       .where('m."seasonId" = :seasonId', { seasonId })
-      .orderBy('m."divisionId"', 'ASC')
-      .addOrderBy('m."creditedDistanceMetres"', 'DESC')
+      // Property paths, not quoted columns: TypeORM needs them to order a paginated (take) query.
+      .orderBy('m.divisionId', 'ASC')
+      .addOrderBy('m.creditedDistanceMetres', 'DESC')
       .addOrderBy('m.id', 'ASC')
       .take(1000)
       .getMany();

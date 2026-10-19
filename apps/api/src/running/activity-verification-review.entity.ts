@@ -18,6 +18,7 @@ export class ActivityVerificationReview {
   requestedByUserId: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'requestedByUserId' })
   requestedBy: User;
 
   @Column({ default: 'PENDING' })
