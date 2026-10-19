@@ -18,13 +18,33 @@ export class TablesService {
     private readonly dataSource: DataSource,
   ) {}
 
-  list() {
-    return this.tables.find({
+  async list() {
+    const tables = await this.tables.find({
       where: { status: 'OPEN_FOR_ENTRY' },
       relations: { creator: true },
       order: { createdAt: 'DESC' },
       take: 50,
     });
+    return this.present(tables);
+  }
+
+  /**
+   * Public shape of a challenge: the creator is reduced to id + display name (the relation is the full
+   * user row, email included, which must never leave the API), plus how many runners have joined.
+   */
+  private async present(tables: CompetitionTable[]) {
+    const counts = tables.length
+      ? ((await this.dataSource.query(
+          `SELECT "tableId", count(*)::int AS n FROM "table_registrations" WHERE "tableId" = ANY($1::uuid[]) GROUP BY "tableId"`,
+          [tables.map((table) => table.id)],
+        )) as Array<{ tableId: string; n: number }>)
+      : [];
+    const byTable = new Map(counts.map((row) => [row.tableId, row.n]));
+    return tables.map(({ creator, ...table }) => ({
+      ...table,
+      creator: creator ? { id: creator.id, displayName: creator.displayName } : null,
+      entrantCount: byTable.get(table.id) ?? 0,
+    }));
   }
 
   async mine(userId: string) {
@@ -157,7 +177,7 @@ export class TablesService {
       relations: { creator: true },
     });
     if (!table) throw new NotFoundException('Challenge not found');
-    return table;
+    return (await this.present([table]))[0];
   }
 
   async result(tableId: string) {
