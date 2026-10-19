@@ -11,10 +11,12 @@ export class CreatePaidTableDto {
   @IsOptional() @IsUUID() communityId?: string;
   @IsInt() @Min(100) @Max(100000000) entryFeeKobo: number;
   @IsInt() @Min(100) @Max(1000000000) guaranteedPrizeKobo: number;
-  @IsInt() @Min(2) @Max(10000) minimumEntrants: number;
+  /** Defaults to 2: a paid race needs at least two people. */
+  @IsOptional() @IsInt() @Min(2) @Max(10000) minimumEntrants?: number;
   @IsInt() @Min(2) @Max(10000) capacity: number;
   @IsDateString() startsAt: string;
-  @IsDateString() entryClosesAt: string;
+  /** Defaults to when the challenge ends: entry stays open the whole time. */
+  @IsOptional() @IsDateString() entryClosesAt?: string;
   @IsDateString() scoringClosesAt: string;
 }
 

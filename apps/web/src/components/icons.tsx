@@ -226,13 +226,26 @@ export const ShareIcon = (p: IconProps) => (
 );
 
 /** The Jump mark: three rising steps — a podium and a bar chart at once. */
-export function StepMark({ size = 28, className = '' }: { size?: number; className?: string }) {
+/**
+ * The Jump mark. `motion="enter"` grows the three steps in on mount; `motion="loop"` keeps them
+ * stepping, for waiting states (finding GPS, loading).
+ */
+export function StepMark({
+  size = 28,
+  className = '',
+  motion,
+}: {
+  size?: number;
+  className?: string;
+  motion?: 'enter' | 'loop';
+}) {
+  const bar = motion === 'loop' ? 'origin-own-bottom animate-stride' : motion === 'enter' ? 'origin-own-bottom animate-grow-y' : undefined;
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className={className}>
       <rect width="32" height="32" rx="5" fill="#121212" />
-      <rect x="6" y="18" width="6" height="8" fill="#FF4D12" />
-      <rect x="13" y="12" width="6" height="14" fill="#FF4D12" />
-      <rect x="20" y="6" width="6" height="20" fill="#E4FF3A" />
+      <rect x="6" y="18" width="6" height="8" fill="#FF4D12" className={bar} style={motion ? { animationDelay: '0ms' } : undefined} />
+      <rect x="13" y="12" width="6" height="14" fill="#FF4D12" className={bar} style={motion ? { animationDelay: motion === 'loop' ? '150ms' : '110ms' } : undefined} />
+      <rect x="20" y="6" width="6" height="20" fill="#E4FF3A" className={bar} style={motion ? { animationDelay: motion === 'loop' ? '300ms' : '220ms' } : undefined} />
     </svg>
   );
 }

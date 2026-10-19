@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminService } from './admin.service';
@@ -77,6 +77,11 @@ export class AdminController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   reconcilePayments(@CurrentUser() user: AuthenticatedUser, @Body() body: ConfirmAdminActionDto) {
     return this.adminService.reconcilePayments(user.id, body.password);
+  }
+
+  @Get('users')
+  users(@Query('search') search?: string) {
+    return this.adminService.users(search);
   }
 
   @Patch('users/:id/eligibility')

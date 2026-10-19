@@ -3,7 +3,7 @@ import { Link, Outlet, useNavigate, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Wordmark } from '../components/Shell';
-import { ErrorNotice, Field, Loading, Notice, Redirect } from '../components/ui';
+import { cx, ErrorNotice, Field, Loading, Notice, Redirect } from '../components/ui';
 import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { setFlag, storageKeys } from '../lib/local';
@@ -20,17 +20,19 @@ export function AuthLayout() {
         </Link>
         <div>
           <p className="display text-[clamp(44px,5.4vw,76px)]">
-            Every
-            <br />
-            metre
-            <br />
-            <span className="bg-volt px-2 text-ink">counts.</span>
+            <span className="reveal-line"><span>Every</span></span>
+            <span className="reveal-line"><span className="[animation-delay:90ms]">metre</span></span>
+            <span className="reveal-line">
+              <span className="[animation-delay:180ms]">
+                <span className="bg-volt px-2 text-ink">counts.</span>
+              </span>
+            </span>
           </p>
-          <ol className="mt-10 space-y-4 text-[15px] text-paper/75">
+          <ol className="stagger mt-10 space-y-4 text-[15px] text-paper/75">
             {[
               ['01', 'Record runs with your phone’s GPS.'],
               ['02', 'Distance is checked before it counts — no shortcuts.'],
-              ['03', 'Join tables, climb the standings, take the top spot.'],
+              ['03', 'Join challenges, climb the standings, take the top spot.'],
             ].map(([n, text]) => (
               <li key={n} className="flex gap-4">
                 <span className="score w-7 text-[20px] text-track">{n}</span>
@@ -45,7 +47,7 @@ export function AuthLayout() {
         <Link to="/competitions" className="md:hidden">
           <Wordmark />
         </Link>
-        <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center py-10">
+        <div className="mx-auto flex w-full max-w-[420px] flex-1 animate-rise-lg flex-col justify-center py-10">
           <Outlet />
         </div>
       </main>
@@ -58,7 +60,11 @@ function Steps() {
   return (
     <div className="flex items-end gap-2" aria-hidden="true">
       {[28, 44, 64, 92].map((h, i) => (
-        <span key={h} className={i === 3 ? 'w-14 bg-volt' : 'w-14 bg-track'} style={{ height: h }} />
+        <span
+          key={h}
+          className={cx('w-14 origin-bottom animate-grow-y', i === 3 ? 'bg-volt' : 'bg-track')}
+          style={{ height: h, animationDelay: `${300 + i * 110}ms` }}
+        />
       ))}
     </div>
   );
@@ -170,7 +176,7 @@ export function RegisterPage() {
   return (
     <>
       <AuthHeading eyebrow="Free to join" title="Create your account">
-        Record your first run today. Free tables never cost a thing.
+        Record your first run today. Free challenges never cost a thing.
       </AuthHeading>
       <form className="space-y-5" onSubmit={submit}>
         <Field label="Display name" hint="Shown on leaderboards. You can change it later." optional>

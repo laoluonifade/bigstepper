@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
-import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, SignalIcon, StopIcon } from '../components/icons';
-import { cx, ErrorNotice, KeyValue, Loading, Notice, PageHeader, Redirect, Segmented, useNow } from '../components/ui';
+import { useEffect, useRef, useState } from 'react';
+import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, SignalIcon, StepMark, StopIcon } from '../components/icons';
+import { cx, ErrorNotice, KeyValue, LiveDot, Loading, Notice, PageHeader, Redirect, Segmented, useCountUp, useNow } from '../components/ui';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
 import { keys, useActivities, useUnit } from '../lib/queries';
@@ -73,13 +73,13 @@ function ReadyScreen() {
       <div className="panel-strong overflow-hidden">
         <div className="bg-ink px-6 py-10 text-center text-paper">
           <p className="eyebrow text-paper/60">Distance</p>
-          <p className="score mt-2 text-[96px] text-paper/25">0.00</p>
+          <p className="score mt-2 animate-pop text-[96px] text-paper/25">0.00</p>
         </div>
-        <ul className="divide-y divide-line">
+        <ul className="stagger divide-y divide-line">
           {[
             ['Stay on this screen', 'We keep it awake while you move. Browsers pause GPS in the background, so don’t switch apps.'],
             ['Head outdoors', 'Open sky gives the cleanest signal. Points less accurate than 50 m don’t count.'],
-            ['Only verified distance scores', 'After you finish we check the route. Verified distance is what tables credit.'],
+            ['Only verified distance scores', 'After you finish we check the route. Verified distance is what challenges credit.'],
           ].map(([title, body]) => (
             <li key={title} className="flex gap-3 px-5 py-4">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-ink text-volt">
@@ -104,7 +104,7 @@ function ReadyScreen() {
       <button type="button" className="btn-primary mt-6 min-h-16 w-full text-[16px]" onClick={() => void recorder.start(activityType)} disabled={locating}>
         {locating ? (
           <>
-            <span className="h-2 w-2 animate-blink rounded-full bg-ink" /> Finding GPS signal…
+            <StepMark size={18} motion="loop" /> Finding GPS signal…
           </>
         ) : (
           <>
@@ -138,6 +138,8 @@ function Scoreboard() {
   const strength = signalStrength(recorder.accuracy);
   const stale = recorder.lastFixAt !== null && now - recorder.lastFixAt > 20_000;
   const activityName = recorder.session?.activityType ?? 'run';
+  const shownMetres = useCountUp(recorder.distanceMetres, 900);
+  const split = useSplitBanner(recorder.distanceMetres, unit, seconds);
 
   async function finish() {
     const activity = await recorder.finish();
@@ -146,7 +148,11 @@ function Scoreboard() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-ink text-paper">
+    <div className="fixed inset-0 z-50 flex animate-fade flex-col bg-ink text-paper">
+      {/* Live strip: sweeps while recording, still while paused. */}
+      <div className="h-1 overflow-hidden bg-paper/10" aria-hidden="true">
+        {recording && <div className="h-full w-1/3 animate-sweep bg-track" />}
+      </div>
       <header className="flex items-center justify-between gap-3 px-5 pt-[max(env(safe-area-inset-top),1rem)]">
         <span
           className={cx(
@@ -154,7 +160,7 @@ function Scoreboard() {
             recording ? 'bg-track text-ink' : 'bg-paper/15 text-paper',
           )}
         >
-          {recording && <span className="h-2 w-2 animate-blink rounded-full bg-ink" />}
+          {!finishing && <LiveDot live={recording} className={recording ? 'text-ink' : 'text-paper'} />}
           {finishing ? 'Finishing' : recording ? 'Recording' : 'Paused'}
         </span>
         <div className="flex items-center gap-4 text-[12px] font-semibold text-paper/70">
@@ -181,10 +187,20 @@ function Scoreboard() {
 
       <main className="flex flex-1 flex-col items-center justify-center px-5 text-center">
         <p className="eyebrow text-paper/50">Distance · {unit}</p>
-        <p className={cx('score num mt-1 text-[clamp(104px,32vw,220px)]', recording ? 'text-volt' : 'text-paper/60')}>
-          {formatDistanceNumber(recorder.distanceMetres, unit)}
+        <p
+          className={cx('score num mt-1 animate-pop text-[clamp(104px,32vw,220px)] transition-colors duration-500', recording ? 'text-volt' : 'text-paper/60')}
+          aria-live="off"
+        >
+          {formatDistanceNumber(shownMetres, unit)}
         </p>
-        <div className="mt-6 grid w-full max-w-md grid-cols-2 divide-x divide-paper/15 border-y border-paper/15">
+        <div className="h-10">
+          {split && (
+            <p key={split.count} className="tag h-8 animate-pop border-0 bg-volt px-3 text-[12px] text-ink" role="status">
+              {split.count} {unit} · {formatDuration(split.seconds)}
+            </p>
+          )}
+        </div>
+        <div className="mt-2 grid w-full max-w-md animate-rise-lg grid-cols-2 divide-x divide-paper/15 border-y border-paper/15 [animation-delay:150ms]">
           <div className="py-4">
             <p className="eyebrow text-paper/50">Time</p>
             <p className="score num mt-1 text-[44px]">{formatDuration(seconds)}</p>
@@ -202,7 +218,7 @@ function Scoreboard() {
 
       <footer className="safe-bottom px-5 pt-4">
         {confirming ? (
-          <div className="mx-auto max-w-md rounded-md border-2 border-paper/20 p-4">
+          <div className="mx-auto max-w-md animate-rise rounded-md border-2 border-paper/20 p-4">
             <p className="wide text-[15px] font-extrabold uppercase">Finish this {activityName}?</p>
             <p className="mt-1 text-[13px] text-paper/70">
               {formatDistance(recorder.distanceMetres, unit)} will be submitted for verification. You can’t add to it afterwards.
@@ -217,7 +233,7 @@ function Scoreboard() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto grid max-w-md grid-cols-2 gap-3">
+          <div className="mx-auto grid max-w-md animate-rise-lg grid-cols-2 gap-3 [animation-delay:250ms]">
             {recording ? (
               <button type="button" className="btn min-h-20 border-2 border-paper text-paper hover:bg-paper/10" onClick={() => void recorder.pause()}>
                 <PauseIcon size={22} /> Pause
@@ -248,6 +264,28 @@ function Scoreboard() {
       </footer>
     </div>
   );
+}
+
+/**
+ * Each time the runner passes another whole km/mile, briefly shows "3 km · 18:42".
+ * Starts from the distance already covered, so restoring a run mid-way doesn't replay old splits.
+ */
+function useSplitBanner(metres: number, unit: 'km' | 'mi', seconds: number) {
+  const unitMetres = unit === 'km' ? 1000 : 1609.344;
+  const count = Math.floor(metres / unitMetres);
+  const last = useRef(count);
+  const [banner, setBanner] = useState<{ count: number; seconds: number } | null>(null);
+  useEffect(() => {
+    if (count > last.current) {
+      last.current = count;
+      setBanner({ count, seconds });
+      const timer = window.setTimeout(() => setBanner(null), 4000);
+      return () => window.clearTimeout(timer);
+    }
+    last.current = Math.max(last.current, count);
+    // Only `count` triggers this; `seconds` is just read at the moment a split happens.
+  }, [count]);
+  return banner;
 }
 
 /** A specific server-side run session, e.g. opened from another device. */

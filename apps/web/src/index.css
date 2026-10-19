@@ -101,6 +101,33 @@
     @apply inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 text-[10.5px] font-bold uppercase tracking-[0.08em];
   }
 
+  /* Motion */
+  /* Children cascade in one after another. Put on a list/grid; items need no classes of their own. */
+  .stagger > * {
+    @apply animate-rise;
+  }
+  .stagger > *:nth-child(2) { animation-delay: 50ms; }
+  .stagger > *:nth-child(3) { animation-delay: 100ms; }
+  .stagger > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger > *:nth-child(5) { animation-delay: 200ms; }
+  .stagger > *:nth-child(6) { animation-delay: 250ms; }
+  .stagger > *:nth-child(7) { animation-delay: 300ms; }
+  .stagger > *:nth-child(8) { animation-delay: 350ms; }
+  .stagger > *:nth-child(9) { animation-delay: 400ms; }
+  .stagger > *:nth-child(n + 10) { animation-delay: 450ms; }
+  /* Masked line reveal: wrap each line in .reveal-line > span. */
+  .reveal-line {
+    @apply block overflow-hidden pb-[0.04em];
+  }
+  .reveal-line > span {
+    @apply block animate-reveal;
+  }
+  /* SVG parts scale from their own bottom edge (logo steps, chart bars). */
+  .origin-own-bottom {
+    transform-box: fill-box;
+    transform-origin: bottom;
+  }
+
   /* Run screen helpers */
   .safe-bottom {
     padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);

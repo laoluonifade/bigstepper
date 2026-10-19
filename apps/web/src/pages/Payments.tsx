@@ -26,7 +26,7 @@ export function PaymentReturnPage() {
           title="No payments on this device"
           action={
             <Link to="/competitions" className="btn-secondary">
-              Browse tables
+              Browse challenges
             </Link>
           }
         >
@@ -111,7 +111,7 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
         <div className="mt-5 flex flex-wrap gap-2">
           {succeeded && payment.tableCode && (
             <Link to="/competitions/$code" params={{ code: payment.tableCode }} className="btn-primary btn-sm">
-              Go to table
+              Go to challenge
             </Link>
           )}
           {succeeded && payment.purpose === 'WALLET_FUNDING' && (
@@ -121,7 +121,7 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
           )}
           {(value === 'FAILED' || notFound) && payment.tableCode && (
             <Link to="/competitions/$code" params={{ code: payment.tableCode }} className="btn-secondary btn-sm">
-              Back to table
+              Back to challenge
             </Link>
           )}
           <CopyButton value={payment.reference} label="Copy reference" />

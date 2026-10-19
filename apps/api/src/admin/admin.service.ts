@@ -39,6 +39,25 @@ export class AdminService {
     return this.paymentsService.reconcile();
   }
 
+  /** People staff can approve for paid challenges: newest first, or matching an email / @username / name. */
+  users(search?: string) {
+    const term = search?.trim().replace(/^@/, '').toLowerCase();
+    return this.dataSource.query(
+      `SELECT u."id", u."email", u."emailVerified", u."createdAt", p."username", p."displayName",
+              (c."status" = 'ACTIVE') AS "isCreator",
+              COALESCE(e."adultVerified", false) AS "adultVerified",
+              COALESCE(e."paidCompetitionEligible", false) AS "paidCompetitionEligible",
+              COALESCE(e."countryCode", 'NG') AS "countryCode"
+       FROM "users" u
+       LEFT JOIN "profiles" p ON p."userId" = u."id"
+       LEFT JOIN "creator_profiles" c ON c."userId" = u."id"
+       LEFT JOIN "user_eligibility" e ON e."userId" = u."id"
+       WHERE $1::text IS NULL OR u."email" ILIKE '%' || $1 || '%' OR p."username" ILIKE '%' || $1 || '%' OR p."displayName" ILIKE '%' || $1 || '%'
+       ORDER BY u."createdAt" DESC LIMIT 100`,
+      [term || null],
+    );
+  }
+
   async updateEligibility(actorUserId: string, userId: string, input: UpdateUserEligibilityDto) {
     const users = await this.dataSource.query(`SELECT "id" FROM "users" WHERE "id"=$1`, [userId]) as Array<{ id: string }>;
     if (!users[0]) throw new NotFoundException('User not found');
@@ -126,17 +145,17 @@ export class AdminService {
       throw new BadRequestException(error instanceof Error ? error.message : 'Invalid challenge scoring');
     }
     const startsAt = new Date(input.startsAt);
-    const entryClosesAt = new Date(input.entryClosesAt);
+    const entryClosesAt = new Date(input.entryClosesAt ?? input.scoringClosesAt);
     const scoringClosesAt = new Date(input.scoringClosesAt);
-    if (input.minimumEntrants > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
-      throw new ConflictException('Paid table dates or entrant limits are invalid');
+    if ((input.minimumEntrants ?? 2) > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
+      throw new ConflictException('Paid challenge dates or entrant limits are invalid');
     }
     const creator = (await this.dataSource.query(`SELECT "id" FROM "creator_profiles" WHERE "userId"=$1 AND "status"='ACTIVE'`, [input.creatorId]) as Array<{ id: string }>)[0];
     const table = await this.dataSource.getRepository(CompetitionTable).save(
       this.dataSource.getRepository(CompetitionTable).create({
         creatorId: input.creatorId, title: input.title.trim(), code: randomBytes(4).toString('hex').toUpperCase(),
         type: 'paid', status: 'PENDING_APPROVAL', entryFeeKobo: input.entryFeeKobo,
-        guaranteedPrizeKobo: input.guaranteedPrizeKobo, minimumEntrants: input.minimumEntrants,
+        guaranteedPrizeKobo: input.guaranteedPrizeKobo, minimumEntrants: (input.minimumEntrants ?? 2),
         capacity: input.capacity, startsAt, entryClosesAt, scoringClosesAt, distanceCapMetres: null,
         challengeType: input.challengeType, scoringMethod: input.scoringMethod,
         targetDistanceMetres: input.targetDistanceMetres ?? null, communityId: input.communityId ?? null,
@@ -158,8 +177,8 @@ export class AdminService {
     }
     return this.dataSource.transaction(async (manager) => {
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId, type: 'paid' }, lock: { mode: 'pessimistic_write' } });
-      if (!table) throw new NotFoundException('Paid table not found');
-      if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('Table is not pending approval');
+      if (!table) throw new NotFoundException('Paid challenge not found');
+      if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('Challenge is not pending approval');
       table.status = 'OPEN_FOR_ENTRY';
       await manager.save(table);
       await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAID_TABLE_APPROVED','competition_table',$2,$3)`, [actorUserId, tableId, JSON.stringify(input)]);
@@ -173,7 +192,7 @@ export class AdminService {
         where: { id: tableId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!table) throw new NotFoundException('Table not found');
+      if (!table) throw new NotFoundException('Challenge not found');
       if (!table.scoringClosesAt || table.scoringClosesAt > new Date()) {
         throw new ConflictException('Scoring has not closed');
       }
@@ -197,7 +216,7 @@ export class AdminService {
         ? undefined
         : standings[0];
       if (table.type === 'paid' && standings.length < table.minimumEntrants) {
-        throw new ConflictException('Minimum entrants were not met; cancel and refund the table');
+        throw new ConflictException('Minimum entrants were not met; cancel and refund the challenge');
       }
       const existing = (await manager.query(`SELECT COALESCE(MAX("version"),0)::integer version FROM "table_settlements" WHERE "tableId" = $1`, [tableId])) as Array<{ version: number }>;
       const version = Number(existing[0].version) + 1;

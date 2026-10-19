@@ -97,7 +97,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
       <div className="flex flex-1 flex-col px-4 pb-4 pt-3.5">
         <h3 className="wide line-clamp-2 text-[19px] font-extrabold uppercase leading-[1.05]">{table.title}</h3>
         <p className="mt-1.5 text-[13px] text-ink-2">
-          {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community table'}
+          {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community challenge'}
         </p>
         <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.08em] text-ink">{challengeLabel(table, unit)}</p>
         {table.type === 'paid' && table.guaranteedPrizeKobo ? (

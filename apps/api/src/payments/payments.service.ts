@@ -28,13 +28,13 @@ export class PaymentsService {
       this.dataSource.getRepository(User).findOne({ where: { id: userId } }),
       this.dataSource.getRepository(CompetitionTable).findOne({ where: { id: tableId } }),
     ]);
-    if (!user || !table || table.type !== 'paid') throw new NotFoundException('Paid table not found');
+    if (!user || !table || table.type !== 'paid') throw new NotFoundException('Paid challenge not found');
     if (!user.emailVerified) throw new ForbiddenException('Verify your email before entering a paid competition');
     await this.assertPaidEligibility(userId);
     if (table.creatorId === userId) throw new ForbiddenException('Challenge creators cannot enter their own paid challenge');
     if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) throw new ConflictException('Entry is closed');
-    if (table.entryFeeKobo <= 0) throw new BadRequestException('Table fee is invalid');
-    if (await this.dataSource.getRepository(TableRegistration).exist({ where: { tableId, userId } })) throw new ConflictException('You already joined this table');
+    if (table.entryFeeKobo <= 0) throw new BadRequestException('Challenge fee is invalid');
+    if (await this.dataSource.getRepository(TableRegistration).exist({ where: { tableId, userId } })) throw new ConflictException('You already joined this challenge');
 
     const intent = await this.intents.save(this.intents.create({
       userId, tableId, reference: `jump-${randomUUID()}`, amountKobo: table.entryFeeKobo, currency: 'NGN',
@@ -127,6 +127,32 @@ export class PaymentsService {
     return this.dataSource.query(`SELECT "id","tableId","grossPrizeKobo","platformFeeKobo","creatorCommissionKobo","amountKobo","currency","status","createdAt" FROM "prize_awards" WHERE "winnerUserId"=$1 ORDER BY "createdAt" DESC`, [userId]);
   }
 
+  private bankCache: { at: number; banks: Array<{ code: string; name: string }> } | null = null;
+
+  /** Live bank list from Paystack, so payouts never offer a bank that has closed. Cached for 12 hours. */
+  async banks() {
+    if (this.bankCache && Date.now() - this.bankCache.at < 12 * 60 * 60 * 1000) return this.bankCache.banks;
+    const banks = (await this.paystack.listBanks())
+      .filter((bank) => bank.active && !bank.is_deleted && bank.type === 'nuban')
+      .map((bank) => ({ code: bank.code, name: bank.name.trim() }))
+      .filter((bank, index, all) => all.findIndex((other) => other.code === bank.code) === index)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    this.bankCache = { at: Date.now(), banks };
+    return banks;
+  }
+
+  /** Looks up the account holder's name so runners confirm it instead of typing it. */
+  async resolveAccount(accountNumber: string, bankCode: string) {
+    const bank = (await this.banks()).find((item) => item.code === bankCode);
+    if (!bank) throw new BadRequestException('Choose your bank from the list');
+    try {
+      const account = await this.paystack.resolveAccount(accountNumber, bankCode);
+      return { accountName: account.account_name, accountNumber: account.account_number, bankCode, bankName: bank.name };
+    } catch {
+      throw new BadRequestException(`We couldn’t find that account number at ${bank.name}. Check it and try again.`);
+    }
+  }
+
   async createPayoutRecipient(userId: string, input: CreateRecipientDto) {
     this.assertPayoutsEnabled();
     await this.assertPaidEligibility(userId);
@@ -138,7 +164,8 @@ export class PaymentsService {
     if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
       throw new ForbiddenException('Password confirmation failed');
     }
-    const recipient = await this.paystack.createRecipient({ type: 'nuban', name: input.accountName.trim(), account_number: input.accountNumber, bank_code: input.bankCode, currency: 'NGN' });
+    const resolved = await this.resolveAccount(input.accountNumber, input.bankCode);
+    const recipient = await this.paystack.createRecipient({ type: 'nuban', name: resolved.accountName, account_number: input.accountNumber, bank_code: input.bankCode, currency: 'NGN' });
     return this.dataSource.transaction(async (manager) => {
       const existing = await manager.query(`SELECT "id" FROM "payout_recipients" WHERE "userId"=$1 FOR UPDATE`, [userId]) as Array<{ id: string }>;
       const availableForPayoutAt = existing[0] ? new Date(Date.now() + 24 * 60 * 60 * 1000) : new Date();

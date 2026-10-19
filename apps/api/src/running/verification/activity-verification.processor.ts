@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../../jobs/jobs.module';
 import { Activity } from '../activity.entity';
 import { GpsSample } from '../gps-sample.entity';
-import { haversineMetres } from '../haversine';
+import { measureTrack } from '../track';
 import { RunningSession } from '../running-session.entity';
 import { refreshLeagueDistance } from '../../leagues/league-credits';
 
@@ -31,51 +31,31 @@ export class ActivityVerificationProcessor extends WorkerHost {
       where: { sessionId: activity.runningSessionId },
       order: { sequence: 'ASC' },
     });
-    const reasons = new Set<string>();
-    const accepted = samples.filter((sample) => {
-      if (sample.accuracy !== null && sample.accuracy > 50) {
-        reasons.add('LOW_GPS_ACCURACY');
-        return false;
-      }
-      return true;
-    });
+    const track = measureTrack(samples);
+    const reasons = track.reasons;
+    const validatedDistance = track.distanceMetres;
+    const movingSeconds = track.movingSeconds;
+    const confidence = track.confidence;
 
-    let validatedDistance = 0;
-    let movingSeconds = 0;
+    // Steps come from the device pedometer; check they only ever go up at a human rate.
     let validatedSteps = 0;
-    for (let index = 1; index < accepted.length; index += 1) {
-      const previous = accepted[index - 1];
-      const current = accepted[index];
+    for (let index = 1; index < samples.length; index += 1) {
+      const previous = samples[index - 1];
+      const current = samples[index];
       const seconds = (current.recordedAt.getTime() - previous.recordedAt.getTime()) / 1000;
-      if (seconds <= 0) {
-        reasons.add('NON_MONOTONIC_TIME');
-        continue;
-      }
-      if (seconds > 120) reasons.add('GPS_GAP');
-      const distance = haversineMetres(previous.latitude, previous.longitude, current.latitude, current.longitude);
-      if (distance / seconds > 8) {
-        reasons.add('IMPLAUSIBLE_SPEED');
-        continue;
-      }
-      validatedDistance += distance;
-      if (distance / seconds >= 0.5) movingSeconds += Math.round(seconds);
-      const previousSteps = previous.stepCount;
-      const currentSteps = current.stepCount;
-      if (previousSteps !== null && currentSteps !== null) {
-        const addedSteps = currentSteps - previousSteps;
-        if (addedSteps < 0) reasons.add('NON_MONOTONIC_STEPS');
-        else if (addedSteps / seconds > 5.5) reasons.add('IMPLAUSIBLE_STEP_RATE');
-        else validatedSteps += addedSteps;
-      }
+      if (seconds <= 0 || previous.stepCount === null || current.stepCount === null) continue;
+      const addedSteps = current.stepCount - previous.stepCount;
+      if (addedSteps < 0) reasons.add('NON_MONOTONIC_STEPS');
+      else if (addedSteps / seconds > 5.5) reasons.add('IMPLAUSIBLE_STEP_RATE');
+      else validatedSteps += addedSteps;
     }
 
-    if (accepted.length < 2) reasons.add('INSUFFICIENT_GPS_DATA');
-    const confidence = samples.length === 0 ? 0 : accepted.length / samples.length;
-    const status = accepted.length >= 2
+    // Inaccurate fixes are simply not counted; only flag when most of the track was unusable.
+    const status = track.usableCount >= 2
       && !reasons.has('IMPLAUSIBLE_SPEED')
       && !reasons.has('NON_MONOTONIC_STEPS')
       && !reasons.has('IMPLAUSIBLE_STEP_RATE')
-      && confidence >= 0.7 ? 'VERIFIED' : 'FLAGGED';
+      && confidence >= 0.5 ? 'VERIFIED' : 'FLAGGED';
 
     await this.dataSource.transaction(async (manager) => {
       await manager.update(

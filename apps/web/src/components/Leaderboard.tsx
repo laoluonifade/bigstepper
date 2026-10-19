@@ -74,7 +74,7 @@ export function Leaderboard({
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="stagger">
           {visible.map((row, index) => (
             <Row key={row.userId} row={row} above={visible[index - 1]} isMe={row.userId === currentUserId} unit={unit} formatScore={formatScore} />
           ))}

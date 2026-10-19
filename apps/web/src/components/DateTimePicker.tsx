@@ -229,7 +229,7 @@ export function DateTimePicker({
         createPortal(
         <>
           {/* Phone backdrop. On wider screens the panel is a plain popover. */}
-          {!anchor && <div className="fixed inset-0 z-50 bg-ink/40" aria-hidden="true" />}
+          {!anchor && <div className="fixed inset-0 z-50 animate-fade bg-ink/40" aria-hidden="true" />}
           <div
             ref={panelRef}
             role="dialog"
@@ -239,8 +239,8 @@ export function DateTimePicker({
             className={cx(
               'fixed z-50 bg-card',
               anchor
-                ? 'w-[340px] rounded-md border-2 border-ink px-4 pb-4 pt-3 shadow-hard'
-                : 'safe-bottom inset-x-0 bottom-0 max-h-[92vh] overflow-y-auto rounded-t-xl border-t-2 border-ink px-4 pt-3',
+                ? 'w-[340px] animate-rise rounded-md border-2 border-ink px-4 pb-4 pt-3 shadow-hard'
+                : 'safe-bottom inset-x-0 bottom-0 max-h-[92vh] animate-sheet-up overflow-y-auto rounded-t-xl border-t-2 border-ink px-4 pt-3',
             )}
           >
             {!anchor && <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line" aria-hidden="true" />}

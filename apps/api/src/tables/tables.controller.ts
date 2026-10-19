@@ -35,6 +35,13 @@ export class TablesController {
     return this.tablesService.registerFree(tableId, user.id);
   }
 
+  /** Challenges the runner created or joined, newest first. Declared before `:code` so "mine" isn't read as a code. */
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  mine(@CurrentUser() user: AuthenticatedUser) {
+    return this.tablesService.mine(user.id);
+  }
+
   @Get(':id/standings')
   standings(@Param('id', ParseUUIDPipe) tableId: string) {
     return this.tablesService.standings(tableId);

@@ -46,11 +46,12 @@ export function WeekChart({ days, unit }: { days: WeekDay[]; unit: Unit }) {
                   )}
                   <span
                     className={cx(
-                      'absolute bottom-0 left-1/2 -translate-x-1/2 rounded-t transition-[height] duration-500',
+                      'absolute bottom-0 left-1/2 origin-bottom animate-grow-y rounded-t transition-[height,opacity] duration-500',
                       day.isToday ? 'bg-track' : 'bg-ink',
                       hovered !== null && !active && 'opacity-40',
                     )}
-                    style={{ width: BAR_WIDTH, height: h }}
+                    // Centred with a margin, not a translate, so the grow animation owns `transform`.
+                    style={{ width: BAR_WIDTH, height: h, marginLeft: -BAR_WIDTH / 2, animationDelay: `${index * 60}ms` }}
                   />
                   {day.metres === 0 && !day.isFuture && (
                     <span className="absolute bottom-0 left-1/2 h-[3px] w-[3px] -translate-x-1/2 translate-y-[-3px] rounded-full bg-ink/25" />

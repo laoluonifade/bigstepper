@@ -21,13 +21,13 @@ import {
   UsersIcon,
   WalletIcon,
 } from './icons';
-import { cx, Redirect, useNow } from './ui';
+import { cx, LiveDot, Redirect, useNow } from './ui';
 
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={cx('flex items-center gap-2.5', className)}>
-      <StepMark size={28} />
-      <span className="wide text-[15px] font-black uppercase italic tracking-[-0.01em]">Jump</span>
+      <StepMark size={28} motion="enter" />
+      <span className="wide animate-fade text-[15px] font-black uppercase italic tracking-[-0.01em] [animation-delay:200ms]">Jump</span>
     </span>
   );
 }
@@ -52,6 +52,7 @@ export function AppShell() {
 }
 
 function PublicShell() {
+  const location = useLocation();
   return (
     <div className="min-h-screen">
       <header className="border-b border-line bg-paper">
@@ -70,7 +71,10 @@ function PublicShell() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8">
-        <Outlet />
+        {/* Re-keyed per page so each navigation plays the entrance. */}
+        <div key={location.pathname} className="animate-rise">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
@@ -98,14 +102,14 @@ function SignedInShell() {
     {
       title: 'Compete',
       items: [
-        { to: '/competitions', label: 'Tables', icon: <TableIcon /> },
-        { to: '/leagues', label: 'Leagues', icon: <LadderIcon /> },
+        { to: '/competitions', label: 'Challenges', icon: <TableIcon /> },
         { to: '/clubs', label: 'Clubs', icon: <UsersIcon /> },
       ],
     },
     {
       title: 'You',
       items: [
+        { to: '/leagues', label: 'My league', icon: <LadderIcon /> },
         { to: '/wallet', label: 'Wallet', icon: <WalletIcon /> },
         { to: '/rewards', label: 'Rewards', icon: <WalletIcon /> },
         { to: '/creator', label: 'Creator', icon: <UserIcon /> },
@@ -119,6 +123,7 @@ function SignedInShell() {
             title: 'Staff',
             items: [
               { to: '/admin/reviews', label: 'Reviews', icon: <ShieldIcon /> },
+              { to: '/admin/eligibility', label: 'Eligibility', icon: <UsersIcon /> },
               { to: '/admin/competitions', label: 'Competitions', icon: <TableIcon /> },
               { to: '/admin/payouts', label: 'Payouts', icon: <WalletIcon /> },
             ] as NavItem[],
@@ -191,7 +196,9 @@ function SignedInShell() {
       <div className="mx-auto max-w-5xl px-4 pb-32 pt-6 md:px-8 md:pb-16 md:pt-10">
         <LiveRunBar hidden={onRunScreen} />
         <PendingPaymentsBar hidden={location.pathname === '/payments/return'} />
-        <Outlet />
+        <div key={location.pathname} className="animate-rise">
+          <Outlet />
+        </div>
       </div>
 
       {/* Mobile tabs */}
@@ -217,7 +224,7 @@ function Tab({ to, label, icon }: { to: LinkProps['to']; label: string; icon: Re
   return (
     <Link
       to={to}
-      className="flex flex-col items-center gap-1 py-1 text-ink-3 [&.active]:text-ink"
+      className="flex flex-col items-center gap-1 py-1 text-ink-3 transition-colors [&.active]:text-ink [&.active_svg]:animate-pop"
       activeProps={{ 'aria-current': 'page' }}
     >
       {icon}
@@ -235,9 +242,9 @@ function LiveRunBar({ hidden }: { hidden: boolean }) {
   return (
     <Link
       to="/run"
-      className="mb-6 flex items-center gap-3 rounded-md border-2 border-ink bg-ink px-4 py-3 text-paper"
+      className="mb-6 flex animate-rise items-center gap-3 rounded-md border-2 border-ink bg-ink px-4 py-3 text-paper"
     >
-      <span className={cx('h-2.5 w-2.5 rounded-full', recorder.phase === 'recording' ? 'animate-blink bg-track' : 'bg-paper/50')} />
+      <LiveDot live={recorder.phase === 'recording'} className={recorder.phase === 'recording' ? 'text-track' : 'text-paper'} />
       <span className="text-[11px] font-bold uppercase tracking-[0.14em]">{recorder.phase === 'recording' ? 'Recording' : 'Paused'}</span>
       <span className="score num ml-auto text-[22px] text-volt">
         {formatDistanceNumber(recorder.distanceMetres, unit)}

@@ -32,6 +32,20 @@ export class PaystackClient {
     return this.request<{ transfer_code: string; reference: string; status: string; amount: number; currency: string }>(`/transfer/verify/${encodeURIComponent(reference)}`);
   }
 
+  /** Nigerian banks that can receive NGN transfers (https://paystack.com/docs/api/miscellaneous/#bank). */
+  listBanks() {
+    return this.request<Array<{ name: string; code: string; active: boolean; is_deleted: boolean | null; type: string }>>(
+      '/bank?country=nigeria&currency=NGN&perPage=100',
+    );
+  }
+
+  /** The account holder's name for a NUBAN, as the bank has it (https://paystack.com/docs/identity-verification/verify-account-number/). */
+  resolveAccount(accountNumber: string, bankCode: string) {
+    return this.request<{ account_number: string; account_name: string }>(
+      `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+    );
+  }
+
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const secret = this.config.getOrThrow<string>('PAYSTACK_SECRET_KEY');
     let response: Response;

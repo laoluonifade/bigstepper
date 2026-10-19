@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { canEnter, CompetitionCard } from '../components/competition';
-import { ArrowRightIcon } from '../components/icons';
+import { ArrowRightIcon, StepMark } from '../components/icons';
 import { Redirect, Skeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { useTables } from '../lib/queries';
@@ -13,15 +13,27 @@ export function LandingPage() {
 
   return (
     <section className="grid min-h-[calc(100vh-8rem)] items-center gap-10 py-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-16">
-      <div className="animate-rise">
-        <p className="eyebrow">Walk. Run. Compete.</p>
-        <h1 className="display mt-4 max-w-3xl text-[clamp(58px,10vw,112px)] leading-[0.82] tracking-[-0.055em]">
-          Every step<br />counts.
+      <div>
+        <p className="eyebrow flex animate-fade items-center gap-2">
+          <StepMark size={16} motion="loop" /> Walk. Run. Compete.
+        </p>
+        <h1 className="display mt-4 text-[clamp(56px,10vw,104px)] leading-[0.82] tracking-[-0.055em]">
+          <span className="reveal-line">
+            <span>Every</span>
+          </span>
+          <span className="reveal-line">
+            <span className="[animation-delay:90ms]">step</span>
+          </span>
+          <span className="reveal-line">
+            <span className="whitespace-nowrap [animation-delay:180ms]">
+              counts<span className="inline-block animate-pop text-track [animation-delay:750ms]">.</span>
+            </span>
+          </span>
         </h1>
-        <p className="mt-7 max-w-xl text-[18px] leading-relaxed text-ink-2 sm:text-[21px]">
+        <p className="mt-7 max-w-xl animate-rise-lg text-[18px] leading-relaxed text-ink-2 [animation-delay:350ms] sm:text-[21px]">
           Join verified challenges, compete with your community, and turn everyday movement into something worth showing up for.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-8 flex animate-rise-lg flex-wrap gap-3 [animation-delay:480ms]">
           <Link to="/register" className="btn-primary min-h-12 px-6">
             Join Jump free <ArrowRightIcon size={17} />
           </Link>
@@ -42,11 +54,11 @@ function OpenChallenges() {
   const now = Date.now();
   const open = (tables.data ?? []).filter((table) => canEnter(table, now)).slice(0, 2);
 
-  if (tables.isLoading) return <Skeleton className="h-72" />;
+  if (tables.isLoading) return <Skeleton className="h-72 animate-fade" />;
 
   if (open.length > 0) {
     return (
-      <div className="animate-rise space-y-3">
+      <div className="animate-slide-in space-y-3 [animation-delay:300ms]">
         <p className="eyebrow">Open for entry now</p>
         {open.map((table) => (
           <CompetitionCard key={table.id} table={table} unit="km" now={now} />
@@ -59,7 +71,7 @@ function OpenChallenges() {
   }
 
   return (
-    <div className="panel-strong animate-rise overflow-hidden">
+    <div className="panel-strong animate-slide-in overflow-hidden [animation-delay:300ms]">
       <div className="bg-ink px-6 py-7 text-paper">
         <p className="eyebrow text-paper/55">How it works</p>
         <p className="wide mt-2 text-[22px] font-black uppercase leading-tight">Three steps to the board</p>
@@ -69,8 +81,8 @@ function OpenChallenges() {
           ['01', 'Record walks and runs with your phone’s GPS.'],
           ['02', 'Distance is checked before it counts — no shortcuts.'],
           ['03', 'Join a challenge and climb its standings.'],
-        ].map(([n, text]) => (
-          <li key={n} className="flex gap-4 px-6 py-4">
+        ].map(([n, text], index) => (
+          <li key={n} className="flex animate-rise gap-4 px-6 py-4" style={{ animationDelay: `${650 + index * 130}ms` }}>
             <span className="score w-7 text-[20px] text-track">{n}</span>
             <span className="pt-0.5 text-[15px] text-ink-2">{text}</span>
           </li>

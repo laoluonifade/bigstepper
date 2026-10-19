@@ -5,7 +5,7 @@ import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { Queue } from 'bullmq';
 import { GpsSampleDto } from './dto/add-samples.dto';
 import { GpsSample } from './gps-sample.entity';
-import { haversineMetres } from './haversine';
+import { measureTrack } from './track';
 import { RunningSession } from './running-session.entity';
 import { Activity } from './activity.entity';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
@@ -69,12 +69,8 @@ export class RunningService {
         where: { sessionId },
         order: { sequence: 'ASC' },
       });
-      const distance = all.slice(1).reduce((total, point, index) => {
-        const previous = all[index];
-        return total + haversineMetres(previous.latitude, previous.longitude, point.latitude, point.longitude);
-      }, 0);
-
-      session.distanceMetres = Math.round(distance);
+      // Same measurement verification uses, so the live number matches the verified one.
+      session.distanceMetres = measureTrack(all).distanceMetres;
       session.stepCount = Math.max(0, ...all.map((sample) => sample.stepCount ?? 0));
       await manager.save(session);
       return { distanceMetres: session.distanceMetres, stepCount: session.stepCount, sampleCount: all.length };

@@ -8,7 +8,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, isApiError, post } from './api';
-import { describeGeoError, getCurrentPosition, haversineMetres } from './geo';
+import { advanceTrack, describeGeoError, getCurrentPosition, MAX_USABLE_ACCURACY_METRES, TrackAnchor } from './geo';
 import { keys } from './queries';
 import {
   acknowledge,
@@ -58,7 +58,6 @@ const RecorderContext = createContext<RecorderState | null>(null);
 
 const FLUSH_INTERVAL_MS = 8_000;
 const FLUSH_THRESHOLD = 20;
-const MAX_USABLE_ACCURACY = 50;
 
 export function RecorderProvider({ user, children }: { user: User; children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -77,7 +76,9 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
   const runIdRef = useRef<string | null>(null);
   const phaseRef = useRef<RecorderPhase>('restoring');
   const watchRef = useRef<number | null>(null);
-  const lastPointRef = useRef<{ lat: number; lon: number; at: number } | null>(null);
+  const lastPointRef = useRef<TrackAnchor | null>(null);
+  const fastInARowRef = useRef(0);
+  const lastFixTimeRef = useRef(0);
   const flushRef = useRef<Promise<boolean> | null>(null);
 
   phaseRef.current = phase;
@@ -144,12 +145,14 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       setLastFixAt(position.timestamp);
       setGpsError(null);
 
-      const previous = lastPointRef.current;
-      if (previous && position.timestamp <= previous.at) return;
-      if (acc <= MAX_USABLE_ACCURACY) {
-        if (previous) setLocalMetres((total) => total + haversineMetres(previous.lat, previous.lon, latitude, longitude));
-        lastPointRef.current = { lat: latitude, lon: longitude, at: position.timestamp };
-      }
+      if (position.timestamp <= lastFixTimeRef.current) return;
+      lastFixTimeRef.current = position.timestamp;
+      // Same rule the server verifies with, so the live number is the number that will count.
+      const step = advanceTrack(lastPointRef.current, { lat: latitude, lon: longitude, accuracy: acc, at: position.timestamp }, fastInARowRef.current);
+      lastPointRef.current = step.anchor;
+      fastInARowRef.current = step.fastInARow;
+      if (step.metres > 0) setLocalMetres((total) => total + step.metres);
+      if (acc > MAX_USABLE_ACCURACY_METRES) setGpsError(`Weak GPS (±${Math.round(acc)} m). Head outdoors with open sky — weak fixes don’t count.`);
 
       await appendSample(runId, {
         latitude,
@@ -184,6 +187,8 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
     const runId = runIdRef.current;
     runIdRef.current = null;
     lastPointRef.current = null;
+    fastInARowRef.current = 0;
+    lastFixTimeRef.current = 0;
     clearActiveRun();
     if (runId) await clearRun(runId).catch(() => undefined);
     setSession(null);
@@ -289,6 +294,8 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       setActiveRun({ runId: run.id, userId: user.id, startedAt: run.startedAt });
       adopt(run);
       lastPointRef.current = null;
+    fastInARowRef.current = 0;
+    lastFixTimeRef.current = 0;
       setLocalMetres(0);
       phaseRef.current = 'recording';
       setPhase('recording');

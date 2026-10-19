@@ -16,6 +16,7 @@ import {
   PageHeader,
   SectionTitle,
   Skeleton,
+  SubNav,
   useNow,
 } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
@@ -25,11 +26,11 @@ import { rememberClub, SavedClub, storageKeys, useStored } from '../lib/local';
 import { keys, useLeagues, useLeagueStandings, useMyLeagues, useUnit } from '../lib/queries';
 import type { Club, ClubMember } from '../lib/types';
 import { CompeteSubNav } from './Competitions';
+import { YOU_NAV } from './You';
 
 /* ───────────────────────── Leagues ───────────────────────── */
 
 export function LeaguesPage() {
-  const { user } = useAuth();
   const leagues = useLeagues();
   const unit = useUnit();
   const now = useNow(60_000);
@@ -39,13 +40,13 @@ export function LeaguesPage() {
 
   return (
     <div className="animate-rise">
-      <CompeteSubNav />
+      <SubNav items={[...YOU_NAV]} />
       <PageHeader
-        eyebrow="Compete"
-        title="Leagues"
-        description="Climb the divisions season by season. Your verified walk and run distance ranks you in your division."
+        eyebrow="You"
+        title="My league"
+        description="Your monthly ranking. Verified walk and run distance places you in your division — only signed-in runners can see it."
       />
-      {user && <LastSeasonResult />}
+      <LastSeasonResult />
       <ErrorNotice error={leagues.error} onRetry={() => void leagues.refetch()} />
       {leagues.isLoading ? (
         <Skeleton className="h-64" />
@@ -67,11 +68,7 @@ export function LeaguesPage() {
                 <p className="score num mt-1 text-[32px] text-volt">{formatCountdown(active.endsAt, now)}</p>
               </div>
             </div>
-            {user ? <MyDivision seasonId={active.id} unit={unit} /> : (
-              <div className="p-5 text-[14px] text-ink-2">
-                <Link to="/login" className="link text-ink">Log in</Link> to see your division.
-              </div>
-            )}
+            <MyDivision seasonId={active.id} unit={unit} />
             <div className="border-t border-line px-5 py-4">
               <Link to="/leagues/$id" params={{ id: active.id }} className="btn-secondary">
                 Full standings <ArrowRightIcon size={16} />
@@ -81,7 +78,7 @@ export function LeaguesPage() {
 
           <aside>
             <SectionTitle>Divisions</SectionTitle>
-            <ol className="space-y-2">
+            <ol className="stagger space-y-2">
               {divisions.map((division) => (
                 <li key={division.id} className="flex items-center gap-3 rounded-md border border-line bg-card px-3 py-2.5">
                   <DivisionBadge division={division} />
@@ -100,7 +97,7 @@ export function LeaguesPage() {
       {seasons.filter((season) => season.id !== active?.id).length > 0 && (
         <section className="mt-10">
           <SectionTitle>Other seasons</SectionTitle>
-          <ul className="divide-y divide-line">
+          <ul className="stagger divide-y divide-line">
             {seasons
               .filter((season) => season.id !== active?.id)
               .map((season) => (
@@ -207,7 +204,7 @@ export function LeagueDetailPage() {
 
   return (
     <div className="animate-rise">
-      <PageHeader back={{ to: '/leagues', label: 'Leagues' }} eyebrow="League standings" title={season?.name ?? 'Season'} />
+      <PageHeader back={{ to: '/leagues', label: 'My league' }} eyebrow="League standings" title={season?.name ?? 'Season'} />
       <div className="-mx-4 mb-5 overflow-x-auto px-4 md:mx-0 md:px-0">
         <div className="flex min-w-max gap-2" role="tablist" aria-label="Division">
           {divisions.map((division) => {
@@ -311,7 +308,7 @@ export function ClubsPage() {
           {clubs.length === 0 ? (
             <EmptyState title="No clubs yet">Clubs you create or open on this device appear here.</EmptyState>
           ) : (
-            <ul className="space-y-2">
+            <ul className="stagger space-y-2">
               {clubs.map((club) => (
                 <li key={club.id}>
                   <Link to="/clubs/$id" params={{ id: club.slug }} className="flex items-center gap-4 rounded-md border border-line bg-card px-4 py-3 hover:border-ink">
@@ -422,7 +419,7 @@ export function ClubDetailPage() {
           {members.isLoading ? (
             <Skeleton className="h-40" />
           ) : (
-            <ul className="divide-y divide-line border-b border-line">
+            <ul className="stagger divide-y divide-line border-b border-line">
               {members.data?.map((member) => {
                 const isMe = member.userId === user?.id;
                 const name = isMe ? user?.displayName ?? 'You' : member.displayName ?? (member.username ? `@${member.username}` : 'Runner');

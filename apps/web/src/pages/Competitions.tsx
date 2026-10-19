@@ -39,8 +39,7 @@ import { keys, useCreator, useFinalResult, useStandings, useTables, useUnit, use
 import type { ChallengeType, CheckoutResponse, CompetitionTable, ScoringMethod, Unit } from '../lib/types';
 
 export const COMPETE_NAV = [
-  { to: '/competitions', label: 'Tables' },
-  { to: '/leagues', label: 'Leagues' },
+  { to: '/competitions', label: 'Challenges' },
   { to: '/clubs', label: 'Clubs' },
 ] as const;
 
@@ -99,12 +98,12 @@ export function CompetitionsPage() {
       <CompeteSubNav />
       <PageHeader
         eyebrow="Compete"
-        title="Tables"
+        title="Challenges"
         description="Compete on verified distance, steps, or completion time. Every challenge shows exactly how the winner is decided."
         actions={
           user && (
             <Link to="/competitions/new" className="btn-primary">
-              <PlusIcon size={16} /> Create table
+              <PlusIcon size={16} /> Create challenge
             </Link>
           )
         }
@@ -122,7 +121,7 @@ export function CompetitionsPage() {
           maxLength={16}
           onChange={(event) => setCode(event.target.value.replace(/[^a-z0-9]/gi, ''))}
         />
-        <button className="btn-dark shrink-0" disabled={!code.trim()} aria-label="Open table">
+        <button className="btn-dark shrink-0" disabled={!code.trim()} aria-label="Open challenge">
           <ArrowRightIcon size={18} />
         </button>
       </form>
@@ -130,7 +129,7 @@ export function CompetitionsPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {hasPaid ? (
           <Segmented<TypeFilter>
-            label="Table type"
+            label="Challenge type"
             value={filter}
             onChange={setFilter}
             options={[
@@ -147,7 +146,7 @@ export function CompetitionsPage() {
 
       <ErrorNotice error={tables.error} onRetry={() => void tables.refetch()} />
       {tables.isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-56" />
           ))}
@@ -155,7 +154,7 @@ export function CompetitionsPage() {
       ) : list.length === 0 ? (
         <EmptyState
           mark="00"
-          title="No open tables"
+          title="No open challenges"
           action={
             user ? (
               <Link to="/competitions/new" className="btn-primary">
@@ -164,10 +163,10 @@ export function CompetitionsPage() {
             ) : undefined
           }
         >
-          Create a table and send the invite code to your crew.
+          Create a challenge and send the invite code to your crew.
         </EmptyState>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((table) => (
             <CompetitionCard key={table.id} table={table} unit={unit} now={now} />
           ))}
@@ -197,33 +196,29 @@ export function NewCompetitionPage() {
   const [targetDistance, setTargetDistance] = useState('');
   const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date()));
   const [scoringClosesAt, setScoringClosesAt] = useState(() => toLocalInput(new Date(Date.now() + 7 * 86_400_000)));
-  const [entryClosesAt, setEntryClosesAt] = useState('');
   const [capacity, setCapacity] = useState('');
   const [cap, setCap] = useState('');
   const [duration, setDuration] = useState<number | null>(7);
   const [entryFee, setEntryFee] = useState('');
-  const [guaranteedPrize, setGuaranteedPrize] = useState('');
-  const [minimumEntrants, setMinimumEntrants] = useState('2');
+  // ₦10,000 is the suggested starting prize; creators can change it.
+  const [guaranteedPrize, setGuaranteedPrize] = useState('10000');
 
   const startIso = fromLocalInput(startsAt);
   const scoringIso = fromLocalInput(scoringClosesAt);
-  const entryIso = fromLocalInput(entryClosesAt);
   const capMetres = cap ? toMetres(Number(cap), unit) : undefined;
   const capacityNumber = capacity ? Number(capacity) : undefined;
   const targetDistanceMetres = targetDistance ? toMetres(Number(targetDistance), unit) : undefined;
   const entryFeeKobo = Math.round(Number(entryFee || 0) * 100);
   const guaranteedPrizeKobo = Math.round(Number(guaranteedPrize || 0) * 100);
-  const minimumEntrantsNumber = Number(minimumEntrants || 0);
   const needsTarget = scoringMethod === 'FASTEST_FIXED_DISTANCE' || scoringMethod === 'FASTEST_TIME';
 
   const errors = {
     title: title.trim().length > 0 && title.trim().length < 3 ? 'At least 3 characters.' : undefined,
     scoring: startIso && scoringIso && new Date(scoringIso) <= new Date(startIso) ? 'Must be after the start.' : undefined,
-    entry: entryIso && scoringIso && new Date(entryIso) > new Date(scoringIso) ? 'Entry must close before scoring closes.' : undefined,
     capacity: capacityNumber !== undefined && (capacityNumber < 2 || capacityNumber > 10000 || !Number.isInteger(capacityNumber)) ? 'Between 2 and 10,000 runners.' : undefined,
     cap: capMetres !== undefined && (capMetres < 1000 || capMetres > 500000) ? `Between ${formatDistance(1000, unit)} and ${formatDistance(500000, unit)}.` : undefined,
     target: needsTarget && (!targetDistanceMetres || targetDistanceMetres < 100 || targetDistanceMetres > 500000) ? `Enter a target between ${formatDistance(100, unit)} and ${formatDistance(500000, unit)}.` : undefined,
-    paid: mode === 'paid' && (!creator.data || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || !capacityNumber || minimumEntrantsNumber < 2 || minimumEntrantsNumber > capacityNumber) ? 'Complete the paid challenge fields and use an active creator account.' : undefined,
+    paid: mode === 'paid' && (!creator.data || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || !capacityNumber) ? 'Complete the paid challenge fields and use an active creator account.' : undefined,
   };
   const invalid = Object.values(errors).some(Boolean) || title.trim().length < 3;
 
@@ -236,10 +231,9 @@ export function NewCompetitionPage() {
         ...(targetDistanceMetres ? { targetDistanceMetres } : {}),
         ...(startIso ? { startsAt: startIso } : {}),
         ...(scoringIso ? { scoringClosesAt: scoringIso } : {}),
-        ...(entryIso || (mode === 'paid' && scoringIso) ? { entryClosesAt: entryIso ?? scoringIso } : {}),
         ...(capacityNumber ? { capacity: capacityNumber } : {}),
         ...(mode === 'free' && capMetres ? { distanceCapMetres: capMetres } : {}),
-        ...(mode === 'paid' ? { entryFeeKobo, guaranteedPrizeKobo, minimumEntrants: minimumEntrantsNumber } : {}),
+        ...(mode === 'paid' ? { entryFeeKobo, guaranteedPrizeKobo } : {}),
       }),
     async onSuccess(table) {
       await queryClient.invalidateQueries({ queryKey: keys.tables });
@@ -255,15 +249,15 @@ export function NewCompetitionPage() {
 
   const preview: CompetitionTable = {
     id: 'preview',
-    title: title.trim() || 'Your table name',
+    title: title.trim() || 'Your challenge name',
     code: '— — — —',
     type: mode,
     status: 'OPEN_FOR_ENTRY',
     entryFeeKobo: mode === 'paid' ? entryFeeKobo : 0,
     guaranteedPrizeKobo: mode === 'paid' && guaranteedPrizeKobo ? guaranteedPrizeKobo : null,
-    minimumEntrants: mode === 'paid' ? minimumEntrantsNumber : 1,
+    minimumEntrants: mode === 'paid' ? 2 : 1,
     startsAt: startIso ?? null,
-    entryClosesAt: entryIso ?? scoringIso ?? null,
+    entryClosesAt: scoringIso ?? null,
     scoringClosesAt: scoringIso ?? null,
     capacity: capacityNumber ?? null,
     distanceCapMetres: capMetres ?? null,
@@ -280,7 +274,7 @@ export function NewCompetitionPage() {
 
   return (
     <div className="animate-rise">
-      <PageHeader back={{ to: '/competitions', label: 'Tables' }} eyebrow="New challenge" title="Set up a challenge" description="Choose the activity and exact scoring method before you publish." />
+      <PageHeader back={{ to: '/competitions', label: 'Challenges' }} eyebrow="New challenge" title="Set up a challenge" description="Choose the activity and exact scoring method before you publish." />
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <form
           className="space-y-6"
@@ -300,7 +294,7 @@ export function NewCompetitionPage() {
               Paid challenges earn creators 5% and must be reviewed before opening.
             </Notice>
           )}
-          <Field label="Table name" error={errors.title}>
+          <Field label="Challenge name" error={errors.title}>
             {(props) => (
               <input
                 {...props}
@@ -384,7 +378,7 @@ export function NewCompetitionPage() {
                 />
               )}
             </Field>
-            <Field label="Scoring closes" error={errors.scoring} hint="Runs must finish before this.">
+            <Field label="Ends" error={errors.scoring} hint="Runners can join and log activities until this.">
               {(props) => (
                 <DateTimePicker
                   {...props}
@@ -398,12 +392,6 @@ export function NewCompetitionPage() {
               )}
             </Field>
           </div>
-
-          <Field label="Entry closes" optional error={errors.entry} hint="Leave empty to accept new runners until scoring closes.">
-            {(props) => (
-              <DateTimePicker {...props} value={entryClosesAt} onChange={setEntryClosesAt} placeholder="Open until scoring closes" clearable />
-            )}
-          </Field>
 
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Max runners" optional error={errors.capacity} hint="2 to 10,000. Empty means no limit.">
@@ -424,7 +412,6 @@ export function NewCompetitionPage() {
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field label="Entry fee · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} required />}</Field>
                 <Field label="Guaranteed prize · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={guaranteedPrize} onChange={(event) => setGuaranteedPrize(event.target.value)} required />}</Field>
-                <Field label="Minimum entrants">{(props) => <input {...props} className="field num" type="number" min="2" max={capacityNumber ?? 10000} value={minimumEntrants} onChange={(event) => setMinimumEntrants(event.target.value)} required />}</Field>
               </div>
               <p className="text-[12px] leading-relaxed text-ink-3">The draft stays pending until Jump confirms funding and rules. On settlement, 30% goes to Jump, 5% to the creator, and 65% to the winner.</p>
             </div>
@@ -493,9 +480,9 @@ export function CompetitionDetailPage() {
   if (table.error || !table.data) {
     return (
       <>
-        <PageHeader back={{ to: '/competitions', label: 'Tables' }} title="Table not found" />
+        <PageHeader back={{ to: '/competitions', label: 'Challenges' }} title="Challenge not found" />
         {isApiError(table.error, 404) ? (
-          <EmptyState title={`No table with code ${code.toUpperCase()}`}>Check the invite code and try again. Codes are 8 letters and numbers.</EmptyState>
+          <EmptyState title={`No challenge with code ${code.toUpperCase()}`}>Check the invite code and try again. Codes are 8 letters and numbers.</EmptyState>
         ) : (
           <ErrorNotice error={table.error} onRetry={() => void table.refetch()} />
         )}
@@ -509,10 +496,10 @@ export function CompetitionDetailPage() {
 
   return (
     <div className="animate-rise">
-      <PageHeader back={{ to: '/competitions', label: 'Tables' }} title={t.title} eyebrow={<span className="flex flex-wrap gap-2"><TypeTag table={t} /><PhaseTag table={t} now={now} /></span>} description={t.creator?.displayName ? `Hosted by ${t.creator.displayName}` : undefined} />
+      <PageHeader back={{ to: '/competitions', label: 'Challenges' }} title={t.title} eyebrow={<span className="flex flex-wrap gap-2"><TypeTag table={t} /><PhaseTag table={t} now={now} /></span>} description={t.creator?.displayName ? `Hosted by ${t.creator.displayName}` : undefined} />
 
       {search.created && (
-        <Notice tone="ok" className="mb-6" title="Table created">
+        <Notice tone="ok" className="mb-6" title="Challenge created">
           Share the invite code <span className="font-mono font-semibold text-ink">{t.code}</span> so others can join. Hit join yourself to get on
           the board.
         </Notice>
@@ -721,7 +708,7 @@ function EntryPanel({
         {!open ? (
           <Notice tone="neutral">Entry is closed for this table.</Notice>
         ) : full ? (
-          <Notice tone="neutral">This table is full.</Notice>
+          <Notice tone="neutral">This challenge is full.</Notice>
         ) : !user ? (
           <Link to="/login" search={{ redirect: `/competitions/${table.code}` }} className="btn-primary w-full">
             Log in to join
@@ -761,7 +748,7 @@ function EntryPanel({
         ) : (
           <>
             <button type="button" className="btn-primary w-full" onClick={() => join.mutate()} disabled={join.isPending}>
-              {join.isPending ? 'Joining…' : 'Join table'}
+              {join.isPending ? 'Joining…' : 'Join challenge'}
             </button>
             {conflict ? <Notice tone="neutral" className="mt-4">{conflict}</Notice> : <ErrorNotice error={join.error} className="mt-4" />}
           </>

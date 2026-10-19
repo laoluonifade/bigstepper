@@ -23,6 +23,54 @@ export function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Eases a number towards `target` (from 0 on first render, then from the previous value).
+ * Used for stats and the live run distance so changes read as motion rather than a jump.
+ */
+export function useCountUp(target: number, durationMs = 700) {
+  const [value, setValue] = useState(() => (prefersReducedMotion() ? target : 0));
+  const from = useRef(value);
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setValue(target);
+      return;
+    }
+    const start = performance.now();
+    const origin = from.current;
+    let frame = 0;
+    const tick = (time: number) => {
+      const t = Math.min(1, (time - start) / durationMs);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const next = origin + (target - origin) * eased;
+      from.current = next;
+      setValue(next);
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [durationMs, target]);
+  return value;
+}
+
+/** Renders a number that counts up to its value. */
+export function CountUp({ value, format = (n) => String(Math.round(n)) }: { value: number; format?: (n: number) => string }) {
+  return <>{format(useCountUp(value))}</>;
+}
+
+/** A status dot; when `live`, a ring pulses out of it (recording). */
+export function LiveDot({ live, className }: { live: boolean; className?: string }) {
+  return (
+    <span className={cx('relative inline-flex h-2.5 w-2.5 shrink-0', className)} aria-hidden="true">
+      {live && <span className="absolute inset-0 animate-ring rounded-full bg-current" />}
+      <span className={cx('relative h-full w-full rounded-full bg-current', !live && 'opacity-50')} />
+    </span>
+  );
+}
+
 export function useNow(intervalMs = 1000, enabled = true) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -114,7 +162,7 @@ export function Notice({
   return (
     <div
       role={tone === 'bad' ? 'alert' : 'status'}
-      className={cx('flex gap-3 rounded border-l-4 border-y border-r px-4 py-3', toneClasses[tone], className)}
+      className={cx('flex animate-rise gap-3 rounded border-l-4 border-y border-r px-4 py-3', toneClasses[tone], className)}
     >
       <span className={cx('mt-0.5 shrink-0', tone === 'ok' && 'text-ok', tone === 'warn' && 'text-warn', tone === 'bad' && 'text-bad')}>
         {toneIcon[tone]}
@@ -168,7 +216,12 @@ export function Loading({ label = 'Loading' }: { label?: string }) {
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cx('animate-pulse rounded bg-line/60', className)} aria-hidden="true" />;
+  return (
+    <div
+      className={cx('animate-shimmer rounded bg-[linear-gradient(90deg,theme(colors.line/50%)_0%,theme(colors.line)_50%,theme(colors.line/50%)_100%)] bg-[length:200%_100%]', className)}
+      aria-hidden="true"
+    />
+  );
 }
 
 export function EmptyState({
@@ -258,7 +311,12 @@ export function Meter({ value, max, tone = 'track', label }: { value: number; ma
       className="h-2 w-full overflow-hidden rounded-sm bg-ink/10"
     >
       <div
-        className={cx('h-full transition-[width] duration-500', tone === 'track' && 'bg-track', tone === 'ink' && 'bg-ink', tone === 'ok' && 'bg-ok')}
+        className={cx(
+          'h-full origin-left animate-grow-x transition-[width] duration-700 ease-out',
+          tone === 'track' && 'bg-track',
+          tone === 'ink' && 'bg-ink',
+          tone === 'ok' && 'bg-ok',
+        )}
         style={{ width: `${pct}%` }}
       />
     </div>

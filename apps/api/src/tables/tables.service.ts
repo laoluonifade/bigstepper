@@ -27,6 +27,20 @@ export class TablesService {
     });
   }
 
+  async mine(userId: string) {
+    const rows = await this.tables.query(
+      `SELECT t."id", t."code", t."title", t."type", t."status", t."scoringClosesAt",
+              (t."creatorId" = $1) AS "hosting", (r."id" IS NOT NULL) AS "joined"
+       FROM "competition_tables" t
+       LEFT JOIN "table_registrations" r ON r."tableId" = t."id" AND r."userId" = $1
+       WHERE t."creatorId" = $1 OR r."id" IS NOT NULL
+       ORDER BY COALESCE(r."joinedAt", t."createdAt") DESC
+       LIMIT 50`,
+      [userId],
+    );
+    return rows as Array<{ id: string; code: string; title: string; type: string; status: string; scoringClosesAt: string | null; hosting: boolean; joined: boolean }>;
+  }
+
   async create(creatorId: string, input: CreateTableDto) {
     const challengeType = input.challengeType ?? 'RUN';
     const scoringMethod = input.scoringMethod ?? (challengeType === 'WALK' || challengeType === 'STEP' ? 'MOST_STEPS' : challengeType === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
@@ -71,9 +85,9 @@ export class TablesService {
     ) as Array<{ id: string }>)[0];
     if (!creator) throw new ForbiddenException('An active creator account is required for paid challenges');
     const startsAt = new Date(input.startsAt);
-    const entryClosesAt = new Date(input.entryClosesAt);
+    const entryClosesAt = new Date(input.entryClosesAt ?? input.scoringClosesAt);
     const scoringClosesAt = new Date(input.scoringClosesAt);
-    if (input.minimumEntrants > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
+    if ((input.minimumEntrants ?? 2) > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
       throw new ConflictException('Challenge dates or entrant limits are invalid');
     }
     return this.tables.save(this.tables.create({
@@ -84,7 +98,7 @@ export class TablesService {
       status: 'PENDING_APPROVAL',
       entryFeeKobo: input.entryFeeKobo,
       guaranteedPrizeKobo: input.guaranteedPrizeKobo,
-      minimumEntrants: input.minimumEntrants,
+      minimumEntrants: (input.minimumEntrants ?? 2),
       capacity: input.capacity,
       startsAt,
       entryClosesAt,
@@ -106,19 +120,19 @@ export class TablesService {
           where: { id: tableId },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!table || table.type !== 'free') throw new NotFoundException('Free table not found');
+        if (!table || table.type !== 'free') throw new NotFoundException('Free challenge not found');
         if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) {
-          throw new ConflictException('This table is not open for entry');
+          throw new ConflictException('This challenge is not open for entry');
         }
         if (table.capacity) {
           const count = await manager.count(TableRegistration, { where: { tableId } });
-          if (count >= table.capacity) throw new ConflictException('This table is full');
+          if (count >= table.capacity) throw new ConflictException('This challenge is full');
         }
         return manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId }));
       });
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
-        throw new ConflictException('You already joined this table');
+        throw new ConflictException('You already joined this challenge');
       }
       throw error;
     }
@@ -142,7 +156,7 @@ export class TablesService {
       where: { code: code.toUpperCase() },
       relations: { creator: true },
     });
-    if (!table) throw new NotFoundException('Table not found');
+    if (!table) throw new NotFoundException('Challenge not found');
     return table;
   }
 

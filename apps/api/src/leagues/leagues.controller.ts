@@ -3,7 +3,9 @@ import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LeaguesService } from './leagues.service';
 
+/** Leagues are a runner's personal ranking: signed-in only. */
 @Controller('leagues')
+@UseGuards(JwtAuthGuard)
 export class LeaguesController {
   constructor(private readonly leaguesService: LeaguesService) {}
 
@@ -13,7 +15,6 @@ export class LeaguesController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
   mine(@CurrentUser() user: AuthenticatedUser) {
     return this.leaguesService.mine(user.id);
   }

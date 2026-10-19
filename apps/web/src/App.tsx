@@ -5,6 +5,7 @@ import { ActivitiesPage, ActivityDetailPage } from './pages/Activities';
 import { CompetitionDetailPage, CompetitionsPage, NewCompetitionPage } from './pages/Competitions';
 import { DashboardPage } from './pages/Dashboard';
 import { LandingPage } from './pages/Landing';
+import { AdminEligibilityPage } from './pages/AdminEligibility';
 import { PaymentReturnPage } from './pages/Payments';
 import { RunPage, RunSessionPage } from './pages/Run';
 import { ClubDetailPage, ClubsPage, LeagueDetailPage, LeaguesPage } from './pages/Social';
@@ -50,8 +51,8 @@ const activity = createRoute({
   validateSearch: (search: Record<string, unknown>): { fresh?: boolean } => search.fresh === true || search.fresh === 'true' ? { fresh: true } : {},
   component: protectedPage(ActivityDetailPage),
 });
-const leagues = createRoute({ getParentRoute: () => root, path: '/leagues', component: LeaguesPage });
-const league = createRoute({ getParentRoute: () => root, path: '/leagues/$id', component: LeagueDetailPage });
+const leagues = createRoute({ getParentRoute: () => root, path: '/leagues', component: protectedPage(LeaguesPage) });
+const league = createRoute({ getParentRoute: () => root, path: '/leagues/$id', component: protectedPage(LeagueDetailPage) });
 const clubs = createRoute({ getParentRoute: () => root, path: '/clubs', component: protectedPage(ClubsPage) });
 const club = createRoute({ getParentRoute: () => root, path: '/clubs/$id', component: protectedPage(ClubDetailPage) });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(RewardsPage) });
@@ -62,6 +63,7 @@ const profile = createRoute({ getParentRoute: () => root, path: '/settings/profi
 const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: protectedPage(PaymentReturnPage) });
 const adminReviews = createRoute({ getParentRoute: () => root, path: '/admin/reviews', component: protectedPage(AdminPlaceholder) });
 const adminCompetitions = createRoute({ getParentRoute: () => root, path: '/admin/competitions', component: protectedPage(AdminPlaceholder) });
+const adminEligibility = createRoute({ getParentRoute: () => root, path: '/admin/eligibility', component: protectedPage(AdminEligibilityPage) });
 const adminPayouts = createRoute({ getParentRoute: () => root, path: '/admin/payouts', component: protectedPage(AdminPlaceholder) });
 
 function redirectSearch(search: Record<string, unknown>): { redirect?: string } {
@@ -77,7 +79,7 @@ const routeTree = root.addChildren([
   authLayout.addChildren([login, register, verify, forgot, reset]),
   dashboard, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
-  adminReviews, adminCompetitions, adminPayouts,
+  adminReviews, adminCompetitions, adminPayouts, adminEligibility,
 ]);
 
 export const router = createRouter({ routeTree });

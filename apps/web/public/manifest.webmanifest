@@ -1,0 +1,22 @@
+{
+  "name": "Jump — walk, run, compete",
+  "short_name": "Jump",
+  "description": "Record walks and runs with GPS, join verified challenges and climb the standings.",
+  "id": "/",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2EFE8",
+  "theme_color": "#121212",
+  "categories": ["sports", "health", "fitness"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Start a run", "short_name": "Run", "url": "/run", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Challenges", "short_name": "Tables", "url": "/competitions", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

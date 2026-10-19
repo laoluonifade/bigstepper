@@ -3,20 +3,7 @@ import { Link, useParams, useSearch } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { ActivityRow, shownMetres } from '../components/ActivityRow';
 import { CheckIcon, RunIcon } from '../components/icons';
-import {
-  cx,
-  EmptyState,
-  ErrorNotice,
-  Field,
-  Loading,
-  Meter,
-  Notice,
-  PageHeader,
-  Segmented,
-  Skeleton,
-  Stat,
-  VerificationTag,
-} from '../components/ui';
+import { CountUp, cx, EmptyState, ErrorNotice, Field, Loading, Meter, Notice, PageHeader, Segmented, Skeleton, Stat, VerificationTag } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { describeReason } from '../lib/copy';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
@@ -162,14 +149,14 @@ export function ActivityDetailPage() {
       />
 
       {search.fresh && verified && (
-        <div className="mb-6 flex items-center gap-4 rounded-md border-2 border-ink bg-volt px-5 py-4 shadow-hard">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-ink text-volt">
+        <div className="mb-6 flex animate-pop items-center gap-4 rounded-md border-2 border-ink bg-volt px-5 py-4 shadow-hard">
+          <span className="flex h-10 w-10 shrink-0 animate-pop items-center justify-center rounded-sm bg-ink text-volt [animation-delay:250ms]">
             <CheckIcon size={22} />
           </span>
           <div>
             <p className="wide text-[16px] font-black uppercase">Verified. It counts.</p>
             <p className="text-[13px]">
-              {formatDistance(a.validatedDistanceMetres, unit)} credited to any tables you joined before this run started.
+              {formatDistance(a.validatedDistanceMetres, unit)} credited to your league and to any challenges you joined before this run started.
             </p>
           </div>
         </div>
@@ -181,7 +168,7 @@ export function ActivityDetailPage() {
             <p className="eyebrow">{verified ? 'Verified distance' : pending ? 'Recorded distance · provisional' : 'Recorded distance'}</p>
             <p className="mt-2 flex items-baseline gap-2">
               <span className={cx('score text-[80px] sm:text-[96px]', a.verificationStatus === 'REJECTED' && 'text-ink-3 line-through decoration-4')}>
-                {formatDistanceNumber(metres, unit)}
+                <CountUp value={metres} format={(m) => formatDistanceNumber(m, unit)} />
               </span>
               <span className="text-[16px] font-semibold text-ink-2">{unit}</span>
             </p>
@@ -221,7 +208,7 @@ export function ActivityDetailPage() {
       {a.verificationReasons.length > 0 && (
         <section className="mt-8">
           <h2 className="eyebrow mb-3 border-b-2 border-ink pb-2">{verified ? 'Notes from verification' : 'Why this run was flagged'}</h2>
-          <ul className="space-y-3">
+          <ul className="stagger space-y-3">
             {a.verificationReasons.map((code) => {
               const reason = describeReason(code);
               return (
@@ -254,7 +241,7 @@ function ReviewRequest({ activityId }: { activityId: string }) {
   if (request.isSuccess || alreadyPending) {
     return (
       <Notice tone="ok" className="mt-8" title={alreadyPending ? 'A review is already pending' : 'Review requested'}>
-        A person on our team will look at this run. If it’s approved, it’ll be credited to your tables automatically.
+        A person on our team will look at this run. If it’s approved, it’ll be credited to your challenges automatically.
       </Notice>
     );
   }

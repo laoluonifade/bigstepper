@@ -40,7 +40,7 @@ export function MilestoneBadge({ milestone, unit, compact }: { milestone: Milest
 
 export function MilestoneStrip({ milestones }: { milestones: Milestone[] }) {
   return (
-    <ul className="flex flex-wrap gap-2" aria-label="Milestones">
+    <ul className="stagger flex flex-wrap gap-2" aria-label="Milestones">
       {milestones.map((milestone) => (
         <li
           key={milestone.id}

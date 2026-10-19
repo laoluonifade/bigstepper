@@ -1,11 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, RawBodyRequest, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Query, RawBodyRequest, Req, UseGuards } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PAYMENT_EVENTS_QUEUE } from './payments.constants';
 import { PaymentsService } from './payments.service';
-import { CreateRecipientDto } from './payout.dto';
+import { CreateRecipientDto, ResolveAccountDto } from './payout.dto';
 import { Throttle } from '@nestjs/throttler';
 
 @Controller()
@@ -39,6 +39,19 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   rewards(@CurrentUser() user: AuthenticatedUser) {
     return this.paymentsService.rewards(user.id);
+  }
+
+  @Get('banks')
+  @UseGuards(JwtAuthGuard)
+  banks() {
+    return this.paymentsService.banks();
+  }
+
+  @Get('banks/resolve')
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  resolveAccount(@Query() query: ResolveAccountDto) {
+    return this.paymentsService.resolveAccount(query.accountNumber, query.bankCode);
   }
 
   @Post('me/payout-recipient')

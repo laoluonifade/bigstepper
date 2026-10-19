@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRightIcon, BellIcon, CheckIcon, LogoutIcon, ShieldIcon } from '../components/icons';
+import { ArrowRightIcon, BellIcon, CheckIcon, LogoutIcon, ShieldIcon, StepMark } from '../components/icons';
+import { BankPicker } from '../components/BankPicker';
 import {
   Avatar,
   CopyButton,
   cx,
+  CountUp,
   EmptyState,
   ErrorNotice,
   Field,
@@ -29,6 +31,7 @@ import type { CheckoutResponse, CreatorProfile, Notification, PayoutRecipient, P
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
+  { to: '/leagues', label: 'League' },
   { to: '/wallet', label: 'Wallet' },
   { to: '/rewards', label: 'Rewards' },
   { to: '/creator', label: 'Creator' },
@@ -294,32 +297,15 @@ export function ProfileSettingsPage() {
   );
 }
 
-const BANKS: Array<[string, string]> = [
-  ['044', 'Access Bank'],
-  ['023', 'Citibank Nigeria'],
-  ['050', 'Ecobank Nigeria'],
-  ['070', 'Fidelity Bank'],
-  ['011', 'First Bank of Nigeria'],
-  ['214', 'First City Monument Bank'],
-  ['058', 'Guaranty Trust Bank'],
-  ['030', 'Heritage Bank'],
-  ['301', 'Jaiz Bank'],
-  ['082', 'Keystone Bank'],
-  ['076', 'Polaris Bank'],
-  ['101', 'Providus Bank'],
-  ['221', 'Stanbic IBTC Bank'],
-  ['068', 'Standard Chartered Bank'],
-  ['232', 'Sterling Bank'],
-  ['032', 'Union Bank of Nigeria'],
-  ['033', 'United Bank for Africa'],
-  ['215', 'Unity Bank'],
-  ['035', 'Wema Bank'],
-  ['057', 'Zenith Bank'],
-];
+/** Live list from Paystack via the API, so payouts never offer a closed bank. */
+function useBanks() {
+  return useQuery({ queryKey: ['banks'], queryFn: () => api<Array<{ code: string; name: string }>>('/banks'), staleTime: 12 * 60 * 60_000 });
+}
 
 type SavedRecipient = Pick<PayoutRecipient, 'accountName' | 'bankCode' | 'accountLast4'> & { availableForPayoutAt?: string };
 
 export function RewardsPage() {
+  const banks = useBanks();
   const user = useUser();
   const queryClient = useQueryClient();
   const rewards = useQuery({ queryKey: keys.rewards, queryFn: () => api<PrizeAward[]>('/me/rewards') });
@@ -338,16 +324,16 @@ export function RewardsPage() {
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Rewards" description="Prizes from paid competitions you’ve won. Free tables are for glory." />
+      <PageHeader eyebrow="You" title="Rewards" description="Prizes from paid competitions you’ve won. Free challenges are for glory." />
 
       <div className="panel-strong mb-8 grid grid-cols-2 divide-x divide-line">
         <div className="p-5">
           <p className="eyebrow">Total won</p>
-          <p className="score mt-2 text-[36px] sm:text-[44px]">{rewards.isLoading ? '–' : formatMoney(total)}</p>
+          <p className="score mt-2 text-[36px] sm:text-[44px]">{rewards.isLoading ? '–' : <CountUp value={total} format={(k) => formatMoney(Math.round(k))} />}</p>
         </div>
         <div className="p-5">
           <p className="eyebrow">Paid out</p>
-          <p className="score mt-2 text-[36px] sm:text-[44px]">{rewards.isLoading ? '–' : formatMoney(paid)}</p>
+          <p className="score mt-2 text-[36px] sm:text-[44px]">{rewards.isLoading ? '–' : <CountUp value={paid} format={(k) => formatMoney(Math.round(k))} />}</p>
         </div>
       </div>
 
@@ -375,7 +361,7 @@ export function RewardsPage() {
               Win a paid competition and your prize shows up here.
             </EmptyState>
           ) : (
-            <ul className="space-y-3">
+            <ul className="stagger space-y-3">
               {list.map((award) => {
                 const claimable = award.status === 'PENDING_APPROVAL';
                 return (
@@ -418,7 +404,7 @@ export function RewardsPage() {
             <div className="rounded-md border border-line bg-card p-4">
               <p className="text-[15px] font-bold">{recipient.accountName}</p>
               <p className="num mt-1 text-[13px] text-ink-2">
-                {BANKS.find(([code]) => code === recipient.bankCode)?.[1] ?? `Bank ${recipient.bankCode}`} · •••• {recipient.accountLast4}
+                {banks.data?.find((bank) => bank.code === recipient.bankCode)?.name ?? `Bank ${recipient.bankCode}`} · •••• {recipient.accountLast4}
               </p>
               {recipient.availableForPayoutAt && new Date(recipient.availableForPayoutAt) > new Date() && (
                 <p className="mt-3 text-[12px] font-semibold text-warn">Security hold until {formatDate(recipient.availableForPayoutAt, { year: 'numeric' })}</p>
@@ -446,26 +432,35 @@ export function RewardsPage() {
 }
 
 function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecipient) => void; onCancel?: () => void }) {
-  const [accountName, setAccountName] = useState('');
+  const banks = useBanks();
   const [accountNumber, setAccountNumber] = useState('');
   const [bankCode, setBankCode] = useState('');
-  const [otherCode, setOtherCode] = useState('');
   const [password, setPassword] = useState('');
-  const code = bankCode === 'other' ? otherCode.trim() : bankCode;
+  const complete = /^\d{10}$/.test(accountNumber) && bankCode.length > 0;
+  // The bank tells us the account holder's name; the runner confirms it rather than typing it.
+  const resolved = useQuery({
+    queryKey: ['resolve-account', bankCode, accountNumber],
+    queryFn: () =>
+      api<{ accountName: string; bankName: string }>(
+        `/banks/resolve?accountNumber=${encodeURIComponent(accountNumber)}&bankCode=${encodeURIComponent(bankCode)}`,
+      ),
+    enabled: complete,
+    retry: false,
+    staleTime: Infinity,
+  });
   const save = useMutation({
-    mutationFn: () => post<PayoutRecipient>('/me/payout-recipient', { accountName: accountName.trim(), accountNumber, bankCode: code, password }),
+    mutationFn: () => post<PayoutRecipient>('/me/payout-recipient', { accountNumber, bankCode, password }),
     onSuccess(saved) {
       setAccountNumber('');
       setPassword('');
       onSaved(saved);
     },
     onError() {
-      setAccountNumber('');
       setPassword('');
     },
   });
-  const numberError = accountNumber.length > 0 && !/^\d{10}$/.test(accountNumber) ? 'NUBAN account numbers are 10 digits.' : undefined;
-  const valid = accountName.trim().length >= 2 && /^\d{10}$/.test(accountNumber) && code.length >= 2 && password.length >= 8;
+  const numberError = accountNumber.length > 0 && accountNumber.length < 10 ? `${10 - accountNumber.length} more digits — account numbers are 10 digits.` : undefined;
+  const valid = complete && Boolean(resolved.data) && password.length >= 8;
 
   return (
     <form
@@ -475,29 +470,10 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
         if (valid) save.mutate();
       }}
     >
-      <Field label="Account name">
-        {(props) => <input {...props} className="field" autoComplete="name" maxLength={100} value={accountName} onChange={(event) => setAccountName(event.target.value)} required />}
-      </Field>
       <Field label="Bank">
-        {(props) => (
-          <select {...props} className="field" value={bankCode} onChange={(event) => setBankCode(event.target.value)} required>
-            <option value="" disabled>
-              Choose your bank
-            </option>
-            {BANKS.map(([value, name]) => (
-              <option key={value} value={value}>
-                {name}
-              </option>
-            ))}
-            <option value="other">Other — enter bank code</option>
-          </select>
-        )}
+        {(props) => <BankPicker {...props} banks={banks.data ?? []} loading={banks.isLoading} value={bankCode} onChange={setBankCode} />}
       </Field>
-      {bankCode === 'other' && (
-        <Field label="Bank code" hint="Your bank’s Paystack/CBN code.">
-          {(props) => <input {...props} className="field font-mono" maxLength={20} value={otherCode} onChange={(event) => setOtherCode(event.target.value)} required />}
-        </Field>
-      )}
+      {banks.isError && <ErrorNotice error={banks.error} onRetry={() => void banks.refetch()} />}
       <Field label="Account number" error={numberError}>
         {(props) => (
           <input
@@ -512,6 +488,29 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
           />
         )}
       </Field>
+
+      {complete && (
+        <div aria-live="polite">
+          {resolved.isLoading ? (
+            <div className="flex items-center gap-3 rounded-md border border-line bg-card px-4 py-3 text-[14px] text-ink-2">
+              <StepMark size={18} motion="loop" /> Checking account…
+            </div>
+          ) : resolved.data ? (
+            <div className="flex animate-pop items-center gap-3 rounded-md border-[1.5px] border-ok/60 bg-ok-wash px-4 py-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-ok text-white">
+                <CheckIcon size={16} />
+              </span>
+              <div className="min-w-0">
+                <p className="eyebrow text-ok">Account name</p>
+                <p className="truncate text-[15px] font-bold">{resolved.data.accountName}</p>
+              </div>
+            </div>
+          ) : (
+            <ErrorNotice error={resolved.error} />
+          )}
+        </div>
+      )}
+
       <Field label="Current password" hint="Required to protect bank-detail changes.">
         {(props) => <input {...props} className="field" type="password" autoComplete="current-password" minLength={8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required />}
       </Field>
@@ -525,7 +524,7 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
         ))}
       <div className="flex gap-2">
         <button className="btn-secondary" disabled={!valid || save.isPending}>
-          {save.isPending ? 'Checking account…' : 'Save account'}
+          {save.isPending ? 'Saving…' : resolved.data ? 'Save this account' : 'Save account'}
         </button>
         {onCancel && (
           <button type="button" className="btn-quiet" onClick={onCancel}>
@@ -572,7 +571,7 @@ export function WalletPage() {
           ) : (transactions.data ?? []).length === 0 ? (
             <EmptyState mark="₦0" title="No wallet activity">Fund your wallet to see transactions here.</EmptyState>
           ) : (
-            <ul className="divide-y divide-line border-y border-line">
+            <ul className="stagger divide-y divide-line border-y border-line">
               {(transactions.data ?? []).map((item) => (
                 <li key={item.id} className="flex items-center gap-4 px-2 py-4">
                   <div className="min-w-0 flex-1">
@@ -592,7 +591,7 @@ export function WalletPage() {
           <SectionTitle>Balance</SectionTitle>
           <div className="panel-strong p-5">
             <p className="eyebrow">Available for entries</p>
-            <p className="score mt-2 text-[48px]">{wallet.isLoading ? '–' : formatMoney(wallet.data?.balanceKobo ?? 0)}</p>
+            <p className="score mt-2 text-[48px]">{wallet.isLoading ? '–' : <CountUp value={Number(wallet.data?.balanceKobo ?? 0)} format={(k) => formatMoney(Math.round(k))} />}</p>
             <form
               className="mt-6 space-y-4 border-t border-line pt-5"
               onSubmit={(event) => {
@@ -691,7 +690,7 @@ export function CreatorPage() {
                 Earnings appear after one of your paid challenges settles.
               </EmptyState>
             ) : (
-              <ul className="space-y-3">
+              <ul className="stagger space-y-3">
                 {(earnings.data ?? []).map((earning) => (
                   <li key={earning.id} className="flex flex-wrap items-center gap-4 rounded-md border-[1.5px] border-ink bg-card p-4">
                     <div className="min-w-0 flex-1">
@@ -759,7 +758,7 @@ export function NotificationsPage() {
           Updates about your runs and competitions will land here.
         </EmptyState>
       ) : (
-        <ul className="divide-y divide-line border-y border-line">
+        <ul className="stagger divide-y divide-line border-y border-line">
           {list.map((item) => (
             <li key={item.id}>
               <button

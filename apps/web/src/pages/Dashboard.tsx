@@ -1,15 +1,18 @@
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
+import { InstallPrompt } from '../components/InstallPrompt';
 import { RunIcon, ArrowRightIcon } from '../components/icons';
 import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/league';
 import { RankBadge } from '../components/Leaderboard';
 import { MilestoneBadge } from '../components/Milestones';
 import { WeekChart } from '../components/WeekChart';
-import { cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Skeleton, useNow } from '../components/ui';
+import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Skeleton, useNow } from '../components/ui';
+import { api } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { distanceValue, formatDistance, formatDistanceNumber, ordinal, toMetres } from '../lib/format';
-import { SavedTable, setFlag, storageKeys, useStored } from '../lib/local';
+import { setFlag, storageKeys, useStored } from '../lib/local';
 import { computeMilestones, computeStreaks, nextMilestone, summariseWeek } from '../lib/progress';
 import { useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useStandings, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
@@ -56,19 +59,20 @@ export function DashboardPage() {
         </Link>
       </header>
 
+      <InstallPrompt />
       {showVerify && !user.emailVerified && <VerifyPrompt userId={user.id} email={user.email} />}
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} className="mb-6" />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="stagger grid gap-4 lg:grid-cols-3">
         <WeekPanel userId={user.id} unit={unit} week={week} loading={activities.isLoading} />
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
           <section className="panel-strong p-5" aria-labelledby="streak-title">
             <p id="streak-title" className="eyebrow">
               Streak
             </p>
             <p className="mt-2 flex items-baseline gap-2">
-              <span className="score text-[56px]">{activities.isLoading ? '–' : streak.current}</span>
+              <span className="score text-[56px]">{activities.isLoading ? '–' : <CountUp value={streak.current} />}</span>
               <span className="text-[14px] font-semibold text-ink-2">{streak.current === 1 ? 'day' : 'days'}</span>
             </p>
             <StreakDots activities={list} now={now} />
@@ -148,7 +152,7 @@ export function DashboardPage() {
 
       <section className="mt-10">
         <SectionTitle aside={`${earned} of ${milestones.length} earned`}>Milestones</SectionTitle>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {milestones.map((milestone) => (
             <MilestoneBadge key={milestone.id} milestone={milestone} unit={unit} />
           ))}
@@ -183,7 +187,7 @@ function VerifyPrompt({ userId, email }: { userId: string; email: string }) {
         </div>
       }
     >
-      We sent a link to {email}. You’ll need a verified email to enter paid competitions — free tables work without it.
+      We sent a link to {email}. You’ll need a verified email to enter paid competitions — free challenges work without it.
       {resend.error && <span className="mt-1 block text-bad">{resend.error.message}</span>}
     </Notice>
   );
@@ -202,10 +206,12 @@ function WeekPanel({
   week: ReturnType<typeof summariseWeek>;
   loading: boolean;
 }) {
-  const [goal, setGoal] = useStored<number>(storageKeys.weeklyGoal(userId), 20000);
-  const [editing, setEditing] = useState(false);
-  const reached = week.verifiedMetres >= goal;
-  const remaining = Math.max(0, goal - week.verifiedMetres);
+  // No goal until the runner picks one — never show an invented target.
+  const [goal, setGoal] = useStored<number | null>(storageKeys.weeklyGoal(userId), null);
+  const [editingGoal, setEditing] = useState(false);
+  const editing = editingGoal || goal === null;
+  const reached = goal !== null && week.verifiedMetres >= goal;
+  const remaining = goal === null ? 0 : Math.max(0, goal - week.verifiedMetres);
 
   return (
     <section className="panel-strong p-5 lg:col-span-2" aria-labelledby="week-title">
@@ -215,9 +221,9 @@ function WeekPanel({
             This week · verified
           </p>
           <p className="mt-2 flex items-baseline gap-2">
-            <span className="score text-[64px] sm:text-[76px]">{loading ? '–' : formatDistanceNumber(week.verifiedMetres, unit)}</span>
+            <span className="score text-[64px] sm:text-[76px]">{loading ? '–' : <CountUp value={week.verifiedMetres} format={(m) => formatDistanceNumber(m, unit)} />}</span>
             <span className="text-[15px] font-semibold text-ink-2">
-              / {formatDistanceNumber(goal, unit).replace(/\.0+$/, '')} {unit}
+              {goal === null ? unit : `/ ${formatDistanceNumber(goal, unit).replace(/\.0+$/, '')} ${unit}`}
             </span>
           </p>
         </div>
@@ -225,17 +231,20 @@ function WeekPanel({
           <p className="num text-[13px] font-semibold">
             {week.runs} {week.runs === 1 ? 'run' : 'runs'}
           </p>
-          <button type="button" className="mt-1 text-[12px] font-semibold text-ink-2 underline underline-offset-4 hover:text-ink" onClick={() => setEditing(!editing)}>
-            {editing ? 'Done' : 'Change goal'}
-          </button>
+          {goal !== null && (
+            <button type="button" className="mt-1 text-[12px] font-semibold text-ink-2 underline underline-offset-4 hover:text-ink" onClick={() => setEditing(!editingGoal)}>
+              {editingGoal ? 'Done' : 'Change goal'}
+            </button>
+          )}
         </div>
       </div>
 
+      {goal === null && <p className="mt-3 text-[13px] font-semibold">Set a weekly goal</p>}
       {editing && (
-        <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Weekly goal">
+        <div className="stagger mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Weekly goal">
           {GOAL_OPTIONS[unit].map((option) => {
             const metres = toMetres(option, unit);
-            const active = Math.abs(distanceValue(goal, unit) - option) < 0.01;
+            const active = goal !== null && Math.abs(distanceValue(goal, unit) - option) < 0.01;
             return (
               <button
                 key={option}
@@ -256,9 +265,9 @@ function WeekPanel({
       )}
 
       <div className="mt-4">
-        <Meter value={week.verifiedMetres} max={goal} label="Weekly goal progress" tone={reached ? 'ok' : 'track'} />
+        {goal !== null && <Meter value={week.verifiedMetres} max={goal} label="Weekly goal progress" tone={reached ? 'ok' : 'track'} />}
         <p className="mt-2 text-[13px] text-ink-2">
-          {reached ? (
+          {goal === null ? null : reached ? (
             <span className="font-semibold text-ok">Weekly goal smashed. Anything more is a bonus.</span>
           ) : (
             <>
@@ -307,32 +316,44 @@ function StreakDots({ activities, now }: { activities: ReturnType<typeof useActi
   );
 }
 
+interface MyChallenge {
+  id: string;
+  code: string;
+  title: string;
+  hosting: boolean;
+  joined: boolean;
+}
+
 function YourTables({ userId, unit }: { userId: string; unit: Unit }) {
-  const [tables] = useStored<SavedTable[]>(storageKeys.tables(userId), []);
+  // From the API, so challenges you created or joined on any device show up.
+  const mine = useQuery({ queryKey: ['tables', 'mine'], queryFn: () => api<MyChallenge[]>('/tables/mine') });
+  const tables = mine.data ?? [];
   return (
     <section>
       <SectionTitle
         aside={
           <Link to="/competitions" className="link">
-            Find tables
+            Find challenges
           </Link>
         }
       >
-        Your tables
+        Your challenges
       </SectionTitle>
-      {tables.length === 0 ? (
+      {mine.isLoading ? (
+        <Skeleton className="h-20" />
+      ) : tables.length === 0 ? (
         <EmptyState
-          title="No tables yet"
+          title="No challenges yet"
           action={
             <Link to="/competitions" className="btn-secondary">
-              Browse tables
+              Browse challenges
             </Link>
           }
         >
-          Join a table and every verified run moves you up the standings.
+          Join a challenge and every verified run moves you up the standings.
         </EmptyState>
       ) : (
-        <ul className="space-y-2">
+        <ul className="stagger space-y-2">
           {tables.slice(0, 4).map((table) => (
             <TableStandingRow key={table.id} table={table} userId={userId} unit={unit} />
           ))}
@@ -342,7 +363,7 @@ function YourTables({ userId, unit }: { userId: string; unit: Unit }) {
   );
 }
 
-function TableStandingRow({ table, userId, unit }: { table: SavedTable; userId: string; unit: Unit }) {
+function TableStandingRow({ table, userId, unit }: { table: MyChallenge; userId: string; unit: Unit }) {
   const standings = useStandings(table.id);
   const rows = standings.data ?? [];
   const me = rows.find((row) => row.userId === userId);
@@ -356,13 +377,16 @@ function TableStandingRow({ table, userId, unit }: { table: SavedTable; userId: 
       >
         {me ? <RankBadge rank={me.rank} size="lg" /> : <span className="score flex h-12 w-12 items-center justify-center text-[24px] text-ink-3">–</span>}
         <div className="min-w-0 flex-1">
-          <p className="wide truncate text-[14px] font-extrabold uppercase">{table.title}</p>
+          <p className="wide truncate text-[14px] font-extrabold uppercase">
+            {table.title}
+            {table.hosting && <span className="tag ml-2 h-5 border-ink bg-volt px-1.5 align-middle text-[9.5px]">Hosting</span>}
+          </p>
           <p className="num text-[12px] text-ink-2">
             {standings.isLoading
               ? 'Loading standings…'
               : me
                 ? `${ordinal(me.rank)} of ${rows.length} · ${formatDistance(me.creditedDistanceMetres, unit)}`
-                : `${rows.length} runners`}
+                : `${rows.length} ${rows.length === 1 ? 'runner' : 'runners'}${table.hosting && !table.joined ? ' · you’re hosting' : ''}`}
           </p>
           {above && me && (
             <p className="text-[12px] font-semibold text-ink">
