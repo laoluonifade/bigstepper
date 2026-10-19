@@ -29,5 +29,6 @@ ssh "$HOST" "chown -R deploy:deploy $APP_DIR && sudo -u deploy bash -c '
 ' && systemctl restart startajump-api && sleep 4 && systemctl is-active startajump-api"
 
 echo "→ Health check"
-curl -fsS -o /dev/null -w "api: %{http_code}\n" https://api.startajump.com/v1/auth/session -H 'Authorization: Bearer x' || true
+# 401 is healthy here: the API is up and rejecting an anonymous session check.
+curl -sS -o /dev/null -w "api: %{http_code} (401 = up)\n" https://api.startajump.com/v1/auth/session || true
 echo "Done."
