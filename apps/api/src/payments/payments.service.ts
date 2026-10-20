@@ -197,7 +197,7 @@ export class PaymentsService {
       `INSERT INTO "payout_requests" ("awardId","recipientId")
        SELECT a."id",r."id" FROM "prize_awards" a JOIN "payout_recipients" r ON r."userId"=a."winnerUserId"
        WHERE a."id"=$1 AND a."winnerUserId"=$2 AND a."status"='PENDING_APPROVAL' AND r."availableForPayoutAt" <= now()
-       ON CONFLICT ("awardId") DO NOTHING RETURNING *`, [awardId, userId],
+       ON CONFLICT ("awardId") WHERE "status" <> 'REJECTED' DO NOTHING RETURNING *`, [awardId, userId],
     ) as Array<Record<string, unknown>>;
     if (!rows[0]) throw new ConflictException('Award is unavailable or a payout was already requested');
     return rows[0];
@@ -213,7 +213,7 @@ export class PaymentsService {
          JOIN "creator_profiles" c ON c."id"=e."creatorProfileId"
          JOIN "payout_recipients" r ON r."userId"=c."userId"
          WHERE e."id"=$1 AND c."userId"=$2 AND e."status"='EARNED' AND r."availableForPayoutAt" <= now()
-         ON CONFLICT ("creatorEarningId") DO NOTHING RETURNING *`,
+         ON CONFLICT ("creatorEarningId") WHERE "status" <> 'REJECTED' DO NOTHING RETURNING *`,
         [earningId, userId],
       ) as Array<Record<string, unknown>>;
       if (!rows[0]) throw new ConflictException('Creator earning is unavailable, has no payout recipient, or was already requested');
@@ -222,42 +222,70 @@ export class PaymentsService {
     });
   }
 
-  async approvePayout(actorUserId: string, payoutId: string) {
-    this.assertPayoutsEnabled();
-    const rows = await this.dataSource.query(
-      `UPDATE "payout_requests" p SET "status"='APPROVED',"approvedByUserId"=$1,"updatedAt"=now()
-       FROM "payout_recipients" r JOIN "user_eligibility" ue ON ue."userId"=r."userId"
-       WHERE p."id"=$2 AND p."recipientId"=r."id" AND p."status"='PENDING_APPROVAL'
-         AND ue."adultVerified"=true AND ue."paidCompetitionEligible"=true AND r."availableForPayoutAt" <= now()
-       RETURNING p.*`,
-      [actorUserId, payoutId],
-    ) as Array<Record<string, unknown>>;
-    if (!rows[0]) throw new ConflictException('Payout is not pending approval');
-    return rows[0];
+  /** Payout requests for the admin review screen, oldest pending first. */
+  listPayouts(view: 'pending' | 'history') {
+    return this.dataSource.query(
+      `SELECT p."id", p."status", p."createdAt", p."reviewedAt", p."rejectionReason",
+              CASE WHEN p."awardId" IS NOT NULL THEN 'PRIZE' ELSE 'CREATOR' END "kind",
+              COALESCE(a."amountKobo", e."amountKobo")::integer "amountKobo",
+              COALESCE(at."title", et."title") "challengeTitle", COALESCE(at."code", et."code") "challengeCode",
+              u."id" "userId", u."email", pr."displayName", pr."username", pr."avatarUrl",
+              r."accountName", r."bankCode", r."accountLast4", r."availableForPayoutAt",
+              COALESCE(ue."paidCompetitionEligible" = false, false) "blocked",
+              reviewer."displayName" "reviewedBy",
+              (SELECT pa."status" FROM "payout_attempts" pa WHERE pa."payoutRequestId" = p."id" ORDER BY pa."createdAt" DESC LIMIT 1) "transferStatus"
+       FROM "payout_requests" p
+       JOIN "payout_recipients" r ON r."id" = p."recipientId"
+       JOIN "users" u ON u."id" = r."userId"
+       LEFT JOIN "profiles" pr ON pr."userId" = u."id"
+       LEFT JOIN "user_eligibility" ue ON ue."userId" = u."id"
+       LEFT JOIN "prize_awards" a ON a."id" = p."awardId"
+       LEFT JOIN "competition_tables" at ON at."id" = a."tableId"
+       LEFT JOIN "creator_earnings" e ON e."id" = p."creatorEarningId"
+       LEFT JOIN "competition_tables" et ON et."id" = e."tableId"
+       LEFT JOIN "profiles" reviewer ON reviewer."userId" = p."approvedByUserId"
+       WHERE ($1 = 'pending') = (p."status" = 'PENDING_APPROVAL')
+       ORDER BY CASE WHEN $1 = 'pending' THEN p."createdAt" END ASC, p."updatedAt" DESC
+       LIMIT 200`,
+      [view],
+    );
   }
 
-  async executePayout(actorUserId: string, payoutId: string) {
+  /**
+   * Approving a payout sends it: one admin reviews the request and the Paystack transfer starts
+   * straight away. Admins can't approve a payout to themselves.
+   */
+  async approvePayout(actorUserId: string, payoutId: string) {
     this.assertPayoutsEnabled();
     const claimed = await this.dataSource.transaction(async (manager) => {
       const rows = await manager.query(
-        `SELECT p."id",p."status",p."approvedByUserId",COALESCE(a."amountKobo",e."amountKobo") "amountKobo",
-                COALESCE(a."currency",e."currency") currency,r."providerRecipientCode",r."availableForPayoutAt"
+        `SELECT p."id", p."status", r."userId", COALESCE(a."amountKobo", e."amountKobo") "amountKobo",
+                r."providerRecipientCode", r."availableForPayoutAt",
+                COALESCE(ue."paidCompetitionEligible" = false, false) "blocked"
          FROM "payout_requests" p
-         LEFT JOIN "prize_awards" a ON a."id"=p."awardId"
-         LEFT JOIN "creator_earnings" e ON e."id"=p."creatorEarningId"
-         JOIN "payout_recipients" r ON r."id"=p."recipientId"
-         JOIN "user_eligibility" ue ON ue."userId"=r."userId"
-         WHERE p."id"=$1 AND ue."adultVerified"=true AND ue."paidCompetitionEligible"=true FOR UPDATE OF p`,
+         LEFT JOIN "prize_awards" a ON a."id" = p."awardId"
+         LEFT JOIN "creator_earnings" e ON e."id" = p."creatorEarningId"
+         JOIN "payout_recipients" r ON r."id" = p."recipientId"
+         LEFT JOIN "user_eligibility" ue ON ue."userId" = r."userId"
+         WHERE p."id" = $1 FOR UPDATE OF p`,
         [payoutId],
-      ) as Array<{ id: string; status: string; approvedByUserId: string; amountKobo: string; currency: string; providerRecipientCode: string; availableForPayoutAt: Date }>;
+      ) as Array<{ id: string; status: string; userId: string; amountKobo: string; providerRecipientCode: string; availableForPayoutAt: Date; blocked: boolean }>;
       const payout = rows[0];
-      if (!payout || payout.status !== 'APPROVED') throw new ConflictException('Payout is not approved');
-      if (payout.approvedByUserId === actorUserId) throw new ForbiddenException('A second administrator must execute the payout');
-      if (new Date(payout.availableForPayoutAt) > new Date()) throw new ConflictException('The payout recipient is in a security hold period');
+      if (!payout) throw new NotFoundException('Payout request not found');
+      if (payout.status !== 'PENDING_APPROVAL') throw new ConflictException('This payout was already reviewed');
+      if (payout.userId === actorUserId) throw new ForbiddenException('You can’t approve a payout to yourself');
+      if (payout.blocked) throw new ConflictException('This account is frozen after a payment dispute, so it can’t be paid out');
+      if (new Date(payout.availableForPayoutAt) > new Date()) throw new ConflictException('Their bank details changed recently, so this payout is on a 24-hour security hold');
       const reference = `payout-${randomUUID()}`;
+      await manager.query(
+        `UPDATE "payout_requests" SET "status"='PROCESSING',"approvedByUserId"=$1,"reviewedAt"=now(),"updatedAt"=now() WHERE "id"=$2`,
+        [actorUserId, payoutId],
+      );
       await manager.query(`INSERT INTO "payout_attempts" ("payoutRequestId","reference") VALUES ($1,$2)`, [payoutId, reference]);
-      await manager.query(`UPDATE "payout_requests" SET "status"='PROCESSING',"updatedAt"=now() WHERE "id"=$1`, [payoutId]);
-      await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId") VALUES ($1,'PAYOUT_EXECUTION_CLAIMED','payout_request',$2)`, [actorUserId, payoutId]);
+      await manager.query(
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAYOUT_APPROVED','payout_request',$2,$3)`,
+        [actorUserId, payoutId, JSON.stringify({ amountKobo: Number(payout.amountKobo), reference })],
+      );
       return { ...payout, reference };
     });
     try {
@@ -267,11 +295,41 @@ export class PaymentsService {
         `UPDATE "payout_attempts" SET "providerTransferCode"=$1,"status"=$2,"providerPayload"=$3,"updatedAt"=now() WHERE "reference"=$4`,
         [transfer.transfer_code, transfer.status.toUpperCase(), JSON.stringify(transfer), claimed.reference],
       );
+      await this.dataSource.query(
+        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAYOUT_SENT','Your payout is on its way',$2)`,
+        [claimed.userId, `₦${(Number(claimed.amountKobo) / 100).toLocaleString('en-NG')} is being sent to your bank. It usually arrives within minutes.`],
+      );
       return { reference: claimed.reference, status: transfer.status };
     } catch (error) {
+      // The request stays PROCESSING; reconciliation checks Paystack and settles it either way.
       await this.dataSource.query(`UPDATE "payout_attempts" SET "status"='RECONCILIATION_REQUIRED',"updatedAt"=now() WHERE "reference"=$1`, [claimed.reference]);
       throw error;
     }
+  }
+
+  /** Turns a request down with a reason the runner sees; they can fix the issue and request again. */
+  async rejectPayout(actorUserId: string, payoutId: string, reason: string) {
+    return this.dataSource.transaction(async (manager) => {
+      // TypeORM returns [rows, affected] for UPDATE ... RETURNING on Postgres.
+      const [rows] = await manager.query(
+        `UPDATE "payout_requests" p SET "status"='REJECTED',"rejectionReason"=$3,"approvedByUserId"=$1,"reviewedAt"=now(),"updatedAt"=now()
+         FROM "payout_recipients" r
+         WHERE p."id"=$2 AND p."status"='PENDING_APPROVAL' AND r."id"=p."recipientId"
+         RETURNING p."id", p."creatorEarningId", r."userId"`,
+        [actorUserId, payoutId, reason],
+      ) as [Array<{ id: string; creatorEarningId: string | null; userId: string }>, number];
+      if (!rows[0]) throw new ConflictException('This payout was already reviewed');
+      if (rows[0].creatorEarningId) await manager.query(`UPDATE "creator_earnings" SET "status"='EARNED' WHERE "id"=$1`, [rows[0].creatorEarningId]);
+      await manager.query(
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAYOUT_REJECTED','payout_request',$2,$3)`,
+        [actorUserId, payoutId, JSON.stringify({ reason })],
+      );
+      await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAYOUT_REJECTED','Payout not approved',$2)`,
+        [rows[0].userId, `${reason} You can request it again once that’s sorted.`],
+      );
+      return { id: rows[0].id, status: 'REJECTED' };
+    });
   }
 
   async reconcile() {
@@ -370,13 +428,10 @@ export class PaymentsService {
       if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED'].includes(locked.status)) return false;
       const table = await manager.findOneOrFail(CompetitionTable, { where: { id: challengeId }, lock: { mode: 'pessimistic_write' } });
       const count = await manager.count(TableRegistration, { where: { tableId: table.id } });
-      const eligible = await manager.query(
-        `SELECT 1 FROM "user_eligibility" WHERE "userId"=$1 AND "adultVerified"=true AND "paidCompetitionEligible"=true`,
-        [locked.userId],
-      ) as unknown[];
+      const blocked = await this.isPaidBlocked(locked.userId, manager);
       const alreadyRegistered = await manager.exists(TableRegistration, { where: { tableId: table.id, userId: locked.userId } });
       if (table.status !== 'OPEN_FOR_ENTRY' || (table.capacity !== null && count >= table.capacity) ||
-          table.creatorId === locked.userId || !eligible.length || alreadyRegistered) {
+          table.creatorId === locked.userId || blocked || alreadyRegistered) {
         locked.status = 'REFUND_PENDING';
         await manager.save(locked);
         await manager.query(`INSERT INTO "refund_requests" ("paymentIntentId","amountKobo","currency","reason") VALUES ($1,$2,$3,'Competition entry unavailable') ON CONFLICT DO NOTHING`, [locked.id, locked.amountKobo, locked.currency]);
@@ -502,11 +557,16 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * Runners don't need approval for paid challenges or payouts. The only block is the freeze put on an
+   * account after a payment dispute (paidCompetitionEligible=false), which support lifts.
+   */
   private async assertPaidEligibility(userId: string, manager: import('typeorm').EntityManager = this.dataSource.manager) {
-    const rows = await manager.query(
-      `SELECT 1 FROM "user_eligibility" WHERE "userId"=$1 AND "adultVerified"=true AND "paidCompetitionEligible"=true`,
-      [userId],
-    ) as unknown[];
-    if (!rows.length) throw new ForbiddenException('This account is not eligible for paid competitions');
+    if (await this.isPaidBlocked(userId, manager)) throw new ForbiddenException('Paid features are paused on this account after a payment dispute. Contact support.');
+  }
+
+  private async isPaidBlocked(userId: string, manager: import('typeorm').EntityManager = this.dataSource.manager) {
+    const rows = await manager.query(`SELECT 1 FROM "user_eligibility" WHERE "userId"=$1 AND "paidCompetitionEligible"=false`, [userId]) as unknown[];
+    return rows.length > 0;
   }
 }

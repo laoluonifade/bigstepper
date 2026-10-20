@@ -23,14 +23,52 @@ export interface Profile {
   preferredUnit: Unit;
   activityVisibility: Visibility;
   countryCode: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  /** null until the runner picks one. */
+  weeklyGoalMetres: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PublicStats {
+  totalMetres: number;
+  activities: number;
+  runs: number;
+  walks: number;
+  runMetres: number;
+  walkMetres: number;
+  longestMetres: number;
+  movingSeconds: number;
+  monthMetres: number;
+}
+
+export interface Connection {
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  followedByMe: boolean;
+  isMe: boolean;
 }
 
 export interface PublicProfile {
   username: string;
   displayName: string;
   countryCode: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  memberSince: string;
+  /** False unless the runner made their activity public; stats and recent are absent then. */
+  runsVisible: boolean;
+  /** The viewer is this runner. */
+  isMe: boolean;
+  followers: number;
+  following: number;
+  followedByMe: boolean;
+  followsMe: boolean;
+  stats?: PublicStats;
+  recent?: Array<{ activityType: 'walk' | 'run'; startedAt: string; metres: number; movingSeconds: number }>;
 }
 
 export type RunStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'FLAGGED' | 'REJECTED';
@@ -109,6 +147,8 @@ export interface StandingRow {
   rank: number;
   userId: string;
   displayName: string;
+  username?: string | null;
+  avatarUrl?: string | null;
   creditedDistanceMetres: number;
   creditedSteps: number;
   completionTimeSeconds: number | null;
@@ -203,7 +243,8 @@ export interface CreatorProfile {
   displayName: string;
   socialUrl: string | null;
   bio: string | null;
-  status: 'ACTIVE' | 'SUSPENDED';
+  /** PENDING until a Jump admin approves; only ACTIVE creators can host paid challenges. */
+  status: 'PENDING' | 'ACTIVE' | 'SUSPENDED';
   commissionBps: number;
   createdAt: string;
   updatedAt: string;
@@ -236,6 +277,7 @@ export interface ClubMember {
   joinedAt: string;
   username: string | null;
   displayName: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface LeagueSeason {
@@ -264,6 +306,7 @@ export interface LeagueMembership {
   /** Present on standings rows. */
   displayName?: string | null;
   username?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface LeagueRules {

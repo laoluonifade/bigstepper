@@ -10,25 +10,16 @@ export class CreatorsService {
 
   async signup(userId: string, input: CreatorSignupDto) {
     try {
-      return await this.creators.manager.transaction(async (manager) => {
-        const profile = await manager.save(manager.create(CreatorProfile, {
-          userId,
-          creatorType: input.creatorType,
-          displayName: input.displayName.trim(),
-          socialUrl: input.socialUrl?.trim() || null,
-          bio: input.bio?.trim() || null,
-          status: 'ACTIVE',
-          commissionBps: 500,
-        }));
-        // Active creators are eligible for paid challenges and payouts automatically. DO NOTHING keeps an
-        // existing record as it is — including one revoked after a payment dispute.
-        await manager.query(
-          `INSERT INTO "user_eligibility" ("userId","adultVerified","paidCompetitionEligible","countryCode")
-           VALUES ($1, true, true, 'NG') ON CONFLICT ("userId") DO NOTHING`,
-          [userId],
-        );
-        return profile;
-      });
+      // Pending until an admin approves it; only active creators can host paid challenges.
+      return await this.creators.save(this.creators.create({
+        userId,
+        creatorType: input.creatorType,
+        displayName: input.displayName.trim(),
+        socialUrl: input.socialUrl?.trim() || null,
+        bio: input.bio?.trim() || null,
+        status: 'PENDING',
+        commissionBps: 500,
+      }));
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
         throw new ConflictException('Creator account already exists');

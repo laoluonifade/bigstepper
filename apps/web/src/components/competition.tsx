@@ -85,7 +85,8 @@ function cardTheme(table: CompetitionTable) {
 /** The one big thing about a challenge, from its real settings. */
 function headline(table: CompetitionTable, unit: Unit): { big: string; small: string } {
   if (table.type === 'paid' && table.guaranteedPrizeKobo) {
-    return { big: formatMoney(table.guaranteedPrizeKobo).replace(/\.00$/, ''), small: 'guaranteed prize' };
+    const { winnerKobo } = prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps);
+    return { big: formatMoney(winnerKobo).replace(/\.00$/, ''), small: 'to the winner' };
   }
   if ((table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') && table.targetDistanceMetres) {
     const value = unit === 'km' ? table.targetDistanceMetres / 1000 : table.targetDistanceMetres / 1609.344;
@@ -238,4 +239,14 @@ export function LockedNotice({ children }: { children: ReactNode }) {
       {children}
     </p>
   );
+}
+
+/**
+ * How a paid challenge's prize pot is paid out at settlement (mirrors the API's calculatePrizeBreakdown):
+ * Jump's fee comes off the pot, the creator's commission is part of that fee, the winner gets the rest.
+ */
+export function prizeSplit(potKobo: number, platformFeeBps: number, creatorCommissionBps: number) {
+  const feeKobo = Math.floor((potKobo * platformFeeBps) / 10_000);
+  const creatorKobo = Math.floor((potKobo * creatorCommissionBps) / 10_000);
+  return { winnerKobo: potKobo - feeKobo, creatorKobo, jumpKobo: feeKobo - creatorKobo };
 }

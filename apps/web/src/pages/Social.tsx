@@ -44,7 +44,7 @@ export function LeaguesPage() {
       <PageHeader
         eyebrow="You"
         title="My league"
-        description="Your monthly ranking. Verified walk and run distance places you in your division — only signed-in runners can see it."
+        description="Your monthly ranking. Verified walk and run distance places you in your division. Only signed-in runners can see it."
       />
       <LastSeasonResult />
       <ErrorNotice error={leagues.error} onRetry={() => void leagues.refetch()} />
@@ -168,7 +168,7 @@ function LastSeasonResult() {
       className="mb-6"
       title={`${last.season!.name}: ${OUTCOME_LABEL[last.item.outcome]}`}
     >
-      You finished {last.item.finalRank ? ordinal(last.item.finalRank) : '—'} in {division?.name ?? 'your division'} with{' '}
+      You finished {last.item.finalRank ? ordinal(last.item.finalRank) : '-'} in {division?.name ?? 'your division'} with{' '}
       {formatDistance(last.item.creditedDistanceMetres, unit)}.{' '}
       <Link to="/leagues/$id" params={{ id: last.item.seasonId }} className="link text-ink">
         Final standings
@@ -196,7 +196,9 @@ export function LeagueDetailPage() {
         .map((row, index) => ({
           rank: index + 1,
           userId: row.userId,
-          name: row.userId === user?.id ? user.displayName ?? 'You' : row.displayName ?? (row.username ? `@${row.username}` : 'Runner'),
+          name: row.displayName ?? (row.username ? `@${row.username}` : row.userId === user?.id ? 'You' : 'Runner'),
+          avatarUrl: row.avatarUrl,
+          username: row.username,
           metres: row.creditedDistanceMetres,
         })),
     [divisionId, standings.data, user],
@@ -422,10 +424,10 @@ export function ClubDetailPage() {
             <ul className="stagger divide-y divide-line border-b border-line">
               {members.data?.map((member) => {
                 const isMe = member.userId === user?.id;
-                const name = isMe ? user?.displayName ?? 'You' : member.displayName ?? (member.username ? `@${member.username}` : 'Runner');
+                const name = member.displayName ?? (member.username ? `@${member.username}` : isMe ? 'You' : 'Runner');
                 return (
                   <li key={member.id} className={cx('flex items-center gap-3 px-2 py-3', isMe && 'bg-volt')}>
-                    <Avatar name={name} highlight={isMe} size={34} />
+                    <Avatar name={name} src={member.avatarUrl} highlight={isMe} size={34} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-semibold">
                         {name}

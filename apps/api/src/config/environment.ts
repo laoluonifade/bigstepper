@@ -59,7 +59,7 @@ export function validateEnvironment(env: Environment) {
   const paystackSecretKey = env.PAYSTACK_SECRET_KEY?.trim() || '';
   const paymentsMode = paymentMode(env.PAYMENTS_MODE);
   if (paymentsMode === 'test') {
-    if (nodeEnv === 'production') throw new Error('PAYMENTS_MODE=test cannot run in production — use live or off');
+    if (nodeEnv === 'production') throw new Error('PAYMENTS_MODE=test cannot run in production. Use live or off');
     if (!paystackSecretKey.startsWith('sk_test_')) throw new Error('PAYMENTS_MODE=test requires a Paystack test key (sk_test_…)');
   }
   if (paymentsMode === 'live') {
@@ -89,5 +89,8 @@ export function validateEnvironment(env: Environment) {
     ZEPTOMAIL_API_URL: env.ZEPTOMAIL_API_URL?.trim() || 'https://api.zeptomail.com/v1.1/email',
     ZEPTOMAIL_FROM_ADDRESS: env.ZEPTOMAIL_FROM_ADDRESS?.trim() || '',
     ZEPTOMAIL_FROM_NAME: env.ZEPTOMAIL_FROM_NAME?.trim() || 'Jump',
+    CLOUDINARY_CLOUD_NAME: env.CLOUDINARY_CLOUD_NAME?.trim() || '',
+    CLOUDINARY_API_KEY: env.CLOUDINARY_API_KEY?.trim() || '',
+    CLOUDINARY_API_SECRET: env.CLOUDINARY_API_SECRET?.trim() || '',
   };
 }

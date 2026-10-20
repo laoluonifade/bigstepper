@@ -3,7 +3,7 @@
  * Only VERIFIED distance counts toward milestones and weekly totals, mirroring
  * how the API credits competitions.
  */
-import type { Activity } from './types';
+import type { Activity, PublicStats } from './types';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -11,9 +11,18 @@ export function isVerified(activity: Activity) {
   return activity.verificationStatus === 'VERIFIED';
 }
 
-/** Distance that counts: validated metres once verified, nothing otherwise. */
+/**
+ * Distance that counts once verified: GPS, or steps × stride when larger (indoors) — the same
+ * figure leagues credit and activity rows show. Nothing before verification.
+ */
 export function creditedMetres(activity: Activity) {
-  return isVerified(activity) ? activity.validatedDistanceMetres : 0;
+  return isVerified(activity) ? Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) : 0;
+}
+
+export type ActivityKind = 'all' | 'run' | 'walk';
+
+export function ofKind(activities: Activity[], kind: ActivityKind) {
+  return kind === 'all' ? activities : activities.filter((activity) => activity.activityType === kind);
 }
 
 function startOfDay(date: Date) {
@@ -72,7 +81,7 @@ export function summariseWeek(activities: Activity[], now = new Date()): WeekSum
     const day = byKey.get(dayKey(started));
     if (!day) continue;
     if (activity.verificationStatus !== 'REJECTED') runs += 1;
-    if (isVerified(activity)) day.metres += activity.validatedDistanceMetres;
+    if (isVerified(activity)) day.metres += creditedMetres(activity);
     else if (activity.verificationStatus === 'PENDING_VERIFICATION') pendingMetres += activity.recordedDistanceMetres;
   }
   return {
@@ -128,8 +137,8 @@ export interface Milestone {
 
 export function computeMilestones(activities: Activity[], now = new Date()): Milestone[] {
   const verified = activities.filter(isVerified);
-  const total = verified.reduce((sum, activity) => sum + activity.validatedDistanceMetres, 0);
-  const longest = verified.reduce((max, activity) => Math.max(max, activity.validatedDistanceMetres), 0);
+  const total = verified.reduce((sum, activity) => sum + creditedMetres(activity), 0);
+  const longest = verified.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0);
   const { best } = computeStreaks(activities, now);
 
   const make = (
@@ -168,8 +177,28 @@ export function lifetimeStats(activities: Activity[]) {
   const verified = activities.filter(isVerified);
   return {
     verifiedRuns: verified.length,
-    totalMetres: verified.reduce((sum, activity) => sum + activity.validatedDistanceMetres, 0),
-    longestMetres: verified.reduce((max, activity) => Math.max(max, activity.validatedDistanceMetres), 0),
+    totalMetres: verified.reduce((sum, activity) => sum + creditedMetres(activity), 0),
+    longestMetres: verified.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0),
     movingSeconds: verified.reduce((sum, activity) => sum + activity.movingSeconds, 0),
+  };
+}
+
+/** The same totals a public profile shows, from the runner's own history. */
+export function profileStats(activities: Activity[], now = new Date()): PublicStats {
+  const verified = activities.filter(isVerified);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const sum = (list: Activity[]) => list.reduce((total, activity) => total + creditedMetres(activity), 0);
+  const runs = verified.filter((activity) => activity.activityType === 'run');
+  const walks = verified.filter((activity) => activity.activityType === 'walk');
+  return {
+    totalMetres: sum(verified),
+    activities: verified.length,
+    runs: runs.length,
+    walks: walks.length,
+    runMetres: sum(runs),
+    walkMetres: sum(walks),
+    longestMetres: verified.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0),
+    movingSeconds: verified.reduce((total, activity) => total + activity.movingSeconds, 0),
+    monthMetres: sum(verified.filter((activity) => new Date(activity.startedAt) >= monthStart)),
   };
 }

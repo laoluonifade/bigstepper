@@ -323,17 +323,43 @@ export function Meter({ value, max, tone = 'track', label }: { value: number; ma
   );
 }
 
-export function Avatar({ name, highlight, size = 36 }: { name: string | null | undefined; highlight?: boolean; size?: number }) {
+export function Avatar({
+  name,
+  src,
+  highlight,
+  size = 36,
+  className,
+}: {
+  name: string | null | undefined;
+  /** Profile photo; initials show while it loads or if it fails. */
+  src?: string | null;
+  highlight?: boolean;
+  size?: number;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const showPhoto = Boolean(src) && failed !== src;
   return (
     <span
       className={cx(
-        'wide inline-flex shrink-0 items-center justify-center rounded-sm font-extrabold',
+        'wide relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-sm font-extrabold',
         highlight ? 'bg-ink text-volt' : 'bg-ink/[0.07] text-ink',
+        className,
       )}
       style={{ width: size, height: size, fontSize: size * 0.36 }}
       aria-hidden="true"
     >
       {initials(name)}
+      {showPhoto && (
+        <img
+          src={src!}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={() => setFailed(src!)}
+        />
+      )}
     </span>
   );
 }

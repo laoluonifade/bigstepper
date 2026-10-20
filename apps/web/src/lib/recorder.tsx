@@ -175,7 +175,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       // Same rule the server verifies with (trailing-only, as the future isn't known yet).
       fixesRef.current.push({ latitude, longitude, accuracy: acc, recordedAt: new Date(position.timestamp) });
       setLocalMetres(measureTrack(fixesRef.current, { trailing: true }).distanceMetres);
-      if (acc > MAX_USABLE_ACCURACY_METRES) setGpsError(`Weak GPS (±${Math.round(acc)} m). Head outdoors with open sky — weak fixes don’t count.`);
+      if (acc > MAX_USABLE_ACCURACY_METRES) setGpsError(`Weak GPS (±${Math.round(acc)} m). Head outdoors with open sky. Weak fixes don’t count.`);
 
       lastFixRef.current = { latitude, longitude, accuracy: Math.round(acc * 10) / 10 };
       await appendSample(runId, {

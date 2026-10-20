@@ -102,7 +102,7 @@ export class LeagueSeasonsService {
         result.outcome === 'PROMOTED'
           ? [`Promoted to ${to.name}`, `${place}. ${next.name} starts now in ${to.name}.`]
           : result.outcome === 'RELEGATED'
-            ? [`Moved down to ${to.name}`, `${place}. ${next.name} starts now in ${to.name} — log verified distance to climb back.`]
+            ? [`Moved down to ${to.name}`, `${place}. ${next.name} starts now in ${to.name}. Log verified distance to climb back.`]
             : [`You stay in ${to.name}`, `${place}. ${next.name} starts now.`];
       await manager.query(`INSERT INTO "notifications" ("userId", "type", "title", "body") VALUES ($1, 'LEAGUE_RESULT', $2, $3)`, [
         member.userId,
@@ -139,7 +139,7 @@ export class LeagueSeasonsService {
       [season.id],
     );
     await refreshSeasonDistances(manager, season.id);
-    this.logger.log(`No active league season — opened "${season.name}"`);
+    this.logger.log(`No active league season, opened "${season.name}"`);
   }
 }
 

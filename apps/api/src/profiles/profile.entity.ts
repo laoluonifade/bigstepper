@@ -28,6 +28,16 @@ export class Profile {
   @Column({ length: 2, default: 'NG' })
   countryCode: string;
 
+  /** Cloudinary delivery URL (already face-cropped to a square). */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  avatarUrl: string | null;
+
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  bio: string | null;
+
+  @Column({ type: 'integer', nullable: true })
+  weeklyGoalMetres: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

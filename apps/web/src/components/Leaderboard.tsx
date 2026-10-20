@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import { ReactNode } from 'react';
 import { formatDistance, formatDistanceNumber, ordinal } from '../lib/format';
 import type { Unit } from '../lib/types';
@@ -7,6 +8,9 @@ export interface LeaderboardRow {
   rank: number;
   userId: string;
   name: string;
+  avatarUrl?: string | null;
+  /** Links the name to their profile when known. */
+  username?: string | null;
   metres: number;
   score?: number | null;
 }
@@ -103,17 +107,23 @@ function Row({ row, above, isMe, unit, formatScore }: { row: LeaderboardRow; abo
       </td>
       <td className="min-w-0 py-2.5 pr-2 align-middle">
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar name={row.name} highlight={isMe} size={30} />
+          <Avatar name={row.name} src={row.avatarUrl} highlight={isMe} size={30} />
           <div className="min-w-0">
             <p className="truncate text-[15px] font-semibold">
-              {row.name}
+              {row.username ? (
+                <Link to="/runners/$username" params={{ username: row.username }} className="hover:underline hover:underline-offset-4">
+                  {row.name}
+                </Link>
+              ) : (
+                row.name
+              )}
               {isMe && <span className="tag ml-2 h-5 border-ink bg-ink px-1.5 text-[9.5px] text-volt">You</span>}
             </p>
             {gap !== null && (
               <p className="text-[12px] text-ink/70">
                 {gap > 0
                   ? `${formatDistance(gap, unit)} to take ${ordinal(above!.rank)}`
-                  : `Level with ${ordinal(above!.rank)} — next verified run decides it`}
+                  : `Level with ${ordinal(above!.rank)} . Next verified run decides it`}
               </p>
             )}
             {isMe && row.rank === 1 && <p className="text-[12px] text-ink/70">You’re leading. Hold it.</p>}

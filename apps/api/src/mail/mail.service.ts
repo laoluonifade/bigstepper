@@ -20,7 +20,7 @@ export class MailService implements OnModuleInit {
 
   onModuleInit() {
     if (!this.enabled && this.config.get('NODE_ENV') === 'production') {
-      this.logger.error('ZEPTOMAIL_API_KEY / ZEPTOMAIL_FROM_ADDRESS are not set — verification and reset emails will not be sent');
+      this.logger.error('ZEPTOMAIL_API_KEY / ZEPTOMAIL_FROM_ADDRESS are not set, so verification and reset emails will not be sent');
     }
   }
 

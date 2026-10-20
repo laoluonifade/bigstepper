@@ -5,7 +5,8 @@ import { ActivitiesPage, ActivityDetailPage } from './pages/Activities';
 import { CompetitionDetailPage, CompetitionsPage, NewCompetitionPage } from './pages/Competitions';
 import { DashboardPage } from './pages/Dashboard';
 import { LandingPage } from './pages/Landing';
-import { AdminEligibilityPage } from './pages/AdminEligibility';
+import { AdminCreatorsPage } from './pages/AdminCreators';
+import { AdminPayoutsPage } from './pages/AdminPayouts';
 import { PaymentReturnPage } from './pages/Payments';
 import { RunPage, RunSessionPage } from './pages/Run';
 import { ClubDetailPage, ClubsPage, LeagueDetailPage, LeaguesPage } from './pages/Social';
@@ -18,10 +19,6 @@ function protectedPage(Component: ComponentType) {
   };
 }
 
-function AdminPlaceholder() {
-  return <div className="panel p-6"><p className="eyebrow">Admin</p><h1 className="display mt-2 text-[32px]">Use the API console</h1><p className="mt-3 text-ink-2">This admin screen has not been designed yet.</p></div>;
-}
-
 const root = createRootRoute({ component: AppShell });
 const home = createRoute({ getParentRoute: () => root, path: '/', component: LandingPage });
 const competitions = createRoute({ getParentRoute: () => root, path: '/competitions', component: CompetitionsPage });
@@ -31,7 +28,13 @@ const competition = createRoute({
   validateSearch: (search: Record<string, unknown>): { created?: boolean } => search.created === true || search.created === 'true' ? { created: true } : {},
   component: CompetitionDetailPage,
 });
-const runner = createRoute({ getParentRoute: () => root, path: '/runners/$username', component: RunnerPage });
+const runner = createRoute({
+  getParentRoute: () => root,
+  path: '/runners/$username',
+  validateSearch: (search: Record<string, unknown>): { tab?: 'followers' | 'following' } =>
+    search.tab === 'followers' || search.tab === 'following' ? { tab: search.tab } : {},
+  component: RunnerPage,
+});
 
 const authLayout = createRoute({ getParentRoute: () => root, id: 'auth', component: AuthLayout });
 const login = createRoute({ getParentRoute: () => authLayout, path: '/login', validateSearch: redirectSearch, component: LoginPage });
@@ -61,10 +64,8 @@ const creator = createRoute({ getParentRoute: () => root, path: '/creator', comp
 const notifications = createRoute({ getParentRoute: () => root, path: '/notifications', component: protectedPage(NotificationsPage) });
 const profile = createRoute({ getParentRoute: () => root, path: '/settings/profile', component: protectedPage(ProfileSettingsPage) });
 const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: protectedPage(PaymentReturnPage) });
-const adminReviews = createRoute({ getParentRoute: () => root, path: '/admin/reviews', component: protectedPage(AdminPlaceholder) });
-const adminCompetitions = createRoute({ getParentRoute: () => root, path: '/admin/competitions', component: protectedPage(AdminPlaceholder) });
-const adminEligibility = createRoute({ getParentRoute: () => root, path: '/admin/eligibility', component: protectedPage(AdminEligibilityPage) });
-const adminPayouts = createRoute({ getParentRoute: () => root, path: '/admin/payouts', component: protectedPage(AdminPlaceholder) });
+const adminCreators = createRoute({ getParentRoute: () => root, path: '/admin/creators', component: protectedPage(AdminCreatorsPage) });
+const adminPayouts = createRoute({ getParentRoute: () => root, path: '/admin/payouts', component: protectedPage(AdminPayoutsPage) });
 
 function redirectSearch(search: Record<string, unknown>): { redirect?: string } {
   return typeof search.redirect === 'string' ? { redirect: search.redirect } : {};
@@ -79,7 +80,7 @@ const routeTree = root.addChildren([
   authLayout.addChildren([login, register, verify, forgot, reset]),
   dashboard, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
-  adminReviews, adminCompetitions, adminPayouts, adminEligibility,
+  adminPayouts, adminCreators,
 ]);
 
 export const router = createRouter({ routeTree });

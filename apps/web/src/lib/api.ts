@@ -55,6 +55,7 @@ interface RequestOptions {
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken();
+  const form = options.body instanceof FormData ? options.body : null;
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
@@ -62,10 +63,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       signal: options.signal,
       headers: {
         Accept: 'application/json',
-        ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: form ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;

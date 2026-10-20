@@ -3,10 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Profile } from './profile.entity';
 import { ProfilesController } from './profiles.controller';
 import { ProfilesService } from './profiles.service';
+import { CloudinaryService } from './cloudinary.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Profile])],
   controllers: [ProfilesController],
-  providers: [ProfilesService],
+  providers: [ProfilesService, CloudinaryService],
 })
 export class ProfilesModule {}

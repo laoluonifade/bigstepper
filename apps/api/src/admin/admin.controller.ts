@@ -7,8 +7,8 @@ import { ResolveReviewDto } from './resolve-review.dto';
 import { SettleTableDto } from './settle-table.dto';
 import { ApprovePaidTableDto, CreatePaidTableDto } from './paid-table.dto';
 import { AdminOnlyGuard } from './admin-only.guard';
-import { UpdateUserEligibilityDto } from './user-eligibility.dto';
-import { ConfirmAdminActionDto } from './confirm-admin-action.dto';
+import { ReviewCreatorDto } from './review-creator.dto';
+import { ConfirmAdminActionDto, RejectPayoutDto } from './confirm-admin-action.dto';
 import { Throttle } from '@nestjs/throttler';
 
 @Controller('admin')
@@ -50,9 +50,10 @@ export class AdminController {
     return this.adminService.approvePaidTable(user.id, id, body);
   }
 
+  /** Approves and sends: the Paystack transfer starts as soon as this succeeds. */
   @Post('payouts/:id/approve')
   @UseGuards(AdminOnlyGuard)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   approvePayout(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -61,15 +62,21 @@ export class AdminController {
     return this.adminService.approvePayout(user.id, id, body.password);
   }
 
-  @Post('payouts/:id/execute')
+  @Get('payouts')
   @UseGuards(AdminOnlyGuard)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  executePayout(
+  payouts(@Query('view') view?: string) {
+    return this.adminService.payouts(view === 'history' ? 'history' : 'pending');
+  }
+
+  @Post('payouts/:id/reject')
+  @UseGuards(AdminOnlyGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  rejectPayout(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: ConfirmAdminActionDto,
+    @Body() body: RejectPayoutDto,
   ) {
-    return this.adminService.executePayout(user.id, id, body.password);
+    return this.adminService.rejectPayout(user.id, id, body.reason);
   }
 
   @Post('payments/reconciliation')
@@ -79,17 +86,19 @@ export class AdminController {
     return this.adminService.reconcilePayments(user.id, body.password);
   }
 
-  @Get('users')
-  users(@Query('search') search?: string) {
-    return this.adminService.users(search);
+  @Get('creators')
+  @UseGuards(AdminOnlyGuard)
+  creators(@Query('view') view?: string) {
+    return this.adminService.creators(view === 'active' || view === 'suspended' ? view : 'pending');
   }
 
-  @Patch('users/:id/eligibility')
-  updateEligibility(
+  @Patch('creators/:id')
+  @UseGuards(AdminOnlyGuard)
+  reviewCreator(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: UpdateUserEligibilityDto,
+    @Body() body: ReviewCreatorDto,
   ) {
-    return this.adminService.updateEligibility(user.id, id, body);
+    return this.adminService.reviewCreator(user.id, id, body.status);
   }
 }

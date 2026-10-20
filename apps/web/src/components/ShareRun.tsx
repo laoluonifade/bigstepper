@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { api } from '../lib/api';
 import { activityName, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
 import type { Activity, Unit } from '../lib/types';
-import { CloseIcon, ShareIcon } from './icons';
+import { CloseIcon, JUMP_LOGO, ShareIcon } from './icons';
 import { cx, Segmented } from './ui';
 
 type Format = 'story' | 'square';
@@ -49,7 +49,7 @@ function fitRoute(route: Array<[number, number]>, box: { x: number; y: number; w
   return flat.map(([x, y]) => [offX + (x - minX) * scale, offY + (y - minY) * scale] as const);
 }
 
-/** The Jump "Leap" mark (same artwork as StepMark), drawn on a 100-unit grid scaled to `size`. */
+/** The app icon (wordmark on an ink tile, same artwork as StepMark), drawn on a 100-unit grid scaled to `size`. */
 function drawMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
   const u = size / 100;
   ctx.save();
@@ -62,21 +62,25 @@ function drawMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   ctx.strokeStyle = 'rgba(242,239,232,0.25)';
   ctx.lineWidth = 2 / u;
   ctx.stroke();
-  ctx.fillStyle = 'rgba(242,239,232,0.35)';
-  ctx.beginPath();
-  ctx.roundRect(14, 80, 26, 6, 3);
-  ctx.fill();
-  ctx.strokeStyle = TRACK;
-  ctx.lineWidth = 13;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(24, 78);
-  ctx.bezierCurveTo(30, 46, 50, 26, 72, 26);
-  ctx.stroke();
-  ctx.fillStyle = VOLT;
-  ctx.beginPath();
-  ctx.arc(80, 25, 10, 0, Math.PI * 2);
-  ctx.fill();
+  const inner = 76;
+  const scale = inner / JUMP_LOGO.width;
+  ctx.translate((100 - inner) / 2, (100 - JUMP_LOGO.height * scale) / 2);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = PAPER;
+  ctx.fill(new Path2D(JUMP_LOGO.letters), 'evenodd');
+  ctx.fill(new Path2D(JUMP_LOGO.arrow));
+  ctx.restore();
+}
+
+/** The wordmark in paper, `height` pixels tall, top-left at (x, y). */
+function drawWordmark(ctx: CanvasRenderingContext2D, x: number, y: number, height: number) {
+  const scale = height / JUMP_LOGO.height;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = PAPER;
+  ctx.fill(new Path2D(JUMP_LOGO.letters), 'evenodd');
+  ctx.fill(new Path2D(JUMP_LOGO.arrow));
   ctx.restore();
 }
 
@@ -115,12 +119,9 @@ export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, rout
     ctx.stroke();
   }
 
-  // Header: mark + wordmark, date.
-  drawMark(ctx, pad, pad, 64);
-  ctx.fillStyle = PAPER;
-  setFont(ctx, 'italic 900 44px', 'expanded');
+  // Header: wordmark, date.
+  drawWordmark(ctx, pad, pad + 6, 56);
   ctx.textBaseline = 'middle';
-  ctx.fillText('JUMP', pad + 84, pad + 34);
   setFont(ctx, '600 30px');
   ctx.textAlign = 'right';
   ctx.fillStyle = 'rgba(242,239,232,0.6)';
@@ -299,10 +300,10 @@ export function ShareRun({ activity, unit, className, autoOpen = false }: { acti
     const distance = `${formatDistanceNumber(distanceOf(activity), unit)} ${unit}`;
     if (navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: 'My Jump run', text: `${distance} on Jump — startajump.com` });
+        await navigator.share({ files: [file], title: 'My Jump run', text: `${distance} on Jump. startajump.com` });
         setStatus(null);
       } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) setStatus('Sharing didn’t work here — save the image instead.');
+        if (!(error instanceof DOMException && error.name === 'AbortError')) setStatus('Sharing didn’t work here. Save the image instead.');
       }
     } else {
       save();
@@ -361,7 +362,7 @@ export function ShareRun({ activity, unit, className, autoOpen = false }: { acti
                 </label>
               </div>
               <p className="mt-2 text-[12px] text-ink-3">
-                {hasRoute ? 'Your route can show where you live — hide it before sharing a run from home.' : 'No route to draw for this activity.'}
+                {hasRoute ? 'Your route can show where you live. Hide it before sharing a run from home.' : 'No route to draw for this activity.'}
               </p>
 
               {status && <p className="mt-3 text-[13px] text-ink-2">{status}</p>}

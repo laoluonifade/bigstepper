@@ -15,7 +15,7 @@ import {
   RunIcon,
   SettingsIcon,
   ShieldIcon,
-  StepMark,
+  JumpLogo,
   TableIcon,
   UserIcon,
   UsersIcon,
@@ -25,9 +25,8 @@ import { cx, LiveDot, Redirect, useNow } from './ui';
 
 export function Wordmark({ className }: { className?: string }) {
   return (
-    <span className={cx('flex items-center gap-2.5', className)}>
-      <StepMark size={28} motion="enter" />
-      <span className="wide animate-fade text-[15px] font-black uppercase italic tracking-[-0.01em] [animation-delay:200ms]">Jump</span>
+    <span className={cx('flex items-center text-ink', className)}>
+      <JumpLogo height={26} motion="enter" />
     </span>
   );
 }
@@ -122,9 +121,7 @@ function SignedInShell() {
           {
             title: 'Staff',
             items: [
-              { to: '/admin/reviews', label: 'Reviews', icon: <ShieldIcon /> },
-              { to: '/admin/eligibility', label: 'Eligibility', icon: <UsersIcon /> },
-              { to: '/admin/competitions', label: 'Competitions', icon: <TableIcon /> },
+              { to: '/admin/creators', label: 'Creator approvals', icon: <ShieldIcon /> },
               { to: '/admin/payouts', label: 'Payouts', icon: <WalletIcon /> },
             ] as NavItem[],
           },
@@ -302,7 +299,7 @@ function PendingPaymentsBar({ hidden }: { hidden: boolean }) {
       <span className="flex-1">
         <span className="font-bold">{open.length > 0 ? 'Payment being confirmed.' : 'A payment needs review.'}</span>{' '}
         <span className="text-ink-2">
-          {open.length + review.length === 1 ? `Entry to ${first.tableTitle}` : `${open.length + review.length} entries`} — check status
+          {open.length + review.length === 1 ? `Entry to ${first.tableTitle}` : `${open.length + review.length} entries`}: check status
         </span>
       </span>
       <ArrowRightIcon size={18} />

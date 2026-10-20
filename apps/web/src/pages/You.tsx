@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRightIcon, BellIcon, CheckIcon, LogoutIcon, ShieldIcon, StepMark } from '../components/icons';
+import { ArrowRightIcon, BellIcon, CheckIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, ShieldIcon } from '../components/icons';
+import { AvatarEditor, ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '../components/Profile';
 import { BankPicker } from '../components/BankPicker';
 import {
   Avatar,
@@ -23,9 +24,10 @@ import {
 import { api, isApiError, patch, post } from '../lib/api';
 import { useAuth, useUser } from '../lib/auth';
 import { AWARD_STATUS } from '../lib/copy';
-import { formatDate, formatMoney, formatRelative, shortId } from '../lib/format';
+import { activityName, formatDate, formatDistanceNumber, formatDuration, formatMoney, formatPace, formatRelative, shortId } from '../lib/format';
+import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
-import { keys, useCreator, useCreatorEarnings, useNotifications, useProfile, useStaffAccess, useWallet, useWalletTransactions } from '../lib/queries';
+import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useProfile, useStaffAccess, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
 import { savePayment } from '../lib/payments';
 import type { CheckoutResponse, CreatorProfile, Notification, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit, Visibility } from '../lib/types';
 
@@ -64,7 +66,7 @@ const COUNTRIES: Array<[string, string]> = [
 
 const VISIBILITY: Array<{ value: Visibility; title: string; body: string }> = [
   { value: 'private', title: 'Private', body: 'Only you see your runs.' },
-  { value: 'followers', title: 'Followers', body: 'Runners who follow you. Following isn’t available yet.' },
+  { value: 'followers', title: 'Followers', body: 'Runners who follow you.' },
   { value: 'public', title: 'Public', body: 'Anyone with your profile link.' },
 ];
 
@@ -73,15 +75,26 @@ export function ProfileSettingsPage() {
   const { logout } = useAuth();
   const queryClient = useQueryClient();
   const profile = useProfile();
+  const activities = useActivities();
+  const unit = useUnit();
   const { isStaff } = useStaffAccess();
   const [draft, setDraft] = useState<Partial<Profile>>({});
   const merged = { ...profile.data, ...draft } as Profile;
+  const stats = useMemo(() => profileStats(activities.data ?? []), [activities.data]);
+  // Follower counts come from the public profile.
+  const social = useQuery({
+    queryKey: ['runner', profile.data?.username ?? ''],
+    queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(profile.data!.username)}`),
+    enabled: Boolean(profile.data?.username),
+  });
 
   const save = useMutation({
     mutationFn: (changes: Partial<Profile>) => patch<Profile>('/me', changes),
     onSuccess(updated) {
       queryClient.setQueryData(keys.profile, updated);
       setDraft({});
+      // Your name and handle also appear on leaderboards and member lists.
+      void queryClient.invalidateQueries({ predicate: (query) => ['standings', 'result', 'leagues', 'club', 'runner'].includes(String(query.queryKey[0])) });
     },
   });
 
@@ -92,20 +105,21 @@ export function ProfileSettingsPage() {
     return () => window.clearTimeout(timer);
   }, [saved, resetSave]);
 
-  const dirty = useMemo(
-    () => Object.entries(draft).some(([key, value]) => profile.data && profile.data[key as keyof Profile] !== value),
-    [draft, profile.data],
-  );
+  const changes = useMemo(() => {
+    if (!profile.data) return {};
+    const next: Partial<Profile> = { ...draft };
+    if (next.displayName !== undefined) next.displayName = next.displayName.trim();
+    if (next.bio !== undefined) next.bio = next.bio?.trim() || null;
+    return Object.fromEntries(Object.entries(next).filter(([key, value]) => (profile.data![key as keyof Profile] ?? null) !== (value ?? null))) as Partial<Profile>;
+  }, [draft, profile.data]);
+  const dirty = Object.keys(changes).length > 0;
   const usernameError =
     draft.username !== undefined && !/^[a-z0-9_]{2,30}$/.test(draft.username) ? '2–30 characters: lowercase letters, numbers and underscores.' : undefined;
+  const nameError = draft.displayName !== undefined && !draft.displayName.trim() ? 'Your name can’t be empty.' : undefined;
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!profile.data || usernameError) return;
-    const changes = Object.fromEntries(
-      Object.entries(draft).filter(([key, value]) => profile.data![key as keyof Profile] !== value),
-    ) as Partial<Profile>;
-    if (changes.displayName !== undefined) changes.displayName = changes.displayName.trim();
+    if (!dirty || usernameError || nameError) return;
     save.mutate(changes);
   }
 
@@ -113,33 +127,54 @@ export function ProfileSettingsPage() {
   if (profile.error || !profile.data) return <ErrorNotice error={profile.error} onRetry={() => void profile.refetch()} />;
 
   const countryKnown = COUNTRIES.some(([code]) => code === merged.countryCode);
+  const bioLength = (merged.bio ?? '').length;
 
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
 
-      <section className="mb-10 flex flex-wrap items-center gap-5">
-        <Avatar name={profile.data.displayName} highlight size={72} />
-        <div className="min-w-0">
-          <h1 className="display text-[30px] sm:text-[36px]">{profile.data.displayName}</h1>
-          <p className="mt-1 text-[14px] text-ink-2">
-            @{profile.data.username} · {COUNTRIES.find(([code]) => code === profile.data.countryCode)?.[1] ?? profile.data.countryCode}
-          </p>
-        </div>
-      </section>
+      <ProfileHero
+        avatar={<AvatarEditor profile={profile.data} />}
+        displayName={profile.data.displayName}
+        username={profile.data.username}
+        meta={
+          <>
+            {countryName(profile.data.countryCode)} · Joined {formatDate(profile.data.createdAt, { month: 'short', year: 'numeric' })}
+          </>
+        }
+        bio={profile.data.bio ?? <span className="text-ink-3">Add a short bio below: what you train for, your club, your goal.</span>}
+        counts={{ activities: stats.activities, followers: social.data?.followers ?? 0, following: social.data?.following ?? 0 }}
+        actions={
+          <>
+            <Link to="/runners/$username" params={{ username: profile.data.username }} search={{}} className="btn-secondary btn-sm flex-1">
+              View as others
+            </Link>
+            <ShareProfileButton username={profile.data.username} displayName={profile.data.displayName} iconOnly />
+          </>
+        }
+      >
+        {activities.isLoading ? <Skeleton className="mt-5 h-20" /> : <ProfileStats stats={stats} unit={unit} />}
+        <p className="mt-3 text-[12px] text-ink-3">
+          {profile.data.activityVisibility === 'public'
+            ? 'Your totals and recent activity are on your public profile.'
+            : profile.data.activityVisibility === 'followers'
+              ? 'Your followers see these totals and your recent activity. Everyone else sees your name, photo and bio.'
+              : 'Only your name, photo and bio are public. Set “Who can see your runs” to Followers or Public to share these.'}
+        </p>
+      </ProfileHero>
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <form onSubmit={submit} className="space-y-6">
-          <SectionTitle>Profile</SectionTitle>
+          <SectionTitle>Edit profile</SectionTitle>
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Display name" hint="Shown on leaderboards.">
+            <Field label="Display name" error={nameError} hint="Shown on leaderboards.">
               {(props) => (
                 <input
                   {...props}
                   className="field"
                   maxLength={80}
                   value={merged.displayName ?? ''}
-                  onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
+                  onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))}
                 />
               )}
             </Field>
@@ -154,19 +189,33 @@ export function ProfileSettingsPage() {
                     autoCapitalize="none"
                     spellCheck={false}
                     value={merged.username ?? ''}
-                    onChange={(event) => setDraft({ ...draft, username: event.target.value.toLowerCase() })}
+                    onChange={(event) => setDraft((current) => ({ ...current, username: event.target.value.toLowerCase() }))}
                   />
                 </div>
               )}
             </Field>
           </div>
 
+          <Field label="Bio" hint={`${bioLength}/160`}>
+            {(props) => (
+              <textarea
+                {...props}
+                className="field min-h-[88px] resize-y py-3"
+                maxLength={160}
+                rows={3}
+                placeholder="Chasing a sub-25 5K. Lagos Road Runners."
+                value={merged.bio ?? ''}
+                onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
+              />
+            )}
+          </Field>
+
           <div>
             <p className="label">Distance units</p>
             <Segmented<Unit>
               label="Distance units"
               value={merged.preferredUnit}
-              onChange={(value) => setDraft({ ...draft, preferredUnit: value })}
+              onChange={(value) => setDraft((current) => ({ ...current, preferredUnit: value }))}
               options={[
                 { value: 'km', label: 'Kilometres' },
                 { value: 'mi', label: 'Miles' },
@@ -192,7 +241,7 @@ export function ProfileSettingsPage() {
                       name="visibility"
                       className="sr-only"
                       checked={active}
-                      onChange={() => setDraft({ ...draft, activityVisibility: option.value })}
+                      onChange={() => setDraft((current) => ({ ...current, activityVisibility: option.value }))}
                     />
                     <span className="wide block text-[13px] font-extrabold uppercase">{option.title}</span>
                     <span className={cx('mt-1 block text-[12px] leading-snug', active ? 'text-paper/70' : 'text-ink-2')}>{option.body}</span>
@@ -208,7 +257,7 @@ export function ProfileSettingsPage() {
                 {...props}
                 className="field"
                 value={merged.countryCode}
-                onChange={(event) => setDraft({ ...draft, countryCode: event.target.value })}
+                onChange={(event) => setDraft((current) => ({ ...current, countryCode: event.target.value }))}
               >
                 {!countryKnown && <option value={merged.countryCode}>{merged.countryCode}</option>}
                 {COUNTRIES.map(([code, name]) => (
@@ -221,11 +270,15 @@ export function ProfileSettingsPage() {
           </Field>
 
           <ErrorNotice error={save.error} />
-          <div className="flex items-center gap-4 border-t border-line pt-6">
-            <button className="btn-primary" disabled={!dirty || save.isPending || Boolean(usernameError)}>
+          <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+76px)] z-10 -mx-4 flex items-center gap-4 border-t border-line bg-paper/95 px-4 py-4 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:pt-6 md:backdrop-blur-none">
+            <button className="btn-primary" disabled={!dirty || save.isPending || Boolean(usernameError) || Boolean(nameError)}>
               {save.isPending ? 'Saving…' : 'Save changes'}
             </button>
-            {save.isSuccess && <span className="text-[13px] font-semibold text-ok">Saved.</span>}
+            {save.isSuccess && (
+              <span className="flex items-center gap-1 text-[13px] font-semibold text-ok">
+                <CheckIcon size={15} /> Saved
+              </span>
+            )}
             {dirty && !save.isPending && (
               <button type="button" className="text-[13px] font-semibold text-ink-2 hover:text-ink" onClick={() => setDraft({})}>
                 Discard
@@ -262,9 +315,6 @@ export function ProfileSettingsPage() {
               <Link to="/forgot-password" className="btn-quiet justify-between">
                 Change password <ArrowRightIcon size={16} />
               </Link>
-              <Link to="/runners/$username" params={{ username: profile.data.username }} className="btn-quiet justify-between">
-                Public profile <ArrowRightIcon size={16} />
-              </Link>
             </div>
           </section>
 
@@ -272,14 +322,11 @@ export function ProfileSettingsPage() {
             <section>
               <SectionTitle>Staff tools</SectionTitle>
               <div className="flex flex-col gap-2">
-                <Link to="/admin/reviews" className="btn-quiet justify-between">
+                <Link to="/admin/creators" className="btn-quiet justify-between">
                   <span className="flex items-center gap-2">
-                    <ShieldIcon size={16} /> Verification reviews
+                    <ShieldIcon size={16} /> Creator approvals
                   </span>
                   <ArrowRightIcon size={16} />
-                </Link>
-                <Link to="/admin/competitions" className="btn-quiet justify-between">
-                  Competitions <ArrowRightIcon size={16} />
                 </Link>
                 <Link to="/admin/payouts" className="btn-quiet justify-between">
                   Payouts <ArrowRightIcon size={16} />
@@ -295,6 +342,10 @@ export function ProfileSettingsPage() {
       </div>
     </div>
   );
+}
+
+function countryName(code: string) {
+  return COUNTRIES.find(([value]) => value === code)?.[1] ?? code;
 }
 
 /** Live list from Paystack via the API, so payouts never offer a closed bank. */
@@ -393,7 +444,7 @@ export function RewardsPage() {
           )}
           {requestPayout.isSuccess && (
             <Notice tone="ok" className="mt-4" title="Payout requested">
-              Two separate administrators approve and send every payout. You’ll see the status change here.
+              Jump reviews every payout before sending it. You’ll get a notification when it’s on its way.
             </Notice>
           )}
         </section>
@@ -423,7 +474,7 @@ export function RewardsPage() {
             />
           )}
           <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
-            We only keep the account name, bank and last four digits. Payouts are approved and sent by two different administrators.
+            We only keep the account name, bank and last four digits. Jump reviews and approves every payout before it’s sent.
           </p>
         </section>
       </div>
@@ -459,7 +510,7 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
       setPassword('');
     },
   });
-  const numberError = accountNumber.length > 0 && accountNumber.length < 10 ? `${10 - accountNumber.length} more digits — account numbers are 10 digits.` : undefined;
+  const numberError = accountNumber.length > 0 && accountNumber.length < 10 ? `${10 - accountNumber.length} more digits. Account numbers are 10 digits.` : undefined;
   const valid = complete && Boolean(resolved.data) && password.length >= 8;
 
   return (
@@ -493,7 +544,7 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
         <div aria-live="polite">
           {resolved.isLoading ? (
             <div className="flex items-center gap-3 rounded-md border border-line bg-card px-4 py-3 text-[14px] text-ink-2">
-              <StepMark size={18} motion="loop" /> Checking account…
+              <JumpLogo height={12} motion="loop" /> Checking account…
             </div>
           ) : resolved.data ? (
             <div className="flex animate-pop items-center gap-3 rounded-md border-[1.5px] border-ok/60 bg-ok-wash px-4 py-3">
@@ -678,9 +729,21 @@ export function CreatorPage() {
           </Field>
           <Notice tone="neutral">Creator challenges use a 35% total deduction: Jump keeps 30%, the creator earns 5%, and the winner receives 65%.</Notice>
           <ErrorNotice error={signup.error} />
-          <button className="btn-primary" disabled={signup.isPending || displayName.trim().length < 2}>{signup.isPending ? 'Creating…' : 'Create creator account'}</button>
+          <p className="text-[13px] text-ink-2">Jump reviews every creator application before you can host paid challenges.</p>
+          <button className="btn-primary" disabled={signup.isPending || displayName.trim().length < 2}>{signup.isPending ? 'Sending…' : 'Apply to be a creator'}</button>
         </form>
       ) : (
+        <>
+        {creator.data.status === 'PENDING' && (
+          <Notice tone="info" className="mb-8" title="Waiting for approval">
+            Jump reviews every new creator before they can host paid challenges. You’ll get a notification once you’re approved. Free challenges work in the meantime.
+          </Notice>
+        )}
+        {creator.data.status === 'SUSPENDED' && (
+          <Notice tone="warn" className="mb-8" title="Creator account suspended">
+            You can’t host new paid challenges right now. Contact Jump support if you think this is a mistake.
+          </Notice>
+        )}
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section>
             <SectionTitle>Earnings</SectionTitle>
@@ -709,13 +772,16 @@ export function CreatorPage() {
             <SectionTitle>Creator account</SectionTitle>
             <div className="panel p-5">
               <p className="text-[18px] font-bold">{creator.data.displayName}</p>
-              <p className="mt-1 text-[13px] capitalize text-ink-2">{creator.data.creatorType.replace('_', ' ')} · {creator.data.status.toLowerCase()}</p>
+              <p className="mt-1 text-[13px] capitalize text-ink-2">
+                {creator.data.creatorType.replace('_', ' ')} · {creator.data.status === 'ACTIVE' ? 'approved' : creator.data.status === 'PENDING' ? 'awaiting approval' : 'suspended'}
+              </p>
               {creator.data.bio && <p className="mt-4 text-[13px] leading-relaxed text-ink-2">{creator.data.bio}</p>}
-              <Link to="/competitions/new" className="btn-secondary mt-5 w-full">Create paid challenge</Link>
+              {creator.data.status === 'ACTIVE' && <Link to="/competitions/new" className="btn-secondary mt-5 w-full">Create paid challenge</Link>}
               <Link to="/rewards" className="btn-quiet mt-2 w-full">Manage payout account</Link>
             </div>
           </aside>
         </div>
+        </>
       )}
     </div>
   );
@@ -783,7 +849,10 @@ export function NotificationsPage() {
 
 export function RunnerPage() {
   const { username } = useParams({ strict: false }) as { username: string };
-  const runner = useQuery({ queryKey: ['runner', username], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(username)}`) });
+  const { tab = 'activity' } = useSearch({ strict: false }) as { tab?: 'followers' | 'following' | 'activity' };
+  const navigate = useNavigate();
+  const unit = useUnit();
+  const runner = useQuery({ queryKey: ['runner', username.toLowerCase()], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(username)}`) });
   if (runner.isLoading) return <Loading />;
   if (runner.error || !runner.data) {
     return isApiError(runner.error, 404) ? (
@@ -792,20 +861,100 @@ export function RunnerPage() {
       <ErrorNotice error={runner.error} onRetry={() => void runner.refetch()} />
     );
   }
-  const country = COUNTRIES.find(([code]) => code === runner.data.countryCode)?.[1] ?? runner.data.countryCode;
+  const data = runner.data;
+  const isMe = data.isMe;
   return (
     <div className="animate-rise">
-      <div className="panel-strong flex flex-wrap items-center gap-5 p-6">
-        <Avatar name={runner.data.displayName} highlight size={80} />
-        <div>
-          <p className="eyebrow">Runner</p>
-          <h1 className="display mt-1 text-[32px]">{runner.data.displayName}</h1>
-          <p className="mt-1 text-[14px] text-ink-2">
-            @{runner.data.username} · {country}
+      {isMe && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-md bg-ink px-4 py-2.5 text-paper">
+          <p className="text-[13px] font-semibold">
+            <span className="mr-2 inline-block h-2 w-2 rounded-full bg-volt align-middle" />
+            Preview: how other runners see you
           </p>
+          <Link to="/settings/profile" className="shrink-0 text-[12px] font-bold uppercase tracking-[0.06em] text-volt hover:underline hover:underline-offset-4">
+            Done
+          </Link>
         </div>
+      )}
+      <ProfileHero
+        avatar={<Avatar name={data.displayName} src={data.avatarUrl} highlight size={84} className="rounded-lg" />}
+        displayName={data.displayName}
+        username={data.username}
+        meta={
+          <>
+            {countryName(data.countryCode)} · Joined {formatDate(data.memberSince, { month: 'short', year: 'numeric' })}
+          </>
+        }
+        bio={data.bio}
+        counts={{ activities: data.runsVisible ? data.stats?.activities ?? 0 : undefined, followers: data.followers, following: data.following }}
+        actions={
+          <>
+            <FollowButton username={data.username} following={data.followedByMe} size="sm" preview={isMe} className="flex-1" />
+            <ShareProfileButton username={data.username} displayName={data.displayName} iconOnly />
+          </>
+        }
+      >
+        {data.followsMe && !isMe && <p className="mt-3 text-[12px] font-semibold text-ink-2">Follows you</p>}
+        {data.runsVisible && data.stats && <ProfileStats stats={data.stats} unit={unit} />}
+      </ProfileHero>
+
+      <div className="mb-5 mt-6">
+        <ProfileTabs<'activity' | 'followers' | 'following'>
+          value={tab}
+          onChange={(next) => void navigate({ to: '/runners/$username', params: { username: data.username }, search: next === 'activity' ? {} : { tab: next }, replace: true })}
+          tabs={[
+            { value: 'activity', label: 'Activity' },
+            { value: 'followers', label: 'Followers' },
+            { value: 'following', label: 'Following' },
+          ]}
+        />
       </div>
-      <p className="mt-4 text-[13px] text-ink-3">Public run history isn’t shown on profiles yet.</p>
+
+      {tab !== 'activity' ? (
+        <ConnectionList key={tab} username={data.username} direction={tab} />
+      ) : !data.runsVisible ? (
+        <EmptyState mark={<LockIcon size={36} className="mx-auto" />} title="Activity is private">
+          {data.followedByMe
+            ? `${data.displayName.split(' ')[0]} hasn’t shared their walks and runs.`
+            : `Only their name, photo and bio are visible. Some runners share activity with followers.`}
+        </EmptyState>
+      ) : data.recent && (
+        <section>
+          {data.recent.length === 0 ? (
+            <EmptyState title="No verified activity yet">Verified walks and runs will show here.</EmptyState>
+          ) : (
+            <ul className="stagger divide-y divide-line border-y border-line">
+              {data.recent.map((item, index) => {
+                const pace = formatPace(item.metres, item.movingSeconds, unit);
+                return (
+                  <li key={index} className="flex items-center gap-4 px-1 py-3.5 sm:px-3">
+                    <span
+                      className={cx(
+                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-md',
+                        item.activityType === 'run' ? 'bg-track text-paper' : 'bg-ink text-volt',
+                      )}
+                      aria-hidden="true"
+                    >
+                      <RunIcon size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-bold">{activityName(item.startedAt, item.activityType)}</p>
+                      <p className="num text-[12px] text-ink-2">
+                        {formatRelative(item.startedAt)} · {formatDuration(item.movingSeconds)}
+                        {pace && ` · ${pace} /${unit}`}
+                      </p>
+                    </div>
+                    <p className="flex items-baseline gap-1">
+                      <span className="score num text-[24px]">{formatDistanceNumber(item.metres, unit)}</span>
+                      <span className="text-[12px] font-semibold text-ink-2">{unit}</span>
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }

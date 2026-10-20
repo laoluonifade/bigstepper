@@ -64,7 +64,9 @@ export interface SavedClub {
 export const storageKeys = {
   tables: (userId: string) => `jump_tables:${userId}`,
   clubs: (userId: string) => `jump_clubs:${userId}`,
+  /** Legacy: the goal now lives on the profile; read once to move it there. */
   weeklyGoal: (userId: string) => `jump_goal:${userId}`,
+  activityKind: (userId: string) => `jump_kind:${userId}`,
   verifyPrompt: (userId: string) => `jump_verify_prompt:${userId}`,
 };
 

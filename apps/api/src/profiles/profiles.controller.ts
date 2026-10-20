@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { ProfilesService } from './profiles.service';
+import { AVATAR_MAX_BYTES, ProfilesService } from './profiles.service';
 
 @Controller()
 export class ProfilesController {
@@ -20,8 +23,49 @@ export class ProfilesController {
     return this.profilesService.updateMine(user.id, body);
   }
 
+  @Post('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: AVATAR_MAX_BYTES, files: 1 } }))
+  setAvatar(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file?: { buffer: Buffer; mimetype: string; size: number }) {
+    return this.profilesService.setAvatar(user.id, file);
+  }
+
+  @Delete('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  removeAvatar(@CurrentUser() user: AuthenticatedUser) {
+    return this.profilesService.removeAvatar(user.id);
+  }
+
   @Get('users/:username')
-  getPublic(@Param('username') username: string) {
-    return this.profilesService.getPublic(username);
+  @UseGuards(OptionalJwtAuthGuard)
+  getPublic(@Param('username') username: string, @CurrentUser() viewer: AuthenticatedUser | null) {
+    return this.profilesService.getPublic(username, viewer?.id);
+  }
+
+  @Get('users/:username/followers')
+  @UseGuards(OptionalJwtAuthGuard)
+  followers(@Param('username') username: string, @CurrentUser() viewer: AuthenticatedUser | null) {
+    return this.profilesService.connections(username, 'followers', viewer?.id);
+  }
+
+  @Get('users/:username/following')
+  @UseGuards(OptionalJwtAuthGuard)
+  following(@Param('username') username: string, @CurrentUser() viewer: AuthenticatedUser | null) {
+    return this.profilesService.connections(username, 'following', viewer?.id);
+  }
+
+  @Post('users/:username/follow')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  follow(@CurrentUser() user: AuthenticatedUser, @Param('username') username: string) {
+    return this.profilesService.follow(user.id, username);
+  }
+
+  @Delete('users/:username/follow')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  unfollow(@CurrentUser() user: AuthenticatedUser, @Param('username') username: string) {
+    return this.profilesService.unfollow(user.id, username);
   }
 }

@@ -225,11 +225,50 @@ export const ShareIcon = (p: IconProps) => (
   </Icon>
 );
 
-/** The Jump mark: three rising steps — a podium and a bar chart at once. */
+export const CameraIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7h4l2-3h6l2 3h4v13H3z" />
+    <circle cx="12" cy="13" r="4" />
+  </Icon>
+);
+
+export const LinkIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M10 14l4-4" />
+    <path d="M9 7l2-2a4 4 0 0 1 6 6l-2 2M15 17l-2 2a4 4 0 0 1-6-6l2-2" />
+  </Icon>
+);
+
+/** The Jump wordmark (traced from the brand artwork): the rising arrow and the letters, kept apart so the arrow can move. */
+export const JUMP_LOGO = {
+  width: 266.4,
+  height: 102.5,
+  arrow: 'M253.6 0 255.4 0.2 255.4 1.3 240.2 23.5 237.5 28 236.2 29.2 230.8 30.9 225 32.2 223.8 32.2 223.9 31 226.5 27.3 226.4 26.6 225.8 26.3 199.9 27.1 163.4 30.2 139.4 33.5 107.5 39.2 81 45.6 68.1 49.2 63.2 51 60 51.6 61 50.7 64 49.3 83.1 42.2 108 34.2 132.8 27.3 159.5 20.7 183.5 15.3 203.5 11.2 226 7.1 226.8 6.6 226.6 6 221.9 2.2 221.8 1.3 222 1.2Z',
+  letters: 'M139 44.5 151 44.5 152.4 44.7 153 45.3 162 65.9 165.2 72.3 166.1 72.2 168.9 69.2 170.8 66.6 189.1 44.9 190.1 44.5 200.8 44.5 203.2 44.6 203.8 45 203.9 46.5 196.9 82.6 193.6 99 192.6 101.6 179.5 101.7 178.6 101 181.1 86.9 184.1 73.2 184.6 70.5 184.5 69.1 183.9 69.2 182.1 71 180.8 73 165.1 91.3 163.9 92.5 162.1 92.7 160.1 92.6 159.1 91.7 149.1 70.1 148.6 69.6 148 69.6 147.1 72.3 141.5 101.1 140.6 101.7 127.6 101.7 127.2 101.5 127 100 135.8 57 137.4 47.3 138.1 45ZM213.4 44.5 248.9 44.5 254.2 45.1 257.1 46 259.8 47.2 261.6 48.6 263.6 50.7 265.2 53.7 266 56 266.4 58.7 266 65.5 264.8 70.1 262.8 74.3 259.8 78.2 255.4 81.7 250.9 83.7 244.6 85.1 219.2 85.3 218.4 86.2 215.8 100.1 214.9 101.6 201.5 101.7 200.9 101.2 201.1 97.9 204.9 80.3 205.1 77.7 211.4 46 212 44.9ZM128.1 44.6 130 44.7 130.5 46 123.6 80.5 122 85.9 120.4 89.3 117.9 93.2 115.4 95.9 112.9 97.7 108.9 100 102.4 101.9 97.5 102.5 83.6 102.5 80 102 73.9 99.9 71.5 98.2 69.8 96.5 68.4 94.5 67.1 91.3 66.6 88.1 66.6 83.3 71.2 58.7 72.6 53.5 74.1 52.7 84.1 50.3 86.4 50 87.6 50.3 87.8 51.3 86.9 56.1 82 79.2 81.8 82.5 82.1 84.6 83 86.3 84 87.3 86.4 88.5 89.5 89.1 98.5 89 102.5 88 104.6 86.7 106.6 84.6 108.4 81.3 110.9 70.3 114.2 52.1 115.8 46.1 117.1 45.3ZM63.5 55.6 64.9 55.9 65 57.2 59.8 83.5 57.6 89.2 56 92.1 53.6 95.1 51.4 97.1 48.4 99 45.8 100.1 42.6 101 37.2 101.7 0.9 101.7 0.1 101.3 0 99.3 1.9 89.7 2.2 88.7 2.9 88.2 35.9 88.1 39.8 87.5 41.8 86.5 43.6 84.6 45.4 80.6 48.2 65.5 49.5 60.6 52 59.3ZM229.8 57.5 224.6 57.6 223.9 58.3 221.2 70.7 221.5 72.3 222 72.6 243 72.5 245.5 71.9 247.2 71 249.4 68.7 250.6 65.6 250.9 62 250 59.7 248.5 58.5 245.4 57.6Z',
+};
+
 /**
- * The Jump mark: a take-off arc with the jumper (volt dot) in the air. `motion="enter"` draws the arc and
- * lands the dot on mount; `motion="loop"` keeps the dot hopping, for waiting states (finding GPS, loading).
+ * The Jump wordmark in `currentColor`. `motion="enter"` lifts the arrow in on mount; `motion="loop"` keeps it
+ * nudging upward, for waiting states.
  */
+export function JumpLogo({ height = 24, className = '', motion }: { height?: number; className?: string; motion?: 'enter' | 'loop' }) {
+  return (
+    <svg
+      height={height}
+      width={(height * JUMP_LOGO.width) / JUMP_LOGO.height}
+      viewBox={`0 0 ${JUMP_LOGO.width} ${JUMP_LOGO.height}`}
+      fill="currentColor"
+      role="img"
+      aria-label="Jump"
+      className={className}
+    >
+      <path d={JUMP_LOGO.letters} fillRule="evenodd" className={motion === 'enter' ? 'animate-fade' : undefined} />
+      <path d={JUMP_LOGO.arrow} className={motion === 'enter' ? 'animate-arrow-in [animation-delay:150ms]' : motion === 'loop' ? 'animate-arrow-nudge' : undefined} />
+    </svg>
+  );
+}
+
+/** The app icon: the wordmark on an ink tile. Same motion options as {@link JumpLogo}. */
 export function StepMark({
   size = 28,
   className = '',
@@ -239,27 +278,16 @@ export function StepMark({
   className?: string;
   motion?: 'enter' | 'loop';
 }) {
+  const inner = 76;
+  const scale = inner / JUMP_LOGO.width;
+  const offsetY = (100 - JUMP_LOGO.height * scale) / 2;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true" className={className}>
       <rect width="100" height="100" rx="22" fill="#121212" />
-      <rect x="14" y="80" width="26" height="6" rx="3" fill="#F2EFE8" opacity="0.35" className={motion === 'enter' ? 'animate-fade' : undefined} />
-      <path
-        d="M24 78 C30 46 50 26 72 26"
-        fill="none"
-        stroke="#FF4D12"
-        strokeWidth="13"
-        strokeLinecap="round"
-        pathLength={1}
-        strokeDasharray={motion === 'enter' ? 1 : undefined}
-        className={motion === 'enter' ? 'animate-draw' : undefined}
-      />
-      <circle
-        cx="80"
-        cy="25"
-        r="10"
-        fill="#E4FF3A"
-        className={['origin-own-center', motion === 'enter' && 'animate-pop [animation-delay:420ms]', motion === 'loop' && 'animate-hop'].filter(Boolean).join(' ')}
-      />
+      <g transform={`translate(${(100 - inner) / 2} ${offsetY}) scale(${scale})`} fill="#F2EFE8">
+        <path d={JUMP_LOGO.letters} fillRule="evenodd" className={motion === 'enter' ? 'animate-fade' : undefined} />
+        <path d={JUMP_LOGO.arrow} className={motion === 'enter' ? 'animate-arrow-in [animation-delay:150ms]' : motion === 'loop' ? 'animate-arrow-nudge' : undefined} />
+      </g>
     </svg>
   );
 }

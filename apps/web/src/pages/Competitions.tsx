@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CompetitionCard, PhaseTag, Timeline, TypeTag, canEnter, competitionPhase, phaseLine } from '../components/competition';
+import { CompetitionCard, PhaseTag, Timeline, TypeTag, canEnter, competitionPhase, phaseLine, prizeSplit } from '../components/competition';
 import { ArrowRightIcon, CheckIcon, PlusIcon, ShareIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
@@ -200,7 +200,7 @@ export function NewCompetitionPage() {
   const [cap, setCap] = useState('');
   const [duration, setDuration] = useState<number | null>(7);
   const [entryFee, setEntryFee] = useState('');
-  // ₦10,000 is the suggested starting prize; creators can change it.
+  // ₦10,000 is the suggested starting prize pot; creators can change it.
   const [guaranteedPrize, setGuaranteedPrize] = useState('10000');
 
   const startIso = fromLocalInput(startsAt);
@@ -218,7 +218,7 @@ export function NewCompetitionPage() {
     capacity: capacityNumber !== undefined && (capacityNumber < 2 || capacityNumber > 10000 || !Number.isInteger(capacityNumber)) ? 'Between 2 and 10,000 runners.' : undefined,
     cap: capMetres !== undefined && (capMetres < 1000 || capMetres > 500000) ? `Between ${formatDistance(1000, unit)} and ${formatDistance(500000, unit)}.` : undefined,
     target: needsTarget && (!targetDistanceMetres || targetDistanceMetres < 100 || targetDistanceMetres > 500000) ? `Enter a target between ${formatDistance(100, unit)} and ${formatDistance(500000, unit)}.` : undefined,
-    paid: mode === 'paid' && (!creator.data || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || !capacityNumber) ? 'Complete the paid challenge fields and use an active creator account.' : undefined,
+    paid: mode === 'paid' && (creator.data?.status !== 'ACTIVE' || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || !capacityNumber) ? 'Complete the paid challenge fields and use an active creator account.' : undefined,
   };
   const invalid = Object.values(errors).some(Boolean) || title.trim().length < 3;
 
@@ -250,7 +250,7 @@ export function NewCompetitionPage() {
   const preview: CompetitionTable = {
     id: 'preview',
     title: title.trim() || 'Your challenge name',
-    code: '— — — —',
+    code: '- - - -',
     type: mode,
     status: 'OPEN_FOR_ENTRY',
     entryFeeKobo: mode === 'paid' ? entryFeeKobo : 0,
@@ -292,6 +292,13 @@ export function NewCompetitionPage() {
           {mode === 'paid' && !creator.data && (
             <Notice tone="warn" title="Creator account required" action={<Link to="/creator" className="btn-quiet btn-sm">Become a creator</Link>}>
               Paid challenges earn creators 5% and must be reviewed before opening.
+            </Notice>
+          )}
+          {mode === 'paid' && creator.data && creator.data.status !== 'ACTIVE' && (
+            <Notice tone="warn" title={creator.data.status === 'PENDING' ? 'Your creator account is awaiting approval' : 'Your creator account is suspended'}>
+              {creator.data.status === 'PENDING'
+                ? 'You can host paid challenges once Jump approves you. You’ll get a notification.'
+                : 'You can’t host paid challenges right now. Contact Jump support.'}
             </Notice>
           )}
           <Field label="Challenge name" error={errors.title}>
@@ -411,9 +418,12 @@ export function NewCompetitionPage() {
               <SectionTitle>Paid challenge</SectionTitle>
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field label="Entry fee · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} required />}</Field>
-                <Field label="Guaranteed prize · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={guaranteedPrize} onChange={(event) => setGuaranteedPrize(event.target.value)} required />}</Field>
+                <Field label="Prize pot · NGN" hint="A fixed amount. It doesn’t grow or shrink with how many runners join.">
+                  {(props) => <input {...props} className="field num" type="number" min="1" step="1" value={guaranteedPrize} onChange={(event) => setGuaranteedPrize(event.target.value)} required />}
+                </Field>
               </div>
-              <p className="text-[12px] leading-relaxed text-ink-3">The draft stays pending until Jump confirms funding and rules. On settlement, 30% goes to Jump, 5% to the creator, and 65% to the winner.</p>
+              <PrizeBreakdown potKobo={guaranteedPrizeKobo} />
+              <p className="text-[12px] leading-relaxed text-ink-3">Your challenge stays a draft until Jump confirms the prize is funded and the rules are fair. Runners can’t pay to enter before then.</p>
             </div>
           )}
           {errors.paid && mode === 'paid' && <Notice tone="warn">{errors.paid}</Notice>}
@@ -456,13 +466,15 @@ export function CompetitionDetailPage() {
   }, [me, table.data, user]);
 
   const rows: LeaderboardRow[] = useMemo(() => {
-    const names = new Map(standings.data?.map((row) => [row.userId, row.displayName]));
+    const live = new Map(standings.data?.map((row) => [row.userId, row]));
     const method = table.data?.scoringMethod ?? 'FARTHEST_DISTANCE';
     if (result.data) {
       return result.data.standings.map((row) => ({
         rank: row.rank,
         userId: row.userId,
-        name: row.userId === user?.id ? user.displayName ?? 'You' : names.get(row.userId) ?? 'Runner',
+        name: live.get(row.userId)?.displayName ?? (row.userId === user?.id ? user.displayName ?? 'You' : 'Runner'),
+        avatarUrl: live.get(row.userId)?.avatarUrl,
+        username: live.get(row.userId)?.username,
         metres: row.creditedDistanceMetres,
         score: scoreValue(row, method),
       }));
@@ -471,6 +483,8 @@ export function CompetitionDetailPage() {
       rank: row.rank,
       userId: row.userId,
       name: row.displayName,
+      avatarUrl: row.avatarUrl,
+      username: row.username,
       metres: row.creditedDistanceMetres,
       score: scoreValue(row, method),
     }));
@@ -527,7 +541,7 @@ export function CompetitionDetailPage() {
                 metricLabel={t.scoringMethod === 'MOST_STEPS' ? 'Steps' : t.scoringMethod === 'FARTHEST_DISTANCE' ? 'Distance' : 'Time'}
                 formatScore={t.scoringMethod === 'FARTHEST_DISTANCE' ? undefined : (row) => (
                   <span className="score num text-[20px]">
-                    {t.scoringMethod === 'MOST_STEPS' ? Number(row.score ?? 0).toLocaleString('en-GB') : row.score === null ? '—' : formatDuration(Number(row.score))}
+                    {t.scoringMethod === 'MOST_STEPS' ? Number(row.score ?? 0).toLocaleString('en-GB') : row.score === null ? '-' : formatDuration(Number(row.score))}
                   </span>
                 )}
                 caption={
@@ -554,7 +568,7 @@ export function CompetitionDetailPage() {
                 <button
                   type="button"
                   className="btn-quiet btn-sm"
-                  onClick={() => void navigator.share({ title: t.title, text: `Join my Jump challenge "${t.title}" — code ${t.code}`, url: shareUrl }).catch(() => undefined)}
+                  onClick={() => void navigator.share({ title: t.title, text: `Join my Jump challenge "${t.title}" with code ${t.code}`, url: shareUrl }).catch(() => undefined)}
                 >
                   <ShareIcon size={14} /> Share
                 </button>
@@ -694,7 +708,7 @@ function EntryPanel({
       <ul className="mt-3 space-y-1.5 text-[13px] text-ink-2">
         {isPaid && table.guaranteedPrizeKobo ? (
           <li>
-            Guaranteed prize <span className="font-bold text-ink">{formatMoney(table.guaranteedPrizeKobo)}</span> to the winner
+            Winner takes <span className="font-bold text-ink">{formatMoney(prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo)}</span>
           </li>
         ) : null}
         <li className="num">
@@ -715,7 +729,7 @@ function EntryPanel({
           </Link>
         ) : pendingPayment ? (
           <Link to="/payments/return" className="btn-secondary w-full">
-            Payment in progress — check status
+            Payment in progress: check status
           </Link>
         ) : isPaid ? (
           <>
@@ -736,7 +750,7 @@ function EntryPanel({
                   </Notice>
                 ) : isApiError(checkout.error, 403) ? (
                   <Notice tone="warn" title="Paid entry unavailable">
-                    Your email, adult verification and paid-competition eligibility must all be approved before you can enter.
+                    {checkout.error.message}
                   </Notice>
                 ) : (
                   <ErrorNotice error={checkout.error} />
@@ -755,5 +769,32 @@ function EntryPanel({
         )}
       </div>
     </section>
+  );
+}
+
+/** Live split of the pot while a creator types it, so the number on the card is never a surprise. */
+function PrizeBreakdown({ potKobo }: { potKobo: number }) {
+  if (potKobo < 100) return null;
+  const split = prizeSplit(potKobo, 3500, 500);
+  const rows = [
+    { label: 'Winner takes', value: split.winnerKobo, share: '65%', strong: true },
+    { label: 'You earn as creator', value: split.creatorKobo, share: '5%' },
+    { label: 'Jump fee', value: split.jumpKobo, share: '30%' },
+  ];
+  return (
+    <div className="rounded-md border border-line bg-paper p-4">
+      <p className="eyebrow mb-2">When the challenge ends</p>
+      <dl className="divide-y divide-line">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-baseline justify-between gap-4 py-2 text-[14px]">
+            <dt className={row.strong ? 'font-bold' : 'text-ink-2'}>
+              {row.label} <span className="text-[12px] text-ink-3">{row.share}</span>
+            </dt>
+            <dd className={cx('num', row.strong ? 'text-[18px] font-extrabold' : 'font-semibold')}>{formatMoney(row.value)}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2 text-[12px] text-ink-3">The card shows runners what the winner takes.</p>
+    </div>
   );
 }

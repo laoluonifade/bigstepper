@@ -10,7 +10,7 @@ export class CreatorProfile {
   @Column() displayName: string;
   @Column({ type: 'varchar', nullable: true }) socialUrl: string | null;
   @Column({ type: 'varchar', length: 500, nullable: true }) bio: string | null;
-  @Column({ default: 'ACTIVE' }) status: 'ACTIVE' | 'SUSPENDED';
+  @Column({ default: 'PENDING' }) status: 'PENDING' | 'ACTIVE' | 'SUSPENDED';
   @Column({ type: 'integer', default: 500 }) commissionBps: number;
   @CreateDateColumn() createdAt: Date;
   @UpdateDateColumn() updatedAt: Date;

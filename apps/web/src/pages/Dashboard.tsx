@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { RunIcon, ArrowRightIcon } from '../components/icons';
@@ -8,15 +8,15 @@ import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/
 import { RankBadge } from '../components/Leaderboard';
 import { MilestoneBadge } from '../components/Milestones';
 import { WeekChart } from '../components/WeekChart';
-import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Skeleton, useNow } from '../components/ui';
-import { api } from '../lib/api';
+import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Segmented, Skeleton, useNow } from '../components/ui';
+import { api, patch } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { distanceValue, formatDistance, formatDistanceNumber, ordinal, toMetres } from '../lib/format';
 import { setFlag, storageKeys, useStored } from '../lib/local';
-import { computeMilestones, computeStreaks, nextMilestone, summariseWeek } from '../lib/progress';
-import { useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useStandings, useUnit } from '../lib/queries';
+import { ActivityKind, computeMilestones, computeStreaks, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
+import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useStandings, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
-import type { Unit } from '../lib/types';
+import type { Profile, Unit } from '../lib/types';
 import { getDevVerifyToken, useResendVerification } from './auth';
 
 function greeting(hour: number) {
@@ -34,10 +34,12 @@ export function DashboardPage() {
   const now = useNow(60_000);
   const [showVerify] = useStored<boolean>(storageKeys.verifyPrompt(user.id), false);
 
-  const list = useMemo(() => activities.data ?? [], [activities.data]);
+  const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
+  const all = useMemo(() => activities.data ?? [], [activities.data]);
+  const list = useMemo(() => ofKind(all, kind), [all, kind]);
   const week = useMemo(() => summariseWeek(list, new Date(now)), [list, now]);
   const streak = useMemo(() => computeStreaks(list, new Date(now)), [list, now]);
-  const milestones = useMemo(() => computeMilestones(list, new Date(now)), [list, now]);
+  const milestones = useMemo(() => computeMilestones(all, new Date(now)), [all, now]);
   const next = nextMilestone(milestones);
   const earned = milestones.filter((m) => m.earned).length;
   const name = profile.data?.displayName ?? user.displayName ?? 'runner';
@@ -63,8 +65,12 @@ export function DashboardPage() {
       {showVerify && !user.emailVerified && <VerifyPrompt userId={user.id} email={user.email} />}
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} className="mb-6" />
 
+      <div className="mb-4">
+        <KindFilter value={kind} onChange={setKind} />
+      </div>
+
       <div className="stagger grid gap-4 lg:grid-cols-3">
-        <WeekPanel userId={user.id} unit={unit} week={week} loading={activities.isLoading} />
+        <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} loading={activities.isLoading || profile.isLoading} />
 
         <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
           <section className="panel-strong p-5" aria-labelledby="streak-title">
@@ -122,13 +128,17 @@ export function DashboardPage() {
             </Link>
           }
         >
-          Recent runs
+          {kind === 'walk' ? 'Recent walks' : kind === 'run' ? 'Recent runs' : 'Recent activity'}
         </SectionTitle>
         {activities.isLoading ? (
           <div className="space-y-3 py-2">
             <Skeleton className="h-14" />
             <Skeleton className="h-14" />
           </div>
+        ) : list.length === 0 && kind !== 'all' ? (
+          <EmptyState title={kind === 'walk' ? 'No walks yet' : 'No runs yet'}>
+            Switch to All to see everything, or record a {kind}. Pick Walk or Run before you start.
+          </EmptyState>
         ) : list.length === 0 ? (
           <EmptyState
             mark="0.00"
@@ -187,7 +197,7 @@ function VerifyPrompt({ userId, email }: { userId: string; email: string }) {
         </div>
       }
     >
-      We sent a link to {email}. You’ll need a verified email to enter paid competitions — free challenges work without it.
+      We sent a link to {email}. You’ll need a verified email to enter paid competitions. Free challenges work without it.
       {resend.error && <span className="mt-1 block text-bad">{resend.error.message}</span>}
     </Notice>
   );
@@ -195,21 +205,69 @@ function VerifyPrompt({ userId, email }: { userId: string; email: string }) {
 
 const GOAL_OPTIONS: Record<Unit, number[]> = { km: [10, 20, 30, 50], mi: [5, 10, 20, 30] };
 
+export function KindFilter({ value, onChange }: { value: ActivityKind; onChange: (kind: ActivityKind) => void }) {
+  return (
+    <Segmented<ActivityKind>
+      label="Show runs, walks or both"
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: 'all', label: 'All' },
+        { value: 'run', label: 'Runs' },
+        { value: 'walk', label: 'Walks' },
+      ]}
+    />
+  );
+}
+
+/** The goal lives on the profile, so it survives refreshes and follows the runner across devices. */
+function useWeeklyGoal(userId: string) {
+  const profile = useProfile();
+  const queryClient = useQueryClient();
+  const save = useMutation({
+    mutationFn: (weeklyGoalMetres: number | null) => patch<Profile>('/me', { weeklyGoalMetres }),
+    onMutate(weeklyGoalMetres) {
+      queryClient.setQueryData<Profile>(keys.profile, (current) => (current ? { ...current, weeklyGoalMetres } : current));
+    },
+    onSuccess: (updated) => queryClient.setQueryData(keys.profile, updated),
+    onError: () => void queryClient.invalidateQueries({ queryKey: keys.profile }),
+  });
+
+  // One-time move of a goal set before it was saved to the account.
+  const [legacy] = useStored<number | null>(storageKeys.weeklyGoal(userId), null);
+  const { mutate } = save;
+  const needsMove = profile.data !== undefined && profile.data.weeklyGoalMetres === null && legacy !== null;
+  useEffect(() => {
+    if (!needsMove || legacy === null) return;
+    mutate(Math.round(legacy));
+    try {
+      localStorage.removeItem(storageKeys.weeklyGoal(userId));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [needsMove, legacy, mutate, userId]);
+
+  return [profile.data?.weeklyGoalMetres ?? null, (metres: number) => mutate(Math.round(metres))] as const;
+}
+
 function WeekPanel({
   userId,
   unit,
   week,
+  kind,
   loading,
 }: {
   userId: string;
   unit: Unit;
   week: ReturnType<typeof summariseWeek>;
+  kind: ActivityKind;
   loading: boolean;
 }) {
-  // No goal until the runner picks one — never show an invented target.
-  const [goal, setGoal] = useStored<number | null>(storageKeys.weeklyGoal(userId), null);
+  // No goal until the runner picks one — never show an invented target. It covers walks and runs together.
+  const [savedGoal, setGoal] = useWeeklyGoal(userId);
+  const goal = kind === 'all' ? savedGoal : null;
   const [editingGoal, setEditing] = useState(false);
-  const editing = editingGoal || goal === null;
+  const editing = kind === 'all' && !loading && (editingGoal || goal === null);
   const reached = goal !== null && week.verifiedMetres >= goal;
   const remaining = goal === null ? 0 : Math.max(0, goal - week.verifiedMetres);
 
@@ -218,7 +276,7 @@ function WeekPanel({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p id="week-title" className="eyebrow">
-            This week · verified
+            This week · {kind === 'run' ? 'runs' : kind === 'walk' ? 'walks' : 'verified'}
           </p>
           <p className="mt-2 flex items-baseline gap-2">
             <span className="score text-[64px] sm:text-[76px]">{loading ? '–' : <CountUp value={week.verifiedMetres} format={(m) => formatDistanceNumber(m, unit)} />}</span>
@@ -229,7 +287,7 @@ function WeekPanel({
         </div>
         <div className="text-right">
           <p className="num text-[13px] font-semibold">
-            {week.runs} {week.runs === 1 ? 'run' : 'runs'}
+            {week.runs} {kind === 'all' ? (week.runs === 1 ? 'activity' : 'activities') : kind === 'walk' ? (week.runs === 1 ? 'walk' : 'walks') : week.runs === 1 ? 'run' : 'runs'}
           </p>
           {goal !== null && (
             <button type="button" className="mt-1 text-[12px] font-semibold text-ink-2 underline underline-offset-4 hover:text-ink" onClick={() => setEditing(!editingGoal)}>
@@ -239,7 +297,8 @@ function WeekPanel({
         </div>
       </div>
 
-      {goal === null && <p className="mt-3 text-[13px] font-semibold">Set a weekly goal</p>}
+      {editing && goal === null && <p className="mt-3 text-[13px] font-semibold">Set a weekly goal</p>}
+      {kind !== 'all' && savedGoal !== null && <p className="mt-3 text-[12px] text-ink-3">Your weekly goal counts walks and runs together. Switch to All to see it.</p>}
       {editing && (
         <div className="stagger mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Weekly goal">
           {GOAL_OPTIONS[unit].map((option) => {

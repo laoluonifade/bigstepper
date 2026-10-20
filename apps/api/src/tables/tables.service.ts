@@ -164,8 +164,9 @@ export class TablesService {
     const metric = table.scoringMethod === 'MOST_STEPS' ? 'r."creditedSteps" DESC' : table.scoringMethod === 'FARTHEST_DISTANCE' ? 'r."creditedDistanceMetres" DESC' : 'r."completionTimeSeconds" ASC NULLS LAST';
     return this.dataSource.query(
       `SELECT row_number() OVER (ORDER BY ${metric},r."joinedAt" ASC,r."userId" ASC)::integer rank,
-              r."userId",COALESCE(u."displayName",'Runner') "displayName",r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds"
-       FROM "table_registrations" r JOIN "users" u ON u."id"=r."userId" WHERE r."tableId"=$1
+              r."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
+              r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds"
+       FROM "table_registrations" r JOIN "users" u ON u."id"=r."userId" LEFT JOIN "profiles" p ON p."userId"=r."userId" WHERE r."tableId"=$1
        ORDER BY ${metric},r."joinedAt" ASC,r."userId" ASC LIMIT 500`,
       [tableId],
     );

@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -9,6 +9,7 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsString()
+  @MinLength(1)
   @MaxLength(80)
   displayName?: string;
 
@@ -23,4 +24,17 @@ export class UpdateProfileDto {
   @IsOptional()
   @Matches(/^[A-Z]{2}$/)
   countryCode?: string;
+
+  /** null clears it. */
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(160)
+  bio?: string | null;
+
+  /** null clears the goal. */
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Min(1000)
+  @Max(1_000_000)
+  weeklyGoalMetres?: number | null;
 }

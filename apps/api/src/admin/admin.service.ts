@@ -12,7 +12,6 @@ import { ApprovePaidTableDto, CreatePaidTableDto } from './paid-table.dto';
 import { PaymentsService } from '../payments/payments.service';
 import { assertScoringConfiguration } from '../tables/challenge-types';
 import { calculatePrizeBreakdown } from '../payments/financial-policy';
-import { UpdateUserEligibilityDto } from './user-eligibility.dto';
 import { User } from '../users/user.entity';
 import * as bcrypt from 'bcrypt';
 
@@ -29,9 +28,12 @@ export class AdminService {
     return this.paymentsService.approvePayout(actorUserId, payoutId);
   }
 
-  async executePayout(actorUserId: string, payoutId: string, password: string) {
-    await this.assertAdminPassword(actorUserId, password);
-    return this.paymentsService.executePayout(actorUserId, payoutId);
+  async rejectPayout(actorUserId: string, payoutId: string, reason: string) {
+    return this.paymentsService.rejectPayout(actorUserId, payoutId, reason.trim());
+  }
+
+  payouts(view: 'pending' | 'history') {
+    return this.paymentsService.listPayouts(view);
   }
 
   async reconcilePayments(actorUserId: string, password: string) {
@@ -39,43 +41,50 @@ export class AdminService {
     return this.paymentsService.reconcile();
   }
 
-  /** People staff can approve for paid challenges: newest first, or matching an email / @username / name. */
-  users(search?: string) {
-    const term = search?.trim().replace(/^@/, '').toLowerCase();
+  /** Creator accounts for review: pending applications oldest first, the rest newest first. */
+  creators(view: 'pending' | 'active' | 'suspended') {
+    const status = view.toUpperCase();
     return this.dataSource.query(
-      `SELECT u."id", u."email", u."emailVerified", u."createdAt", p."username", p."displayName",
-              (c."status" = 'ACTIVE') AS "isCreator",
-              COALESCE(e."adultVerified", false) AS "adultVerified",
-              COALESCE(e."paidCompetitionEligible", false) AS "paidCompetitionEligible",
-              COALESCE(e."countryCode", 'NG') AS "countryCode"
-       FROM "users" u
-       LEFT JOIN "profiles" p ON p."userId" = u."id"
-       LEFT JOIN "creator_profiles" c ON c."userId" = u."id"
-       LEFT JOIN "user_eligibility" e ON e."userId" = u."id"
-       WHERE $1::text IS NULL OR u."email" ILIKE '%' || $1 || '%' OR p."username" ILIKE '%' || $1 || '%' OR p."displayName" ILIKE '%' || $1 || '%'
-       ORDER BY u."createdAt" DESC LIMIT 100`,
-      [term || null],
+      `SELECT c."id", c."userId", c."displayName", c."creatorType", c."socialUrl", c."bio", c."status", c."createdAt", c."reviewedAt",
+              u."email", u."emailVerified", p."username", p."avatarUrl", reviewer."displayName" "reviewedBy",
+              (SELECT COUNT(*) FROM "competition_tables" t WHERE t."creatorId" = c."userId" AND t."type" = 'paid')::integer "paidChallenges"
+       FROM "creator_profiles" c
+       JOIN "users" u ON u."id" = c."userId"
+       LEFT JOIN "profiles" p ON p."userId" = c."userId"
+       LEFT JOIN "profiles" reviewer ON reviewer."userId" = c."reviewedByUserId"
+       WHERE c."status" = $1
+       ORDER BY CASE WHEN $1 = 'PENDING' THEN c."createdAt" END ASC, c."createdAt" DESC
+       LIMIT 200`,
+      [status],
     );
   }
 
-  async updateEligibility(actorUserId: string, userId: string, input: UpdateUserEligibilityDto) {
-    const users = await this.dataSource.query(`SELECT "id" FROM "users" WHERE "id"=$1`, [userId]) as Array<{ id: string }>;
-    if (!users[0]) throw new NotFoundException('User not found');
-    const countryCode = input.countryCode.toUpperCase();
+  /** Approve (ACTIVE) or suspend a creator. Only active creators can host paid challenges. */
+  async reviewCreator(actorUserId: string, creatorId: string, status: 'ACTIVE' | 'SUSPENDED') {
     return this.dataSource.transaction(async (manager) => {
-      const rows = await manager.query(
-        `INSERT INTO "user_eligibility" ("userId","adultVerified","paidCompetitionEligible","countryCode")
-         VALUES ($1,$2,$3,$4)
-         ON CONFLICT ("userId") DO UPDATE SET "adultVerified"=EXCLUDED."adultVerified",
-           "paidCompetitionEligible"=EXCLUDED."paidCompetitionEligible","countryCode"=EXCLUDED."countryCode","updatedAt"=now()
-         RETURNING "userId","adultVerified","paidCompetitionEligible","countryCode","updatedAt"`,
-        [userId, input.adultVerified, input.paidCompetitionEligible, countryCode],
-      ) as Array<Record<string, unknown>>;
+      // TypeORM returns [rows, affected] for UPDATE ... RETURNING on Postgres.
+      const [rows] = (await manager.query(
+        `UPDATE "creator_profiles" SET "status"=$2,"reviewedAt"=now(),"reviewedByUserId"=$3,"updatedAt"=now()
+         WHERE "id"=$1 AND "status" <> $2 RETURNING "id","userId","status","displayName"`,
+        [creatorId, status, actorUserId],
+      )) as [Array<{ id: string; userId: string; status: string; displayName: string }>, number];
+      if (!rows[0]) {
+        const exists = await manager.query(`SELECT 1 FROM "creator_profiles" WHERE "id"=$1`, [creatorId]);
+        if (!(exists as unknown[]).length) throw new NotFoundException('Creator not found');
+        throw new ConflictException(status === 'ACTIVE' ? 'This creator is already approved' : 'This creator is already suspended');
+      }
       await manager.query(
-        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata")
-         VALUES ($1,'USER_ELIGIBILITY_UPDATED','user',$2,$3)`,
-        [actorUserId, userId, JSON.stringify({ ...input, countryCode })],
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,'creator_profile',$3,'{}')`,
+        [actorUserId, status === 'ACTIVE' ? 'CREATOR_APPROVED' : 'CREATOR_SUSPENDED', creatorId],
       );
+      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,$2,$3,$4)`, [
+        rows[0].userId,
+        status === 'ACTIVE' ? 'CREATOR_APPROVED' : 'CREATOR_SUSPENDED',
+        status === 'ACTIVE' ? 'You’re approved as a creator' : 'Creator account suspended',
+        status === 'ACTIVE'
+          ? 'You can now host paid challenges on Jump. Create one from Compete.'
+          : 'You can’t host new paid challenges for now. Contact Jump support if you think this is a mistake.',
+      ]);
       return rows[0];
     });
   }

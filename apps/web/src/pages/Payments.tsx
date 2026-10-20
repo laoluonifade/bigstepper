@@ -20,7 +20,7 @@ export function PaymentReturnPage() {
   const payments = useSavedPayments();
   return (
     <div className="mx-auto max-w-2xl animate-rise">
-      <PageHeader eyebrow="Payments" title="Entry payments" description="We confirm every payment directly with Paystack. This page updates on its own — you can leave and come back." />
+      <PageHeader eyebrow="Payments" title="Entry payments" description="We confirm every payment directly with Paystack. This page updates on its own, so you can leave and come back." />
       {payments.length === 0 ? (
         <EmptyState
           title="No payments on this device"

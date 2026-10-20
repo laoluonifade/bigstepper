@@ -66,6 +66,8 @@ export default {
         sweep: { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(100%)' } },
         shimmer: { from: { backgroundPosition: '200% 0' }, to: { backgroundPosition: '-200% 0' } },
         draw: { from: { strokeDashoffset: '1' }, to: { strokeDashoffset: '0' } },
+        'arrow-in': { from: { transform: 'translate(-22px, 12px)', opacity: '0' }, to: { transform: 'translate(0, 0)', opacity: '1' } },
+        'arrow-nudge': { '0%, 100%': { transform: 'translate(0, 0)' }, '50%': { transform: 'translate(8px, -6px)' } },
         hop: { '0%, 100%': { transform: 'translate(0, 0)' }, '45%': { transform: 'translate(-3px, -14px)' }, '60%': { transform: 'translate(-3px, -14px)' } },
       },
       animation: {
@@ -84,6 +86,8 @@ export default {
         sweep: 'sweep 1.8s linear infinite',
         shimmer: 'shimmer 1.6s linear infinite',
         draw: 'draw 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+        'arrow-in': 'arrow-in 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+        'arrow-nudge': 'arrow-nudge 1s cubic-bezier(0.4, 0, 0.2, 1) infinite',
         hop: 'hop 900ms cubic-bezier(0.4, 0, 0.2, 1) infinite',
       },
     },

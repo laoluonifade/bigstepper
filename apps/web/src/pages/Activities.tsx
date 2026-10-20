@@ -8,7 +8,10 @@ import { CountUp, cx, EmptyState, ErrorNotice, Field, Loading, Meter, Notice, Pa
 import { api, isApiError, post } from '../lib/api';
 import { describeReason } from '../lib/copy';
 import { activityName, formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
-import { lifetimeStats } from '../lib/progress';
+import { ActivityKind, lifetimeStats, ofKind } from '../lib/progress';
+import { storageKeys, useStored } from '../lib/local';
+import { useUser } from '../lib/auth';
+import { KindFilter } from './Dashboard';
 import { keys, useActivities, useUnit } from '../lib/queries';
 import type { Activity } from '../lib/types';
 
@@ -17,8 +20,10 @@ type Filter = 'all' | 'verified' | 'attention';
 export function ActivitiesPage() {
   const activities = useActivities();
   const unit = useUnit();
+  const user = useUser();
   const [filter, setFilter] = useState<Filter>('all');
-  const list = useMemo(() => activities.data ?? [], [activities.data]);
+  const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
+  const list = useMemo(() => ofKind(activities.data ?? [], kind), [activities.data, kind]);
   const stats = useMemo(() => lifetimeStats(list), [list]);
   const attention = list.filter((a) => a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED').length;
   const filtered = list.filter((activity) =>
@@ -50,9 +55,13 @@ export function ActivitiesPage() {
         }
       />
 
-      <div className="panel-strong mb-8 grid grid-cols-2 gap-y-5 p-5 sm:grid-cols-4">
-        <Stat label="Verified distance" value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
-        <Stat label="Verified activities" value={activities.isLoading ? '–' : stats.verifiedRuns} />
+      <div className="mb-4">
+        <KindFilter value={kind} onChange={setKind} />
+      </div>
+
+      <div key={kind} className="panel-strong mb-8 grid animate-rise grid-cols-2 gap-y-5 p-5 sm:grid-cols-4">
+        <Stat label={kind === 'run' ? 'Run distance' : kind === 'walk' ? 'Walk distance' : 'Verified distance'} value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
+        <Stat label={kind === 'run' ? 'Verified runs' : kind === 'walk' ? 'Verified walks' : 'Verified activities'} value={activities.isLoading ? '–' : stats.verifiedRuns} />
         <Stat label="Longest" value={activities.isLoading ? '–' : formatDistanceNumber(stats.longestMetres, unit)} unit={unit} />
         <Stat label="Moving time" value={activities.isLoading ? '–' : formatDuration(stats.movingSeconds)} />
       </div>
@@ -80,16 +89,22 @@ export function ActivitiesPage() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={filter === 'all' ? 'No activities yet' : 'Nothing here'}
+          title={filter === 'all' && kind === 'all' ? 'No activities yet' : 'Nothing here'}
           action={
-            filter === 'all' ? (
+            filter === 'all' && kind === 'all' ? (
               <Link to="/run" className="btn-primary">
                 <RunIcon size={16} /> Start an activity
               </Link>
             ) : undefined
           }
         >
-          {filter === 'attention' ? 'None of your activities need attention.' : filter === 'verified' ? 'Verified activities will appear here.' : 'Record a walk or run and it’ll show up here.'}
+          {filter === 'attention'
+            ? 'None of these need attention.'
+            : filter === 'verified'
+              ? 'Verified activities will appear here.'
+              : kind !== 'all'
+                ? `No ${kind}s recorded yet.`
+                : 'Record a walk or run and it’ll show up here.'}
         </EmptyState>
       ) : (
         groups.map(([month, items]) => (
@@ -174,7 +189,7 @@ export function ActivityDetailPage() {
             </p>
             {fromSteps(a) && (
               <p className="text-[13px] text-ink-2">
-                Measured from {a.validatedSteps.toLocaleString('en-GB')} steps — GPS couldn’t track this one (indoors?). Counts for your league and free challenges, not paid ones.
+                Measured from {a.validatedSteps.toLocaleString('en-GB')} steps. GPS couldn’t track this one (indoors?). Counts for your league and free challenges, not paid ones.
               </p>
             )}
             {trimmed > 0 && !fromSteps(a) && (
@@ -205,7 +220,7 @@ export function ActivityDetailPage() {
 
       {pending && (
         <Notice tone="warn" className="mt-6" title="Checking your route">
-          This usually takes a few seconds. The distance above is provisional until it’s verified — it won’t count on leaderboards
+          This usually takes a few seconds. The distance above is provisional until it’s verified. It won’t count on leaderboards
           before then. This page updates by itself.
         </Notice>
       )}
@@ -308,7 +323,7 @@ function ReviewRequest({ activityId }: { activityId: string }) {
         <Field
           label="Tell us what happened"
           hint={`${length}/500 · e.g. “I ran under a bridge for part of the route and lost signal.”`}
-          error={length > 0 && length < 10 ? 'A little more detail please — at least 10 characters.' : undefined}
+          error={length > 0 && length < 10 ? 'A little more detail please, at least 10 characters.' : undefined}
         >
           {(props) => (
             <textarea {...props} className="field" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} required />

@@ -263,10 +263,10 @@ export function DateTimePicker({
                     {key === 'date'
                       ? selected
                         ? new Date(selected.year, selected.month, selected.day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-                        : '—'
+                        : '-'
                       : selected
                         ? `${pad(selected.hour)}:${pad(selected.minute)}`
-                        : '—'}
+                        : '-'}
                   </span>
                 </button>
               ))}

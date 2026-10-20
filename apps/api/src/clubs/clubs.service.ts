@@ -52,6 +52,7 @@ export class ClubsService {
     return memberships.map((member) => ({
       ...member,
       username: byUser.get(member.userId)?.username ?? null,
+      avatarUrl: byUser.get(member.userId)?.avatarUrl ?? null,
       displayName: byUser.get(member.userId)?.displayName ?? null,
     }));
   }

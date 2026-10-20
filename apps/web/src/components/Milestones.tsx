@@ -44,7 +44,7 @@ export function MilestoneStrip({ milestones }: { milestones: Milestone[] }) {
       {milestones.map((milestone) => (
         <li
           key={milestone.id}
-          title={`${milestone.title} — ${milestone.description}${milestone.earned ? ' (earned)' : ''}`}
+          title={`${milestone.title}: ${milestone.description}${milestone.earned ? ' (earned)' : ''}`}
           className={cx(
             'score flex h-11 w-11 items-center justify-center rounded-sm text-[17px]',
             milestone.earned ? 'border-2 border-ink bg-volt text-ink' : 'border-[1.5px] border-dashed border-ink/30 text-ink/30',

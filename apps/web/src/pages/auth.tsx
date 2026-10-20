@@ -31,7 +31,7 @@ export function AuthLayout() {
           <ol className="stagger mt-10 space-y-4 text-[15px] text-paper/75">
             {[
               ['01', 'Record runs with your phone’s GPS.'],
-              ['02', 'Distance is checked before it counts — no shortcuts.'],
+              ['02', 'Distance is checked before it counts. No shortcuts.'],
               ['03', 'Join challenges, climb the standings, take the top spot.'],
             ].map(([n, text]) => (
               <li key={n} className="flex gap-4">

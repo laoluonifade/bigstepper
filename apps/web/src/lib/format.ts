@@ -51,12 +51,12 @@ export function formatPace(metres: number, seconds: number, unit: Unit = 'km'): 
 }
 
 export function formatDate(iso: string | null | undefined, options: Intl.DateTimeFormatOptions = {}): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...options });
 }
 
 export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleString('en-GB', {
     weekday: 'short',
     day: 'numeric',
@@ -67,14 +67,14 @@ export function formatDateTime(iso: string | null | undefined): string {
 }
 
 export function formatTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
 const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
 export function formatRelative(iso: string | null | undefined, now = Date.now()): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const diff = new Date(iso).getTime() - now;
   const abs = Math.abs(diff);
   const minute = 60_000;

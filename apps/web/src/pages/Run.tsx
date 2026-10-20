@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, SignalIcon, StepMark, StopIcon } from '../components/icons';
+import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, JumpLogo, SignalIcon, StopIcon } from '../components/icons';
 import { CountUp, cx, ErrorNotice, KeyValue, LiveDot, Loading, Notice, PageHeader, Redirect, Segmented, useCountUp, useNow } from '../components/ui';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
@@ -104,7 +104,7 @@ function ReadyScreen() {
       <button type="button" className="btn-primary mt-6 min-h-16 w-full text-[16px]" onClick={() => void recorder.start(activityType)} disabled={locating}>
         {locating ? (
           <>
-            <StepMark size={18} motion="loop" /> Finding GPS signal…
+            <JumpLogo height={12} motion="loop" /> Finding GPS signal…
           </>
         ) : (
           <>
@@ -254,7 +254,7 @@ function Scoreboard() {
         ) : confirming === 'discard' ? (
           <div className="mx-auto max-w-md animate-rise rounded-md border-2 border-track/60 p-4">
             <p className="wide text-[15px] font-extrabold uppercase">Discard this {activityName}?</p>
-            <p className="mt-1 text-[13px] text-paper/70">It’s thrown away — nothing is saved, submitted or counted. This can’t be undone.</p>
+            <p className="mt-1 text-[13px] text-paper/70">It’s thrown away. Nothing is saved, submitted or counted. This can’t be undone.</p>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <button type="button" className="btn min-h-14 border-2 border-paper/30 text-paper" onClick={() => setConfirming(null)} disabled={finishing}>
                 Keep it
@@ -373,7 +373,7 @@ export function RunSessionPage() {
       {inProgress && (
         <>
           <Notice tone="info" className="mt-5" title="This run was started on another device">
-            GPS points are recorded by the device that started the run. You can finish it from here — it’ll be submitted with the{' '}
+            GPS points are recorded by the device that started the run. You can finish it from here and it’ll be submitted with the{' '}
             {formatDistance(run.data.distanceMetres, unit)} already uploaded.
           </Notice>
           <ErrorNotice error={finishRemote.error} className="mt-4" />

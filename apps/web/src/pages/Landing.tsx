@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { canEnter, CompetitionCard } from '../components/competition';
-import { ArrowRightIcon, StepMark } from '../components/icons';
+import { ArrowRightIcon } from '../components/icons';
 import { Redirect, Skeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { useTables } from '../lib/queries';
@@ -14,10 +14,7 @@ export function LandingPage() {
   return (
     <section className="grid min-h-[calc(100vh-8rem)] items-center gap-10 py-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-16">
       <div>
-        <p className="eyebrow flex animate-fade items-center gap-2">
-          <StepMark size={16} motion="loop" /> Walk. Run. Compete.
-        </p>
-        <h1 className="display mt-4 text-[clamp(56px,10vw,104px)] leading-[0.82] tracking-[-0.055em]">
+        <h1 className="display text-[clamp(56px,10vw,104px)] leading-[0.82] tracking-[-0.055em]">
           <span className="reveal-line">
             <span>Every</span>
           </span>
@@ -79,7 +76,7 @@ function OpenChallenges() {
       <ol className="divide-y divide-line">
         {[
           ['01', 'Record walks and runs with your phone’s GPS.'],
-          ['02', 'Distance is checked before it counts — no shortcuts.'],
+          ['02', 'Distance is checked before it counts. No shortcuts.'],
           ['03', 'Join a challenge and climb its standings.'],
         ].map(([n, text], index) => (
           <li key={n} className="flex animate-rise gap-4 px-6 py-4" style={{ animationDelay: `${650 + index * 130}ms` }}>

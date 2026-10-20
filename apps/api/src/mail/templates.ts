@@ -41,7 +41,7 @@ export function verificationEmail(to: { address: string; name?: string }, url: s
 
 export function passwordResetEmail(to: { address: string; name?: string }, url: string): MailMessage {
   const intro = 'Someone (hopefully you) asked to reset the password on your Jump account.';
-  const footnote = 'This link expires in 1 hour and signs you out everywhere once used. If you didn’t ask for this, ignore this email — your password won’t change.';
+  const footnote = 'This link expires in 1 hour and signs you out everywhere once used. If you didn’t ask for this, ignore this email. Your password won’t change.';
   return {
     to,
     subject: 'Reset your Jump password',
