@@ -245,7 +245,8 @@ export function ShareProfileButton({ username, displayName, className, iconOnly 
   async function share() {
     if (navigator.share) {
       try {
-        await navigator.share({ title: `${displayName} on Jump`, text: `Follow ${displayName}’s walks and runs on Jump`, url });
+        // The link goes inside the text: many apps (iOS Copy, WhatsApp) keep only the text and drop `url`.
+        await navigator.share({ title: `${displayName} on Jump`, text: `Follow ${displayName}’s walks and runs on Jump: ${url}` });
         return;
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;

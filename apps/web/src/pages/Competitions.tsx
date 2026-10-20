@@ -568,7 +568,7 @@ export function CompetitionDetailPage() {
                 <button
                   type="button"
                   className="btn-quiet btn-sm"
-                  onClick={() => void navigator.share({ title: t.title, text: `Join my Jump challenge "${t.title}" with code ${t.code}`, url: shareUrl }).catch(() => undefined)}
+                  onClick={() => void navigator.share({ title: t.title, text: `Join my Jump challenge "${t.title}" (code ${t.code}): ${shareUrl}` }).catch(() => undefined)}
                 >
                   <ShareIcon size={14} /> Share
                 </button>

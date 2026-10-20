@@ -300,7 +300,7 @@ export function ShareRun({ activity, unit, className, autoOpen = false }: { acti
     const distance = `${formatDistanceNumber(distanceOf(activity), unit)} ${unit}`;
     if (navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: 'My Jump run', text: `${distance} on Jump. startajump.com` });
+        await navigator.share({ files: [file], title: 'My Jump run', text: `${distance} on Jump. ${window.location.origin}` });
         setStatus(null);
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) setStatus('Sharing didn’t work here. Save the image instead.');
