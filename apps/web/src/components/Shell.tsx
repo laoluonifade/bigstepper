@@ -40,8 +40,13 @@ export function Private({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Auth screens bring their own full-screen layout and logo, so no site header around them. */
+const AUTH_PATHS = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password'];
+
 export function AppShell() {
   const { user } = useAuth();
+  const location = useLocation();
+  if (AUTH_PATHS.includes(location.pathname)) return <Outlet />;
   if (!user) return <PublicShell />;
   return (
     <RecorderProvider user={user}>
