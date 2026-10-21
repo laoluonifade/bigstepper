@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
+import { ChallengeMark } from '../components/competition';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { RunIcon, ArrowRightIcon } from '../components/icons';
 import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/league';
-import { RankBadge } from '../components/Leaderboard';
 import { MilestoneBadge } from '../components/Milestones';
 import { WeekChart } from '../components/WeekChart';
 import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Segmented, Skeleton, useNow } from '../components/ui';
@@ -381,6 +381,7 @@ interface MyChallenge {
   title: string;
   hosting: boolean;
   joined: boolean;
+  challengeType: 'WALK' | 'RUN' | 'DISTANCE' | 'STEP' | 'TIMED';
 }
 
 function YourTables({ userId, unit }: { userId: string; unit: Unit }) {
@@ -434,7 +435,7 @@ function TableStandingRow({ table, userId, unit }: { table: MyChallenge; userId:
         params={{ code: table.code }}
         className="flex items-center gap-4 rounded-md border border-line bg-card px-4 py-3 hover:border-ink"
       >
-        {me ? <RankBadge rank={me.rank} size="lg" /> : <span className="score flex h-12 w-12 items-center justify-center text-[24px] text-ink-3">–</span>}
+        <ChallengeMark type={table.challengeType} code={table.code} size={48} />
         <div className="min-w-0 flex-1">
           <p className="wide truncate text-[14px] font-extrabold uppercase">
             {table.title}

@@ -41,8 +41,8 @@ export function useActivities() {
   return useQuery({ queryKey: keys.activities, queryFn: () => api<Activity[]>('/activities') });
 }
 
-export function useTables() {
-  return useQuery({ queryKey: keys.tables, queryFn: () => api<CompetitionTable[]>('/tables') });
+export function useTables(sort = 'popular', type = 'all', activity = 'all') {
+  return useQuery({ queryKey: [...keys.tables, sort, type, activity], queryFn: () => api<CompetitionTable[]>(`/tables?sort=${sort}&type=${type}&activity=${activity}`) });
 }
 
 export function useStandings(tableId: string | undefined, refetchInterval: number | false = false) {

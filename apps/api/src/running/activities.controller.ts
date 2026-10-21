@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ActivitiesService } from './activities.service';
@@ -12,6 +12,16 @@ export class ActivitiesController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.activitiesService.list(user.id);
+  }
+
+  @Get('calendar')
+  calendar(@CurrentUser() user: AuthenticatedUser, @Query('month') month?: string, @Query('tz') timeZone?: string) {
+    return this.activitiesService.calendar(user.id, month, timeZone);
+  }
+
+  @Get(':id/credits')
+  credits(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.activitiesService.credits(user.id, id);
   }
 
   @Get(':id')

@@ -7,6 +7,9 @@ export class CreateTableDto {
   @MaxLength(120)
   title: string;
 
+  @IsOptional() @IsString() @MaxLength(280)
+  description?: string;
+
   @IsOptional() @IsIn(CHALLENGE_TYPES)
   challengeType?: ChallengeType;
 
@@ -15,6 +18,12 @@ export class CreateTableDto {
 
   @IsOptional() @IsInt() @Min(100) @Max(500000)
   targetDistanceMetres?: number;
+
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  reminderTime?: string;
+
+  @IsOptional() @IsString() @MaxLength(64)
+  reminderTimeZone?: string;
 
   @IsOptional() @IsUUID()
   communityId?: string;

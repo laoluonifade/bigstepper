@@ -1,11 +1,26 @@
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '../lib/format';
-import type { CompetitionTable, Unit } from '../lib/types';
-import { ArrowRightIcon, LockIcon, StepMark, UsersIcon } from './icons';
+import type { ChallengeType, CompetitionTable, Unit } from '../lib/types';
+import { ArrowRightIcon, LockIcon, UsersIcon } from './icons';
 import { cx } from './ui';
 
 export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' | 'scoring-closed' | 'final';
+
+export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; code: string; size?: number }) {
+  const palettes = ['bg-track', 'bg-volt', 'bg-medal-bronze', 'bg-medal-silver', 'bg-card'];
+  const colour = palettes[[...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % palettes.length];
+  const symbol = {
+    RUN: <><circle cx="26" cy="9" r="3" /><path d="m24 15-7 6 7 3 3 8m-3-17 8 4-3 6m-12-4-7 3m17 8 9 1" /></>,
+    WALK: <><path d="M13 7c-2 7-3 14-3 20m8-18c1 7 2 13 5 19M8 32c4-2 7-1 9 3m6-2c4-2 7-1 9 2" /><circle cx="12" cy="5" r="1" /><circle cx="18" cy="6" r="1" /></>,
+    DISTANCE: <><circle cx="9" cy="29" r="3" /><circle cx="31" cy="11" r="3" /><path d="M12 28c13 2 4-15 16-16M18 20l4 2m-9 9 2-5" /></>,
+    STEP: <><path d="M5 29h8v-7h8v-7h8V8h7" /><path d="M6 34h29" /><circle cx="8" cy="12" r="2" /></>,
+    TIMED: <><circle cx="20" cy="22" r="12" /><path d="M20 22V13m0 9 7 4M16 5h8M20 5v5" /></>,
+  }[type];
+  return <span className={cx('flex shrink-0 items-center justify-center rounded-[10px] border-2 border-ink text-ink shadow-hard-sm', colour)} style={{ width: size, height: size }} aria-label={`${type.toLowerCase()} challenge`}>
+    <svg width={size * 0.72} height={size * 0.72} viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">{symbol}</svg>
+  </span>;
+}
 
 export function competitionPhase(table: CompetitionTable, now = Date.now()): CompetitionPhase {
   if (table.status === 'SETTLED') return 'final';
@@ -77,14 +92,14 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
 }
 
 /** The card's colour comes from the activity: runs orange, walks/steps volt, anything else ink. */
-function cardTheme(table: CompetitionTable) {
+export function cardTheme(table: CompetitionTable) {
   if (table.challengeType === 'RUN') return { band: 'bg-track text-ink', accent: 'bg-ink' };
   if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: 'bg-volt text-ink', accent: 'bg-ink' };
   return { band: 'bg-ink text-paper', accent: 'bg-volt' };
 }
 
 /** The one big thing about a challenge, from its real settings. */
-function headline(table: CompetitionTable, unit: Unit): { big: string; small: string } {
+export function challengeHeadline(table: CompetitionTable, unit: Unit): { big: string; small: string } {
   if (table.guaranteedPrizeKobo) {
     const amount = prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo;
     return { big: formatMoney(amount).replace(/\.00$/, ''), small: table.prizeSplitBps?.length > 1 ? `across top ${table.prizeSplitBps.length}` : 'to the winner' };
@@ -109,7 +124,7 @@ function progress(table: CompetitionTable, now: number) {
 
 export function CompetitionCard({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
   const theme = cardTheme(table);
-  const hero = headline(table, unit);
+  const hero = challengeHeadline(table, unit);
   const phase = competitionPhase(table, now);
   const live = phase === 'open';
   const done = progress(table, now);
@@ -124,7 +139,10 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
       {/* Colour band with the headline figure */}
       <div className={cx('relative overflow-hidden px-4 pb-4 pt-3', theme.band)}>
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <TypeTag table={table} />
+          <div className="flex items-center gap-1.5">
+            <TypeTag table={table} />
+            <span className="tag bg-paper text-ink">{table.challengeType === 'STEP' ? 'STEPS' : table.challengeType}</span>
+          </div>
           <PhaseTag table={table} now={now} />
         </div>
         <div className="relative z-10 mt-4 flex items-end justify-between gap-3">
@@ -134,8 +152,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
             </p>
             <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{hero.small}</p>
           </div>
-          {/* The Jump mark: drawn on arrival, and the jumper keeps hopping while the challenge is live. */}
-          <StepMark size={46} motion={live ? 'loop' : 'enter'} className="shrink-0 rounded-[10px] shadow-hard-sm" />
+          <ChallengeMark type={table.challengeType} code={table.code} />
         </div>
       </div>
 

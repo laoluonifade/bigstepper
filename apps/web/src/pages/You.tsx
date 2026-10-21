@@ -33,6 +33,7 @@ import type { CheckoutResponse, CreatorProfile, Notification, PayoutRecipient, P
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
+  { to: '/activities', label: 'Activity' },
   { to: '/runners', label: 'Find runners' },
   { to: '/leagues', label: 'League' },
   { to: '/wallet', label: 'Wallet' },
@@ -155,6 +156,7 @@ export function ProfileSettingsPage() {
         }
       >
         {activities.isLoading ? <Skeleton className="mt-5 h-20" /> : <ProfileStats stats={stats} unit={unit} />}
+        <Link to="/activities" className="link mt-3 inline-block text-[13px]">View your activity and calendar →</Link>
         <p className="mt-3 text-[12px] text-ink-3">
           {profile.data.activityVisibility === 'public'
             ? 'Your totals and recent activity are on your public profile.'

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateTableDto } from './dto/create-table.dto';
@@ -10,8 +10,8 @@ export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
 
   @Get()
-  list() {
-    return this.tablesService.list();
+  list(@Query('sort') sort?: string, @Query('type') type?: string, @Query('activity') activity?: string) {
+    return this.tablesService.list(sort, type, activity);
   }
 
   @Post()
@@ -40,6 +40,12 @@ export class TablesController {
   @UseGuards(JwtAuthGuard)
   mine(@CurrentUser() user: AuthenticatedUser) {
     return this.tablesService.mine(user.id);
+  }
+
+  @Get('eligible')
+  @UseGuards(JwtAuthGuard)
+  eligible(@CurrentUser() user: AuthenticatedUser, @Query('activity') activity?: string) {
+    return this.tablesService.eligible(user.id, activity);
   }
 
   @Get(':id/standings')

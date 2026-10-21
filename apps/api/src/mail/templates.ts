@@ -59,3 +59,13 @@ export function challengeInviteEmail(to: { address: string; name?: string }, tit
     text: `${intro}\n\nView challenge: ${url}`,
   };
 }
+
+export function challengeReminderEmail(to: { address: string; name?: string }, title: string, url: string): MailMessage {
+  const intro = `Your daily reminder for ${title}: record a walk or run today to keep moving up the board. Only verified activities during the challenge count.`;
+  return {
+    to,
+    subject: `Time to move · ${title}`,
+    html: layout('Your daily challenge reminder', intro, 'View challenge', url, 'You receive this because you joined this challenge. The host chose its daily reminder time.'),
+    text: `${intro}\n\nView challenge: ${url}\n\nYou receive this because you joined this challenge.`,
+  };
+}

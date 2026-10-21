@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
-import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typeorm';
 import { CompetitionTable } from './competition-table.entity';
 import { CreateTableDto } from './dto/create-table.dto';
 import { TableRegistration } from './table-registration.entity';
@@ -13,6 +13,7 @@ import { MailService } from '../mail/mail.service';
 import { challengeInviteEmail } from '../mail/templates';
 import { ConfigService } from '@nestjs/config';
 import { calculatePrizeBreakdown } from '../payments/financial-policy';
+import { reminderConfig } from './reminder-config';
 
 type Invites = { inviteEmails?: string[]; invitePhones?: string[]; inviteClubMembers?: true; communityId?: string };
 
@@ -28,27 +29,41 @@ export class TablesService {
     private readonly config: ConfigService,
   ) {}
 
-  async list() {
+  async list(sort = 'popular', type = 'all', activity = 'all') {
+    if (!['popular', 'newest'].includes(sort) || !['all', 'free', 'sponsored', 'paid'].includes(type) ||
+        !['all', 'WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED'].includes(activity)) {
+      throw new BadRequestException('Invalid challenge filter');
+    }
+    const ranked = (await this.dataSource.query(
+      `SELECT t."id", COUNT(r."id")::integer AS n
+       FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId"=t."id"
+       WHERE t."status"='OPEN_FOR_ENTRY' AND ($1='all' OR t."type"=$1) AND ($2='all' OR t."challengeType"=$2)
+       GROUP BY t."id" ORDER BY ${sort === 'newest' ? 't."createdAt" DESC' : 'n DESC, t."createdAt" DESC'} LIMIT 50`,
+      [type, activity],
+    )) as Array<{ id: string; n: number }>;
+    if (!ranked.length) return [];
     const tables = await this.tables.find({
-      where: { status: 'OPEN_FOR_ENTRY' },
+      where: { id: In(ranked.map((row) => row.id)) },
       relations: { creator: true },
-      order: { createdAt: 'DESC' },
-      take: 50,
     });
-    return this.present(tables);
+    const byId = new Map(tables.map((table) => [table.id, table]));
+    return this.present(ranked.flatMap((row) => {
+      const table = byId.get(row.id);
+      return table ? [table] : [];
+    }), ranked.map((row) => ({ tableId: row.id, n: row.n })));
   }
 
   /**
    * Public shape of a challenge: the creator is reduced to id + display name (the relation is the full
    * user row, email included, which must never leave the API), plus how many runners have joined.
    */
-  private async present(tables: CompetitionTable[]) {
-    const counts = tables.length
+  private async present(tables: CompetitionTable[], knownCounts?: Array<{ tableId: string; n: number }>) {
+    const counts = knownCounts ?? (tables.length
       ? ((await this.dataSource.query(
           `SELECT "tableId", count(*)::int AS n FROM "table_registrations" WHERE "tableId" = ANY($1::uuid[]) GROUP BY "tableId"`,
           [tables.map((table) => table.id)],
         )) as Array<{ tableId: string; n: number }>)
-      : [];
+      : []);
     const byTable = new Map(counts.map((row) => [row.tableId, row.n]));
     return tables.map(({ creator, ...table }) => ({
       ...table,
@@ -59,7 +74,7 @@ export class TablesService {
 
   async mine(userId: string) {
     const rows = await this.tables.query(
-      `SELECT t."id", t."code", t."title", t."type", t."status", t."scoringClosesAt",
+      `SELECT t."id", t."code", t."title", t."type", t."challengeType", t."status", t."scoringClosesAt",
               (t."creatorId" = $1) AS "hosting", (r."id" IS NOT NULL) AS "joined"
        FROM "competition_tables" t
        LEFT JOIN "table_registrations" r ON r."tableId" = t."id" AND r."userId" = $1
@@ -68,7 +83,21 @@ export class TablesService {
        LIMIT 50`,
       [userId],
     );
-    return rows as Array<{ id: string; code: string; title: string; type: string; status: string; scoringClosesAt: string | null; hosting: boolean; joined: boolean }>;
+    return rows as Array<{ id: string; code: string; title: string; type: string; challengeType: string; status: string; scoringClosesAt: string | null; hosting: boolean; joined: boolean }>;
+  }
+
+  async eligible(userId: string, activity?: string) {
+    if (activity !== 'run' && activity !== 'walk') throw new BadRequestException('Choose run or walk');
+    return this.dataSource.query(
+      `SELECT t."id", t."code", t."title", t."challengeType", t."type"
+       FROM "table_registrations" r JOIN "competition_tables" t ON t."id"=r."tableId"
+       WHERE r."userId"=$1 AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
+         AND COALESCE(t."startsAt", '-infinity'::timestamptz) <= now()
+         AND COALESCE(t."scoringClosesAt", 'infinity'::timestamptz) > now()
+         AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR t."challengeType"=$2)
+       ORDER BY t."scoringClosesAt" ASC LIMIT 50`,
+      [userId, activity.toUpperCase()],
+    );
   }
 
   async create(creatorId: string, input: CreateTableDto) {
@@ -91,6 +120,7 @@ export class TablesService {
     }
     const table = this.tables.create({
       title: input.title.trim(),
+      description: input.description?.trim() || null,
       code: randomBytes(4).toString('hex').toUpperCase(),
       creatorId,
       type: input.guaranteedPrizeKobo ? 'sponsored' : 'free',
@@ -104,6 +134,7 @@ export class TablesService {
       challengeType,
       scoringMethod,
       targetDistanceMetres: input.targetDistanceMetres ?? null,
+      ...reminderConfig(input.reminderTime, input.reminderTimeZone),
       communityId: input.communityId ?? null,
       platformFeeBps: input.guaranteedPrizeKobo ? 1500 : 3000,
       creatorCommissionBps: 0,
@@ -136,6 +167,7 @@ export class TablesService {
     return this.saveWithInvites(this.tables.create({
       creatorId,
       title: input.title.trim(),
+      description: input.description?.trim() || null,
       code: randomBytes(4).toString('hex').toUpperCase(),
       type: 'paid',
       status: 'PENDING_APPROVAL',
@@ -150,6 +182,7 @@ export class TablesService {
       challengeType: input.challengeType,
       scoringMethod: input.scoringMethod,
       targetDistanceMetres: input.targetDistanceMetres ?? null,
+      ...reminderConfig(input.reminderTime, input.reminderTimeZone),
       communityId: input.communityId ?? null,
       platformFeeBps: 3500,
       creatorCommissionBps: 500,
@@ -202,7 +235,9 @@ export class TablesService {
       relations: { creator: true },
     });
     if (!table) throw new NotFoundException('Challenge not found');
-    return (await this.present([table]))[0];
+    const [presented] = await this.present([table]);
+    const [host] = (await this.dataSource.query(`SELECT "username", "avatarUrl" FROM "profiles" WHERE "userId" = $1`, [table.creatorId])) as Array<{ username: string; avatarUrl: string | null }>;
+    return { ...presented, creator: presented.creator ? { ...presented.creator, username: host?.username ?? null, avatarUrl: host?.avatarUrl ?? null } : null };
   }
 
   async result(tableId: string) {

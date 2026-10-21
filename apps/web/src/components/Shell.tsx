@@ -9,6 +9,7 @@ import {
   ActivityIcon,
   ArrowRightIcon,
   BellIcon,
+  FeedIcon,
   HomeIcon,
   LadderIcon,
   LogoutIcon,
@@ -101,7 +102,7 @@ function SignedInShell() {
     {
       items: [
         { to: '/dashboard', label: 'Home', icon: <HomeIcon /> },
-        { to: '/activities', label: 'Activity', icon: <ActivityIcon /> },
+        { to: '/feed', label: 'Feed', icon: <FeedIcon /> },
         { to: '/runners', label: 'Find runners', icon: <UsersIcon /> },
       ],
     },
@@ -115,6 +116,7 @@ function SignedInShell() {
     {
       title: 'You',
       items: [
+        { to: '/activities', label: 'Your activity', icon: <ActivityIcon /> },
         { to: '/leagues', label: 'My league', icon: <LadderIcon /> },
         { to: '/wallet', label: 'Wallet', icon: <WalletIcon /> },
         { to: '/rewards', label: 'Rewards', icon: <WalletIcon /> },
@@ -222,7 +224,7 @@ function SignedInShell() {
             </span>
             <span className="text-[10px] font-bold uppercase tracking-[0.08em]">Run</span>
           </Link>
-          <Tab to="/activities" label="Activity" icon={<ActivityIcon />} />
+          <Tab to="/feed" label="Feed" icon={<FeedIcon />} />
           <Tab to="/settings/profile" label="You" icon={<UserIcon />} />
         </div>
       </nav>
@@ -235,8 +237,8 @@ const TAB_PATHS: Record<string, string[]> = {
   Home: ['/dashboard'],
   Compete: ['/competitions', '/clubs'],
   Run: ['/run', '/runs'],
-  Activity: ['/activities'],
-  You: ['/settings', '/runners', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
+  Feed: ['/feed'],
+  You: ['/settings', '/activities', '/runners', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
 };
 
 function useTabActive(label: string) {

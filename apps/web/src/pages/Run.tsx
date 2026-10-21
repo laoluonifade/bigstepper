@@ -41,6 +41,12 @@ function ReadyScreen() {
   const recorder = useRecorder();
   const locating = recorder.phase === 'locating';
   const [activityType, setActivityType] = useState<'walk' | 'run'>('run');
+  const [showStartInfo, setShowStartInfo] = useState(false);
+  const eligible = useQuery({
+    queryKey: ['tables', 'eligible', activityType],
+    queryFn: () => api<Array<{ id: string; code: string; title: string; challengeType: string; type: string }>>(`/tables/eligible?activity=${activityType}`),
+    enabled: showStartInfo,
+  });
 
   if (recorder.phase === 'blocked') {
     return (
@@ -101,7 +107,7 @@ function ReadyScreen() {
       )}
       <ErrorNotice error={recorder.error ? new Error(recorder.error) : null} className="mt-5" />
 
-      <button type="button" className="btn-primary mt-6 min-h-16 w-full text-[16px]" onClick={() => void recorder.start(activityType)} disabled={locating}>
+      <button type="button" className="btn-primary mt-6 min-h-16 w-full text-[16px]" onClick={() => setShowStartInfo(true)} disabled={locating}>
         {locating ? (
           <>
             <JumpLogo height={12} motion="loop" /> Finding GPS signal…
@@ -113,6 +119,24 @@ function ReadyScreen() {
         )}
       </button>
       <p className="mt-3 text-center text-[12px] text-ink-3">Your location is only recorded while an activity is active.</p>
+      {showStartInfo && <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={`Before your ${activityType}`}>
+        <div className="w-full max-w-md rounded-md border-2 border-ink bg-paper p-5 shadow-hard">
+          <p className="eyebrow">Before you start</p>
+          <h2 className="wide mt-1 text-[24px] font-extrabold uppercase">Your {activityType} counts</h2>
+          <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After verification, this {activityType} automatically scores in active {activityType} challenges you already joined, plus eligible distance, step and timed challenges. Verified distance also counts in your active league.</p>
+          <p className="mt-2 text-[12px] text-ink-2">Paid distance challenges use your GPS-verified distance. Walks do not score in run-only challenges, and runs do not score in walk-only challenges.</p>
+          <div className="mt-4 border-y border-line py-3">
+            <p className="text-[13px] font-bold">Your matching challenges right now</p>
+            {eligible.isLoading ? <p className="mt-2 text-[12px] text-ink-2">Checking…</p> : eligible.error ? <ErrorNotice error={eligible.error} onRetry={() => void eligible.refetch()} className="mt-2" /> : eligible.data?.length ? (
+              <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-[13px]">{eligible.data.map((table) => <li key={table.id}>• {table.title} <span className="text-ink-3">({table.challengeType.toLowerCase()})</span></li>)}</ul>
+            ) : <p className="mt-2 text-[12px] text-ink-2">None yet. You can still record this activity and earn league distance.</p>}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setShowStartInfo(false)}>Not yet</button>
+            <button type="button" className="btn-primary" onClick={() => { setShowStartInfo(false); void recorder.start(activityType); }} disabled={locating}>Start {activityType}</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }

@@ -22,6 +22,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { CreatorsModule } from './creators/creators.module';
 import { WalletsModule } from './wallets/wallets.module';
 import { MailModule } from './mail/mail.module';
+import { FeedModule } from './feed/feed.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { MailModule } from './mail/mail.module';
     }),
     RedisModule,
     MailModule,
+    FeedModule,
     JobsModule,
     AuthModule,
     ProfilesModule,

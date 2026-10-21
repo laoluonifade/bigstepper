@@ -47,6 +47,13 @@ export const ActivityIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const FeedIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 5h16v11H9l-5 4z" />
+    <path d="M8 9h8M8 12h5" />
+  </Icon>
+);
+
 export const UserIcon = (p: IconProps) => (
   <Icon {...p}>
     <circle cx="12" cy="8" r="4" />
@@ -229,6 +236,12 @@ export const ShareIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 3v12M7 8l5-5 5 5" />
     <path d="M5 13v8h14v-8" />
+  </Icon>
+);
+
+export const TrashIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
   </Icon>
 );
 

@@ -213,9 +213,9 @@ export function ProfileStats({ stats, unit }: { stats: PublicStats; unit: Unit }
 }
 
 /** Underline tabs that stay on one line at phone width. */
-export function ProfileTabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (value: T) => void; tabs: Array<{ value: T; label: string }> }) {
+export function ProfileTabs<T extends string>({ value, onChange, tabs, label = 'Profile sections' }: { value: T; onChange: (value: T) => void; tabs: Array<{ value: T; label: string }>; label?: string }) {
   return (
-    <div role="tablist" aria-label="Profile sections" className="flex border-b-[1.5px] border-line">
+    <div role="tablist" aria-label={label} className="flex border-b-[1.5px] border-line">
       {tabs.map((tab) => {
         const active = tab.value === value;
         return (

@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CompetitionCard, PhaseTag, Timeline, TypeTag, canEnter, competitionPhase, phaseLine, prizeSplit } from '../components/competition';
-import { ArrowRightIcon, CheckIcon, PlusIcon, ShareIcon } from '../components/icons';
+import { ChallengeMark, CompetitionCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, PlusIcon, ShareIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
-  CopyButton,
+  Avatar,
   cx,
   EmptyState,
   ErrorNotice,
@@ -24,7 +24,9 @@ import { api, isApiError, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { joinConflictCopy } from '../lib/copy';
 import {
+  formatCountdown,
   formatDate,
+  formatDateTime,
   formatDistance,
   formatDuration,
   formatMoney,
@@ -78,14 +80,15 @@ function scoreText(row: { creditedDistanceMetres: number; creditedSteps: number;
 
 export function CompetitionsPage() {
   const { user } = useAuth();
-  const tables = useTables();
   const unit = useUnit();
   const now = useNow(60_000);
   const navigate = useNavigate();
   const [filter, setFilter] = useState<TypeFilter>('all');
+  const [activity, setActivity] = useState<'all' | ChallengeType>('all');
+  const [sort, setSort] = useState<'popular' | 'newest'>('popular');
+  const tables = useTables(sort, filter, activity);
   const [code, setCode] = useState('');
-  const list = (tables.data ?? []).filter((table) => filter === 'all' || table.type === filter);
-  const hasPaid = tables.data?.some((table) => table.type === 'paid');
+  const list = tables.data ?? [];
 
   function openCode(event: FormEvent) {
     event.preventDefault();
@@ -127,22 +130,30 @@ export function CompetitionsPage() {
       </form>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        {hasPaid ? (
-          <Segmented<TypeFilter>
-            label="Challenge type"
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'free', label: 'Free' },
-              { value: 'sponsored', label: 'Funded free' },
-              { value: 'paid', label: 'Paid' },
-            ]}
-          />
-        ) : (
-          <span />
-        )}
-        {tables.data && <p className="num text-[12px] text-ink-3">{list.length} open</p>}
+        <Segmented<TypeFilter>
+          label="Challenge type"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'free', label: 'Free' },
+            { value: 'sponsored', label: 'Funded free' },
+            { value: 'paid', label: 'Paid' },
+          ]}
+        />
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Activity">
+            {(props) => <select {...props} className="field min-w-28" value={activity} onChange={(event) => setActivity(event.target.value as typeof activity)}>
+              <option value="all">All activities</option><option value="WALK">Walk</option><option value="RUN">Run</option><option value="DISTANCE">Distance</option><option value="STEP">Steps</option><option value="TIMED">Timed</option>
+            </select>}
+          </Field>
+          <Field label="Order">
+            {(props) => <select {...props} className="field min-w-28" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}>
+              <option value="popular">Most joined</option><option value="newest">Newest</option>
+            </select>}
+          </Field>
+          {tables.data && <p className="num pb-3 text-[12px] text-ink-3">{list.length} open</p>}
+        </div>
       </div>
 
       <ErrorNotice error={tables.error} onRetry={() => void tables.refetch()} />
@@ -194,11 +205,15 @@ export function NewCompetitionPage() {
   const club = useQuery({ queryKey: keys.club(clubId ?? ''), queryFn: () => api<{ id: string; name: string; memberCount: number }>(`/clubs/${clubId}`), enabled: Boolean(clubId) });
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [challengeType, setChallengeType] = useState<ChallengeType>('RUN');
   const [scoringMethod, setScoringMethod] = useState<ScoringMethod>('FARTHEST_DISTANCE');
   const [targetDistance, setTargetDistance] = useState('');
   const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date()));
   const [scoringClosesAt, setScoringClosesAt] = useState(() => toLocalInput(new Date(Date.now() + 7 * 86_400_000)));
+  const [remindDaily, setRemindDaily] = useState(false);
+  const [reminderTime, setReminderTime] = useState('08:00');
+  const reminderTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const [capacity, setCapacity] = useState('');
   const [cap, setCap] = useState('');
   const [duration, setDuration] = useState<number | null>(7);
@@ -246,11 +261,13 @@ export function NewCompetitionPage() {
     mutationFn: () =>
       post<CompetitionTable>(mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
         title: title.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
         challengeType,
         scoringMethod,
         ...(targetDistanceMetres ? { targetDistanceMetres } : {}),
         ...(startIso ? { startsAt: startIso } : {}),
         ...(scoringIso ? { scoringClosesAt: scoringIso } : {}),
+        ...(remindDaily ? { reminderTime, reminderTimeZone } : {}),
         capacity: capacityNumber,
         ...(mode !== 'paid' && capMetres ? { distanceCapMetres: capMetres } : {}),
         ...(hasPrize ? { prizeSplitBps } : {}),
@@ -275,6 +292,7 @@ export function NewCompetitionPage() {
   const preview: CompetitionTable = {
     id: 'preview',
     title: title.trim() || 'Your challenge name',
+    description: description.trim() || null,
     code: '- - - -',
     type: mode,
     status: mode === 'paid' ? 'PENDING_APPROVAL' : mode === 'sponsored' ? 'PENDING_FUNDING' : 'OPEN_FOR_ENTRY',
@@ -291,6 +309,8 @@ export function NewCompetitionPage() {
     challengeType,
     scoringMethod,
     targetDistanceMetres: targetDistanceMetres ?? null,
+    reminderTime: remindDaily ? reminderTime : null,
+    reminderTimeZone: remindDaily ? reminderTimeZone : null,
     communityId: club.data?.id ?? null,
     platformFeeBps: mode === 'paid' ? 3500 : mode === 'sponsored' ? 1500 : 3000,
     creatorCommissionBps: mode === 'paid' ? 500 : 0,
@@ -340,6 +360,19 @@ export function NewCompetitionPage() {
                 maxLength={120}
                 placeholder="e.g. Lekki Saturday 10K"
                 required
+              />
+            )}
+          </Field>
+          <Field label="What’s it about?" optional hint={`${280 - description.length} characters left`}>
+            {(props) => (
+              <textarea
+                {...props}
+                className="field min-h-[76px] py-3"
+                rows={3}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                maxLength={280}
+                placeholder="e.g. Our run club’s month of miles. Every Saturday long run counts, slowest finisher buys the smoothies."
               />
             )}
           </Field>
@@ -426,6 +459,16 @@ export function NewCompetitionPage() {
                 />
               )}
             </Field>
+          </div>
+
+          <div className="panel p-5">
+            <label className="flex items-center gap-2 text-[14px] font-semibold">
+              <input type="checkbox" checked={remindDaily} onChange={(event) => setRemindDaily(event.target.checked)} />
+              Email joined runners a daily reminder
+            </label>
+            {remindDaily && <Field label={`Reminder time · ${reminderTimeZone}`} hint="Sent once per local day while the challenge is active. Runners who have already recorded an activity that day are skipped.">
+              {(props) => <input {...props} className="field mt-3 max-w-40" type="time" value={reminderTime} onChange={(event) => setReminderTime(event.target.value)} required />}
+            </Field>}
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
@@ -525,6 +568,7 @@ export function CompetitionDetailPage() {
   const standings = useStandings(table.data?.id, live ? 30_000 : false);
 
   const me = standings.data?.find((row) => row.userId === user?.id);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     if (user && me && table.data) rememberTable(user.id, { id: table.data.id, code: table.data.code, title: table.data.title });
@@ -574,27 +618,44 @@ export function CompetitionDetailPage() {
   const t = table.data;
   const isFinal = Boolean(result.data);
   const shareUrl = `${window.location.origin}/competitions/${t.code}`;
+  const isHost = user?.id === t.creatorId;
+  const hostName = t.creator?.displayName ?? 'A Jump runner';
+  const entrants = standings.data?.length ?? t.entrantCount ?? 0;
 
   return (
     <div className="animate-rise">
-      <PageHeader back={{ to: '/competitions', label: 'Challenges' }} title={t.title} eyebrow={<span className="flex flex-wrap gap-2"><TypeTag table={t} /><PhaseTag table={t} now={now} /></span>} description={t.creator?.displayName ? `Hosted by ${t.creator.displayName}` : undefined} />
+      <Link to="/competitions" className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink">
+        <ArrowLeftIcon size={16} /> Challenges
+      </Link>
 
       {search.created && (
         <Notice tone="ok" className="mb-6" title="Challenge created">
           {t.status === 'PENDING_APPROVAL' ? 'Your draft is waiting for Jump approval. ' : t.status === 'PENDING_FUNDING' ? 'Fund the prize to open entry. ' : 'Your challenge is open. '}
-          Share code <span className="font-mono font-semibold text-ink">{t.code}</span> when it opens.
+          Share the link so friends can join.
         </Notice>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="min-w-0 space-y-8">
-          <section className="panel p-5">
-            <Timeline table={t} now={now} />
-          </section>
-
-          <section>
-            <SectionTitle aside={isFinal ? <span className="tag border-ink bg-volt">Final</span> : <span className="tag border-warn/60 bg-warn-wash text-warn">Provisional</span>}>
-              Standings
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-x-10">
+        {/* Cover, title, host and the leaderboard */}
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+          <ChallengeCover table={t} unit={unit} now={now} />
+          <h1 className="display mt-5 break-words text-[34px] leading-[0.95] sm:text-[44px]">{t.title}</h1>
+          <div className="mt-4 flex items-center gap-3">
+            <Avatar name={hostName} src={t.creator?.avatarUrl} size={40} className="rounded-full" />
+            <p className="min-w-0 text-[14px] leading-snug">
+              {t.creator?.username ? (
+                <Link to="/runners/$username" params={{ username: t.creator.username }} search={{}} className="font-bold hover:underline">{hostName}</Link>
+              ) : (
+                <span className="font-bold">{hostName}</span>
+              )}
+              {isHost ? ' · you’re hosting' : me ? ' is hosting' : ' invited you to join'}
+              <span className="block text-[12px] text-ink-3">Created {formatDate(t.createdAt, { year: 'numeric' })}</span>
+            </p>
+          </div>
+          {t.description && <p className="mt-4 max-w-xl whitespace-pre-line break-words text-[15px] leading-relaxed">{t.description}</p>}
+          <section className="mt-8">
+            <SectionTitle aside={isFinal ? <span className="tag border-ink bg-volt">Final</span> : <span className="tag border-line bg-card text-ink-2">Live</span>}>
+              Leaderboard
             </SectionTitle>
             {standings.isLoading ? (
               <Skeleton className="h-48" />
@@ -605,49 +666,167 @@ export function CompetitionDetailPage() {
                 rows={rows}
                 currentUserId={user?.id}
                 unit={unit}
+                limit={showAll ? 200 : 10}
                 metricLabel={t.scoringMethod === 'MOST_STEPS' ? 'Steps' : t.scoringMethod === 'FARTHEST_DISTANCE' ? 'Distance' : 'Time'}
                 formatScore={t.scoringMethod === 'FARTHEST_DISTANCE' ? undefined : (row) => (
                   <span className="score num text-[20px]">
                     {t.scoringMethod === 'MOST_STEPS' ? Number(row.score ?? 0).toLocaleString('en-GB') : row.score === null ? '-' : formatDuration(Number(row.score))}
                   </span>
                 )}
-                caption={
-                  isFinal
-                    ? `Settled ${formatDate(result.data?.createdAt)} · version ${result.data?.version}. These standings are locked.`
-                    : `Live · ${scoringLabel(t, unit)}. Positions can still change until the result is settled.`
-                }
-                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first eligible verified activity puts you on the board.</EmptyState>}
+                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified walk or run puts you on top.</EmptyState>}
               />
+            )}
+            {rows.length > 10 && (
+              <button type="button" className="btn-quiet mt-3 w-full" onClick={() => setShowAll((value) => !value)}>
+                {showAll ? 'Show top 10' : `See all ${rows.length} runners`}
+              </button>
             )}
           </section>
         </div>
 
-        <aside className="space-y-6">
-          <EntryPanel table={t} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={standings.data?.length ?? 0} now={now} />
-
-          <section className="panel p-5">
-            <p className="eyebrow mb-3">Invite code</p>
-            <p className="font-mono text-[26px] font-semibold tracking-[0.2em]">{t.code}</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <CopyButton value={t.code} label="Copy code" />
-              <CopyButton value={shareUrl} label="Copy link" />
-              {'share' in navigator && (
-                <button
-                  type="button"
-                  className="btn-quiet btn-sm"
-                  onClick={() => void navigator.share({ title: t.title, text: `Join my Jump challenge "${t.title}" (code ${t.code}): ${shareUrl}` }).catch(() => undefined)}
-                >
-                  <ShareIcon size={14} /> Share
-                </button>
-              )}
-            </div>
-          </section>
-
-          <Rules table={t} unit={unit} />
-          {user?.id === t.creatorId && <InvitationsPanel table={t} />}
+        {/* The join box: sticky beside the story on desktop, straight after the leaderboard on phones */}
+        <aside className="space-y-4 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+          <EntryPanel table={t} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={entrants} faces={rows} now={now} />
+          <ShareBox table={t} url={shareUrl} />
         </aside>
+
+        <div className="min-w-0 space-y-10 lg:col-start-1 lg:row-start-2">
+          {!me && !isHost && <HowItWorks table={t} unit={unit} />}
+
+
+          <KeyDates table={t} now={now} />
+          <Rules table={t} unit={unit} />
+          {isHost && <InvitationsPanel table={t} />}
+        </div>
       </div>
     </div>
+  );
+}
+
+/** The poster at the top of an invite: the challenge's colour, its one big number and its mark. */
+function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+  const theme = cardTheme(table);
+  const hero = challengeHeadline(table, unit);
+  return (
+    <div className={cx('relative overflow-hidden rounded-xl border-[1.5px] border-ink px-5 pb-6 pt-4 sm:px-7 sm:pb-8', theme.band)}>
+      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.13]" preserveAspectRatio="none" viewBox="0 0 400 200" aria-hidden="true">
+        {[0, 1, 2, 3, 4, 5].map((lane) => (
+          <path key={lane} d={`M-20 ${200 - lane * 26}C120 ${180 - lane * 30} 240 ${120 - lane * 22} 420 ${60 - lane * 18}`} fill="none" stroke="currentColor" strokeWidth="3" />
+        ))}
+      </svg>
+      <div className="relative flex flex-wrap items-center gap-1.5">
+        <TypeTag table={table} />
+        <span className="tag bg-paper text-ink">{table.challengeType === 'STEP' ? 'STEPS' : table.challengeType}</span>
+        <PhaseTag table={table} now={now} />
+      </div>
+      <div className="relative mt-10 flex items-end justify-between gap-4 sm:mt-14">
+        <div className="min-w-0">
+          <p className="score whitespace-nowrap text-[clamp(44px,13vw,88px)] uppercase leading-[0.85]">{hero.big}</p>
+          <p className="mt-2 text-[12px] font-bold uppercase tracking-[0.14em] opacity-75">{hero.small}</p>
+        </div>
+        <ChallengeMark type={table.challengeType} code={table.code} size={64} />
+      </div>
+    </div>
+  );
+}
+
+/** For people arriving from an invite who have never heard of a Jump challenge. */
+function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
+  const counts = table.challengeType === 'RUN' ? 'run' : table.challengeType === 'WALK' ? 'walk' : 'walk and run';
+  const ends = table.scoringClosesAt ? formatDate(table.scoringClosesAt) : null;
+  const prize = table.guaranteedPrizeKobo
+    ? `${formatMoney(prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo).replace(/\.00$/, '')} goes to ${table.prizeSplitBps?.length > 1 ? `the top ${table.prizeSplitBps.length}` : 'the winner'}, paid out by Jump.`
+    : 'The top spot takes the bragging rights.';
+  const steps = [
+    {
+      title: table.type === 'paid' ? `Join for ${formatMoney(table.entryFeeKobo).replace(/\.00$/, '')}` : 'Join for free',
+      body: table.type === 'paid' ? 'Pay securely with Paystack. Entry fees build the prize pot.' : 'One tap and you’re on the board. No fee, no catch.',
+    },
+    {
+      title: `${counts === 'walk and run' ? 'Walk or run' : counts === 'run' ? 'Run' : 'Walk'} with Jump`,
+      body: `Hit Run in the app whenever you head out. Every verified ${counts} after you join adds to your total.`,
+    },
+    {
+      title: 'Climb the board',
+      body: `${scoringLabel(table, unit)}.${ends ? ` It ends ${ends}.` : ''} ${prize}`,
+    },
+  ];
+  return (
+    <section>
+      <SectionTitle>How it works</SectionTitle>
+      <p className="mb-5 max-w-xl text-[15px] leading-relaxed text-ink-2">
+        A Jump challenge is a friendly competition. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.
+      </p>
+      <ol className="grid gap-3 sm:grid-cols-3">
+        {steps.map((step, index) => (
+          <li key={step.title} className="rounded-xl border border-line bg-card p-4">
+            <span className="score flex h-9 w-9 items-center justify-center rounded-full bg-ink text-[18px] text-volt">{index + 1}</span>
+            <p className="wide mt-3 text-[14px] font-extrabold uppercase leading-tight">{step.title}</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{step.body}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function KeyDates({ table, now }: { table: CompetitionTable; now: number }) {
+  const merged = !table.entryClosesAt || table.entryClosesAt === table.scoringClosesAt;
+  const items = [
+    { label: 'Starts', at: table.startsAt },
+    ...(merged ? [] : [{ label: 'Entry closes', at: table.entryClosesAt }]),
+    { label: 'Ends', at: table.scoringClosesAt },
+  ];
+  return (
+    <section>
+      <SectionTitle>Key dates</SectionTitle>
+      <ol className="divide-y divide-line rounded-xl border border-line bg-card">
+        {items.map((item) => {
+          const past = item.at ? new Date(item.at).getTime() <= now : false;
+          return (
+            <li key={item.label} className="flex items-center justify-between gap-4 px-4 py-3 text-[14px]">
+              <span className="flex items-center gap-2.5 font-semibold">
+                <span className={cx('h-2.5 w-2.5 rounded-full border-2 border-ink', past ? 'bg-ink' : 'bg-card')} />
+                {item.label}
+              </span>
+              <span className="num text-right text-ink-2">{item.at ? formatDateTime(item.at) : 'No end date'}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function ShareBox({ table, url }: { table: CompetitionTable; url: string }) {
+  const [copied, setCopied] = useState(false);
+  const text = `Join my Jump challenge "${table.title}": ${url}`;
+  async function share() {
+    if (navigator.share) {
+      await navigator.share({ title: table.title, text }).catch(() => undefined);
+      return;
+    }
+    await navigator.clipboard?.writeText(url);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+  return (
+    <section className="rounded-xl border border-line bg-card p-4">
+      <p className="text-[14px] font-bold">Challenges are better with friends</p>
+      <p className="mt-0.5 text-[13px] text-ink-2">Send the link. They can join straight from it.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button type="button" className="btn-secondary btn-sm" onClick={() => void share()}>
+          <ShareIcon size={14} /> {copied ? 'Link copied' : 'Invite friends'}
+        </button>
+        <a className="btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer noopener">
+          WhatsApp
+        </a>
+      </div>
+      <p className="mt-3 flex items-center justify-between text-[12px] text-ink-3">
+        <span>Invite code</span>
+        <span className="font-mono font-semibold tracking-[0.16em] text-ink">{table.code}</span>
+      </p>
+    </section>
   );
 }
 
@@ -664,6 +843,7 @@ function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
     scoring,
     `${activity} Flagged activities count only after a reviewer approves them.`,
     'An activity counts if it starts after you join and finishes before scoring closes.',
+    ...(table.reminderTime ? [`Joined runners may receive a daily email reminder at ${table.reminderTime.slice(0, 5)} (${table.reminderTimeZone}). No reminder is sent after they record an activity that day.`] : []),
     ...(table.scoringMethod === 'FARTHEST_DISTANCE'
       ? [table.distanceCapMetres ? `Each activity counts up to ${formatDistance(table.distanceCapMetres, unit)}.` : 'No per-activity distance cap.']
       : []),
@@ -716,12 +896,14 @@ function EntryPanel({
   joinedRank,
   joinedScore,
   entrants,
+  faces,
   now,
 }: {
   table: CompetitionTable;
   joinedRank?: number;
   joinedScore?: string;
   entrants: number;
+  faces: LeaderboardRow[];
   now: number;
 }) {
   const { user } = useAuth();
@@ -778,7 +960,7 @@ function EntryPanel({
 
   if (joinedRank !== undefined) {
     return (
-      <section className="rounded-md border-2 border-ink bg-volt p-5 shadow-hard">
+      <section className="rounded-xl border-[1.5px] border-ink bg-volt p-5 shadow-hard">
         <p className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.12em]">
           <CheckIcon size={16} /> You’re in
         </p>
@@ -816,23 +998,10 @@ function EntryPanel({
   const conflict = isApiError(join.error, 409) ? joinConflictCopy(join.error.message) : null;
 
   return (
-    <section className="panel-strong p-5">
-      <p className="eyebrow">Entry</p>
-      <p className="score mt-2 text-[44px]">{isPaid ? formatMoney(table.entryFeeKobo) : 'Free'}</p>
-      <ul className="mt-3 space-y-1.5 text-[13px] text-ink-2">
-        {table.guaranteedPrizeKobo ? (
-          <li>
-            Prize pool <span className="font-bold text-ink">{formatMoney(prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo)}</span>
-            {table.prizeSplitBps?.length > 1 ? ` · top ${table.prizeSplitBps.length}` : ' · winner takes all'}
-          </li>
-        ) : null}
-        <li className="num">
-          {participantCount} {participantCount === 1 ? 'runner' : 'runners'}
-          {table.capacity ? ` of ${table.capacity}` : ''} so far
-        </li>
-        <li>{phaseLine(table, now)}</li>
-      </ul>
-
+    <section className="rounded-xl border-[1.5px] border-ink bg-card p-5 shadow-hard">
+      <Stakes table={table} />
+      <TimeLeft table={table} now={now} />
+      <Faces faces={faces} count={participantCount} capacity={table.capacity} />
       <div className="mt-5">
         {!open && isSponsored && table.status === 'PENDING_FUNDING' && user ? (
           <>
@@ -894,6 +1063,87 @@ function EntryPanel({
         )}
       </div>
     </section>
+  );
+}
+
+/** The headline of the join box: what's at stake, GoFundMe-style. */
+function Stakes({ table }: { table: CompetitionTable }) {
+  const money = (kobo: number) => formatMoney(kobo).replace(/\.00$/, '');
+  if (table.guaranteedPrizeKobo) {
+    const winner = prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo;
+    return (
+      <div>
+        <p className="score num text-[44px] leading-none">{money(winner)}</p>
+        <p className="mt-1.5 text-[13px] text-ink-2">
+          prize {table.prizeSplitBps?.length > 1 ? `shared by the top ${table.prizeSplitBps.length}` : 'for the winner'} · {table.type === 'paid' ? `${money(table.entryFeeKobo)} to enter` : 'free to enter'}
+        </p>
+      </div>
+    );
+  }
+  if (table.type === 'paid') {
+    return (
+      <div>
+        <p className="score num text-[44px] leading-none">{money(table.entryFeeKobo)}</p>
+        <p className="mt-1.5 text-[13px] text-ink-2">to enter · entry fees build the prize pot</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="score text-[44px] leading-none">Free</p>
+      <p className="mt-1.5 text-[13px] text-ink-2">to join · just walk or run</p>
+    </div>
+  );
+}
+
+function TimeLeft({ table, now }: { table: CompetitionTable; now: number }) {
+  const phase = competitionPhase(table, now);
+  const start = new Date(table.startsAt ?? table.createdAt).getTime();
+  const end = table.scoringClosesAt ? new Date(table.scoringClosesAt).getTime() : null;
+  const done = end && end > start ? Math.min(1, Math.max(0, (now - start) / (end - start))) : null;
+  const daysLeft = end ? Math.ceil((end - now) / 86_400_000) : null;
+  const label =
+    phase === 'upcoming' ? `Starts in ${formatCountdown(table.startsAt!, now)}`
+      : phase === 'final' || phase === 'scoring-closed' ? 'Challenge ended'
+        : daysLeft !== null && daysLeft > 1 ? `${daysLeft} days left`
+          : end ? `Ends in ${formatCountdown(table.scoringClosesAt!, now)}` : 'No end date';
+  return (
+    <div className="mt-5">
+      {done !== null && (
+        <div className="h-2 overflow-hidden rounded-full bg-ink/10" aria-hidden="true">
+          <div className="h-full origin-left animate-grow-x rounded-full bg-track" style={{ width: `${Math.max(3, done * 100)}%` }} />
+        </div>
+      )}
+      <p className="mt-2 flex items-baseline justify-between gap-3 text-[13px]">
+        <span className="font-bold">{label}</span>
+        {end && <span className="text-ink-3">Ends {formatDate(table.scoringClosesAt)}</span>}
+      </p>
+    </div>
+  );
+}
+
+function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; count: number; capacity: number | null }) {
+  const shown = faces.slice(0, 5);
+  const first = shown.map((face) => face.name.split(' ')[0]);
+  const line =
+    count === 0 ? 'Be the first to join'
+      : count === 1 ? `${first[0] ?? 'One runner'} is in`
+        : count === 2 && first.length === 2 ? `${first[0]} and ${first[1]} are in`
+          : `${first[0] ?? 'Runners'}${first[1] ? `, ${first[1]}` : ''} and ${count - Math.min(2, first.length)} others are in`;
+  return (
+    <div className="mt-4 flex items-center gap-3 border-t border-line pt-4">
+      {shown.length > 0 && (
+        <span className="flex shrink-0 -space-x-2">
+          {shown.map((face) => (
+            <Avatar key={face.userId} name={face.name} src={face.avatarUrl} size={30} className="rounded-full ring-2 ring-card" />
+          ))}
+        </span>
+      )}
+      <p className="min-w-0 text-[13px] leading-snug">
+        <span className="font-semibold">{line}</span>
+        {capacity ? <span className="block text-[12px] text-ink-3">{Math.max(0, capacity - count)} of {capacity} spots left</span> : null}
+      </p>
+    </div>
   );
 }
 

@@ -100,7 +100,7 @@ export function summariseWeek(activities: Activity[], now = new Date()): WeekSum
 export function computeStreaks(activities: Activity[], now = new Date()) {
   const days = new Set(
     activities
-      .filter((activity) => activity.verificationStatus !== 'REJECTED' && activity.recordedDistanceMetres >= 500)
+      .filter((activity) => activity.verificationStatus !== 'REJECTED' && Math.max(activity.recordedDistanceMetres, creditedMetres(activity)) >= 500)
       .map((activity) => startOfDay(new Date(activity.startedAt)).getTime()),
   );
   const sorted = [...days].sort((a, b) => a - b);
@@ -137,9 +137,10 @@ export interface Milestone {
 
 export function computeMilestones(activities: Activity[], now = new Date()): Milestone[] {
   const verified = activities.filter(isVerified);
+  const verifiedRuns = verified.filter((activity) => activity.activityType === 'run');
   const total = verified.reduce((sum, activity) => sum + creditedMetres(activity), 0);
-  const longest = verified.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0);
-  const { best } = computeStreaks(activities, now);
+  const longest = verifiedRuns.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0);
+  const { best } = computeStreaks(verifiedRuns, now);
 
   const make = (
     id: string,
@@ -152,7 +153,7 @@ export function computeMilestones(activities: Activity[], now = new Date()): Mil
   ): Milestone => ({ id, mark, title, description, kind, progress: Math.min(progress, target), target, earned: progress >= target });
 
   return [
-    make('first', '01', 'First count', 'Log your first verified run', 'count', verified.length, 1),
+    make('first', '01', 'First count', 'Log your first verified run', 'count', verifiedRuns.length, 1),
     make('5k', '5K', 'Five', 'A single verified run of 5 km', 'single', longest, 5000),
     make('10k', '10K', 'Ten', 'A single verified run of 10 km', 'single', longest, 10000),
     make('half', '21K', 'Half', 'A single verified run of 21.1 km', 'single', longest, 21097),

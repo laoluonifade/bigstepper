@@ -10,6 +10,9 @@ export class CompetitionTable {
   @Column()
   title: string;
 
+  @Column({ type: 'varchar', length: 280, nullable: true })
+  description: string | null;
+
   @Column({ unique: true })
   code: string;
 
@@ -45,6 +48,12 @@ export class CompetitionTable {
 
   @Column({ type: 'integer', nullable: true })
   targetDistanceMetres: number | null;
+
+  @Column({ type: 'time', nullable: true })
+  reminderTime: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  reminderTimeZone: string | null;
 
   @Column({ type: 'uuid', nullable: true })
   communityId: string | null;

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { refreshLeagueDistance } from '../leagues/league-credits';
@@ -18,6 +18,34 @@ export class ActivitiesService {
 
   list(userId: string) {
     return this.activities.find({ where: { userId }, order: { startedAt: 'DESC' }, take: 100 });
+  }
+
+  async calendar(userId: string, month?: string, timeZone = 'UTC') {
+    const selected = month ?? new Date().toISOString().slice(0, 7);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(selected)) throw new BadRequestException('Month must be YYYY-MM');
+    try { new Intl.DateTimeFormat('en', { timeZone }); }
+    catch { throw new BadRequestException('Invalid time zone'); }
+    return this.activities.query(
+      `SELECT (a."startedAt" AT TIME ZONE $3)::date::text AS day,
+              COUNT(*)::integer AS "activities",
+              COALESCE(SUM(a."validatedSteps"), 0)::integer AS steps,
+              COALESCE(SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")), 0)::bigint AS "distanceMetres"
+       FROM "activities" a
+       WHERE a."userId"=$1 AND a."verificationStatus"='VERIFIED'
+         AND (a."startedAt" AT TIME ZONE $3)::date >= ($2 || '-01')::date
+         AND (a."startedAt" AT TIME ZONE $3)::date < (($2 || '-01')::date + INTERVAL '1 month')
+       GROUP BY day ORDER BY day`,
+      [userId, selected, timeZone],
+    );
+  }
+
+  async credits(userId: string, activityId: string) {
+    await this.get(userId, activityId);
+    return this.activities.query(
+      `SELECT t."code", t."title", t."challengeType", t."scoringMethod", c."creditedDistanceMetres", c."creditedSteps", c."completionTimeSeconds"
+       FROM "table_activity_credits" c JOIN "competition_tables" t ON t."id"=c."tableId"
+       WHERE c."activityId"=$1 ORDER BY t."title"`, [activityId],
+    );
   }
 
   /**

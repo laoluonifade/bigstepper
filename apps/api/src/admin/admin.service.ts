@@ -9,6 +9,7 @@ import { Activity } from '../running/activity.entity';
 import { RunningSession } from '../running/running-session.entity';
 import { ResolveReviewDto } from './resolve-review.dto';
 import { ApprovePaidTableDto, CreatePaidTableDto } from './paid-table.dto';
+import { reminderConfig } from '../tables/reminder-config';
 import { PaymentsService } from '../payments/payments.service';
 import { assertScoringConfiguration } from '../tables/challenge-types';
 import { calculatePrizeBreakdown } from '../payments/financial-policy';
@@ -190,6 +191,7 @@ export class AdminService {
         capacity: input.capacity, startsAt, entryClosesAt, scoringClosesAt, distanceCapMetres: null,
         challengeType: input.challengeType, scoringMethod: input.scoringMethod,
         targetDistanceMetres: input.targetDistanceMetres ?? null, communityId: input.communityId ?? null,
+        ...reminderConfig(input.reminderTime, input.reminderTimeZone),
         platformFeeBps: creator ? 3500 : 3000, creatorCommissionBps: creator ? 500 : 0,
         prizeSplitBps,
       }));

@@ -28,6 +28,8 @@ export class MailService implements OnModuleInit {
     return Boolean(this.config.get<string>('ZEPTOMAIL_API_KEY') && this.config.get<string>('ZEPTOMAIL_FROM_ADDRESS'));
   }
 
+  get configured() { return this.enabled; }
+
   async send(message: MailMessage): Promise<void> {
     if (!this.enabled) {
       this.logger.warn(`Email not sent (ZeptoMail not configured) → ${message.to.address}: ${message.subject}\n${message.text}`);

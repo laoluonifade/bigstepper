@@ -119,6 +119,8 @@ export interface Activity {
 export interface CompetitionTable {
   id: string;
   title: string;
+  /** Host's short pitch, up to 280 characters. */
+  description: string | null;
   code: string;
   type: 'free' | 'paid' | 'sponsored';
   status: string;
@@ -135,11 +137,13 @@ export interface CompetitionTable {
   challengeType: ChallengeType;
   scoringMethod: ScoringMethod;
   targetDistanceMetres: number | null;
+  reminderTime: string | null;
+  reminderTimeZone: string | null;
   communityId: string | null;
   platformFeeBps: number;
   creatorCommissionBps: number;
   creatorId: string;
-  creator?: { id: string; displayName: string | null };
+  creator?: { id: string; displayName: string | null; username?: string | null; avatarUrl?: string | null } | null;
   /** Runners who have joined (list and detail responses). */
   entrantCount?: number;
   createdAt: string;

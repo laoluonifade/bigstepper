@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
-import { ReactNode } from 'react';
-import { formatDistance, formatDistanceNumber, ordinal } from '../lib/format';
+import { ReactNode, useId } from 'react';
+import { formatDistanceNumber, ordinal } from '../lib/format';
 import type { Unit } from '../lib/types';
 import { Avatar, cx } from './ui';
 
@@ -16,23 +16,45 @@ export interface LeaderboardRow {
   host?: boolean;
 }
 
-const medal: Record<number, string> = {
-  1: 'bg-medal-gold',
-  2: 'bg-medal-silver',
-  3: 'bg-medal-bronze',
+/** Podium metals: the winner gets platinum and a crown, then gold and bronze. */
+const PODIUM: Record<number, { light: string; base: string }> = {
+  1: { light: '#F2FBFE', base: '#7FB6CA' },
+  2: { light: '#FFE58A', base: '#D7981C' },
+  3: { light: '#F2B47E', base: '#B4622A' },
 };
 
 export function RankBadge({ rank, size = 'md' }: { rank: number; size?: 'md' | 'lg' }) {
-  const isPodium = rank <= 3;
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const metal = PODIUM[rank];
+  const px = size === 'lg' ? 48 : 34;
+  if (!metal) {
+    return (
+      <span className={cx('score num inline-flex shrink-0 items-center justify-center rounded-sm text-ink', size === 'lg' ? 'h-12 min-w-12 px-1.5 text-[28px]' : 'h-8 min-w-8 px-1 text-[18px]')}>
+        {rank}
+      </span>
+    );
+  }
   return (
-    <span
-      className={cx(
-        'score num inline-flex shrink-0 items-center justify-center rounded-sm',
-        size === 'lg' ? 'h-12 min-w-12 px-1.5 text-[28px]' : 'h-8 min-w-8 px-1 text-[18px]',
-        isPodium ? cx(medal[rank], 'text-ink') : 'text-ink',
-      )}
-    >
-      {rank}
+    <span className="relative inline-flex shrink-0 items-center justify-center" style={{ width: px, height: px }} aria-label={rank === 1 ? '1st, winning' : ordinal(rank)}>
+      <svg viewBox="0 0 32 32" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        <defs>
+          <linearGradient id={`${id}-m`} x1="0" y1="0" x2="0.5" y2="1">
+            <stop offset="0" stopColor={metal.light} />
+            <stop offset="1" stopColor={metal.base} />
+          </linearGradient>
+        </defs>
+        {rank === 1 ? (
+          <path d="M9.5 9.5V2.5l3.3 3L16 .8l3.2 4.7 3.3-3v7z" fill="#E4FF3A" stroke="#121212" strokeWidth="1.4" strokeLinejoin="round" />
+        ) : (
+          <path d="M10 1h4.5l3 8.5h-4.5zM22 1h-4.5l-3 8.5h4.5z" fill="#121212" />
+        )}
+        <circle cx="17.2" cy="20.2" r="10.8" fill="#121212" />
+        <circle cx="16" cy="19" r="10.8" fill={`url(#${id}-m)`} stroke="#121212" strokeWidth="1.8" />
+        <circle cx="16" cy="19" r="7.6" fill="none" stroke="#fff" strokeOpacity="0.5" strokeWidth="1.1" />
+      </svg>
+      <span className={cx('score num relative leading-none text-ink', size === 'lg' ? 'text-[21px]' : 'text-[15px]')} style={{ transform: `translateY(${(px * 3) / 32}px)` }}>
+        {rank}
+      </span>
     </span>
   );
 }
@@ -80,8 +102,8 @@ export function Leaderboard({
           </tr>
         </thead>
         <tbody className="stagger">
-          {visible.map((row, index) => (
-            <Row key={row.userId} row={row} above={visible[index - 1]} isMe={row.userId === currentUserId} unit={unit} formatScore={formatScore} />
+          {visible.map((row) => (
+            <Row key={row.userId} row={row} isMe={row.userId === currentUserId} unit={unit} formatScore={formatScore} />
           ))}
           {pinnedMe && (
             <>
@@ -90,7 +112,7 @@ export function Leaderboard({
                   · · ·
                 </td>
               </tr>
-              <Row row={pinnedMe} above={rows[meIndex - 1]} isMe unit={unit} formatScore={formatScore} />
+              <Row row={pinnedMe} isMe unit={unit} formatScore={formatScore} />
             </>
           )}
         </tbody>
@@ -99,8 +121,7 @@ export function Leaderboard({
   );
 }
 
-function Row({ row, above, isMe, unit, formatScore }: { row: LeaderboardRow; above?: LeaderboardRow; isMe: boolean; unit: Unit; formatScore?: (row: LeaderboardRow) => ReactNode }) {
-  const gap = !formatScore && isMe && above ? above.metres - row.metres : null;
+function Row({ row, isMe, unit, formatScore }: { row: LeaderboardRow; isMe: boolean; unit: Unit; formatScore?: (row: LeaderboardRow) => ReactNode }) {
   return (
     <tr className={cx('border-b border-line last:border-b-0', isMe ? 'bg-volt' : 'hover:bg-ink/[0.025]')}>
       <td className="py-2.5 pl-4 align-middle">
@@ -121,14 +142,6 @@ function Row({ row, above, isMe, unit, formatScore }: { row: LeaderboardRow; abo
               {isMe && <span className="tag ml-2 h-5 border-ink bg-ink px-1.5 text-[9.5px] text-volt">You</span>}
               {row.host && <span className="tag ml-2 h-5 border-line bg-paper px-1.5 text-[9.5px]">Host</span>}
             </p>
-            {gap !== null && (
-              <p className="text-[12px] text-ink/70">
-                {gap > 0
-                  ? `${formatDistance(gap, unit)} to take ${ordinal(above!.rank)}`
-                  : `Level with ${ordinal(above!.rank)} . Next verified run decides it`}
-              </p>
-            )}
-            {isMe && row.rank === 1 && <p className="text-[12px] text-ink/70">You’re leading. Hold it.</p>}
           </div>
         </div>
       </td>

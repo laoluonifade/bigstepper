@@ -4,6 +4,7 @@ import { AppShell, Private } from './components/Shell';
 import { ActivitiesPage, ActivityDetailPage } from './pages/Activities';
 import { CompetitionDetailPage, CompetitionsPage, NewCompetitionPage } from './pages/Competitions';
 import { DashboardPage } from './pages/Dashboard';
+import { FeedPage } from './pages/Feed';
 import { LandingPage } from './pages/Landing';
 import { AdminCreatorsPage } from './pages/AdminCreators';
 import { AdminChallengesPage } from './pages/AdminChallenges';
@@ -47,6 +48,7 @@ const forgot = createRoute({ getParentRoute: () => authLayout, path: '/forgot-pa
 const reset = createRoute({ getParentRoute: () => authLayout, path: '/reset-password', validateSearch: tokenSearch, component: ResetPasswordPage });
 
 const dashboard = createRoute({ getParentRoute: () => root, path: '/dashboard', component: protectedPage(DashboardPage) });
+const feed = createRoute({ getParentRoute: () => root, path: '/feed', validateSearch: (search: Record<string, unknown>): { activity?: string } => typeof search.activity === 'string' ? { activity: search.activity } : {}, component: protectedPage(FeedPage) });
 const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', validateSearch: (search: Record<string, unknown>): { club?: string } => typeof search.club === 'string' ? { club: search.club } : {}, component: protectedPage(NewCompetitionPage) });
 const run = createRoute({ getParentRoute: () => root, path: '/run', component: protectedPage(RunPage) });
 const runSession = createRoute({ getParentRoute: () => root, path: '/runs/$id', component: protectedPage(RunSessionPage) });
@@ -82,7 +84,7 @@ function tokenSearch(search: Record<string, unknown>): { token?: string } {
 const routeTree = root.addChildren([
   home, competitions, competition, runners, runner,
   authLayout.addChildren([login, register, verify, forgot, reset]),
-  dashboard, newCompetition, run, runSession, activities, activity,
+  dashboard, feed, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
   adminPayouts, adminCreators, adminChallenges,
 ]);
