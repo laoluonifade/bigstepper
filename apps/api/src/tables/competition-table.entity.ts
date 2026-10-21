@@ -58,6 +58,12 @@ export class CompetitionTable {
   @Column({ type: 'bigint', nullable: true, transformer: { to: (value: number | null) => value, from: (value: string | null) => value === null ? null : Number(value) } })
   guaranteedPrizeKobo: number | null;
 
+  @Column({ type: 'jsonb', default: () => "'[10000]'::jsonb" })
+  prizeSplitBps: number[];
+
+  @Column({ type: 'timestamptz', nullable: true })
+  fundedAt: Date | null;
+
   @Column({ type: 'integer', default: 1 })
   minimumEntrants: number;
 

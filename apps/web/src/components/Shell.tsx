@@ -101,6 +101,7 @@ function SignedInShell() {
       items: [
         { to: '/dashboard', label: 'Home', icon: <HomeIcon /> },
         { to: '/activities', label: 'Activity', icon: <ActivityIcon /> },
+        { to: '/runners', label: 'Find runners', icon: <UsersIcon /> },
       ],
     },
     {
@@ -127,6 +128,7 @@ function SignedInShell() {
             title: 'Staff',
             items: [
               { to: '/admin/creators', label: 'Creator approvals', icon: <ShieldIcon /> },
+              { to: '/admin/challenges', label: 'Paid challenges', icon: <ShieldIcon /> },
               { to: '/admin/payouts', label: 'Payouts', icon: <WalletIcon /> },
             ] as NavItem[],
           },

@@ -6,9 +6,11 @@ import { CompetitionDetailPage, CompetitionsPage, NewCompetitionPage } from './p
 import { DashboardPage } from './pages/Dashboard';
 import { LandingPage } from './pages/Landing';
 import { AdminCreatorsPage } from './pages/AdminCreators';
+import { AdminChallengesPage } from './pages/AdminChallenges';
 import { AdminPayoutsPage } from './pages/AdminPayouts';
 import { PaymentReturnPage } from './pages/Payments';
 import { RunPage, RunSessionPage } from './pages/Run';
+import { RunnersPage } from './pages/Runners';
 import { ClubDetailPage, ClubsPage, LeagueDetailPage, LeaguesPage } from './pages/Social';
 import { CreatorPage, NotificationsPage, ProfileSettingsPage, RewardsPage, RunnerPage, WalletPage } from './pages/You';
 import { AuthLayout, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth';
@@ -35,6 +37,7 @@ const runner = createRoute({
     search.tab === 'followers' || search.tab === 'following' ? { tab: search.tab } : {},
   component: RunnerPage,
 });
+const runners = createRoute({ getParentRoute: () => root, path: '/runners', component: protectedPage(RunnersPage) });
 
 const authLayout = createRoute({ getParentRoute: () => root, id: 'auth', component: AuthLayout });
 const login = createRoute({ getParentRoute: () => authLayout, path: '/login', validateSearch: redirectSearch, component: LoginPage });
@@ -44,7 +47,7 @@ const forgot = createRoute({ getParentRoute: () => authLayout, path: '/forgot-pa
 const reset = createRoute({ getParentRoute: () => authLayout, path: '/reset-password', validateSearch: tokenSearch, component: ResetPasswordPage });
 
 const dashboard = createRoute({ getParentRoute: () => root, path: '/dashboard', component: protectedPage(DashboardPage) });
-const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', component: protectedPage(NewCompetitionPage) });
+const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', validateSearch: (search: Record<string, unknown>): { club?: string } => typeof search.club === 'string' ? { club: search.club } : {}, component: protectedPage(NewCompetitionPage) });
 const run = createRoute({ getParentRoute: () => root, path: '/run', component: protectedPage(RunPage) });
 const runSession = createRoute({ getParentRoute: () => root, path: '/runs/$id', component: protectedPage(RunSessionPage) });
 const activities = createRoute({ getParentRoute: () => root, path: '/activities', component: protectedPage(ActivitiesPage) });
@@ -65,6 +68,7 @@ const notifications = createRoute({ getParentRoute: () => root, path: '/notifica
 const profile = createRoute({ getParentRoute: () => root, path: '/settings/profile', component: protectedPage(ProfileSettingsPage) });
 const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: protectedPage(PaymentReturnPage) });
 const adminCreators = createRoute({ getParentRoute: () => root, path: '/admin/creators', component: protectedPage(AdminCreatorsPage) });
+const adminChallenges = createRoute({ getParentRoute: () => root, path: '/admin/challenges', component: protectedPage(AdminChallengesPage) });
 const adminPayouts = createRoute({ getParentRoute: () => root, path: '/admin/payouts', component: protectedPage(AdminPayoutsPage) });
 
 function redirectSearch(search: Record<string, unknown>): { redirect?: string } {
@@ -76,11 +80,11 @@ function tokenSearch(search: Record<string, unknown>): { token?: string } {
 }
 
 const routeTree = root.addChildren([
-  home, competitions, competition, runner,
+  home, competitions, competition, runners, runner,
   authLayout.addChildren([login, register, verify, forgot, reset]),
   dashboard, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
-  adminPayouts, adminCreators,
+  adminPayouts, adminCreators, adminChallenges,
 ]);
 
 export const router = createRouter({ routeTree });

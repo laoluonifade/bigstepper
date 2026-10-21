@@ -78,6 +78,18 @@ export class ProfilesService {
     return profile;
   }
 
+  async search(query: string) {
+    const term = query.trim().replace(/^@/, '').slice(0, 50);
+    if (term.length < 2) return [];
+    const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+    return this.dataSource.query(
+      `SELECT "username","displayName","avatarUrl","bio"
+       FROM "profiles" WHERE "username" ILIKE $1 ESCAPE '\\' OR "displayName" ILIKE $1 ESCAPE '\\'
+       ORDER BY CASE WHEN lower("username")=lower($2) THEN 0 WHEN lower("username") LIKE lower($2)||'%' THEN 1 ELSE 2 END,
+                "username" ASC LIMIT 20`, [pattern, term],
+    );
+  }
+
   /**
    * What a visitor can see. Totals and recent activity only when the runner allows it (public, or
    * followers and the viewer follows them); never routes (a start point is often someone's front door).

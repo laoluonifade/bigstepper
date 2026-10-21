@@ -1,5 +1,5 @@
 import { OmitType } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, Min, MinLength } from 'class-validator';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../tables/challenge-types';
 
 export class CreatePaidTableDto {
@@ -10,7 +10,10 @@ export class CreatePaidTableDto {
   @IsOptional() @IsInt() @Min(100) @Max(500000) targetDistanceMetres?: number;
   @IsOptional() @IsUUID() communityId?: string;
   @IsInt() @Min(100) @Max(100000000) entryFeeKobo: number;
-  @IsInt() @Min(100) @Max(1000000000) guaranteedPrizeKobo: number;
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsInt({ each: true }) @Min(1, { each: true }) prizeSplitBps?: number[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true }) inviteEmails?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @Matches(/^\+[1-9]\d{7,14}$/, { each: true }) invitePhones?: string[];
+  @IsOptional() @IsIn([true]) inviteClubMembers?: true;
   /** Defaults to 2: a paid race needs at least two people. */
   @IsOptional() @IsInt() @Min(2) @Max(10000) minimumEntrants?: number;
   @IsInt() @Min(2) @Max(10000) capacity: number;

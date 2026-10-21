@@ -24,7 +24,7 @@ import { useAuth, useUser } from '../lib/auth';
 import { formatCountdown, formatDate, formatDistance, ordinal } from '../lib/format';
 import { rememberClub, SavedClub, storageKeys, useStored } from '../lib/local';
 import { keys, useLeagues, useLeagueStandings, useMyLeagues, useUnit } from '../lib/queries';
-import type { Club, ClubMember } from '../lib/types';
+import type { Club, ClubMember, ClubStanding } from '../lib/types';
 import { CompeteSubNav } from './Competitions';
 import { YOU_NAV } from './You';
 
@@ -381,9 +381,11 @@ export function ClubsPage() {
 export function ClubDetailPage() {
   const { id } = useParams({ strict: false }) as { id: string };
   const { user } = useAuth();
+  const unit = useUnit();
   const queryClient = useQueryClient();
   const club = useQuery({ queryKey: keys.club(id), queryFn: () => api<Club>(`/clubs/${id}`) });
   const members = useQuery({ queryKey: keys.clubMembers(id), queryFn: () => api<ClubMember[]>(`/clubs/${id}/members`) });
+  const board = useQuery({ queryKey: ['club', id, 'leaderboard'], queryFn: () => api<ClubStanding[]>(`/clubs/${id}/leaderboard`), enabled: Boolean(members.data?.some((member) => member.userId === user?.id)) });
   const [memberHandle, setMemberHandle] = useState('');
   const me = members.data?.find((member) => member.userId === user?.id);
   const canManage = me?.role === 'owner' || me?.role === 'admin';
@@ -414,8 +416,26 @@ export function ClubDetailPage() {
   return (
     <div className="animate-rise">
       <PageHeader back={{ to: '/clubs', label: 'Clubs' }} eyebrow={`/${club.data.slug}`} title={club.data.name} />
+      {canManage && (
+        <Link to="/competitions/new" search={{ club: club.data.id }} className="btn-primary mb-6">
+          <PlusIcon size={16} /> Start a challenge · invite members
+        </Link>
+      )}
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section>
+          <div className="mb-8">
+            <SectionTitle aside="This month">Club leaderboard</SectionTitle>
+            <ErrorNotice error={board.error} onRetry={() => void board.refetch()} />
+            {board.isLoading ? <Skeleton className="h-40" /> : board.data ? (
+              <Leaderboard
+                rows={board.data.map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, metres: row.monthMetres }))}
+                currentUserId={user?.id}
+                unit={unit}
+                caption="Verified running distance since the start of this month."
+                empty={<EmptyState title="No activity this month" />}
+              />
+            ) : <Notice tone="neutral">Join this club to see its monthly leaderboard.</Notice>}
+          </div>
           <SectionTitle aside={`${club.data.memberCount ?? members.data?.length ?? 0} members`}>Members</SectionTitle>
           <ErrorNotice error={members.error} />
           {members.isLoading ? (

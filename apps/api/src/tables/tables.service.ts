@@ -1,12 +1,20 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { CompetitionTable } from './competition-table.entity';
 import { CreateTableDto } from './dto/create-table.dto';
 import { TableRegistration } from './table-registration.entity';
 import { assertScoringConfiguration } from './challenge-types';
 import { CreateCreatorPaidChallengeDto } from '../admin/paid-table.dto';
+import { allocatePrizes, assertPrizeSplit } from './prize-split';
+import { paidPrizePot } from './paid-prize';
+import { MailService } from '../mail/mail.service';
+import { challengeInviteEmail } from '../mail/templates';
+import { ConfigService } from '@nestjs/config';
+import { calculatePrizeBreakdown } from '../payments/financial-policy';
+
+type Invites = { inviteEmails?: string[]; invitePhones?: string[]; inviteClubMembers?: true; communityId?: string };
 
 @Injectable()
 export class TablesService {
@@ -16,6 +24,8 @@ export class TablesService {
     @InjectRepository(TableRegistration)
     private readonly registrations: Repository<TableRegistration>,
     private readonly dataSource: DataSource,
+    private readonly mail: MailService,
+    private readonly config: ConfigService,
   ) {}
 
   async list() {
@@ -66,6 +76,11 @@ export class TablesService {
     const scoringMethod = input.scoringMethod ?? (challengeType === 'WALK' || challengeType === 'STEP' ? 'MOST_STEPS' : challengeType === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
     this.validateScoring(challengeType, scoringMethod, input.targetDistanceMetres);
     await this.assertCommunityManager(creatorId, input.communityId);
+    if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
+    const prizeSplitBps = this.prizeSplit(input.prizeSplitBps, input.capacity);
+    if (input.guaranteedPrizeKobo) {
+      this.assertAwardAmounts(calculatePrizeBreakdown(input.guaranteedPrizeKobo, 1500, 0).winnerAmountKobo, prizeSplitBps);
+    }
     const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
     const scoringClosesAt = input.scoringClosesAt
       ? new Date(input.scoringClosesAt)
@@ -78,27 +93,35 @@ export class TablesService {
       title: input.title.trim(),
       code: randomBytes(4).toString('hex').toUpperCase(),
       creatorId,
-      type: 'free',
+      type: input.guaranteedPrizeKobo ? 'sponsored' : 'free',
       entryFeeKobo: 0,
-      status: 'OPEN_FOR_ENTRY',
+      status: input.guaranteedPrizeKobo ? 'PENDING_FUNDING' : 'OPEN_FOR_ENTRY',
       startsAt,
       entryClosesAt,
       scoringClosesAt,
-      capacity: input.capacity ?? null,
+      capacity: input.capacity,
       distanceCapMetres: input.distanceCapMetres ?? null,
       challengeType,
       scoringMethod,
       targetDistanceMetres: input.targetDistanceMetres ?? null,
       communityId: input.communityId ?? null,
-      platformFeeBps: 3000,
+      platformFeeBps: input.guaranteedPrizeKobo ? 1500 : 3000,
       creatorCommissionBps: 0,
+      guaranteedPrizeKobo: input.guaranteedPrizeKobo ?? null,
+      prizeSplitBps,
     });
-    return this.tables.save(table);
+    return this.saveWithInvites(table, input);
   }
 
   async createPaidDraft(creatorId: string, input: CreateCreatorPaidChallengeDto) {
     this.validateScoring(input.challengeType, input.scoringMethod, input.targetDistanceMetres);
     await this.assertCommunityManager(creatorId, input.communityId);
+    if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
+    let guaranteedPrizeKobo: number;
+    try { guaranteedPrizeKobo = paidPrizePot(input.capacity, input.entryFeeKobo); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Invalid paid prize pot'); }
+    const prizeSplitBps = this.prizeSplit(input.prizeSplitBps, input.capacity);
+    this.assertAwardAmounts(guaranteedPrizeKobo - Math.floor(guaranteedPrizeKobo * 0.35), prizeSplitBps);
     const creator = (await this.dataSource.query(
       `SELECT "id" FROM "creator_profiles" WHERE "userId"=$1 AND "status"='ACTIVE'`,
       [creatorId],
@@ -110,14 +133,14 @@ export class TablesService {
     if ((input.minimumEntrants ?? 2) > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
       throw new ConflictException('Challenge dates or entrant limits are invalid');
     }
-    return this.tables.save(this.tables.create({
+    return this.saveWithInvites(this.tables.create({
       creatorId,
       title: input.title.trim(),
       code: randomBytes(4).toString('hex').toUpperCase(),
       type: 'paid',
       status: 'PENDING_APPROVAL',
       entryFeeKobo: input.entryFeeKobo,
-      guaranteedPrizeKobo: input.guaranteedPrizeKobo,
+      guaranteedPrizeKobo,
       minimumEntrants: (input.minimumEntrants ?? 2),
       capacity: input.capacity,
       startsAt,
@@ -130,7 +153,8 @@ export class TablesService {
       communityId: input.communityId ?? null,
       platformFeeBps: 3500,
       creatorCommissionBps: 500,
-    }));
+      prizeSplitBps,
+    }), input);
   }
 
   async registerFree(tableId: string, userId: string) {
@@ -140,7 +164,7 @@ export class TablesService {
           where: { id: tableId },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!table || table.type !== 'free') throw new NotFoundException('Free challenge not found');
+        if (!table || !['free', 'sponsored'].includes(table.type)) throw new NotFoundException('Free-entry challenge not found');
         if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) {
           throw new ConflictException('This challenge is not open for entry');
         }
@@ -198,6 +222,65 @@ export class TablesService {
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'Invalid challenge scoring');
     }
+  }
+
+  private prizeSplit(split: number[] | undefined, capacity: number | null) {
+    try { return assertPrizeSplit(split, capacity); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Invalid prize shares'); }
+  }
+
+  private assertAwardAmounts(amountKobo: number, split: number[]) {
+    try { allocatePrizes(amountKobo, split); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Prize pot is too small'); }
+  }
+
+  private async saveWithInvites(table: CompetitionTable, input: Invites) {
+    const emails = [...new Set((input.inviteEmails ?? []).map((value) => value.trim().toLowerCase()))];
+    const phones = [...new Set(input.invitePhones ?? [])];
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const created = await manager.save(CompetitionTable, table);
+      // The host is visible on every board; funded prizes exclude their score at settlement.
+      await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: created.id, userId: created.creatorId }));
+      await this.insertInvitations(manager, created, input, emails, phones);
+      return created;
+    });
+    const url = `${this.config.getOrThrow<string>('WEB_ORIGIN')}/competitions/${saved.code}`;
+    for (const email of emails) this.mail.sendInBackground(challengeInviteEmail({ address: email }, saved.title, url));
+    return saved;
+  }
+
+  private async insertInvitations(manager: EntityManager, table: CompetitionTable, input: Invites, emails: string[], phones: string[]) {
+    if (input.inviteClubMembers && input.communityId) {
+      await manager.query(
+        `INSERT INTO "challenge_invitations" ("tableId","invitedUserId")
+         SELECT $1,m."userId" FROM "club_memberships" m WHERE m."clubId"=$2 AND m."userId"<>$3
+         ON CONFLICT DO NOTHING`, [table.id, input.communityId, table.creatorId],
+      );
+    }
+    if (emails.length) await manager.query(
+      `INSERT INTO "challenge_invitations" ("tableId","email") SELECT $1,unnest($2::varchar[]) ON CONFLICT DO NOTHING`,
+      [table.id, emails],
+    );
+    if (phones.length) await manager.query(
+      `INSERT INTO "challenge_invitations" ("tableId","phone") SELECT $1,unnest($2::varchar[]) ON CONFLICT DO NOTHING`,
+      [table.id, phones],
+    );
+    if (input.inviteClubMembers || emails.length) await manager.query(
+      `INSERT INTO "notifications" ("userId","type","title","body")
+       SELECT DISTINCT targets."userId",'CHALLENGE_INVITE','You’re invited to a challenge',$2
+       FROM (
+         SELECT i."invitedUserId" "userId" FROM "challenge_invitations" i WHERE i."tableId"=$1 AND i."invitedUserId" IS NOT NULL
+         UNION
+         SELECT u."id" FROM "challenge_invitations" i JOIN "users" u ON lower(u."email")=i."email" WHERE i."tableId"=$1
+       ) targets WHERE targets."userId"<>$3`,
+      [table.id, `Join ${table.title} with code ${table.code}.`, table.creatorId],
+    );
+  }
+
+  async invitations(tableId: string, creatorId: string) {
+    const table = await this.tables.findOne({ where: { id: tableId, creatorId } });
+    if (!table) throw new NotFoundException('Challenge not found');
+    return this.dataSource.query(`SELECT "id","email","phone","createdAt" FROM "challenge_invitations" WHERE "tableId"=$1 AND ("email" IS NOT NULL OR "phone" IS NOT NULL) ORDER BY "createdAt"`, [tableId]);
   }
 
   private async assertCommunityManager(userId: string, communityId?: string) {

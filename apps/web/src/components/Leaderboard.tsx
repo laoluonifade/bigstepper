@@ -13,6 +13,7 @@ export interface LeaderboardRow {
   username?: string | null;
   metres: number;
   score?: number | null;
+  host?: boolean;
 }
 
 const medal: Record<number, string> = {
@@ -118,6 +119,7 @@ function Row({ row, above, isMe, unit, formatScore }: { row: LeaderboardRow; abo
                 row.name
               )}
               {isMe && <span className="tag ml-2 h-5 border-ink bg-ink px-1.5 text-[9.5px] text-volt">You</span>}
+              {row.host && <span className="tag ml-2 h-5 border-line bg-paper px-1.5 text-[9.5px]">Host</span>}
             </p>
             {gap !== null && (
               <p className="text-[12px] text-ink/70">

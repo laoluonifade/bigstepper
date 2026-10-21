@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../challenge-types';
 
 export class CreateTableDto {
@@ -19,6 +19,21 @@ export class CreateTableDto {
   @IsOptional() @IsUUID()
   communityId?: string;
 
+  @IsOptional() @IsInt() @Min(100) @Max(1000000000)
+  guaranteedPrizeKobo?: number;
+
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsInt({ each: true }) @Min(1, { each: true })
+  prizeSplitBps?: number[];
+
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true })
+  inviteEmails?: string[];
+
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @Matches(/^\+[1-9]\d{7,14}$/, { each: true })
+  invitePhones?: string[];
+
+  @IsOptional() @IsIn([true])
+  inviteClubMembers?: true;
+
   @IsOptional()
   @IsDateString()
   scoringClosesAt?: string;
@@ -31,11 +46,10 @@ export class CreateTableDto {
   @IsDateString()
   entryClosesAt?: string;
 
-  @IsOptional()
   @IsInt()
   @Min(2)
   @Max(10000)
-  capacity?: number;
+  capacity: number;
 
   @IsOptional()
   @IsInt()

@@ -47,6 +47,12 @@ export class TablesController {
     return this.tablesService.standings(tableId);
   }
 
+  @Get(':id/invitations')
+  @UseGuards(JwtAuthGuard)
+  invitations(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
+    return this.tablesService.invitations(tableId, user.id);
+  }
+
   @Get(':code')
   getByCode(@Param('code') code: string) {
     return this.tablesService.getByCode(code);

@@ -57,6 +57,22 @@ export class ClubsService {
     }));
   }
 
+  async monthLeaderboard(userId: string, clubRef: string) {
+    const club = await this.get(clubRef);
+    if (!(await this.memberships.exist({ where: { clubId: club.id, userId } }))) throw new ForbiddenException('Join this club to see its leaderboard');
+    return this.dataSource.query(
+      `SELECT row_number() OVER (ORDER BY COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0) DESC,m."joinedAt" ASC)::integer "rank",
+              m."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
+              COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0)::integer "monthMetres"
+       FROM "club_memberships" m JOIN "users" u ON u."id"=m."userId"
+       LEFT JOIN "profiles" p ON p."userId"=m."userId"
+       LEFT JOIN "activities" a ON a."userId"=m."userId" AND a."verificationStatus"='VERIFIED' AND a."activityType"='run'
+         AND a."startedAt">=date_trunc('month',now()) AND a."startedAt"<date_trunc('month',now())+interval '1 month'
+       WHERE m."clubId"=$1 GROUP BY m."userId",m."joinedAt",p."displayName",u."displayName",p."username",p."avatarUrl"
+       ORDER BY "monthMetres" DESC,m."joinedAt" ASC LIMIT 500`, [club.id],
+    );
+  }
+
   /** Admins add runners by their @username (or, for older clients, their user ID). */
   async addMember(actorUserId: string, clubRef: string, runner: { username?: string; userId?: string }) {
     const club = await this.get(clubRef);

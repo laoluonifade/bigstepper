@@ -49,3 +49,13 @@ export function passwordResetEmail(to: { address: string; name?: string }, url: 
     text: `${intro}\n\nChoose a new password: ${url}\n\n${footnote}`,
   };
 }
+
+export function challengeInviteEmail(to: { address: string; name?: string }, title: string, url: string): MailMessage {
+  const intro = `You’ve been invited to ${title} on Jump. Open the challenge to see the rules and join when you’re ready.`;
+  return {
+    to,
+    subject: `Join ${title} on Jump`,
+    html: layout('Challenge invitation', intro, 'View challenge', url, 'If you weren’t expecting this invitation, you can ignore it.'),
+    text: `${intro}\n\nView challenge: ${url}`,
+  };
+}

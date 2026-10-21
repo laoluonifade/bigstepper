@@ -36,6 +36,12 @@ export class ClubsController {
     return this.clubsService.members(id);
   }
 
+  @Get(':id/leaderboard')
+  @UseGuards(JwtAuthGuard)
+  leaderboard(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.clubsService.monthLeaderboard(user.id, id);
+  }
+
   @Post(':id/members')
   @UseGuards(JwtAuthGuard)
   addMember(

@@ -48,7 +48,7 @@ export function CompeteSubNav() {
   return <SubNav items={user ? [...COMPETE_NAV] : COMPETE_NAV.filter((item) => item.to !== '/clubs')} />;
 }
 
-type TypeFilter = 'all' | 'free' | 'paid';
+type TypeFilter = 'all' | 'free' | 'sponsored' | 'paid';
 
 function scoringLabel(table: Pick<CompetitionTable, 'scoringMethod' | 'targetDistanceMetres'>, unit: Unit) {
   switch (table.scoringMethod) {
@@ -135,6 +135,7 @@ export function CompetitionsPage() {
             options={[
               { value: 'all', label: 'All' },
               { value: 'free', label: 'Free' },
+              { value: 'sponsored', label: 'Funded free' },
               { value: 'paid', label: 'Paid' },
             ]}
           />
@@ -185,11 +186,13 @@ const DURATIONS = [
 
 export function NewCompetitionPage() {
   const navigate = useNavigate();
+  const { club: clubId } = useSearch({ strict: false }) as { club?: string };
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const unit = useUnit();
   const creator = useCreator();
-  const [mode, setMode] = useState<'free' | 'paid'>('free');
+  const club = useQuery({ queryKey: keys.club(clubId ?? ''), queryFn: () => api<{ id: string; name: string; memberCount: number }>(`/clubs/${clubId}`), enabled: Boolean(clubId) });
+  const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState('');
   const [challengeType, setChallengeType] = useState<ChallengeType>('RUN');
   const [scoringMethod, setScoringMethod] = useState<ScoringMethod>('FARTHEST_DISTANCE');
@@ -202,6 +205,11 @@ export function NewCompetitionPage() {
   const [entryFee, setEntryFee] = useState('');
   // ₦10,000 is the suggested starting prize pot; creators can change it.
   const [guaranteedPrize, setGuaranteedPrize] = useState('10000');
+  const [winnerCount, setWinnerCount] = useState('1');
+  const [shares, setShares] = useState(['100']);
+  const [inviteClubMembers, setInviteClubMembers] = useState(Boolean(clubId));
+  const [emailText, setEmailText] = useState('');
+  const [phoneText, setPhoneText] = useState('');
 
   const startIso = fromLocalInput(startsAt);
   const scoringIso = fromLocalInput(scoringClosesAt);
@@ -209,16 +217,28 @@ export function NewCompetitionPage() {
   const capacityNumber = capacity ? Number(capacity) : undefined;
   const targetDistanceMetres = targetDistance ? toMetres(Number(targetDistance), unit) : undefined;
   const entryFeeKobo = Math.round(Number(entryFee || 0) * 100);
-  const guaranteedPrizeKobo = Math.round(Number(guaranteedPrize || 0) * 100);
+  const guaranteedPrizeKobo = mode === 'paid'
+    ? (capacityNumber ?? 0) * entryFeeKobo
+    : Math.round(Number(guaranteedPrize || 0) * 100);
   const needsTarget = scoringMethod === 'FASTEST_FIXED_DISTANCE' || scoringMethod === 'FASTEST_TIME';
+  const inviteEmails = emailText.split(/[\s,;]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const invitePhones = phoneText.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
+  const prizeSplitBps = shares.map((value) => Math.round(Number(value) * 100));
+  const hasPrize = mode !== 'free';
+  const prizeError = hasPrize && (!Number.isInteger(Number(winnerCount)) || Number(winnerCount) < 1 || Number(winnerCount) > 100 ||
+    shares.length !== Number(winnerCount) || prizeSplitBps.some((part) => !Number.isInteger(part) || part < 1) ||
+    prizeSplitBps.reduce((sum, part) => sum + part, 0) !== 10000 || (capacityNumber !== undefined && Number(winnerCount) > capacityNumber));
 
   const errors = {
     title: title.trim().length > 0 && title.trim().length < 3 ? 'At least 3 characters.' : undefined,
     scoring: startIso && scoringIso && new Date(scoringIso) <= new Date(startIso) ? 'Must be after the start.' : undefined,
-    capacity: capacityNumber !== undefined && (capacityNumber < 2 || capacityNumber > 10000 || !Number.isInteger(capacityNumber)) ? 'Between 2 and 10,000 runners.' : undefined,
+    capacity: capacityNumber === undefined || capacityNumber < 2 || capacityNumber > 10000 || !Number.isInteger(capacityNumber) ? 'Enter a maximum between 2 and 10,000 runners.' : undefined,
     cap: capMetres !== undefined && (capMetres < 1000 || capMetres > 500000) ? `Between ${formatDistance(1000, unit)} and ${formatDistance(500000, unit)}.` : undefined,
     target: needsTarget && (!targetDistanceMetres || targetDistanceMetres < 100 || targetDistanceMetres > 500000) ? `Enter a target between ${formatDistance(100, unit)} and ${formatDistance(500000, unit)}.` : undefined,
-    paid: mode === 'paid' && (creator.data?.status !== 'ACTIVE' || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || !capacityNumber) ? 'Complete the paid challenge fields and use an active creator account.' : undefined,
+    paid: mode === 'paid' && (creator.data?.status !== 'ACTIVE' || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || guaranteedPrizeKobo > 1_000_000_000 || !Number.isSafeInteger(guaranteedPrizeKobo)) ? 'Use an active creator account, an entry fee of at least ₦1, and a full-capacity pot no greater than ₦10,000,000.' : undefined,
+    prize: prizeError || (hasPrize && guaranteedPrizeKobo < 100) ? (mode === 'paid' ? 'Choose prize shares that total 100% and fit the maximum runner count.' : 'Set a prize of at least ₦1 and shares that total 100%.') : undefined,
+    invites: inviteEmails.length > 50 || invitePhones.length > 50 || inviteEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || invitePhones.some((phone) => !/^\+[1-9]\d{7,14}$/.test(phone)) ? 'Use valid emails and international phone numbers, up to 50 of each.' : undefined,
+    club: clubId && !club.data ? 'This club could not be loaded.' : undefined,
   };
   const invalid = Object.values(errors).some(Boolean) || title.trim().length < 3;
 
@@ -231,9 +251,14 @@ export function NewCompetitionPage() {
         ...(targetDistanceMetres ? { targetDistanceMetres } : {}),
         ...(startIso ? { startsAt: startIso } : {}),
         ...(scoringIso ? { scoringClosesAt: scoringIso } : {}),
-        ...(capacityNumber ? { capacity: capacityNumber } : {}),
-        ...(mode === 'free' && capMetres ? { distanceCapMetres: capMetres } : {}),
-        ...(mode === 'paid' ? { entryFeeKobo, guaranteedPrizeKobo } : {}),
+        capacity: capacityNumber,
+        ...(mode !== 'paid' && capMetres ? { distanceCapMetres: capMetres } : {}),
+        ...(hasPrize ? { prizeSplitBps } : {}),
+        ...(mode === 'sponsored' ? { guaranteedPrizeKobo } : {}),
+        ...(mode === 'paid' ? { entryFeeKobo } : {}),
+        ...(club.data ? { communityId: club.data.id, ...(inviteClubMembers ? { inviteClubMembers: true } : {}) } : {}),
+        ...(inviteEmails.length ? { inviteEmails } : {}),
+        ...(invitePhones.length ? { invitePhones } : {}),
       }),
     async onSuccess(table) {
       await queryClient.invalidateQueries({ queryKey: keys.tables });
@@ -252,9 +277,11 @@ export function NewCompetitionPage() {
     title: title.trim() || 'Your challenge name',
     code: '- - - -',
     type: mode,
-    status: 'OPEN_FOR_ENTRY',
+    status: mode === 'paid' ? 'PENDING_APPROVAL' : mode === 'sponsored' ? 'PENDING_FUNDING' : 'OPEN_FOR_ENTRY',
     entryFeeKobo: mode === 'paid' ? entryFeeKobo : 0,
-    guaranteedPrizeKobo: mode === 'paid' && guaranteedPrizeKobo ? guaranteedPrizeKobo : null,
+    guaranteedPrizeKobo: hasPrize && guaranteedPrizeKobo ? guaranteedPrizeKobo : null,
+    prizeSplitBps: hasPrize ? prizeSplitBps : [10000],
+    fundedAt: null,
     minimumEntrants: mode === 'paid' ? 2 : 1,
     startsAt: startIso ?? null,
     entryClosesAt: scoringIso ?? null,
@@ -264,8 +291,8 @@ export function NewCompetitionPage() {
     challengeType,
     scoringMethod,
     targetDistanceMetres: targetDistanceMetres ?? null,
-    communityId: null,
-    platformFeeBps: mode === 'paid' ? 3500 : 3000,
+    communityId: club.data?.id ?? null,
+    platformFeeBps: mode === 'paid' ? 3500 : mode === 'sponsored' ? 1500 : 3000,
     creatorCommissionBps: mode === 'paid' ? 500 : 0,
     creatorId: user?.id ?? '',
     creator: { id: user?.id ?? '', displayName: user?.displayName ?? null },
@@ -283,12 +310,13 @@ export function NewCompetitionPage() {
             if (!invalid) create.mutate();
           }}
         >
-          <Segmented<'free' | 'paid'>
+          <Segmented<'free' | 'sponsored' | 'paid'>
             label="Challenge type"
             value={mode}
             onChange={setMode}
-            options={[{ value: 'free', label: 'Free' }, { value: 'paid', label: 'Paid · creator' }]}
+            options={[{ value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Free · funded prize' }, { value: 'paid', label: 'Paid · creator' }]}
           />
+          {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>This challenge will be linked to your club. You can invite all {club.data.memberCount} members below.</Notice>}
           {mode === 'paid' && !creator.data && (
             <Notice tone="warn" title="Creator account required" action={<Link to="/creator" className="btn-quiet btn-sm">Become a creator</Link>}>
               Paid challenges earn creators 5% and must be reviewed before opening.
@@ -401,39 +429,71 @@ export function NewCompetitionPage() {
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Max runners" optional error={errors.capacity} hint="2 to 10,000. Empty means no limit.">
+            <Field label="Max runners" error={errors.capacity} hint="Required for every challenge. Choose 2 to 10,000.">
               {(props) => (
-                <input {...props} type="number" inputMode="numeric" min={2} max={10000} className="field num" value={capacity} onChange={(event) => setCapacity(event.target.value)} />
+                <input {...props} type="number" inputMode="numeric" min={2} max={10000} required className="field num" value={capacity} onChange={(event) => setCapacity(event.target.value)} />
               )}
             </Field>
-            {mode === 'free' ? <Field label={`Distance cap per activity (${unit})`} optional error={errors.cap} hint="Stops one monster activity from deciding everything.">
+            {mode !== 'paid' ? <Field label={`Distance cap per activity (${unit})`} optional error={errors.cap} hint="Stops one monster activity from deciding everything.">
               {(props) => (
                 <input {...props} type="number" inputMode="decimal" step="0.1" min={0} className="field num" value={cap} onChange={(event) => setCap(event.target.value)} />
               )}
             </Field> : <div />}
           </div>
 
-          {mode === 'paid' && (
+          {hasPrize && (
             <div className="panel space-y-5 p-5">
-              <SectionTitle>Paid challenge</SectionTitle>
+              <SectionTitle>{mode === 'paid' ? 'Paid challenge' : 'Funded free challenge'}</SectionTitle>
               <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="Entry fee · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} required />}</Field>
-                <Field label="Prize pot · NGN" hint="A fixed amount. It doesn’t grow or shrink with how many runners join.">
+                {mode === 'paid' && <Field label="Entry fee · NGN">{(props) => <input {...props} className="field num" type="number" min="1" step="1" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} required />}</Field>}
+                {mode === 'sponsored' && <Field label="Prize funding · NGN" hint="Anyone can pay this amount to fund the free challenge.">
                   {(props) => <input {...props} className="field num" type="number" min="1" step="1" value={guaranteedPrize} onChange={(event) => setGuaranteedPrize(event.target.value)} required />}
-                </Field>
+                </Field>}
               </div>
-              <PrizeBreakdown potKobo={guaranteedPrizeKobo} />
-              <p className="text-[12px] leading-relaxed text-ink-3">Your challenge stays a draft until Jump confirms the prize is funded and the rules are fair. Runners can’t pay to enter before then.</p>
+              {mode === 'paid' && <p className="text-[14px] leading-relaxed">Full-capacity prize pot: <span className="num font-bold">{formatMoney(guaranteedPrizeKobo)}</span> <span className="text-ink-2">({capacityNumber || 0} runners × {formatMoney(entryFeeKobo)} entry)</span></p>}
+              <Field label="Number of prize places" hint="Choose one winner, top three, or any number up to 100.">
+                {(props) => <input {...props} className="field num" type="number" min="1" max="100" value={winnerCount} onChange={(event) => {
+                  const next = event.target.value;
+                  setWinnerCount(next);
+                  const count = Number(next);
+                  if (Number.isInteger(count) && count >= 1 && count <= 100) {
+                    if (count === 3) setShares(['50', '30', '20']);
+                    else { const equal = Math.floor(10000 / count); setShares(Array.from({ length: count }, (_, index) => ((equal + (index === 0 ? 10000 - equal * count : 0)) / 100).toFixed(2))); }
+                  }
+                }} required />}
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {shares.map((share, index) => <Field key={index} label={`Place ${index + 1} · %`}>
+                  {(props) => <input {...props} className="field num" type="number" min="0.01" max="100" step="0.01" value={share} onChange={(event) => setShares((current) => current.map((part, partIndex) => partIndex === index ? event.target.value : part))} required />}
+                </Field>)}
+              </div>
+              <PrizeBreakdown potKobo={guaranteedPrizeKobo} mode={mode} shares={prizeSplitBps} />
+              <p className="text-[12px] leading-relaxed text-ink-3">{mode === 'paid'
+                ? 'This is a fixed guaranteed pot based on a full challenge, even if fewer runners join. Jump must confirm that the full prize is funded before opening paid entry.'
+                : 'Joining stays free. Anyone can fund the prize through Paystack after creation. Entry opens when payment is verified. Winners share 85% of the deposit; Jump retains 15%.'}</p>
             </div>
           )}
           {errors.paid && mode === 'paid' && <Notice tone="warn">{errors.paid}</Notice>}
+          {errors.prize && hasPrize && <Notice tone="warn">{errors.prize}</Notice>}
+
+          <section className="panel space-y-4 p-5">
+            <SectionTitle>Invite runners</SectionTitle>
+            {club.data && <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Invite everyone in {club.data.name}</label>}
+            <Field label="Email addresses" optional hint="Separate multiple addresses with commas or new lines. Email invitations are sent when a mail provider is configured.">
+              {(props) => <textarea {...props} className="field min-h-20" value={emailText} onChange={(event) => setEmailText(event.target.value)} placeholder="runner@example.com" />}
+            </Field>
+            <Field label="Phone numbers" optional hint="Include country code, for example +2348012345678. Text links are prepared after creation.">
+              {(props) => <textarea {...props} className="field min-h-20" value={phoneText} onChange={(event) => setPhoneText(event.target.value)} placeholder="+2348012345678" />}
+            </Field>
+            {errors.invites && <Notice tone="warn">{errors.invites}</Notice>}
+          </section>
 
           <ErrorNotice error={create.error} />
           <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
             <button className="btn-primary min-h-12 px-6" disabled={create.isPending || invalid}>
               {create.isPending ? 'Creating…' : mode === 'paid' ? 'Submit paid draft' : 'Create challenge'}
             </button>
-            <p className="text-[12px] text-ink-3">Paid challenges are reviewed by Jump staff.</p>
+            <p className="text-[12px] text-ink-3">{mode === 'paid' ? 'Paid challenges are reviewed by Jump staff.' : mode === 'sponsored' ? 'The prize must be funded before entry opens.' : 'Free challenges open immediately.'}</p>
           </div>
         </form>
 
@@ -454,7 +514,12 @@ export function CompetitionDetailPage() {
   const { user } = useAuth();
   const unit = useUnit();
   const now = useNow(30_000);
-  const table = useQuery({ queryKey: keys.table(code), queryFn: () => api<CompetitionTable>(`/tables/${encodeURIComponent(code)}`) });
+  const table = useQuery({
+    queryKey: keys.table(code),
+    queryFn: () => api<CompetitionTable>(`/tables/${encodeURIComponent(code)}`),
+    refetchOnWindowFocus: 'always',
+    refetchInterval: (query) => ['PENDING_APPROVAL', 'PENDING_FUNDING'].includes(query.state.data?.status ?? '') ? 5_000 : false,
+  });
   const result = useFinalResult(table.data?.id);
   const live = table.data ? ['open', 'upcoming', 'entry-closed'].includes(competitionPhase(table.data, now)) : false;
   const standings = useStandings(table.data?.id, live ? 30_000 : false);
@@ -477,6 +542,7 @@ export function CompetitionDetailPage() {
         username: live.get(row.userId)?.username,
         metres: row.creditedDistanceMetres,
         score: scoreValue(row, method),
+        host: row.userId === table.data?.creatorId,
       }));
     }
     return (standings.data ?? []).map((row) => ({
@@ -487,8 +553,9 @@ export function CompetitionDetailPage() {
       username: row.username,
       metres: row.creditedDistanceMetres,
       score: scoreValue(row, method),
+      host: row.userId === table.data?.creatorId,
     }));
-  }, [result.data, standings.data, table.data?.scoringMethod, user]);
+  }, [result.data, standings.data, table.data?.creatorId, table.data?.scoringMethod, user]);
 
   if (table.isLoading) return <Loading />;
   if (table.error || !table.data) {
@@ -514,8 +581,8 @@ export function CompetitionDetailPage() {
 
       {search.created && (
         <Notice tone="ok" className="mb-6" title="Challenge created">
-          Share the invite code <span className="font-mono font-semibold text-ink">{t.code}</span> so others can join. Hit join yourself to get on
-          the board.
+          {t.status === 'PENDING_APPROVAL' ? 'Your draft is waiting for Jump approval. ' : t.status === 'PENDING_FUNDING' ? 'Fund the prize to open entry. ' : 'Your challenge is open. '}
+          Share code <span className="font-mono font-semibold text-ink">{t.code}</span> when it opens.
         </Notice>
       )}
 
@@ -577,6 +644,7 @@ export function CompetitionDetailPage() {
           </section>
 
           <Rules table={t} unit={unit} />
+          {user?.id === t.creatorId && <InvitationsPanel table={t} />}
         </aside>
       </div>
     </div>
@@ -601,6 +669,9 @@ function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
       : []),
     'Ties go to whoever joined first.',
     ...(table.type === 'paid' && table.minimumEntrants > 1 ? [`Needs at least ${table.minimumEntrants} entrants to go ahead.`] : []),
+    ...(table.guaranteedPrizeKobo ? [`Prizes go to the top ${table.prizeSplitBps?.length ?? 1} eligible ${table.prizeSplitBps?.length === 1 ? 'runner' : 'runners'}. If fewer finish, their listed shares are proportionally redistributed.`] : []),
+    ...(['paid', 'sponsored'].includes(table.type) ? ['The host is on the board but cannot receive a cash prize from their own challenge.'] : []),
+    ...(table.type === 'sponsored' ? [`Anyone may fund this free-entry challenge. The funder cannot receive its cash prize. Winners share ${(10000 - table.platformFeeBps) / 100}% of the deposit; Jump retains ${table.platformFeeBps / 100}%.`] : []),
   ];
   return (
     <section className="panel p-5">
@@ -610,6 +681,29 @@ function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
           <li key={item} className="flex gap-2.5">
             <span className="mt-[7px] h-1.5 w-1.5 shrink-0 bg-track" />
             {item}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function InvitationsPanel({ table }: { table: CompetitionTable }) {
+  const invitations = useQuery({
+    queryKey: ['table', table.id, 'invitations'],
+    queryFn: () => api<Array<{ id: string; email: string | null; phone: string | null }>>(`/tables/${table.id}/invitations`),
+  });
+  if (!invitations.data?.length && !invitations.error) return null;
+  const link = `${window.location.origin}/competitions/${table.code}`;
+  return (
+    <section className="panel p-5">
+      <SectionTitle>Invitations</SectionTitle>
+      <ErrorNotice error={invitations.error} onRetry={() => void invitations.refetch()} />
+      <ul className="space-y-2 text-[13px]">
+        {invitations.data?.map((invite) => (
+          <li key={invite.id} className="flex items-center justify-between gap-3 border-b border-line py-2">
+            <span className="truncate">{invite.email ?? invite.phone}</span>
+            {invite.phone ? <a className="btn-quiet btn-sm shrink-0" href={`sms:${invite.phone}?body=${encodeURIComponent(`Join ${table.title} on Jump: ${link}`)}`}>Send text</a> : <span className="text-ink-3">Email invite</span>}
           </li>
         ))}
       </ul>
@@ -674,6 +768,14 @@ function EntryPanel({
     },
   });
 
+  const fundPrize = useMutation({
+    mutationFn: () => post<CheckoutResponse>(`/tables/${table.id}/fund-prize`),
+    onSuccess(response) {
+      savePayment({ reference: response.reference, purpose: 'SPONSOR_FUNDING', tableId: table.id, tableCode: table.code, tableTitle: table.title, amountKobo: table.guaranteedPrizeKobo ?? 0, createdAt: new Date().toISOString() });
+      window.location.assign(response.authorizationUrl);
+    },
+  });
+
   if (joinedRank !== undefined) {
     return (
       <section className="rounded-md border-2 border-ink bg-volt p-5 shadow-hard">
@@ -694,11 +796,23 @@ function EntryPanel({
             Record an activity
           </Link>
         ) : null}
+        {table.type === 'sponsored' && table.status === 'PENDING_FUNDING' && user && (
+          <div className="mt-5">
+            {pendingPayment ? <Link to="/payments/return" className="btn-dark w-full">Check prize payment</Link> : (
+              <button type="button" className="btn-dark w-full" onClick={() => fundPrize.mutate()} disabled={fundPrize.isPending}>
+                {fundPrize.isPending ? 'Opening Paystack…' : `Fund prize · ${formatMoney(table.guaranteedPrizeKobo ?? 0)}`}
+              </button>
+            )}
+            <ErrorNotice error={fundPrize.error} className="mt-3" />
+          </div>
+        )}
       </section>
     );
   }
 
   const isPaid = table.type === 'paid';
+  const isSponsored = table.type === 'sponsored';
+  const participantCount = isPaid ? Math.max(0, entrants - 1) : entrants;
   const conflict = isApiError(join.error, 409) ? joinConflictCopy(join.error.message) : null;
 
   return (
@@ -706,21 +820,32 @@ function EntryPanel({
       <p className="eyebrow">Entry</p>
       <p className="score mt-2 text-[44px]">{isPaid ? formatMoney(table.entryFeeKobo) : 'Free'}</p>
       <ul className="mt-3 space-y-1.5 text-[13px] text-ink-2">
-        {isPaid && table.guaranteedPrizeKobo ? (
+        {table.guaranteedPrizeKobo ? (
           <li>
-            Winner takes <span className="font-bold text-ink">{formatMoney(prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo)}</span>
+            Prize pool <span className="font-bold text-ink">{formatMoney(prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo)}</span>
+            {table.prizeSplitBps?.length > 1 ? ` · top ${table.prizeSplitBps.length}` : ' · winner takes all'}
           </li>
         ) : null}
         <li className="num">
-          {entrants} {entrants === 1 ? 'runner' : 'runners'}
+          {participantCount} {participantCount === 1 ? 'runner' : 'runners'}
           {table.capacity ? ` of ${table.capacity}` : ''} so far
         </li>
         <li>{phaseLine(table, now)}</li>
       </ul>
 
       <div className="mt-5">
-        {!open ? (
-          <Notice tone="neutral">Entry is closed for this table.</Notice>
+        {!open && isSponsored && table.status === 'PENDING_FUNDING' && user ? (
+          <>
+            {pendingPayment ? <Link to="/payments/return" className="btn-primary w-full">Check prize payment</Link> : (
+              <button type="button" className="btn-primary w-full" onClick={() => fundPrize.mutate()} disabled={fundPrize.isPending}>
+                {fundPrize.isPending ? 'Opening Paystack…' : `Fund prize · ${formatMoney(table.guaranteedPrizeKobo ?? 0)}`}
+              </button>
+            )}
+            <p className="mt-2 text-[12px] text-ink-3">Anyone can fund it. Entry opens only after Paystack confirms the deposit. The funder cannot win the cash prize.</p>
+            <ErrorNotice error={fundPrize.error} className="mt-3" />
+          </>
+        ) : !open ? (
+          <Notice tone="neutral">{table.status === 'PENDING_APPROVAL' ? 'Waiting for Jump to approve this challenge.' : table.status === 'PENDING_FUNDING' ? <><span>Prize funding needed. </span><Link to="/login" search={{ redirect: `/competitions/${table.code}` }} className="font-semibold underline">Log in to fund it</Link>.</> : 'Entry is closed for this challenge.'}</Notice>
         ) : full ? (
           <Notice tone="neutral">This challenge is full.</Notice>
         ) : !user ? (
@@ -772,14 +897,16 @@ function EntryPanel({
   );
 }
 
-/** Live split of the pot while a creator types it, so the number on the card is never a surprise. */
-function PrizeBreakdown({ potKobo }: { potKobo: number }) {
-  if (potKobo < 100) return null;
-  const split = prizeSplit(potKobo, 3500, 500);
+/** The reward preview uses the same integer rounding as settlement: leftover kobo goes to first place. */
+function PrizeBreakdown({ potKobo, mode, shares }: { potKobo: number; mode: 'paid' | 'sponsored'; shares: number[] }) {
+  if (potKobo < 100 || !shares.length || shares.reduce((sum, part) => sum + part, 0) !== 10000) return null;
+  const split = mode === 'paid' ? prizeSplit(potKobo, 3500, 500) : prizeSplit(potKobo, 1500, 0);
+  const allocations = shares.map((share) => Math.floor(split.winnerKobo * share / 10000));
+  allocations[0] += split.winnerKobo - allocations.reduce((sum, amount) => sum + amount, 0);
   const rows = [
-    { label: 'Winner takes', value: split.winnerKobo, share: '65%', strong: true },
-    { label: 'You earn as creator', value: split.creatorKobo, share: '5%' },
-    { label: 'Jump fee', value: split.jumpKobo, share: '30%' },
+    ...allocations.map((amount, index) => ({ label: `Place ${index + 1}`, value: amount, share: `${(shares[index] / 100).toFixed(2)}%`, strong: index === 0 })),
+    ...(mode === 'paid' ? [{ label: 'You earn as creator', value: split.creatorKobo, share: '5%', strong: false }] : []),
+    { label: 'Jump fee', value: split.jumpKobo, share: mode === 'paid' ? '30%' : '15%', strong: false },
   ];
   return (
     <div className="rounded-md border border-line bg-paper p-4">
@@ -794,7 +921,7 @@ function PrizeBreakdown({ potKobo }: { potKobo: number }) {
           </div>
         ))}
       </dl>
-      <p className="mt-2 text-[12px] text-ink-3">The card shows runners what the winner takes.</p>
+      <p className="mt-2 text-[12px] text-ink-3">{mode === 'sponsored' ? 'Entry stays free. Winners share 85% of the funded amount.' : 'The card shows the winner reward pool after fees.'}</p>
     </div>
   );
 }

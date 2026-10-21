@@ -25,7 +25,7 @@ interface PayoutRequest {
   bankCode: string;
   accountLast4: string;
   availableForPayoutAt: string;
-  /** Frozen after a payment dispute. */
+  /** Recipient or challenge funding is under a payment hold. */
   blocked: boolean;
   reviewedBy: string | null;
   transferStatus: string | null;
@@ -182,8 +182,8 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
       {pending && blocked && (
         <div className="px-4 pb-3">
           {item.blocked && (
-            <Notice tone="warn" title="Account frozen">
-              This account is frozen after a payment dispute, so it can’t be paid out. Reject it with a reason, or wait until the dispute is resolved.
+            <Notice tone="warn" title="Payment hold">
+              This recipient or the challenge funding is under review, so the prize can’t be paid out yet. Wait until the issue is resolved.
             </Notice>
           )}
           {onHold && (

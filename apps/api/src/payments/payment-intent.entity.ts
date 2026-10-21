@@ -6,7 +6,7 @@ export class PaymentIntent {
   @PrimaryGeneratedColumn('uuid') id: string;
   @Column() userId: string;
   @Column({ type: 'uuid', nullable: true }) tableId: string | null;
-  @Column({ default: 'CHALLENGE_ENTRY' }) purpose: 'CHALLENGE_ENTRY' | 'WALLET_FUNDING';
+  @Column({ default: 'CHALLENGE_ENTRY' }) purpose: 'CHALLENGE_ENTRY' | 'WALLET_FUNDING' | 'SPONSOR_FUNDING';
   @Column({ unique: true }) reference: string;
   @Column({ type: 'bigint', transformer: { to: (value: number) => value, from: (value: string) => Number(value) } }) amountKobo: number;
   @Column({ length: 3, default: 'NGN' }) currency: string;

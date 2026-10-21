@@ -22,6 +22,13 @@ export class PaymentsController {
     return this.paymentsService.checkout(user.id, tableId);
   }
 
+  @Post('tables/:id/fund-prize')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  fundPrize(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
+    return this.paymentsService.fundPrize(user.id, tableId);
+  }
+
   @Post(['tables/:id/enter-wallet', 'challenges/:id/enter-wallet'])
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)

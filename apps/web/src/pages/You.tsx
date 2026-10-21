@@ -409,7 +409,7 @@ export function RewardsPage() {
             <Skeleton className="h-24" />
           ) : list.length === 0 ? (
             <EmptyState mark="₦0" title="No prizes yet">
-              Win a paid competition and your prize shows up here.
+              Place in a paid or funded free challenge and your prize shows up here.
             </EmptyState>
           ) : (
             <ul className="stagger space-y-3">
@@ -420,7 +420,7 @@ export function RewardsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="score text-[30px]">{formatMoney(award.amountKobo)}</p>
                       <p className="mt-1 text-[12px] text-ink-2">
-                        Table {shortId(award.tableId)} · won {formatDate(award.createdAt, { year: 'numeric' })}
+                        Place {award.place ?? 1} · Challenge {shortId(award.tableId)} · {formatDate(award.createdAt, { year: 'numeric' })}
                       </p>
                     </div>
                     <span className={cx('tag', award.status === 'PAID' ? 'border-ok/60 bg-ok-wash text-ok' : award.status === 'FAILED' || award.status === 'REVERSED' ? 'border-bad/60 bg-bad-wash text-bad' : 'border-ink bg-card')}>

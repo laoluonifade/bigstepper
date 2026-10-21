@@ -20,7 +20,7 @@ export function PaymentReturnPage() {
   const payments = useSavedPayments();
   return (
     <div className="mx-auto max-w-2xl animate-rise">
-      <PageHeader eyebrow="Payments" title="Entry payments" description="We confirm every payment directly with Paystack. This page updates on its own, so you can leave and come back." />
+      <PageHeader eyebrow="Payments" title="Payments" description="We confirm every payment directly with Paystack. This page updates on its own, so you can leave and come back." />
       {payments.length === 0 ? (
         <EmptyState
           title="No payments on this device"
@@ -62,15 +62,19 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
   });
 
   const value = status.data?.status ?? payment.lastStatus ?? 'PENDING';
-  const copy = paymentCopy(value);
+  const copy = payment.purpose === 'SPONSOR_FUNDING' && value === 'SUCCEEDED'
+    ? { label: 'Funded', title: 'Prize funded', body: 'Paystack confirmed your deposit. The free challenge is open. Its prize split is shown on the challenge page; as the funder, you cannot receive its cash prize.', terminal: true }
+    : paymentCopy(value);
   const succeeded = value === 'SUCCEEDED';
 
   useEffect(() => {
     if (!status.data) return;
     updatePaymentStatus(payment.reference, status.data.status);
     if (status.data.status === 'SUCCEEDED' && payment.tableId && payment.tableCode) {
-      rememberTable(user.id, { id: payment.tableId, code: payment.tableCode, title: payment.tableTitle });
+      if (payment.purpose !== 'SPONSOR_FUNDING') rememberTable(user.id, { id: payment.tableId, code: payment.tableCode, title: payment.tableTitle });
       void queryClient.invalidateQueries({ queryKey: keys.standings(payment.tableId) });
+      void queryClient.invalidateQueries({ queryKey: keys.table(payment.tableCode) });
+      void queryClient.invalidateQueries({ queryKey: keys.tables });
     } else if (status.data.status === 'SUCCEEDED' && payment.purpose === 'WALLET_FUNDING') {
       void queryClient.invalidateQueries({ queryKey: keys.wallet });
       void queryClient.invalidateQueries({ queryKey: keys.walletTransactions });

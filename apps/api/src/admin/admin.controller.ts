@@ -40,6 +40,12 @@ export class AdminController {
     return this.adminService.createPaidDraft(user.id, body);
   }
 
+  @Get('tables/paid-drafts')
+  @UseGuards(AdminOnlyGuard)
+  paidDrafts(@Query('view') view?: string) {
+    return this.adminService.paidChallenges(view === 'approved' ? 'approved' : 'pending');
+  }
+
   @Post('tables/:id/approve-paid')
   @UseGuards(AdminOnlyGuard)
   approvePaid(

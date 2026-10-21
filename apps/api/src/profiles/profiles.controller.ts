@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
@@ -35,6 +35,13 @@ export class ProfilesController {
   @UseGuards(JwtAuthGuard)
   removeAvatar(@CurrentUser() user: AuthenticatedUser) {
     return this.profilesService.removeAvatar(user.id);
+  }
+
+  @Get('users/search')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  search(@Query('q') query?: string) {
+    return this.profilesService.search(query ?? '');
   }
 
   @Get('users/:username')

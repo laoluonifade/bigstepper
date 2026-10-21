@@ -9,7 +9,7 @@ export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' 
 
 export function competitionPhase(table: CompetitionTable, now = Date.now()): CompetitionPhase {
   if (table.status === 'SETTLED') return 'final';
-  if (table.status === 'PENDING_APPROVAL') return 'pending';
+  if (table.status === 'PENDING_APPROVAL' || table.status === 'PENDING_FUNDING') return 'pending';
   const t = (iso: string | null) => (iso ? new Date(iso).getTime() : null);
   const starts = t(table.startsAt);
   const entryCloses = t(table.entryClosesAt);
@@ -31,7 +31,7 @@ export function canEnter(table: CompetitionTable, now = Date.now()) {
 export function phaseLine(table: CompetitionTable, now = Date.now()): string {
   switch (competitionPhase(table, now)) {
     case 'pending':
-      return 'Awaiting approval';
+      return table.status === 'PENDING_FUNDING' ? 'Prize funding needed' : 'Awaiting approval';
     case 'upcoming':
       return `Starts in ${formatCountdown(table.startsAt!, now)}`;
     case 'open':
@@ -53,6 +53,7 @@ export function TypeTag({ table }: { table: CompetitionTable }) {
   if (table.type === 'paid') {
     return <span className="tag border-ink bg-ink text-paper">Paid · {formatMoney(table.entryFeeKobo)}</span>;
   }
+  if (table.type === 'sponsored') return <span className="tag border-ink bg-volt text-ink">Free · funded prize</span>;
   return <span className="tag border-ink bg-card text-ink">Free</span>;
 }
 
@@ -84,9 +85,9 @@ function cardTheme(table: CompetitionTable) {
 
 /** The one big thing about a challenge, from its real settings. */
 function headline(table: CompetitionTable, unit: Unit): { big: string; small: string } {
-  if (table.type === 'paid' && table.guaranteedPrizeKobo) {
-    const { winnerKobo } = prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps);
-    return { big: formatMoney(winnerKobo).replace(/\.00$/, ''), small: 'to the winner' };
+  if (table.guaranteedPrizeKobo) {
+    const amount = prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo;
+    return { big: formatMoney(amount).replace(/\.00$/, ''), small: table.prizeSplitBps?.length > 1 ? `across top ${table.prizeSplitBps.length}` : 'to the winner' };
   }
   if ((table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') && table.targetDistanceMetres) {
     const value = unit === 'km' ? table.targetDistanceMetres / 1000 : table.targetDistanceMetres / 1609.344;
@@ -242,8 +243,8 @@ export function LockedNotice({ children }: { children: ReactNode }) {
 }
 
 /**
- * How a paid challenge's prize pot is paid out at settlement (mirrors the API's calculatePrizeBreakdown):
- * Jump's fee comes off the pot, the creator's commission is part of that fee, the winner gets the rest.
+ * How a funded prize pot is paid out at settlement (mirrors the API's calculatePrizeBreakdown):
+ * Jump's fee comes off the pot; paid creators also receive a commission from that fee.
  */
 export function prizeSplit(potKobo: number, platformFeeBps: number, creatorCommissionBps: number) {
   const feeKobo = Math.floor((potKobo * platformFeeBps) / 10_000);

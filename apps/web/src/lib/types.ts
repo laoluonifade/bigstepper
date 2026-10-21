@@ -124,6 +124,8 @@ export interface CompetitionTable {
   status: string;
   entryFeeKobo: number;
   guaranteedPrizeKobo: number | null;
+  prizeSplitBps: number[];
+  fundedAt: string | null;
   minimumEntrants: number;
   startsAt: string | null;
   entryClosesAt: string | null;
@@ -195,6 +197,7 @@ export interface PaymentStatus {
 export interface PrizeAward {
   id: string;
   tableId: string;
+  place: number;
   /** Postgres bigint — may arrive as a string. */
   amountKobo: number | string;
   grossPrizeKobo: number | string;
@@ -278,6 +281,22 @@ export interface ClubMember {
   username: string | null;
   displayName: string | null;
   avatarUrl?: string | null;
+}
+
+export interface ClubStanding {
+  rank: number;
+  userId: string;
+  username: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  monthMetres: number;
+}
+
+export interface RunnerSearchResult {
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
 }
 
 export interface LeagueSeason {
