@@ -13,6 +13,7 @@ import {
   LadderIcon,
   LogoutIcon,
   RunIcon,
+  SearchIcon,
   SettingsIcon,
   ShieldIcon,
   JumpLogo,
@@ -187,14 +188,19 @@ function SignedInShell() {
         <Link to="/dashboard">
           <Wordmark />
         </Link>
-        <Link to="/notifications" className="relative rounded p-2" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
-          <BellIcon />
-          {unread > 0 && (
-            <span className="num absolute right-0.5 top-0.5 min-w-[18px] rounded-sm border-[1.5px] border-paper bg-track px-1 text-center text-[10px] font-bold leading-[15px]">
-              {unread > 9 ? '9+' : unread}
-            </span>
-          )}
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link to="/runners" className="rounded p-2 text-ink" aria-label="Find runners by username" title="Find runners">
+            <SearchIcon size={20} />
+          </Link>
+          <Link to="/notifications" className="relative rounded p-2" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
+            <BellIcon />
+            {unread > 0 && (
+              <span className="num absolute right-0.5 top-0.5 min-w-[18px] rounded-sm border-[1.5px] border-paper bg-track px-1 text-center text-[10px] font-bold leading-[15px]">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </Link>
+        </div>
       </header>
 
       <div className="mx-auto max-w-5xl px-4 pb-32 pt-6 md:px-8 md:pb-16 md:pt-10">
@@ -230,7 +236,7 @@ const TAB_PATHS: Record<string, string[]> = {
   Compete: ['/competitions', '/clubs'],
   Run: ['/run', '/runs'],
   Activity: ['/activities'],
-  You: ['/settings', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
+  You: ['/settings', '/runners', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
 };
 
 function useTabActive(label: string) {

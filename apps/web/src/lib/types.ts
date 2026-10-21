@@ -297,6 +297,8 @@ export interface RunnerSearchResult {
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;
+  isMe: boolean;
+  followedByMe: boolean;
 }
 
 export interface LeagueSeason {

@@ -40,8 +40,8 @@ export class ProfilesController {
   @Get('users/search')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  search(@Query('q') query?: string) {
-    return this.profilesService.search(query ?? '');
+  search(@CurrentUser() user: AuthenticatedUser, @Query('q') query?: string) {
+    return this.profilesService.search(query ?? '', user.id);
   }
 
   @Get('users/:username')

@@ -33,6 +33,7 @@ import type { CheckoutResponse, CreatorProfile, Notification, PayoutRecipient, P
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
+  { to: '/runners', label: 'Find runners' },
   { to: '/leagues', label: 'League' },
   { to: '/wallet', label: 'Wallet' },
   { to: '/rewards', label: 'Rewards' },

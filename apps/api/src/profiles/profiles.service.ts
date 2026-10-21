@@ -78,15 +78,17 @@ export class ProfilesService {
     return profile;
   }
 
-  async search(query: string) {
+  async search(query: string, viewerId: string) {
     const term = query.trim().replace(/^@/, '').slice(0, 50);
     if (term.length < 2) return [];
     const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
     return this.dataSource.query(
-      `SELECT "username","displayName","avatarUrl","bio"
-       FROM "profiles" WHERE "username" ILIKE $1 ESCAPE '\\' OR "displayName" ILIKE $1 ESCAPE '\\'
-       ORDER BY CASE WHEN lower("username")=lower($2) THEN 0 WHEN lower("username") LIKE lower($2)||'%' THEN 1 ELSE 2 END,
-                "username" ASC LIMIT 20`, [pattern, term],
+      `SELECT p."username",p."displayName",p."avatarUrl",p."bio",
+              (p."userId"=$3) "isMe",
+              EXISTS (SELECT 1 FROM "follows" f WHERE f."followerId"=$3 AND f."followingId"=p."userId") "followedByMe"
+       FROM "profiles" p WHERE p."username" ILIKE $1 ESCAPE '\\' OR p."displayName" ILIKE $1 ESCAPE '\\'
+       ORDER BY CASE WHEN lower(p."username")=lower($2) THEN 0 WHEN lower(p."username") LIKE lower($2)||'%' THEN 1 ELSE 2 END,
+                p."username" ASC LIMIT 20`, [pattern, term, viewerId],
     );
   }
 

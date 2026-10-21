@@ -300,6 +300,7 @@ export function useFollow(username: string) {
     onSettled() {
       void queryClient.invalidateQueries({ queryKey: key });
       void queryClient.invalidateQueries({ queryKey: ['connections'] });
+      void queryClient.invalidateQueries({ queryKey: ['runner-search'] });
     },
   });
 }
@@ -336,16 +337,20 @@ export function FollowButton({
     );
   }
   return (
-    <button
-      type="button"
-      className={cx(following ? 'btn-secondary' : 'btn-primary', size === 'sm' && 'btn-sm', 'min-w-[112px]', className)}
-      onClick={() => follow.mutate(!following)}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      aria-pressed={following}
-    >
-      {following ? (hover ? 'Unfollow' : <><CheckIcon size={15} /> Following</>) : <><PlusIcon size={15} /> Follow</>}
-    </button>
+    <span className={cx('inline-flex flex-col', className)}>
+      <button
+        type="button"
+        className={cx(following ? 'btn-secondary' : 'btn-primary', size === 'sm' && 'btn-sm', 'min-w-[112px]')}
+        onClick={() => follow.mutate(!following)}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        aria-pressed={following}
+        disabled={follow.isPending}
+      >
+        {following ? (hover ? 'Unfollow' : <><CheckIcon size={15} /> Following</>) : <><PlusIcon size={15} /> Follow</>}
+      </button>
+      {follow.error && <span role="alert" className="mt-1 max-w-[180px] text-[11px] text-bad">{follow.error.message}</span>}
+    </span>
   );
 }
 
