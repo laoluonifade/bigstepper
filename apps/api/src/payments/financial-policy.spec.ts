@@ -1,4 +1,4 @@
-import { calculatePrizeBreakdown } from './financial-policy';
+import { calculatePrizeBreakdown, cashPrizeEligible } from './financial-policy';
 import { allocatePrizes } from '../tables/prize-split';
 
 describe('Jump prize fee policy', () => {
@@ -26,5 +26,18 @@ describe('Jump prize fee policy', () => {
       platformRetainedKobo: 30_000,
       winnerAmountKobo: 65_000,
     });
+  });
+});
+
+describe('funded prize eligibility', () => {
+  const funders = new Set(['runner', 'host']);
+
+  it('lets a contributor win in an open funded-free pool', () => {
+    expect(cashPrizeEligible({ type: 'sponsored', creatorId: 'host', guaranteedPrizeKobo: null }, 'runner', funders)).toBe(true);
+  });
+
+  it('still excludes the host and keeps fixed funded prizes separate', () => {
+    expect(cashPrizeEligible({ type: 'sponsored', creatorId: 'host', guaranteedPrizeKobo: null }, 'host', funders)).toBe(false);
+    expect(cashPrizeEligible({ type: 'sponsored', creatorId: 'host', guaranteedPrizeKobo: 10_000 }, 'runner', funders)).toBe(false);
   });
 });

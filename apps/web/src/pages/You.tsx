@@ -67,9 +67,9 @@ const COUNTRIES: Array<[string, string]> = [
 ];
 
 const VISIBILITY: Array<{ value: Visibility; title: string; body: string }> = [
-  { value: 'private', title: 'Private', body: 'Only you see your runs.' },
-  { value: 'followers', title: 'Followers', body: 'Runners who follow you.' },
-  { value: 'public', title: 'Public', body: 'Anyone with your profile link.' },
+  { value: 'private', title: 'Private', body: 'Only you see your individual activities.' },
+  { value: 'followers', title: 'Followers', body: 'Followers see your individual activities.' },
+  { value: 'public', title: 'Public', body: 'Anyone can see your individual activities.' },
 ];
 
 export function ProfileSettingsPage() {
@@ -158,11 +158,11 @@ export function ProfileSettingsPage() {
         {activities.isLoading ? <Skeleton className="mt-5 h-20" /> : <ProfileStats stats={stats} unit={unit} />}
         <Link to="/activities" className="link mt-3 inline-block text-[13px]">View your activity and calendar →</Link>
         <p className="mt-3 text-[12px] text-ink-3">
-          {profile.data.activityVisibility === 'public'
-            ? 'Your totals and recent activity are on your public profile.'
+          Your verified totals and run/walk split are public. {profile.data.activityVisibility === 'public'
+            ? 'Anyone can also see your recent activities.'
             : profile.data.activityVisibility === 'followers'
-              ? 'Your followers see these totals and your recent activity. Everyone else sees your name, photo and bio.'
-              : 'Only your name, photo and bio are public. Set “Who can see your runs” to Followers or Public to share these.'}
+              ? 'Only followers can see your recent activities.'
+              : 'Only you can see your recent activities.'}
         </p>
       </ProfileHero>
 
@@ -378,7 +378,7 @@ export function RewardsPage() {
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Rewards" description="Prizes from paid competitions you’ve won. Free challenges are for glory." />
+      <PageHeader eyebrow="You" title="Rewards" description="Prizes from paid competitions you’ve won. Free competitions are for glory." />
 
       <div className="panel-strong mb-8 grid grid-cols-2 divide-x divide-line">
         <div className="p-5">
@@ -412,7 +412,7 @@ export function RewardsPage() {
             <Skeleton className="h-24" />
           ) : list.length === 0 ? (
             <EmptyState mark="₦0" title="No prizes yet">
-              Place in a paid or funded free challenge and your prize shows up here.
+              Place in a paid or funded free competition and your prize shows up here.
             </EmptyState>
           ) : (
             <ul className="stagger space-y-3">
@@ -423,7 +423,7 @@ export function RewardsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="score text-[30px]">{formatMoney(award.amountKobo)}</p>
                       <p className="mt-1 text-[12px] text-ink-2">
-                        Place {award.place ?? 1} · Challenge {shortId(award.tableId)} · {formatDate(award.createdAt, { year: 'numeric' })}
+                        Place {award.place ?? 1} · Competition {shortId(award.tableId)} · {formatDate(award.createdAt, { year: 'numeric' })}
                       </p>
                     </div>
                     <span className={cx('tag', award.status === 'PAID' ? 'border-ok/60 bg-ok-wash text-ok' : award.status === 'FAILED' || award.status === 'REVERSED' ? 'border-bad/60 bg-bad-wash text-bad' : 'border-ink bg-card')}>
@@ -612,9 +612,9 @@ export function WalletPage() {
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Wallet" description="Fund entries once and use your balance for paid challenges." />
+      <PageHeader eyebrow="You" title="Wallet" description="Fund entries once and use your balance for paid competitions." />
       <Notice tone="neutral" className="mb-6" title="Closed-loop balance">
-        Wallet funding cannot be withdrawn or transferred back. It can only be used for eligible Jump challenge entries.
+        Wallet funding cannot be withdrawn or transferred back. It can only be used for eligible Jump competition entries.
       </Notice>
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section>
@@ -701,7 +701,7 @@ export function CreatorPage() {
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Creator" description="Create paid challenges for your audience and earn 5% when they settle." />
+      <PageHeader eyebrow="You" title="Creator" description="Create paid competitions for your audience and earn 5% when they settle." />
       {!creator.data ? (
         <form
           className="panel-strong max-w-2xl space-y-5 p-6"
@@ -730,21 +730,21 @@ export function CreatorPage() {
           <Field label="About" optional>
             {(props) => <textarea {...props} className="field min-h-28" maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} />}
           </Field>
-          <Notice tone="neutral">Creator challenges use a 35% total deduction: Jump keeps 30%, the creator earns 5%, and the winner receives 65%.</Notice>
+          <Notice tone="neutral">Creator competitions use a 35% total deduction: Jump keeps 30%, the creator earns 5%, and the winner receives 65%.</Notice>
           <ErrorNotice error={signup.error} />
-          <p className="text-[13px] text-ink-2">Jump reviews every creator application before you can host paid challenges.</p>
+          <p className="text-[13px] text-ink-2">Jump reviews every creator application before you can host paid competitions.</p>
           <button className="btn-primary" disabled={signup.isPending || displayName.trim().length < 2}>{signup.isPending ? 'Sending…' : 'Apply to be a creator'}</button>
         </form>
       ) : (
         <>
         {creator.data.status === 'PENDING' && (
           <Notice tone="info" className="mb-8" title="Waiting for approval">
-            Jump reviews every new creator before they can host paid challenges. You’ll get a notification once you’re approved. Free challenges work in the meantime.
+            Jump reviews every new creator before they can host paid competitions. You’ll get a notification once you’re approved. Free competitions work in the meantime.
           </Notice>
         )}
         {creator.data.status === 'SUSPENDED' && (
           <Notice tone="warn" className="mb-8" title="Creator account suspended">
-            You can’t host new paid challenges right now. Contact Jump support if you think this is a mistake.
+            You can’t host new paid competitions right now. Contact Jump support if you think this is a mistake.
           </Notice>
         )}
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -752,8 +752,8 @@ export function CreatorPage() {
             <SectionTitle>Earnings</SectionTitle>
             <ErrorNotice error={earnings.error} onRetry={() => void earnings.refetch()} />
             {(earnings.data ?? []).length === 0 ? (
-              <EmptyState mark="5%" title="No creator earnings yet" action={<Link to="/competitions/new" className="btn-primary">Create a challenge</Link>}>
-                Earnings appear after one of your paid challenges settles.
+              <EmptyState mark="5%" title="No creator earnings yet" action={<Link to="/competitions/new" className="btn-primary">Create a competition</Link>}>
+                Earnings appear after one of your paid competitions settles.
               </EmptyState>
             ) : (
               <ul className="stagger space-y-3">
@@ -779,7 +779,7 @@ export function CreatorPage() {
                 {creator.data.creatorType.replace('_', ' ')} · {creator.data.status === 'ACTIVE' ? 'approved' : creator.data.status === 'PENDING' ? 'awaiting approval' : 'suspended'}
               </p>
               {creator.data.bio && <p className="mt-4 text-[13px] leading-relaxed text-ink-2">{creator.data.bio}</p>}
-              {creator.data.status === 'ACTIVE' && <Link to="/competitions/new" className="btn-secondary mt-5 w-full">Create paid challenge</Link>}
+              {creator.data.status === 'ACTIVE' && <Link to="/competitions/new" className="btn-secondary mt-5 w-full">Create paid competition</Link>}
               <Link to="/rewards" className="btn-quiet mt-2 w-full">Manage payout account</Link>
             </div>
           </aside>
@@ -852,6 +852,7 @@ export function NotificationsPage() {
 
 export function RunnerPage() {
   const { username } = useParams({ strict: false }) as { username: string };
+  const { user } = useAuth();
   const { tab = 'activity' } = useSearch({ strict: false }) as { tab?: 'followers' | 'following' | 'activity' };
   const navigate = useNavigate();
   const unit = useUnit();
@@ -889,16 +890,18 @@ export function RunnerPage() {
           </>
         }
         bio={data.bio}
-        counts={{ activities: data.runsVisible ? data.stats?.activities ?? 0 : undefined, followers: data.followers, following: data.following }}
+        counts={{ activities: data.stats.activities, followers: data.followers, following: data.following }}
         actions={
           <>
-            <FollowButton username={data.username} following={data.followedByMe} size="sm" preview={isMe} className="flex-1" />
+            <FollowButton username={data.username} following={data.followedByMe} size="sm" preview={isMe} className="min-w-[calc(50%-0.25rem)] flex-1 sm:min-w-0" />
+            {!isMe && user && <Link to="/messages/$username" params={{ username: data.username }} className="btn-secondary btn-sm min-w-[calc(50%-0.25rem)] flex-1 sm:min-w-0">Message</Link>}
+            {!isMe && <RunnerChallengeInvite username={data.username} />}
             <ShareProfileButton username={data.username} displayName={data.displayName} iconOnly />
           </>
         }
       >
         {data.followsMe && !isMe && <p className="mt-3 text-[12px] font-semibold text-ink-2">Follows you</p>}
-        {data.runsVisible && data.stats && <ProfileStats stats={data.stats} unit={unit} />}
+        <ProfileStats stats={data.stats} unit={unit} />
       </ProfileHero>
 
       <div className="mb-5 mt-6">
@@ -918,8 +921,8 @@ export function RunnerPage() {
       ) : !data.runsVisible ? (
         <EmptyState mark={<LockIcon size={36} className="mx-auto" />} title="Activity is private">
           {data.followedByMe
-            ? `${data.displayName.split(' ')[0]} hasn’t shared their walks and runs.`
-            : `Only their name, photo and bio are visible. Some runners share activity with followers.`}
+            ? `${data.displayName.split(' ')[0]} hasn’t shared individual walks and runs.`
+            : 'Their verified totals are public, but individual walks and runs are not shared with you.'}
         </EmptyState>
       ) : data.recent && (
         <section>
@@ -960,4 +963,29 @@ export function RunnerPage() {
       )}
     </div>
   );
+}
+
+function RunnerChallengeInvite({ username }: { username: string }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [tableId, setTableId] = useState('');
+  const tables = useQuery({
+    queryKey: ['tables', 'mine'],
+    queryFn: () => api<Array<{ id: string; title: string; status: string; hosting: boolean }>>('/tables/mine'),
+    enabled: Boolean(user && open),
+  });
+  const hosted = tables.data?.filter((table) => table.hosting && table.status === 'OPEN_FOR_ENTRY') ?? [];
+  const invite = useMutation({ mutationFn: () => post(`/tables/${tableId}/invitations`, { username }), onSuccess: () => setOpen(false) });
+  if (!user) return null;
+  return <div className="relative min-w-0 flex-1 sm:flex-none">
+    <button type="button" className="btn-secondary btn-sm w-full" onClick={() => setOpen((value) => !value)}>Invite</button>
+    {open && <div className="absolute left-0 z-20 mt-2 w-[min(16rem,calc(100vw-4rem))] rounded-lg border border-ink bg-paper p-3 shadow-hard sm:left-auto sm:right-0">
+      <p className="mb-2 text-[12px] font-bold uppercase">Invite @{username}</p>
+      <ErrorNotice error={tables.error || invite.error} />
+      {tables.isLoading ? <p className="text-[12px]">Loading competitions…</p> : hosted.length ? <>
+        <select className="field" aria-label="Choose competition" value={tableId} onChange={(event) => setTableId(event.target.value)}><option value="">Choose competition</option>{hosted.map((table) => <option key={table.id} value={table.id}>{table.title}</option>)}</select>
+        <button type="button" className="btn-secondary btn-sm mt-2 w-full" disabled={!tableId || invite.isPending} onClick={() => invite.mutate()}>{invite.isPending ? 'Sending…' : 'Send invite'}</button>
+      </> : <p className="text-[12px] text-ink-2">You have no open competitions to invite them to.</p>}
+    </div>}
+  </div>;
 }

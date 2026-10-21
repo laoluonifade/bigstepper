@@ -30,12 +30,12 @@ export function AdminChallengesPage() {
 
   return (
     <div className="animate-rise">
-      <PageHeader eyebrow="Staff" title="Paid challenges" description="Review the rules and confirm the guaranteed prize is funded before opening paid entry." />
-      <div className="mb-5"><Segmented label="Paid challenges" value={view} onChange={setView} options={[{ value: 'pending', label: 'Waiting for you' }, { value: 'approved', label: 'Approved' }]} /></div>
+      <PageHeader eyebrow="Staff" title="Paid competitions" description="Review the rules and confirm the guaranteed prize is funded before opening paid entry." />
+      <div className="mb-5"><Segmented label="Paid competitions" value={view} onChange={setView} options={[{ value: 'pending', label: 'Waiting for you' }, { value: 'approved', label: 'Approved' }]} /></div>
       <ErrorNotice error={challenges.error} onRetry={() => void challenges.refetch()} className="mb-4" />
       {challenges.isLoading ? <Skeleton className="h-48" /> : !challenges.data?.length ? (
-        <EmptyState mark={<ShieldIcon size={40} className="mx-auto" />} title={view === 'pending' ? 'No challenges waiting' : 'No open paid challenges'}>
-          {view === 'pending' ? 'New paid challenges appear here for review.' : null}
+        <EmptyState mark={<ShieldIcon size={40} className="mx-auto" />} title={view === 'pending' ? 'No competitions waiting' : 'No open paid competitions'}>
+          {view === 'pending' ? 'New paid competitions appear here for review.' : null}
         </EmptyState>
       ) : <ul className="stagger space-y-3">{challenges.data.map((challenge) => <ChallengeReview key={challenge.id} challenge={challenge} />)}</ul>}
     </div>
@@ -69,7 +69,7 @@ function ChallengeReview({ challenge }: { challenge: PaidChallenge }) {
       <label className="flex items-start gap-2"><input type="checkbox" checked={fundingConfirmed} onChange={(event) => setFundingConfirmed(event.target.checked)} />I verified the guaranteed prize is funded.</label>
       <label className="flex items-start gap-2"><input type="checkbox" checked={rulesApproved} onChange={(event) => setRulesApproved(event.target.checked)} />I reviewed the scoring rules and dates.</label>
       <ErrorNotice error={approve.error} className="mt-2" />
-      <button type="button" className="btn-primary btn-sm" disabled={!fundingConfirmed || !rulesApproved || approve.isPending} onClick={() => approve.mutate()}><CheckIcon size={15} />{approve.isPending ? 'Approving…' : 'Approve challenge'}</button>
+      <button type="button" className="btn-primary btn-sm" disabled={!fundingConfirmed || !rulesApproved || approve.isPending} onClick={() => approve.mutate()}><CheckIcon size={15} />{approve.isPending ? 'Approving…' : 'Approve competition'}</button>
     </div>}
   </li>;
 }

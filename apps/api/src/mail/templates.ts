@@ -51,21 +51,21 @@ export function passwordResetEmail(to: { address: string; name?: string }, url: 
 }
 
 export function challengeInviteEmail(to: { address: string; name?: string }, title: string, url: string): MailMessage {
-  const intro = `You’ve been invited to ${title} on Jump. Open the challenge to see the rules and join when you’re ready.`;
+  const intro = `You’ve been invited to ${title} on Jump. Open the competition to see the rules and join when you’re ready.`;
   return {
     to,
     subject: `Join ${title} on Jump`,
-    html: layout('Challenge invitation', intro, 'View challenge', url, 'If you weren’t expecting this invitation, you can ignore it.'),
-    text: `${intro}\n\nView challenge: ${url}`,
+    html: layout('Competition invitation', intro, 'View competition', url, 'If you weren’t expecting this invitation, you can ignore it.'),
+    text: `${intro}\n\nView competition: ${url}`,
   };
 }
 
 export function challengeReminderEmail(to: { address: string; name?: string }, title: string, url: string): MailMessage {
-  const intro = `Your daily reminder for ${title}: record a walk or run today to keep moving up the board. Only verified activities during the challenge count.`;
+  const intro = `Your daily reminder for ${title}: record a walk or run today to keep moving up the board. Only verified activities during the competition count.`;
   return {
     to,
     subject: `Time to move · ${title}`,
-    html: layout('Your daily challenge reminder', intro, 'View challenge', url, 'You receive this because you joined this challenge. The host chose its daily reminder time.'),
-    text: `${intro}\n\nView challenge: ${url}\n\nYou receive this because you joined this challenge.`,
+    html: layout('Your daily competition reminder', intro, 'View competition', url, 'You receive this because you joined this competition. The host chose its daily reminder time.'),
+    text: `${intro}\n\nView competition: ${url}\n\nYou receive this because you joined this competition.`,
   };
 }

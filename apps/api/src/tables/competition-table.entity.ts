@@ -67,6 +67,12 @@ export class CompetitionTable {
   @Column({ type: 'bigint', nullable: true, transformer: { to: (value: number | null) => value, from: (value: string | null) => value === null ? null : Number(value) } })
   guaranteedPrizeKobo: number | null;
 
+  @Column({ type: 'varchar', length: 16, default: 'WINNERS' })
+  fundingDestination: 'WINNERS' | 'CHARITY';
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  charityName: string | null;
+
   @Column({ type: 'jsonb', default: () => "'[10000]'::jsonb" })
   prizeSplitBps: number[];
 

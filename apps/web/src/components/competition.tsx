@@ -17,7 +17,7 @@ export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; 
     STEP: <><path d="M5 29h8v-7h8v-7h8V8h7" /><path d="M6 34h29" /><circle cx="8" cy="12" r="2" /></>,
     TIMED: <><circle cx="20" cy="22" r="12" /><path d="M20 22V13m0 9 7 4M16 5h8M20 5v5" /></>,
   }[type];
-  return <span className={cx('flex shrink-0 items-center justify-center rounded-[10px] border-2 border-ink text-ink shadow-hard-sm', colour)} style={{ width: size, height: size }} aria-label={`${type.toLowerCase()} challenge`}>
+  return <span className={cx('flex shrink-0 items-center justify-center rounded-[10px] border-2 border-ink text-ink shadow-hard-sm', colour)} style={{ width: size, height: size }} aria-label={`${type.toLowerCase()} competition`}>
     <svg width={size * 0.72} height={size * 0.72} viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">{symbol}</svg>
   </span>;
 }
@@ -100,10 +100,13 @@ export function cardTheme(table: CompetitionTable) {
 
 /** The one big thing about a challenge, from its real settings. */
 export function challengeHeadline(table: CompetitionTable, unit: Unit): { big: string; small: string } {
-  if (table.guaranteedPrizeKobo) {
-    const amount = prizeSplit(table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps).winnerKobo;
+  const prizePot = table.type === 'sponsored' ? (table.fundedPrizeKobo || table.guaranteedPrizeKobo) : table.guaranteedPrizeKobo;
+  if (prizePot) {
+    const amount = prizeSplit(prizePot, table.platformFeeBps, table.creatorCommissionBps).winnerKobo;
+    if (table.fundingDestination === 'CHARITY') return { big: formatMoney(amount).replace(/\.00$/, ''), small: `for ${table.charityName ?? 'charity'} · held for verification` };
     return { big: formatMoney(amount).replace(/\.00$/, ''), small: table.prizeSplitBps?.length > 1 ? `across top ${table.prizeSplitBps.length}` : 'to the winner' };
   }
+  if (table.type === 'sponsored') return { big: 'Funded', small: 'free entry · fund the prize' };
   if ((table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') && table.targetDistanceMetres) {
     const value = unit === 'km' ? table.targetDistanceMetres / 1000 : table.targetDistanceMetres / 1609.344;
     const label = Number.isInteger(Math.round(value * 10) / 10) ? String(Math.round(value)) : value.toFixed(1);
@@ -159,7 +162,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
       <div className="flex flex-1 flex-col px-4 pb-4 pt-3.5">
         <h3 className="wide line-clamp-2 text-[17px] font-extrabold uppercase leading-[1.05]">{table.title}</h3>
         <p className="mt-1 truncate text-[13px] text-ink-2">
-          {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community challenge'}
+          {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community competition'}
           {table.distanceCapMetres ? ` · cap ${formatDistance(table.distanceCapMetres, unit)}/run` : ''}
         </p>
 

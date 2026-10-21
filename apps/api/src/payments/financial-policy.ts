@@ -11,3 +11,14 @@ export function calculatePrizeBreakdown(grossPrizeKobo: number, platformFeeBps: 
     winnerAmountKobo: grossPrizeKobo - platformFeeKobo,
   };
 }
+
+/** Open funded-free pools allow contributors to compete; fixed host-funded prizes do not. */
+export function cashPrizeEligible(
+  table: { type: string; creatorId: string; guaranteedPrizeKobo: number | null },
+  userId: string,
+  funders: ReadonlySet<string>,
+) {
+  if (table.type === 'free') return true;
+  if (userId === table.creatorId) return false;
+  return table.type === 'sponsored' && table.guaranteedPrizeKobo === null ? true : !funders.has(userId);
+}

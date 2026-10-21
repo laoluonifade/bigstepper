@@ -1,14 +1,15 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearch } from '@tanstack/react-router';
-import { FormEvent, useEffect, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useParams, useSearch } from '@tanstack/react-router';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ActivityIcon, CloseIcon, FeedIcon, LockIcon, RunIcon, SearchIcon, TrashIcon } from '../components/icons';
+import { EmojiPopover } from '../components/EmojiPopover';
 import { ProfileTabs } from '../components/Profile';
-import { Avatar, cx, EmptyState, ErrorNotice, Skeleton } from '../components/ui';
+import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton } from '../components/ui';
 import { api, post } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { activityName, formatDistance, formatDuration } from '../lib/format';
 import type { Unit } from '../lib/types';
-import { useActivities, useProfile, useUnit } from '../lib/queries';
+import { useActivities, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
 
 type FeedScope = 'following' | 'explore';
 type FeedPost = {
@@ -26,12 +27,23 @@ type FeedPost = {
   validatedSteps: number | null;
   distanceMetres: number | null;
   movingSeconds: number | null;
+  reactionCount: number;
+  myReaction: Reaction | null;
+  commentCount: number;
 };
+
+type Reaction = 'LIKE' | 'FIRE' | 'CLAP' | 'HEART';
+type FeedComment = { id: string; postId: string; userId: string; body: string; createdAt: string; username: string; displayName: string; avatarUrl: string | null };
+const REACTIONS: { value: Reaction; symbol: string; label: string }[] = [
+  { value: 'LIKE', symbol: '👍', label: 'Like' }, { value: 'FIRE', symbol: '🔥', label: 'Fire' },
+  { value: 'CLAP', symbol: '👏', label: 'Clap' }, { value: 'HEART', symbol: '♥', label: 'Love' },
+];
 
 export function FeedPage() {
   const user = useUser();
   const unit = useUnit();
   const profile = useProfile();
+  const unreadMessages = useUnreadMessages().data?.count ?? 0;
   const activities = useActivities();
   const search = useSearch({ strict: false }) as { activity?: string };
   const queryClient = useQueryClient();
@@ -75,13 +87,13 @@ export function FeedPage() {
     <header className="mb-4 flex items-end justify-between gap-3">
       <div>
         <p className="eyebrow">Community</p>
-        <h1 className="display mt-1 text-[30px] leading-none">Feed</h1>
+        <h1 className="display mt-1 text-[30px] leading-none">Rant</h1>
       </div>
-      <Link to="/runners" className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink"><SearchIcon size={16} /> Find runners</Link>
+      <div className="flex shrink-0 items-center gap-1 sm:gap-4"><Link to="/messages" className="relative flex min-h-11 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold text-ink-2 hover:bg-card hover:text-ink" aria-label={`Messages${unreadMessages ? `, ${unreadMessages} unread` : ''}`}><FeedIcon size={18} /> <span className="hidden min-[380px]:inline">Messages</span>{unreadMessages > 0 && <span className="num min-w-[18px] rounded-full bg-bad px-1 text-center text-[10px] font-bold leading-[18px] text-paper">{unreadMessages > 9 ? '9+' : unreadMessages}</span>}</Link><Link to="/runners" className="flex h-11 w-11 items-center justify-center rounded-full text-ink-2 hover:bg-card hover:text-ink sm:w-auto sm:gap-1.5 sm:px-2" aria-label="Find runners"><SearchIcon size={19} /><span className="hidden sm:inline">Find runners</span></Link></div>
     </header>
 
     <div className="-mx-4 sm:mx-0">
-      <div className="sticky top-0 z-10 bg-paper/95 backdrop-blur"><ProfileTabs<FeedScope> label="Feed view" value={scope} onChange={setScope} tabs={[{ value: 'following', label: 'Following' }, { value: 'explore', label: 'Explore' }]} /></div>
+      <div className="sticky top-14 z-10 bg-paper/95 backdrop-blur md:top-0"><ProfileTabs<FeedScope> label="Rant view" value={scope} onChange={setScope} tabs={[{ value: 'following', label: 'Following' }, { value: 'explore', label: 'Explore' }]} /></div>
 
       <form onSubmit={publish} className="flex gap-3 border-b border-line px-4 pb-3 pt-4">
         <Avatar name={myName} src={profile.data?.avatarUrl} size={40} className="rounded-full" />
@@ -136,12 +148,14 @@ export function FeedPage() {
               <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="truncate font-bold hover:underline">{item.displayName}</Link>
               <span className="truncate text-ink-3">@{item.username}</span>
               <span className="text-ink-3" aria-hidden="true">·</span>
-              <time dateTime={item.createdAt} title={new Date(item.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} className="shrink-0 text-ink-3">{shortAgo(item.createdAt)}</time>
+              <Link to="/feed/$id" params={{ id: item.id }} className="shrink-0 text-ink-3 hover:underline"><time dateTime={item.createdAt} title={new Date(item.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>{shortAgo(item.createdAt)}</time></Link>
               {item.activityVisibility !== 'public' && <LockIcon size={12} className="shrink-0 self-center text-ink-3" aria-label={item.activityVisibility === 'private' ? 'Only you' : 'Followers'} />}
               {item.userId === user.id && confirmDelete !== item.id && <button type="button" className="ml-auto shrink-0 self-center rounded-full p-1 text-ink-3 hover:bg-bad-wash hover:text-bad" onClick={() => setConfirmDelete(item.id)} aria-label="Delete post"><TrashIcon size={15} /></button>}
             </p>
-            {item.body && <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-snug">{item.body}</p>}
+            {item.body && <Link to="/feed/$id" params={{ id: item.id }} className="mt-1 block whitespace-pre-wrap break-words text-[15px] leading-snug hover:underline">{item.body}</Link>}
             {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} />}
+            {!item.body && <Link to="/feed/$id" params={{ id: item.id }} className="mt-2 block text-[12px] font-bold text-ink-2 underline">View post</Link>}
+            <PostInteractions item={item} viewerId={user.id} />
             {confirmDelete === item.id && <div className="mt-2 flex items-center justify-end gap-4 text-[13px]">
               <span className="text-ink-2">Delete this post?</span>
               <button type="button" className="font-semibold text-ink-2 hover:text-ink" onClick={() => setConfirmDelete(null)}>Keep</button>
@@ -153,6 +167,69 @@ export function FeedPage() {
         {feed.hasNextPage && <div className="p-3"><button type="button" className="btn-quiet w-full" onClick={() => void feed.fetchNextPage()} disabled={feed.isFetchingNextPage}>{feed.isFetchingNextPage ? 'Loading…' : 'Show older posts'}</button></div>}
       </div>}
     </div>
+  </div>;
+}
+
+export function FeedPostPage() {
+  const { id } = useParams({ strict: false }) as { id: string };
+  const user = useUser();
+  const unit = useUnit();
+  const post = useQuery({ queryKey: ['feed-post', id], queryFn: () => api<FeedPost>(`/feed/${encodeURIComponent(id)}`) });
+  if (post.isLoading) return <Loading />;
+  if (post.error || !post.data) return <div className="mx-auto max-w-[600px]"><Link to="/feed" className="text-[13px] font-bold underline">← Rant</Link><ErrorNotice error={post.error} onRetry={() => void post.refetch()} className="mt-4" /></div>;
+  const item = post.data;
+  return <div className="mx-auto max-w-[600px] animate-rise">
+    <Link to="/feed" className="mb-4 inline-flex min-h-10 items-center text-[13px] font-bold text-ink-2 hover:text-ink">← Rant</Link>
+    <article className="-mx-4 border-y border-line bg-card p-4 sm:mx-0 sm:rounded-2xl sm:border sm:p-5">
+      <div className="flex items-center gap-3">
+        <Link to="/runners/$username" params={{ username: item.username }} search={{}}><Avatar name={item.displayName} src={item.avatarUrl} size={44} className="rounded-full" /></Link>
+        <div className="min-w-0"><Link to="/runners/$username" params={{ username: item.username }} search={{}} className="block truncate font-bold hover:underline">{item.displayName}</Link><p className="text-[12px] text-ink-3">@{item.username} · {shortAgo(item.createdAt)}</p></div>
+      </div>
+      {item.body && <p className="mt-4 whitespace-pre-wrap break-words text-[16px] leading-relaxed">{item.body}</p>}
+      {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} />}
+      <PostInteractions item={item} viewerId={user.id} detail />
+    </article>
+  </div>;
+}
+
+function PostInteractions({ item, viewerId, detail = false }: { item: FeedPost; viewerId: string; detail?: boolean }) {
+  const queryClient = useQueryClient();
+  const [showReactions, setShowReactions] = useState(false);
+  const reactionAnchor = useRef<HTMLButtonElement | null>(null);
+  const showComments = detail;
+  const [commentBody, setCommentBody] = useState('');
+  const comments = useQuery({ queryKey: ['feed-comments', item.id], queryFn: () => api<FeedComment[]>(`/feed/${item.id}/comments`), enabled: showComments });
+  const refresh = () => { void queryClient.invalidateQueries({ queryKey: ['feed'] }); void queryClient.invalidateQueries({ queryKey: ['feed-post', item.id] }); void queryClient.invalidateQueries({ queryKey: ['feed-comments', item.id] }); };
+  const react = useMutation({
+    mutationFn: (reaction: Reaction | null) => reaction ? post(`/feed/${item.id}/reaction`, { reaction }) : api(`/feed/${item.id}/reaction`, { method: 'DELETE' }),
+    onSuccess() { setShowReactions(false); refresh(); },
+  });
+  const comment = useMutation({ mutationFn: () => post(`/feed/${item.id}/comments`, { body: commentBody.trim() }), onSuccess() { setCommentBody(''); refresh(); } });
+  const removeComment = useMutation({ mutationFn: (id: string) => api(`/feed/comments/${id}`, { method: 'DELETE' }), onSuccess: refresh });
+  return <div className="mt-3 border-t border-line pt-2.5">
+    <div className="flex flex-wrap items-center gap-4 text-[13px] font-semibold text-ink-2">
+      <button ref={reactionAnchor} type="button" className="min-h-9 rounded-full px-2 hover:bg-paper hover:text-ink" onClick={() => setShowReactions((value) => !value)} aria-expanded={showReactions}>
+        {REACTIONS.find((reaction) => reaction.value === item.myReaction)?.symbol ?? '♡'} {item.reactionCount} {item.myReaction ? REACTIONS.find((reaction) => reaction.value === item.myReaction)?.label : 'React'}
+      </button>
+      {detail ? <span>{item.commentCount} Comments</span> : <Link to="/feed/$id" params={{ id: item.id }} className="hover:text-ink">{item.commentCount} Comments</Link>}
+      {item.userId !== viewerId && <Link to="/messages/$username" params={{ username: item.username }} className="hover:text-ink">Message</Link>}
+    </div>
+    {showReactions && <EmojiPopover anchor={reactionAnchor} label="React to post" width={208} height={62} onClose={() => setShowReactions(false)}><div className="flex gap-0.5">
+      {REACTIONS.map((choice) => <button key={choice.value} type="button" className={cx('flex h-11 w-11 items-center justify-center rounded-xl text-[22px] hover:bg-paper', item.myReaction === choice.value && 'bg-volt')} title={choice.label} aria-label={choice.label} onClick={() => react.mutate(item.myReaction === choice.value ? null : choice.value)} disabled={react.isPending}>{choice.symbol}</button>)}
+    </div></EmojiPopover>}
+    <ErrorNotice error={react.error} className="mt-2" />
+    {showComments && <div className="mt-3 space-y-3">
+      <ErrorNotice error={comment.error || comments.error || removeComment.error} />
+      {comments.isLoading ? <Skeleton className="h-16" /> : (comments.data ?? []).map((entry) => <div key={entry.id} className="flex min-w-0 gap-2.5 rounded-xl bg-paper p-2.5">
+        <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="shrink-0"><Avatar name={entry.displayName} src={entry.avatarUrl} size={28} /></Link>
+        <p className="min-w-0 flex-1 break-words text-[13px]"><span className="font-bold">{entry.displayName}</span> <span className="whitespace-pre-wrap">{entry.body}</span></p>
+        {entry.userId === viewerId && <button type="button" className="self-start text-ink-3 hover:text-bad" onClick={() => removeComment.mutate(entry.id)} aria-label="Delete comment"><TrashIcon size={14} /></button>}
+      </div>)}
+      <form className="flex min-w-0 gap-2 border-t border-line pt-3" onSubmit={(event) => { event.preventDefault(); if (commentBody.trim() && !comment.isPending) comment.mutate(); }}>
+        <input className="field min-w-0 flex-1 rounded-xl" aria-label="Write a comment" maxLength={500} value={commentBody} onChange={(event) => setCommentBody(event.target.value)} placeholder="Write a comment" />
+        <button className="btn-dark btn-sm shrink-0 rounded-xl" disabled={!commentBody.trim() || comment.isPending}>Post</button>
+      </form>
+    </div>}
   </div>;
 }
 

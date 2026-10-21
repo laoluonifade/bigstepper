@@ -161,7 +161,7 @@ export function ActivityDetailPage() {
         actions={
           <span className="flex items-center gap-2">
             <VerificationTag status={a.verificationStatus} />
-            {verified && <Link to="/feed" search={{ activity: a.id }} className="btn-secondary btn-sm">Post to feed</Link>}
+            {verified && <Link to="/feed" search={{ activity: a.id }} className="btn-secondary btn-sm">Post to Rant</Link>}
             <ShareRun activity={a} unit={unit} className="btn-sm" autoOpen={Boolean(search.fresh) && verified} />
           </span>
         }
@@ -175,7 +175,7 @@ export function ActivityDetailPage() {
           <div>
             <p className="wide text-[16px] font-black uppercase">Verified. It counts.</p>
             <p className="text-[13px]">
-              {formatDistance(shownMetres(a), unit)} counts in your active league. Eligible challenges are listed below.
+              {formatDistance(shownMetres(a), unit)} counts in your active league. Eligible competitions are listed below.
             </p>
           </div>
         </div>
@@ -195,7 +195,7 @@ export function ActivityDetailPage() {
             </p>
             {fromSteps(a) && (
               <p className="text-[13px] text-ink-2">
-                Measured from {a.validatedSteps.toLocaleString('en-GB')} steps. GPS couldn’t track this one (indoors?). It can count for your league and step-based challenges, but not paid distance scoring.
+                Measured from {a.validatedSteps.toLocaleString('en-GB')} steps. GPS couldn’t track this one (indoors?). It can count for your league and step-based competitions, but not paid distance scoring.
               </p>
             )}
             {trimmed > 0 && !fromSteps(a) && (
@@ -263,10 +263,10 @@ function ActivityCredits({ activityId, unit }: { activityId: string; unit: 'km' 
     queryFn: () => api<Array<{ code: string; title: string; scoringMethod: string; creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }>>(`/activities/${activityId}/credits`),
   });
   return <section className="panel mt-6 p-5">
-    <h2 className="wide text-[16px] font-extrabold uppercase">Challenge credits</h2>
+    <h2 className="wide text-[16px] font-extrabold uppercase">Competition credits</h2>
     <ErrorNotice error={credits.error} onRetry={() => void credits.refetch()} className="mt-3" />
-    {credits.isLoading ? <p className="mt-2 text-[13px] text-ink-2">Checking joined challenges…</p> : !credits.data?.length ? (
-      <p className="mt-2 text-[13px] text-ink-2">No challenge credited this activity. You must join before starting, and the activity must match its type and scoring dates.</p>
+    {credits.isLoading ? <p className="mt-2 text-[13px] text-ink-2">Checking joined competitions…</p> : !credits.data?.length ? (
+      <p className="mt-2 text-[13px] text-ink-2">No competition credited this activity. You must join before starting, and the activity must match its type and scoring dates.</p>
     ) : <ul className="mt-3 divide-y divide-line">{credits.data.map((credit) => {
       const score = credit.scoringMethod === 'MOST_STEPS' ? `${credit.creditedSteps.toLocaleString('en-GB')} steps`
         : credit.scoringMethod === 'FARTHEST_DISTANCE' ? formatDistance(credit.creditedDistanceMetres, unit)
@@ -301,7 +301,7 @@ function DeleteActivity({ activityId }: { activityId: string }) {
         <div className="animate-rise rounded-md border-[1.5px] border-bad/50 bg-bad-wash p-4">
           <p className="text-[15px] font-bold">Delete this activity?</p>
           <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
-            It’s removed for good, along with its distance in any free challenges still running and in your league. This can’t be undone.
+            It’s removed for good, along with its distance in any free competitions still running and in your league. This can’t be undone.
           </p>
           <ErrorNotice error={remove.error} className="mt-3" />
           <div className="mt-4 flex flex-wrap gap-2">
@@ -333,7 +333,7 @@ function ReviewRequest({ activityId }: { activityId: string }) {
   if (request.isSuccess || alreadyPending) {
     return (
       <Notice tone="ok" className="mt-8" title={alreadyPending ? 'A review is already pending' : 'Review requested'}>
-        A person on our team will look at this run. If it’s approved, it’ll be credited to your challenges automatically.
+        A person on our team will look at this run. If it’s approved, it’ll be credited to your competitions automatically.
       </Notice>
     );
   }

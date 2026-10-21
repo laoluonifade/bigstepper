@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import { CompetitionTable } from '../tables/competition-table.entity';
 import { TableRegistration } from '../tables/table-registration.entity';
 import { User } from '../users/user.entity';
@@ -28,17 +28,20 @@ export class PaymentsService {
       this.dataSource.getRepository(User).findOne({ where: { id: userId } }),
       this.dataSource.getRepository(CompetitionTable).findOne({ where: { id: tableId } }),
     ]);
-    if (!user || !table || table.type !== 'paid') throw new NotFoundException('Paid challenge not found');
+    if (!user || !table || table.type !== 'paid') throw new NotFoundException('Paid competition not found');
     if (!user.emailVerified) throw new ForbiddenException('Verify your email before entering a paid competition');
     await this.assertPaidEligibility(userId);
-    if (table.creatorId === userId) throw new ForbiddenException('Challenge hosts cannot enter their own paid prize');
+    if (table.creatorId === userId) throw new ForbiddenException('Competition hosts cannot enter their own paid prize');
     if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) throw new ConflictException('Entry is closed');
-    if (table.entryFeeKobo <= 0) throw new BadRequestException('Challenge fee is invalid');
-    if (await this.dataSource.getRepository(TableRegistration).exist({ where: { tableId, userId } })) throw new ConflictException('You already joined this challenge');
+    if (table.entryFeeKobo <= 0) throw new BadRequestException('Competition fee is invalid');
+    if (await this.dataSource.getRepository(TableRegistration).exist({ where: { tableId, userId } })) throw new ConflictException('You already joined this competition');
+    if (await this.intents.exist({ where: { userId, tableId, purpose: 'CHALLENGE_ENTRY', status: In(['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED']) } })) {
+      throw new ConflictException('An entry payment is still in progress or under review');
+    }
 
     const intent = await this.intents.save(this.intents.create({
       userId, tableId, reference: `jump-${randomUUID()}`, amountKobo: table.entryFeeKobo, currency: 'NGN',
-      purpose: 'CHALLENGE_ENTRY', status: 'INITIATED', providerStatus: null, providerTransactionId: null, expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+      purpose: 'CHALLENGE_ENTRY', status: 'INITIATED', providerStatus: null, providerTransactionId: null, expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     }));
     try {
       const initialized = await this.paystack.initialize({
@@ -53,22 +56,27 @@ export class PaymentsService {
     }
   }
 
-  async fundPrize(userId: string, tableId: string) {
+  async fundPrize(userId: string, tableId: string, amountKobo: number) {
     this.assertPaidEnabled();
     const [user, table] = await Promise.all([
       this.dataSource.getRepository(User).findOne({ where: { id: userId } }),
       this.dataSource.getRepository(CompetitionTable).findOne({ where: { id: tableId, type: 'sponsored' } }),
     ]);
-    if (!user || !table) throw new NotFoundException('Funded challenge not found');
-    if (!user.emailVerified) throw new ForbiddenException('Verify your email before funding a challenge');
+    if (!user || !table) throw new NotFoundException('Funded competition not found');
+    if (table.guaranteedPrizeKobo !== null && userId !== table.creatorId) throw new ForbiddenException('Only the host can fund a fixed competition');
+    if (table.guaranteedPrizeKobo !== null && table.guaranteedPrizeKobo < 1_000_000) throw new BadRequestException('Fixed contributions must be at least ₦10,000');
+    if (!user.emailVerified) throw new ForbiddenException('Verify your email before funding a competition');
     await this.assertPaidEligibility(userId);
-    if (table.status !== 'PENDING_FUNDING' || !table.guaranteedPrizeKobo || (table.scoringClosesAt && table.scoringClosesAt <= new Date())) throw new ConflictException('Prize is already funded or the challenge is unavailable');
-    const pending = await this.intents.findOne({ where: { userId, tableId, purpose: 'SPONSOR_FUNDING', status: 'PENDING' } });
-    if (pending && pending.expiresAt > new Date()) throw new ConflictException('A funding payment is already in progress; check its status');
+    const legacyFixed = table.guaranteedPrizeKobo !== null;
+    if (!Number.isSafeInteger(amountKobo) || amountKobo < 100 || amountKobo > (legacyFixed ? 1_000_000_000 : 100_000_000)) throw new BadRequestException('Funding amount is outside the allowed range');
+    if ((legacyFixed ? table.status !== 'PENDING_FUNDING' || amountKobo !== table.guaranteedPrizeKobo : !['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(table.status)) ||
+        (table.scoringClosesAt && table.scoringClosesAt <= new Date())) throw new ConflictException('Prize funding is unavailable or the amount is invalid');
+    const pending = await this.intents.exist({ where: { userId, tableId, purpose: 'SPONSOR_FUNDING', status: In(['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED']) } });
+    if (pending) throw new ConflictException('A funding payment is still in progress or under review; check its status');
     const intent = await this.intents.save(this.intents.create({
       userId, tableId, purpose: 'SPONSOR_FUNDING', reference: `jump-prize-${randomUUID()}`,
-      amountKobo: table.guaranteedPrizeKobo, currency: 'NGN', status: 'INITIATED', providerStatus: null,
-      providerTransactionId: null, expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+      amountKobo, currency: 'NGN', status: 'INITIATED', providerStatus: null,
+      providerTransactionId: null, expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     }));
     try {
       const initialized = await this.paystack.initialize({
@@ -99,7 +107,7 @@ export class PaymentsService {
       status: 'INITIATED',
       providerStatus: null,
       providerTransactionId: null,
-      expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     }));
     try {
       const initialized = await this.paystack.initialize({
@@ -122,14 +130,14 @@ export class PaymentsService {
     return this.dataSource.transaction(async (manager) => {
       const user = await manager.findOne(User, { where: { id: userId } });
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId, type: 'paid' }, lock: { mode: 'pessimistic_write' } });
-      if (!user || !table) throw new NotFoundException('Paid challenge not found');
-      if (!user.emailVerified) throw new ForbiddenException('Verify your email before entering a paid challenge');
+      if (!user || !table) throw new NotFoundException('Paid competition not found');
+      if (!user.emailVerified) throw new ForbiddenException('Verify your email before entering a paid competition');
       await this.assertPaidEligibility(userId, manager);
-      if (table.creatorId === userId) throw new ForbiddenException('Challenge hosts cannot enter their own paid prize');
+      if (table.creatorId === userId) throw new ForbiddenException('Competition hosts cannot enter their own paid prize');
       if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) throw new ConflictException('Entry is closed');
-      if (await manager.exists(TableRegistration, { where: { tableId, userId } })) throw new ConflictException('You already joined this challenge');
+      if (await manager.exists(TableRegistration, { where: { tableId, userId } })) throw new ConflictException('You already joined this competition');
       const count = Number((await manager.query(`SELECT COUNT(*)::integer count FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`, [tableId, table.creatorId]) as Array<{ count: number }>)[0].count);
-      if (table.capacity !== null && count >= table.capacity) throw new ConflictException('This challenge is full');
+      if (table.capacity !== null && count >= table.capacity) throw new ConflictException('This competition is full');
       const wallets = await manager.query(`SELECT "id","balanceKobo","frozenAt" FROM "wallets" WHERE "userId"=$1 FOR UPDATE`, [userId]) as Array<{ id: string; balanceKobo: string; frozenAt: Date | null }>;
       const wallet = wallets[0];
       if (wallet?.frozenAt) throw new ForbiddenException('Wallet spending is temporarily restricted; contact support');
@@ -138,10 +146,15 @@ export class PaymentsService {
       const reference = `jump-wallet-entry-${randomUUID()}`;
       await manager.query(`UPDATE "wallets" SET "balanceKobo"=$1,"updatedAt"=now() WHERE "id"=$2`, [balanceAfter, wallet.id]);
       await manager.query(
-        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'CHALLENGE_ENTRY',$2,$3,$4,'Paid challenge entry')`,
+        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'CHALLENGE_ENTRY',$2,$3,$4,'Paid competition entry')`,
         [wallet.id, -table.entryFeeKobo, balanceAfter, reference],
       );
       const registration = await manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId, paymentIntentId: null }));
+      await manager.query(
+        `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
+         WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,
+        [tableId, userId],
+      );
       await this.postWalletEntryLedger(manager, reference, table.entryFeeKobo);
       return registration;
     });
@@ -151,6 +164,16 @@ export class PaymentsService {
     const intent = await this.intents.findOne({ where: { reference, userId } });
     if (!intent) throw new NotFoundException('Payment not found');
     return { reference: intent.reference, status: intent.status, amountKobo: intent.amountKobo, currency: intent.currency };
+  }
+
+  async verifyOwnPayment(userId: string, reference: string) {
+    const intent = await this.intents.findOne({ where: { reference, userId } });
+    if (!intent) throw new NotFoundException('Payment not found');
+    if (['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED', 'FAILED'].includes(intent.status)) {
+      this.assertProviderEnabled();
+      await this.verifyAndFulfill(reference);
+    }
+    return this.status(userId, reference);
   }
 
   rewards(userId: string) {
@@ -319,7 +342,7 @@ export class PaymentsService {
       if (!payout) throw new NotFoundException('Payout request not found');
       if (payout.status !== 'PENDING_APPROVAL') throw new ConflictException('This payout was already reviewed');
       if (payout.userId === actorUserId) throw new ForbiddenException('You can’t approve a payout to yourself');
-      if (payout.blocked) throw new ConflictException('The recipient or challenge funding is under a payment hold');
+      if (payout.blocked) throw new ConflictException('The recipient or competition funding is under a payment hold');
       if (new Date(payout.availableForPayoutAt) > new Date()) throw new ConflictException('Their bank details changed recently, so this payout is on a 24-hour security hold');
       const reference = `payout-${randomUUID()}`;
       await manager.query(
@@ -334,7 +357,7 @@ export class PaymentsService {
       return { ...payout, reference };
     });
     try {
-      const transfer = await this.paystack.initiateTransfer({ source: 'balance', amount: Number(claimed.amountKobo), recipient: claimed.providerRecipientCode, reference: claimed.reference, reason: 'Jump challenge prize' });
+      const transfer = await this.paystack.initiateTransfer({ source: 'balance', amount: Number(claimed.amountKobo), recipient: claimed.providerRecipientCode, reference: claimed.reference, reason: 'Jump competition prize' });
       if (transfer.reference !== claimed.reference) throw new ServiceUnavailableException('Payment provider returned an unexpected transfer reference');
       await this.dataSource.query(
         `UPDATE "payout_attempts" SET "providerTransferCode"=$1,"status"=$2,"providerPayload"=$3,"updatedAt"=now() WHERE "reference"=$4`,
@@ -396,6 +419,28 @@ export class PaymentsService {
     return summary;
   }
 
+  /** One bounded batch per minute. Verify first; never infer that an unconfirmed charge failed. */
+  async sweepAbandonedCheckouts() {
+    if (!this.config.get<boolean>('PAID_CONTESTS_ENABLED')) return { checked: 0, failures: 0 };
+    this.assertProviderEnabled();
+    const payments = await this.dataSource.query(
+      `SELECT "reference" FROM "payment_intents"
+       WHERE "status" IN ('INITIATED','PENDING') AND "createdAt" <= now() - interval '15 minutes'
+         AND "updatedAt" <= now() - interval '5 minutes'
+       ORDER BY "createdAt" ASC LIMIT 20`,
+    ) as Array<{ reference: string }>;
+    let next = 0;
+    let failures = 0;
+    await Promise.all(Array.from({ length: Math.min(5, payments.length) }, async () => {
+      while (next < payments.length) {
+        const { reference } = payments[next++];
+        try { await this.verifyAndFulfill(reference); }
+        catch { failures++; }
+      }
+    }));
+    return { checked: payments.length, failures };
+  }
+
   verifySignature(rawBody: Buffer, signature?: string): boolean {
     if (!this.config.get<boolean>('PAID_CONTESTS_ENABLED') && !this.config.get<boolean>('PRIZE_PAYOUTS_ENABLED')) return false;
     if (!signature) return false;
@@ -455,8 +500,20 @@ export class PaymentsService {
   private async verifyAndFulfill(reference: string) {
     const provider = await this.paystack.verifyTransaction(reference);
     const intent = await this.intents.findOne({ where: { reference } });
-    if (!intent || provider.status !== 'success' || provider.reference !== intent.reference || provider.amount !== intent.amountKobo || provider.currency !== intent.currency) {
-      if (intent) await this.intents.update({ id: intent.id }, { status: 'RECONCILIATION_REQUIRED', providerStatus: provider.status });
+    if (!intent) return;
+    if (provider.reference !== intent.reference || provider.amount !== intent.amountKobo || provider.currency !== intent.currency) {
+      if (!['SUCCEEDED', 'REFUNDED', 'DISPUTED'].includes(intent.status)) await this.intents.update({ id: intent.id }, { status: 'RECONCILIATION_REQUIRED', providerStatus: provider.status });
+      return;
+    }
+    if (provider.status !== 'success') {
+      const expired = intent.createdAt.getTime() <= Date.now() - 15 * 60 * 1000;
+      const failed = expired && ['abandoned', 'failed'].includes(provider.status);
+      const review = provider.status === 'reversed';
+      await this.dataSource.query(
+        `UPDATE "payment_intents" SET "status"=CASE WHEN $2 THEN 'FAILED' WHEN $3 THEN 'RECONCILIATION_REQUIRED' ELSE "status" END,"providerStatus"=$4,"updatedAt"=now()
+         WHERE "id"=$1 AND "status" IN ('INITIATED','PENDING','RECONCILIATION_REQUIRED','FAILED')`,
+        [intent.id, failed, review, provider.status],
+      );
       return;
     }
     if (intent.purpose === 'WALLET_FUNDING') {
@@ -474,7 +531,7 @@ export class PaymentsService {
     const challengeId = intent.tableId;
     const needsRefund = await this.dataSource.transaction(async (manager) => {
       const locked = await manager.findOneOrFail(PaymentIntent, { where: { id: intent.id }, lock: { mode: 'pessimistic_write' } });
-      if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED'].includes(locked.status)) return false;
+      if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED', 'FAILED'].includes(locked.status)) return false;
       const table = await manager.findOneOrFail(CompetitionTable, { where: { id: challengeId }, lock: { mode: 'pessimistic_write' } });
       const count = Number((await manager.query(`SELECT COUNT(*)::integer count FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`, [table.id, table.creatorId]) as Array<{ count: number }>)[0].count);
       const blocked = await this.isPaidBlocked(locked.userId, manager);
@@ -489,6 +546,11 @@ export class PaymentsService {
       locked.status = 'SUCCEEDED'; locked.providerStatus = provider.status; locked.providerTransactionId = String(provider.id);
       await manager.save(locked);
       await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: table.id, userId: locked.userId, paymentIntentId: locked.id }));
+      await manager.query(
+        `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
+         WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,
+        [table.id, locked.userId],
+      );
       await this.postEntryLedger(manager, locked);
       return false;
     });
@@ -501,24 +563,38 @@ export class PaymentsService {
   private async fulfillPrizeFunding(intent: PaymentIntent, provider: { id: number; status: string }) {
     const needsRefund = await this.dataSource.transaction(async (manager) => {
       const locked = await manager.findOneOrFail(PaymentIntent, { where: { id: intent.id }, lock: { mode: 'pessimistic_write' } });
-      if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED'].includes(locked.status)) return false;
+      if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED', 'FAILED'].includes(locked.status)) return false;
       const table = locked.tableId ? await manager.findOne(CompetitionTable, { where: { id: locked.tableId }, lock: { mode: 'pessimistic_write' } }) : null;
+      const legacyFixed = Boolean(table && table.guaranteedPrizeKobo !== null);
       if (!table || table.type !== 'sponsored' ||
-          table.status !== 'PENDING_FUNDING' || table.guaranteedPrizeKobo !== locked.amountKobo ||
+          (table.guaranteedPrizeKobo !== null && locked.userId !== table.creatorId) ||
+          (legacyFixed ? table.status !== 'PENDING_FUNDING' || table.guaranteedPrizeKobo !== locked.amountKobo : !['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(table.status)) ||
           (table.scoringClosesAt && table.scoringClosesAt <= new Date())) {
         locked.status = 'REFUND_PENDING';
         await manager.save(locked);
         await manager.query(`INSERT INTO "refund_requests" ("paymentIntentId","amountKobo","currency","reason") VALUES ($1,$2,$3,'Prize funding unavailable') ON CONFLICT DO NOTHING`, [locked.id, locked.amountKobo, locked.currency]);
         return true;
       }
+      if (!legacyFixed) {
+        const [total] = await manager.query(
+          `SELECT COALESCE(SUM("amountKobo"),0)::bigint AS amount FROM "payment_intents" WHERE "tableId"=$1 AND "purpose"='SPONSOR_FUNDING' AND "status"='SUCCEEDED'`,
+          [table.id],
+        ) as Array<{ amount: string }>;
+        if (Number(total.amount) + locked.amountKobo > 1_000_000_000) {
+          locked.status = 'REFUND_PENDING';
+          await manager.save(locked);
+          await manager.query(`INSERT INTO "refund_requests" ("paymentIntentId","amountKobo","currency","reason") VALUES ($1,$2,$3,'Prize funding limit reached') ON CONFLICT DO NOTHING`, [locked.id, locked.amountKobo, locked.currency]);
+          return true;
+        }
+      }
       locked.status = 'SUCCEEDED';
       locked.providerStatus = provider.status;
       locked.providerTransactionId = String(provider.id);
       await manager.save(locked);
-      table.status = 'OPEN_FOR_ENTRY';
-      table.fundedAt = new Date();
+      if (legacyFixed) table.status = 'OPEN_FOR_ENTRY';
+      table.fundedAt ??= new Date();
       await manager.save(table);
-      const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified funded challenge prize') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
+      const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified funded competition prize') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
       if (journal[0]) await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2 ELSE -$2 END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','sponsor_prize_liability')`, [journal[0].id, locked.amountKobo]);
       return false;
     });
@@ -531,7 +607,7 @@ export class PaymentsService {
   private async fulfillWalletFunding(intent: PaymentIntent, provider: { id: number; status: string }) {
     await this.dataSource.transaction(async (manager) => {
       const locked = await manager.findOneOrFail(PaymentIntent, { where: { id: intent.id }, lock: { mode: 'pessimistic_write' } });
-      if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED'].includes(locked.status)) return;
+      if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED', 'FAILED'].includes(locked.status)) return;
       const wallets = await manager.query(
         `INSERT INTO "wallets" ("userId") VALUES ($1) ON CONFLICT ("userId") DO UPDATE SET "userId"=EXCLUDED."userId" RETURNING "id","balanceKobo"`,
         [locked.userId],
@@ -603,7 +679,7 @@ export class PaymentsService {
   }
 
   private async postWalletEntryLedger(manager: import('typeorm').EntityManager, reference: string, amountKobo: number) {
-    const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Wallet-funded challenge entry') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [reference]) as Array<{ id: string }>;
+    const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Wallet-funded competition entry') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [reference]) as Array<{ id: string }>;
     if (!journal[0]) return;
     await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'wallet_liability' THEN $2 ELSE -$2 END FROM "ledger_accounts" WHERE "code" IN ('wallet_liability','contest_entry_liability')`, [journal[0].id, amountKobo]);
   }

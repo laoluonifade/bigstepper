@@ -4,7 +4,8 @@ import { AppShell, Private } from './components/Shell';
 import { ActivitiesPage, ActivityDetailPage } from './pages/Activities';
 import { CompetitionDetailPage, CompetitionsPage, NewCompetitionPage } from './pages/Competitions';
 import { DashboardPage } from './pages/Dashboard';
-import { FeedPage } from './pages/Feed';
+import { FeedPage, FeedPostPage } from './pages/Feed';
+import { ConversationPage, MessagesPage } from './pages/Messages';
 import { LandingPage } from './pages/Landing';
 import { AdminCreatorsPage } from './pages/AdminCreators';
 import { AdminChallengesPage } from './pages/AdminChallenges';
@@ -49,6 +50,9 @@ const reset = createRoute({ getParentRoute: () => authLayout, path: '/reset-pass
 
 const dashboard = createRoute({ getParentRoute: () => root, path: '/dashboard', component: protectedPage(DashboardPage) });
 const feed = createRoute({ getParentRoute: () => root, path: '/feed', validateSearch: (search: Record<string, unknown>): { activity?: string } => typeof search.activity === 'string' ? { activity: search.activity } : {}, component: protectedPage(FeedPage) });
+const feedPost = createRoute({ getParentRoute: () => root, path: '/feed/$id', component: protectedPage(FeedPostPage) });
+const messages = createRoute({ getParentRoute: () => root, path: '/messages', component: protectedPage(MessagesPage) });
+const conversation = createRoute({ getParentRoute: () => root, path: '/messages/$username', component: protectedPage(ConversationPage) });
 const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', validateSearch: (search: Record<string, unknown>): { club?: string } => typeof search.club === 'string' ? { club: search.club } : {}, component: protectedPage(NewCompetitionPage) });
 const run = createRoute({ getParentRoute: () => root, path: '/run', component: protectedPage(RunPage) });
 const runSession = createRoute({ getParentRoute: () => root, path: '/runs/$id', component: protectedPage(RunSessionPage) });
@@ -84,7 +88,7 @@ function tokenSearch(search: Record<string, unknown>): { token?: string } {
 const routeTree = root.addChildren([
   home, competitions, competition, runners, runner,
   authLayout.addChildren([login, register, verify, forgot, reset]),
-  dashboard, feed, newCompetition, run, runSession, activities, activity,
+  dashboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
   adminPayouts, adminCreators, adminChallenges,
 ]);

@@ -28,14 +28,14 @@ export function LandingPage() {
           </span>
         </h1>
         <p className="mt-7 max-w-xl animate-rise-lg text-[18px] leading-relaxed text-ink-2 [animation-delay:350ms] sm:text-[21px]">
-          Join verified challenges, compete with your community, and turn everyday movement into something worth showing up for.
+          Join verified competitions, compete with your community, and turn everyday movement into something worth showing up for.
         </p>
         <div className="mt-8 flex animate-rise-lg flex-wrap gap-3 [animation-delay:480ms]">
           <Link to="/register" className="btn-primary min-h-12 px-6">
             Join Jump free <ArrowRightIcon size={17} />
           </Link>
           <Link to="/competitions" className="btn-secondary min-h-12 px-6">
-            Explore challenges
+            Explore competitions
           </Link>
         </div>
       </div>
@@ -61,7 +61,7 @@ function OpenChallenges() {
           <CompetitionCard key={table.id} table={table} unit="km" now={now} />
         ))}
         <Link to="/competitions" className="link inline-block text-[14px]">
-          See all challenges
+          See all competitions
         </Link>
       </div>
     );
@@ -77,7 +77,7 @@ function OpenChallenges() {
         {[
           ['01', 'Record walks and runs with your phone’s GPS.'],
           ['02', 'Distance is checked before it counts. No shortcuts.'],
-          ['03', 'Join a challenge and climb its standings.'],
+          ['03', 'Join a competition and climb its standings.'],
         ].map(([n, text], index) => (
           <li key={n} className="flex animate-rise gap-4 px-6 py-4" style={{ animationDelay: `${650 + index * 130}ms` }}>
             <span className="score w-7 text-[20px] text-track">{n}</span>

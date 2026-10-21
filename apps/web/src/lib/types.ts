@@ -59,7 +59,7 @@ export interface PublicProfile {
   avatarUrl: string | null;
   bio: string | null;
   memberSince: string;
-  /** False unless the runner made their activity public; stats and recent are absent then. */
+  /** Whether the viewer may see dated activities. Aggregate stats are always public. */
   runsVisible: boolean;
   /** The viewer is this runner. */
   isMe: boolean;
@@ -67,7 +67,7 @@ export interface PublicProfile {
   following: number;
   followedByMe: boolean;
   followsMe: boolean;
-  stats?: PublicStats;
+  stats: PublicStats;
   recent?: Array<{ activityType: 'walk' | 'run'; startedAt: string; metres: number; movingSeconds: number }>;
 }
 
@@ -126,6 +126,9 @@ export interface CompetitionTable {
   status: string;
   entryFeeKobo: number;
   guaranteedPrizeKobo: number | null;
+  fundingDestination?: 'WINNERS' | 'CHARITY';
+  charityName?: string | null;
+  fundedPrizeKobo?: number;
   prizeSplitBps: number[];
   fundedAt: string | null;
   minimumEntrants: number;

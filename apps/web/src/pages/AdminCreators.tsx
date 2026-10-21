@@ -53,7 +53,7 @@ export function AdminCreatorsPage() {
       <PageHeader
         eyebrow="Staff"
         title="Creator approvals"
-        description="People apply to become creators from their You page. Only creators you approve can host paid challenges. Runners never need approval."
+        description="People apply to become creators from their You page. Only creators you approve can host paid competitions. Runners never need approval."
       />
       <div className="mb-5">
         <Segmented<View>
@@ -105,7 +105,7 @@ export function AdminCreatorsPage() {
                     {creator.bio && <p className="mt-2 text-[14px] leading-relaxed">{creator.bio}</p>}
                     <p className="mt-2 text-[12px] text-ink-3">
                       Applied {formatRelative(creator.createdAt)}
-                      {creator.paidChallenges > 0 && ` · ${creator.paidChallenges} paid ${creator.paidChallenges === 1 ? 'challenge' : 'challenges'}`}
+                      {creator.paidChallenges > 0 && ` · ${creator.paidChallenges} paid ${creator.paidChallenges === 1 ? 'competition' : 'competitions'}`}
                       {creator.reviewedAt && ` · ${creator.status === 'SUSPENDED' ? 'suspended' : 'approved'}${creator.reviewedBy ? ` by ${creator.reviewedBy}` : ''} on ${formatDate(creator.reviewedAt, { year: 'numeric' })}`}
                     </p>
                   </div>

@@ -32,7 +32,7 @@ export class TablesService {
   async list(sort = 'popular', type = 'all', activity = 'all') {
     if (!['popular', 'newest'].includes(sort) || !['all', 'free', 'sponsored', 'paid'].includes(type) ||
         !['all', 'WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED'].includes(activity)) {
-      throw new BadRequestException('Invalid challenge filter');
+      throw new BadRequestException('Invalid competition filter');
     }
     const ranked = (await this.dataSource.query(
       `SELECT t."id", COUNT(r."id")::integer AS n
@@ -65,10 +65,17 @@ export class TablesService {
         )) as Array<{ tableId: string; n: number }>)
       : []);
     const byTable = new Map(counts.map((row) => [row.tableId, row.n]));
+    const funding = tables.length ? (await this.dataSource.query(
+      `SELECT "tableId", COALESCE(SUM("amountKobo"),0)::bigint AS amount
+       FROM "payment_intents" WHERE "tableId" = ANY($1::uuid[]) AND "purpose"='SPONSOR_FUNDING' AND "status"='SUCCEEDED'
+       GROUP BY "tableId"`, [tables.map((table) => table.id)],
+    )) as Array<{ tableId: string; amount: string }> : [];
+    const fundedByTable = new Map(funding.map((row) => [row.tableId, Number(row.amount)]));
     return tables.map(({ creator, ...table }) => ({
       ...table,
       creator: creator ? { id: creator.id, displayName: creator.displayName } : null,
       entrantCount: byTable.get(table.id) ?? 0,
+      fundedPrizeKobo: fundedByTable.get(table.id) ?? 0,
     }));
   }
 
@@ -79,8 +86,9 @@ export class TablesService {
        FROM "competition_tables" t
        LEFT JOIN "table_registrations" r ON r."tableId" = t."id" AND r."userId" = $1
        WHERE t."creatorId" = $1 OR r."id" IS NOT NULL
-       ORDER BY COALESCE(r."joinedAt", t."createdAt") DESC
-       LIMIT 50`,
+       ORDER BY CASE WHEN t."creatorId"=$1 AND t."status"='PENDING_FUNDING' THEN 0 ELSE 1 END,
+                COALESCE(r."joinedAt", t."createdAt") DESC
+       LIMIT 100`,
       [userId],
     );
     return rows as Array<{ id: string; code: string; title: string; type: string; challengeType: string; status: string; scoringClosesAt: string | null; hosting: boolean; joined: boolean }>;
@@ -101,13 +109,21 @@ export class TablesService {
   }
 
   async create(creatorId: string, input: CreateTableDto) {
+    const sponsored = Boolean(input.fundedFree || input.guaranteedPrizeKobo);
     const challengeType = input.challengeType ?? 'RUN';
     const scoringMethod = input.scoringMethod ?? (challengeType === 'WALK' || challengeType === 'STEP' ? 'MOST_STEPS' : challengeType === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
     this.validateScoring(challengeType, scoringMethod, input.targetDistanceMetres);
     await this.assertCommunityManager(creatorId, input.communityId);
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
     const prizeSplitBps = this.prizeSplit(input.prizeSplitBps, input.capacity);
-    if (input.guaranteedPrizeKobo) {
+    if (input.guaranteedPrizeKobo !== undefined && (!Number.isSafeInteger(input.guaranteedPrizeKobo) || input.guaranteedPrizeKobo < 1_000_000)) {
+      throw new BadRequestException('Fixed contributions must be at least ₦10,000');
+    }
+    if (input.fundingDestination === 'CHARITY' && (!input.fundedFree || !input.guaranteedPrizeKobo || !input.charityName?.trim())) {
+      throw new BadRequestException('Charity funding requires a fixed creator-funded amount and charity name');
+    }
+    if (input.charityName && input.fundingDestination !== 'CHARITY') throw new BadRequestException('Choose charity as the funding destination');
+    if (input.guaranteedPrizeKobo && input.fundingDestination !== 'CHARITY') {
       this.assertAwardAmounts(calculatePrizeBreakdown(input.guaranteedPrizeKobo, 1500, 0).winnerAmountKobo, prizeSplitBps);
     }
     const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
@@ -123,7 +139,7 @@ export class TablesService {
       description: input.description?.trim() || null,
       code: randomBytes(4).toString('hex').toUpperCase(),
       creatorId,
-      type: input.guaranteedPrizeKobo ? 'sponsored' : 'free',
+      type: sponsored ? 'sponsored' : 'free',
       entryFeeKobo: 0,
       status: input.guaranteedPrizeKobo ? 'PENDING_FUNDING' : 'OPEN_FOR_ENTRY',
       startsAt,
@@ -136,9 +152,11 @@ export class TablesService {
       targetDistanceMetres: input.targetDistanceMetres ?? null,
       ...reminderConfig(input.reminderTime, input.reminderTimeZone),
       communityId: input.communityId ?? null,
-      platformFeeBps: input.guaranteedPrizeKobo ? 1500 : 3000,
+      platformFeeBps: sponsored ? 1500 : 3000,
       creatorCommissionBps: 0,
       guaranteedPrizeKobo: input.guaranteedPrizeKobo ?? null,
+      fundingDestination: input.fundingDestination ?? 'WINNERS',
+      charityName: input.fundingDestination === 'CHARITY' ? input.charityName!.trim() : null,
       prizeSplitBps,
     });
     return this.saveWithInvites(table, input);
@@ -157,12 +175,12 @@ export class TablesService {
       `SELECT "id" FROM "creator_profiles" WHERE "userId"=$1 AND "status"='ACTIVE'`,
       [creatorId],
     ) as Array<{ id: string }>)[0];
-    if (!creator) throw new ForbiddenException('An active creator account is required for paid challenges');
+    if (!creator) throw new ForbiddenException('An active creator account is required for paid competitions');
     const startsAt = new Date(input.startsAt);
     const entryClosesAt = new Date(input.entryClosesAt ?? input.scoringClosesAt);
     const scoringClosesAt = new Date(input.scoringClosesAt);
     if ((input.minimumEntrants ?? 2) > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
-      throw new ConflictException('Challenge dates or entrant limits are invalid');
+      throw new ConflictException('Competition dates or entrant limits are invalid');
     }
     return this.saveWithInvites(this.tables.create({
       creatorId,
@@ -197,27 +215,38 @@ export class TablesService {
           where: { id: tableId },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!table || !['free', 'sponsored'].includes(table.type)) throw new NotFoundException('Free-entry challenge not found');
+        if (!table || !['free', 'sponsored'].includes(table.type)) throw new NotFoundException('Free-entry competition not found');
         if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) {
-          throw new ConflictException('This challenge is not open for entry');
+          throw new ConflictException('This competition is not open for entry');
         }
         if (table.capacity) {
           const count = await manager.count(TableRegistration, { where: { tableId } });
-          if (count >= table.capacity) throw new ConflictException('This challenge is full');
+          if (count >= table.capacity) throw new ConflictException('This competition is full');
         }
-        return manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId }));
+        const registration = await manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId }));
+        await manager.query(
+          `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
+           WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,
+          [tableId, userId],
+        );
+        return registration;
       });
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
-        throw new ConflictException('You already joined this challenge');
+        throw new ConflictException('You already joined this competition');
       }
       throw error;
     }
   }
 
+  async registration(tableId: string, userId: string) {
+    const joined = await this.registrations.exist({ where: { tableId, userId } });
+    return { joined };
+  }
+
   async standings(tableId: string) {
     const table = await this.tables.findOne({ where: { id: tableId } });
-    if (!table) throw new NotFoundException('Challenge not found');
+    if (!table) throw new NotFoundException('Competition not found');
     const metric = table.scoringMethod === 'MOST_STEPS' ? 'r."creditedSteps" DESC' : table.scoringMethod === 'FARTHEST_DISTANCE' ? 'r."creditedDistanceMetres" DESC' : 'r."completionTimeSeconds" ASC NULLS LAST';
     return this.dataSource.query(
       `SELECT row_number() OVER (ORDER BY ${metric},r."joinedAt" ASC,r."userId" ASC)::integer rank,
@@ -234,7 +263,7 @@ export class TablesService {
       where: { code: code.toUpperCase() },
       relations: { creator: true },
     });
-    if (!table) throw new NotFoundException('Challenge not found');
+    if (!table) throw new NotFoundException('Competition not found');
     const [presented] = await this.present([table]);
     const [host] = (await this.dataSource.query(`SELECT "username", "avatarUrl" FROM "profiles" WHERE "userId" = $1`, [table.creatorId])) as Array<{ username: string; avatarUrl: string | null }>;
     return { ...presented, creator: presented.creator ? { ...presented.creator, username: host?.username ?? null, avatarUrl: host?.avatarUrl ?? null } : null };
@@ -255,7 +284,7 @@ export class TablesService {
     try {
       assertScoringConfiguration(challengeType, scoringMethod, target);
     } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid challenge scoring');
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid competition scoring');
     }
   }
 
@@ -270,6 +299,9 @@ export class TablesService {
   }
 
   private async saveWithInvites(table: CompetitionTable, input: Invites) {
+    if (table.status !== 'OPEN_FOR_ENTRY' && (input.inviteClubMembers || input.inviteEmails?.length || input.invitePhones?.length)) {
+      throw new BadRequestException('Fund or approve this draft before inviting runners');
+    }
     const emails = [...new Set((input.inviteEmails ?? []).map((value) => value.trim().toLowerCase()))];
     const phones = [...new Set(input.invitePhones ?? [])];
     const saved = await this.dataSource.transaction(async (manager) => {
@@ -302,7 +334,7 @@ export class TablesService {
     );
     if (input.inviteClubMembers || emails.length) await manager.query(
       `INSERT INTO "notifications" ("userId","type","title","body")
-       SELECT DISTINCT targets."userId",'CHALLENGE_INVITE','You’re invited to a challenge',$2
+       SELECT DISTINCT targets."userId",'CHALLENGE_INVITE','You’re invited to a competition',$2
        FROM (
          SELECT i."invitedUserId" "userId" FROM "challenge_invitations" i WHERE i."tableId"=$1 AND i."invitedUserId" IS NOT NULL
          UNION
@@ -314,8 +346,114 @@ export class TablesService {
 
   async invitations(tableId: string, creatorId: string) {
     const table = await this.tables.findOne({ where: { id: tableId, creatorId } });
-    if (!table) throw new NotFoundException('Challenge not found');
-    return this.dataSource.query(`SELECT "id","email","phone","createdAt" FROM "challenge_invitations" WHERE "tableId"=$1 AND ("email" IS NOT NULL OR "phone" IS NOT NULL) ORDER BY "createdAt"`, [tableId]);
+    if (!table) throw new NotFoundException('Competition not found');
+    return this.dataSource.query(
+      `SELECT i."id",i."email",i."phone",p."username",i."status",i."createdAt"
+       FROM "challenge_invitations" i LEFT JOIN "profiles" p ON p."userId"=i."invitedUserId"
+       WHERE i."tableId"=$1 ORDER BY i."createdAt" DESC LIMIT 200`, [tableId],
+    );
+  }
+
+  async inviteRunner(tableId: string, creatorId: string, username: string) {
+    const invitation = await this.dataSource.transaction(async (manager) => {
+      const table = await manager.findOne(CompetitionTable, { where: { id: tableId, creatorId } });
+      if (!table) throw new NotFoundException('Competition not found or you are not its host');
+      if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) {
+        throw new ConflictException('Invitations are closed for this competition');
+      }
+      const [runner] = await manager.query(
+        `SELECT p."userId",p."username",u."email",p."displayName" FROM "profiles" p JOIN "users" u ON u."id"=p."userId" WHERE lower(p."username")=lower($1)`,
+        [username],
+      ) as Array<{ userId: string; username: string; email: string; displayName: string }>;
+      if (!runner) throw new NotFoundException('Runner not found');
+      if (runner.userId === creatorId) throw new BadRequestException('You are already hosting this competition');
+      if (await manager.exists(TableRegistration, { where: { tableId, userId: runner.userId } })) throw new ConflictException('This runner has already joined');
+      const created = await manager.query(
+        `INSERT INTO "challenge_invitations" ("tableId","invitedUserId") VALUES ($1,$2)
+         ON CONFLICT DO NOTHING RETURNING "id"`, [tableId, runner.userId],
+      ) as Array<{ id: string }>;
+      const existing = created.length ? null : (await manager.query(
+        `SELECT "id","status" FROM "challenge_invitations" WHERE "tableId"=$1 AND "invitedUserId"=$2`,
+        [tableId, runner.userId],
+      ) as Array<{ id: string; status: string }>)[0];
+      if (existing && existing.status !== 'PENDING') throw new ConflictException('This runner already answered the invitation');
+      const invitationId = created[0]?.id ?? existing?.id;
+      if (!invitationId) throw new ConflictException('This runner was already invited');
+      const link = `${this.config.getOrThrow<string>('WEB_ORIGIN')}/competitions/${table.code}`;
+      const body = `Join ${table.title} on Jump: ${link}`;
+      const message = await manager.query(
+        `INSERT INTO "direct_messages" ("senderId","recipientId","body","invitationId") VALUES ($1,$2,$3,$4)
+         ON CONFLICT ("invitationId") WHERE "invitationId" IS NOT NULL DO NOTHING RETURNING "id"`,
+        [creatorId, runner.userId, body, invitationId],
+      ) as Array<{ id: string }>;
+      if (!message.length) throw new ConflictException('This runner was already invited in messages');
+      await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'CHALLENGE_INVITE','You’re invited to a competition',$2)`,
+        [runner.userId, body],
+      );
+      return { runner, table, link };
+    });
+    this.mail.sendInBackground(challengeInviteEmail(
+      { address: invitation.runner.email, name: invitation.runner.displayName },
+      invitation.table.title, invitation.link,
+    ));
+    return { invited: true, username: invitation.runner.username };
+  }
+
+  async respondToInvitation(invitationId: string, userId: string, decision: 'ACCEPT' | 'DECLINE') {
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const [invite] = await manager.query(
+          `SELECT i."id",i."tableId",i."status" FROM "challenge_invitations" i
+           WHERE i."id"=$1 AND i."invitedUserId"=$2 FOR UPDATE OF i`,
+          [invitationId, userId],
+        ) as Array<{ id: string; tableId: string; status: string }>;
+        if (!invite) throw new NotFoundException('Invitation not found');
+        if (invite.status !== 'PENDING') throw new ConflictException('This invitation has already been answered');
+        if (decision === 'DECLINE') {
+          if (await manager.exists(TableRegistration, { where: { tableId: invite.tableId, userId } })) {
+            throw new ConflictException('You have already joined this competition');
+          }
+          const pendingPayment = await manager.query(
+            `SELECT 1 FROM "payment_intents" WHERE "tableId"=$1 AND "userId"=$2 AND "purpose"='CHALLENGE_ENTRY'
+             AND "status" IN ('INITIATED','PENDING','RECONCILIATION_REQUIRED') LIMIT 1`,
+            [invite.tableId, userId],
+          ) as unknown[];
+          if (pendingPayment.length) throw new ConflictException('Your entry payment is still in progress; check its status before declining');
+          await manager.query(`UPDATE "challenge_invitations" SET "status"='DECLINED',"respondedAt"=now() WHERE "id"=$1`, [invite.id]);
+          return { status: 'DECLINED', joined: false };
+        }
+        const table = await manager.findOne(CompetitionTable, { where: { id: invite.tableId }, lock: { mode: 'pessimistic_write' } });
+        if (!table) throw new NotFoundException('Competition not found');
+        if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) {
+          throw new ConflictException('This competition is not open for entry');
+        }
+        if (await manager.exists(TableRegistration, { where: { tableId: table.id, userId } })) {
+          await manager.query(`UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now() WHERE "id"=$1`, [invite.id]);
+          return { status: 'ACCEPTED', joined: true, tableId: table.id, code: table.code, type: table.type };
+        }
+        if (table.type === 'paid') {
+          const [count] = await manager.query(
+            `SELECT COUNT(*)::integer count FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`,
+            [table.id, table.creatorId],
+          ) as Array<{ count: number }>;
+          if (table.capacity !== null && Number(count.count) >= table.capacity) throw new ConflictException('This competition is full');
+          return { status: 'PENDING', joined: false, paymentRequired: true, tableId: table.id, code: table.code, type: table.type };
+        }
+        if (table.capacity !== null) {
+          const count = await manager.count(TableRegistration, { where: { tableId: table.id } });
+          if (count >= table.capacity) throw new ConflictException('This competition is full');
+        }
+        await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: table.id, userId }));
+        await manager.query(`UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now() WHERE "id"=$1`, [invite.id]);
+        return { status: 'ACCEPTED', joined: true, tableId: table.id, code: table.code, type: table.type, contributionOptional: table.type === 'sponsored' && table.guaranteedPrizeKobo === null };
+      });
+    } catch (error) {
+      if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
+        throw new ConflictException('You already joined this competition');
+      }
+      throw error;
+    }
   }
 
   private async assertCommunityManager(userId: string, communityId?: string) {

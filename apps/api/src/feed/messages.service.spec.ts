@@ -1,0 +1,57 @@
+import { DataSource } from 'typeorm';
+import { MessagesService } from './messages.service';
+
+describe('MessagesService', () => {
+  const query = jest.fn();
+  const service = new MessagesService({ query } as unknown as DataSource);
+  beforeEach(() => query.mockReset());
+
+  it('allows a direct message from a runner profile', async () => {
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{ id: 'message' }]);
+    await service.send('me', 'other', 'Hello');
+    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Hello', null]);
+  });
+
+  it('sends trimmed text and checks that a reply belongs to this conversation', async () => {
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{}]).mockResolvedValueOnce([{ id: 'message' }]);
+    await service.send('me', 'other', '  Good run  ', 'reply-id');
+    expect(query.mock.calls[2][1]).toEqual(['me', 'other', 'Good run', 'reply-id']);
+  });
+
+  it('rejects replying to a message in another conversation', async () => {
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]);
+    await expect(service.send('me', 'other', 'Hello', 'someone-elses-message')).rejects.toThrow('this conversation');
+  });
+
+  it('does not allow a stranger to react to a message', async () => {
+    query.mockResolvedValueOnce([]);
+    await expect(service.react('stranger', 'message', 'HEART')).rejects.toThrow('Message not found');
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates a reaction from a conversation participant', async () => {
+    query.mockResolvedValueOnce([{}]).mockResolvedValueOnce([]);
+    await service.react('me', 'message', 'FIRE');
+    expect(query.mock.calls[1][1]).toEqual(['message', 'me', 'FIRE']);
+  });
+
+  it('sends trimmed text without a reply', async () => {
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{ id: 'message' }]);
+    await service.send('me', 'other', '  Good run  ');
+    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Good run', null]);
+  });
+
+  it('counts only unread messages addressed to the runner', async () => {
+    query.mockResolvedValueOnce([{ count: 3 }]);
+    await expect(service.unreadCount('me')).resolves.toEqual({ count: 3 });
+    expect(query.mock.calls[0][1]).toEqual(['me']);
+    expect(query.mock.calls[0][0]).toContain('"readAt" IS NULL');
+  });
+
+  it('marks only messages from the opened runner as read', async () => {
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]);
+    await expect(service.markRead('me', 'other')).resolves.toEqual({ read: true });
+    expect(query.mock.calls[1][1]).toEqual(['other', 'me']);
+    expect(query.mock.calls[1][0]).toContain('"readAt" IS NULL');
+  });
+});

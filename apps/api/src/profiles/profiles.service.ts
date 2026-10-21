@@ -93,8 +93,8 @@ export class ProfilesService {
   }
 
   /**
-   * What a visitor can see. Totals and recent activity only when the runner allows it (public, or
-   * followers and the viewer follows them); never routes (a start point is often someone's front door).
+   * Verified aggregate totals are public. Dated activities still follow the runner's visibility
+   * setting; never expose routes (a start point is often someone's front door).
    */
   async getPublic(username: string, viewerId?: string | null) {
     const profile = await this.byUsername(username);
@@ -122,8 +122,6 @@ export class ProfilesService {
       followedByMe: counts.followedByMe,
       followsMe: counts.followsMe,
     };
-    if (!runsVisible) return base;
-
     const [totals] = await this.dataSource.query(
       `SELECT COALESCE(SUM(${DISTANCE}), 0)::bigint "totalMetres",
               COUNT(*)::integer "activities",
@@ -137,6 +135,9 @@ export class ProfilesService {
        FROM "activities" a WHERE a."userId" = $1 AND a."verificationStatus" = 'VERIFIED'`,
       [profile.userId],
     );
+    const stats = Object.fromEntries(Object.entries(totals as Record<string, string | number>).map(([key, value]) => [key, Number(value)]));
+    if (!runsVisible) return { ...base, stats };
+
     const recent = await this.dataSource.query(
       `SELECT a."activityType", a."startedAt", ${DISTANCE}::integer "metres", a."movingSeconds"
        FROM "activities" a WHERE a."userId" = $1 AND a."verificationStatus" = 'VERIFIED'
@@ -145,7 +146,7 @@ export class ProfilesService {
     );
     return {
       ...base,
-      stats: Object.fromEntries(Object.entries(totals as Record<string, string | number>).map(([key, value]) => [key, Number(value)])),
+      stats,
       recent,
     };
   }

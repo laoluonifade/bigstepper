@@ -197,7 +197,7 @@ function VerifyPrompt({ userId, email }: { userId: string; email: string }) {
         </div>
       }
     >
-      We sent a link to {email}. You’ll need a verified email to enter paid competitions. Free challenges work without it.
+      We sent a link to {email}. You’ll need a verified email to enter paid competitions. Free competitions work without it.
       {resend.error && <span className="mt-1 block text-bad">{resend.error.message}</span>}
     </Notice>
   );
@@ -381,6 +381,7 @@ interface MyChallenge {
   title: string;
   hosting: boolean;
   joined: boolean;
+  status: string;
   challengeType: 'WALK' | 'RUN' | 'DISTANCE' | 'STEP' | 'TIMED';
 }
 
@@ -393,24 +394,24 @@ function YourTables({ userId, unit }: { userId: string; unit: Unit }) {
       <SectionTitle
         aside={
           <Link to="/competitions" className="link">
-            Find challenges
+            Find competitions
           </Link>
         }
       >
-        Your challenges
+        Your competitions
       </SectionTitle>
       {mine.isLoading ? (
         <Skeleton className="h-20" />
       ) : tables.length === 0 ? (
         <EmptyState
-          title="No challenges yet"
+          title="No competitions yet"
           action={
             <Link to="/competitions" className="btn-secondary">
-              Browse challenges
+              Browse competitions
             </Link>
           }
         >
-          Join a challenge and every verified run moves you up the standings.
+          Join a competition and every verified run moves you up the standings.
         </EmptyState>
       ) : (
         <ul className="stagger space-y-2">
@@ -439,10 +440,10 @@ function TableStandingRow({ table, userId, unit }: { table: MyChallenge; userId:
         <div className="min-w-0 flex-1">
           <p className="wide truncate text-[14px] font-extrabold uppercase">
             {table.title}
-            {table.hosting && <span className="tag ml-2 h-5 border-ink bg-volt px-1.5 align-middle text-[9.5px]">Hosting</span>}
+            {table.hosting && <span className="tag ml-2 h-5 border-ink bg-volt px-1.5 align-middle text-[9.5px]">{table.status === 'PENDING_FUNDING' ? 'Draft' : 'Hosting'}</span>}
           </p>
           <p className="num text-[12px] text-ink-2">
-            {standings.isLoading
+            {table.status === 'PENDING_FUNDING' ? 'Not live · fund the fixed amount to open entry' : standings.isLoading
               ? 'Loading standings…'
               : me
                 ? `${ordinal(me.rank)} of ${rows.length} · ${formatDistance(me.creditedDistanceMetres, unit)}`

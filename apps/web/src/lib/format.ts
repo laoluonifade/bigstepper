@@ -11,6 +11,18 @@ export function formatMoney(kobo: number | string | null | undefined): string {
   return `${value < 0 ? '−' : ''}₦${nairaNumber.format(naira)}`;
 }
 
+/** Keep a naira input readable while preserving an unfinished decimal (for example, `1,000.`). */
+export function formatNairaInput(value: string): string {
+  const clean = value.replace(/[^\d.]/g, '');
+  const [whole, ...fraction] = clean.split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return fraction.length ? `${grouped}.${fraction.join('').slice(0, 2)}` : grouped;
+}
+
+export function nairaInputToKobo(value: string): number {
+  return Math.round(Number(value.replace(/,/g, '') || 0) * 100);
+}
+
 export function distanceValue(metres: number, unit: Unit = 'km'): number {
   return unit === 'mi' ? metres / METRES_PER_MILE : metres / 1000;
 }

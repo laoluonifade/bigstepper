@@ -126,7 +126,7 @@ export function ProfileHero({
   children?: ReactNode;
 }) {
   return (
-    <section className="panel-strong p-5 sm:p-6">
+    <section className="panel-strong min-w-0 p-5 sm:p-6">
       <div className="flex items-start gap-5">
         <div className="shrink-0 animate-pop">{avatar}</div>
         <ProfileCounts username={username} counts={counts} />
@@ -136,7 +136,7 @@ export function ProfileHero({
         <span className="font-semibold text-ink">@{username}</span> · {meta}
       </p>
       {bio && <p className="mt-3 max-w-prose whitespace-pre-line text-[14px] leading-relaxed">{bio}</p>}
-      {actions && <div className="mt-4 flex gap-2">{actions}</div>}
+      {actions && <div className="mt-4 flex min-w-0 flex-wrap gap-2">{actions}</div>}
       {children}
     </section>
   );

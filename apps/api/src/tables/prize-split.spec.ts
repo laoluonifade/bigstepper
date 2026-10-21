@@ -1,4 +1,4 @@
-import { allocatePrizes, assertPrizeSplit } from './prize-split';
+import { allocateFundedPrizes, allocatePrizes, assertPrizeSplit } from './prize-split';
 
 describe('challenge prize splits', () => {
   it('defaults to winner-take-all', () => {
@@ -20,5 +20,10 @@ describe('challenge prize splits', () => {
     expect(() => assertPrizeSplit([6000, 3000], 3)).toThrow();
     expect(() => assertPrizeSplit([5000, 5000], 1)).toThrow();
     expect(() => allocatePrizes(2, [5000, 3000, 2000])).toThrow();
+  });
+
+  it('settles a small funded pot without a zero-kobo place', () => {
+    expect(allocateFundedPrizes(85, [9999, 1])).toEqual([84, 1]);
+    expect(allocateFundedPrizes(85, [10000])).toEqual([85]);
   });
 });

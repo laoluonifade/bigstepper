@@ -183,7 +183,7 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
         <div className="px-4 pb-3">
           {item.blocked && (
             <Notice tone="warn" title="Payment hold">
-              This recipient or the challenge funding is under review, so the prize can’t be paid out yet. Wait until the issue is resolved.
+              This recipient or the competition funding is under review, so the prize can’t be paid out yet. Wait until the issue is resolved.
             </Notice>
           )}
           {onHold && (

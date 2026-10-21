@@ -17,9 +17,9 @@ export function assertScoringConfiguration(
     TIMED: ['FASTEST_TIME'],
   };
   if (!allowed[challengeType].includes(scoringMethod)) {
-    throw new Error(`${scoringMethod} is not valid for a ${challengeType} challenge`);
+    throw new Error(`${scoringMethod} is not valid for a ${challengeType} competition`);
   }
   if (['FASTEST_FIXED_DISTANCE', 'FASTEST_TIME'].includes(scoringMethod) && !targetDistanceMetres) {
-    throw new Error('A target distance is required for fastest-time challenges');
+    throw new Error('A target distance is required for fastest-time competitions');
   }
 }

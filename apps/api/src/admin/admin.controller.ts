@@ -74,6 +74,12 @@ export class AdminController {
     return this.adminService.payouts(view === 'history' ? 'history' : 'pending');
   }
 
+  @Get('charity-allocations')
+  @UseGuards(AdminOnlyGuard)
+  charityAllocations() {
+    return this.adminService.charityAllocations();
+  }
+
   @Post('payouts/:id/reject')
   @UseGuards(AdminOnlyGuard)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })

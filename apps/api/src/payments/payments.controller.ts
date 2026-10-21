@@ -7,6 +7,7 @@ import { PAYMENT_EVENTS_QUEUE } from './payments.constants';
 import { PaymentsService } from './payments.service';
 import { CreateRecipientDto, ResolveAccountDto } from './payout.dto';
 import { Throttle } from '@nestjs/throttler';
+import { FundPrizeDto } from './fund-prize.dto';
 
 @Controller()
 export class PaymentsController {
@@ -25,8 +26,8 @@ export class PaymentsController {
   @Post('tables/:id/fund-prize')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
-  fundPrize(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
-    return this.paymentsService.fundPrize(user.id, tableId);
+  fundPrize(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string, @Body() body: FundPrizeDto) {
+    return this.paymentsService.fundPrize(user.id, tableId, body.amountKobo);
   }
 
   @Post(['tables/:id/enter-wallet', 'challenges/:id/enter-wallet'])
@@ -40,6 +41,13 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   status(@CurrentUser() user: AuthenticatedUser, @Param('reference') reference: string) {
     return this.paymentsService.status(user.id, reference);
+  }
+
+  @Post('payments/:reference/verify')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  verify(@CurrentUser() user: AuthenticatedUser, @Param('reference') reference: string) {
+    return this.paymentsService.verifyOwnPayment(user.id, reference);
   }
 
   @Get('me/rewards')

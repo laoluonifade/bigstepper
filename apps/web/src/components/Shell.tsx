@@ -3,7 +3,7 @@ import { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { formatDistanceNumber, formatDuration } from '../lib/format';
 import { OPEN_PAYMENT_STATUSES, useSavedPayments } from '../lib/payments';
-import { useNotifications, useStaffAccess, useUnit } from '../lib/queries';
+import { useNotifications, useStaffAccess, useUnit, useUnreadMessages } from '../lib/queries';
 import { movingSeconds, RecorderProvider, useRecorder } from '../lib/recorder';
 import {
   ActivityIcon,
@@ -24,6 +24,7 @@ import {
   WalletIcon,
 } from './icons';
 import { cx, LiveDot, Redirect, useNow } from './ui';
+import { QuickPanelsProvider, useQuickPanels } from './QuickPanels';
 
 export function Wordmark({ className }: { className?: string }) {
   return (
@@ -52,7 +53,7 @@ export function AppShell() {
   if (!user) return <PublicShell />;
   return (
     <RecorderProvider user={user}>
-      <SignedInShell />
+      <QuickPanelsProvider><SignedInShell /></QuickPanelsProvider>
     </RecorderProvider>
   );
 }
@@ -86,30 +87,35 @@ function PublicShell() {
   );
 }
 
-type NavItem = { to: LinkProps['to']; label: string; icon: ReactNode; badge?: number };
+type NavItem = { to?: LinkProps['to']; popover?: 'notifications'; label: string; icon: ReactNode; badge?: number };
 
 function SignedInShell() {
   const { user, logout } = useAuth();
+  const quickPanels = useQuickPanels();
   const location = useLocation();
   const notifications = useNotifications();
+  const unreadMessages = useUnreadMessages().data?.count ?? 0;
   const { isStaff } = useStaffAccess();
   const recorder = useRecorder();
   const unread = notifications.data?.filter((item) => !item.readAt).length ?? 0;
   const onRunScreen = location.pathname === '/run' || location.pathname.startsWith('/runs/');
+  const onConversation = location.pathname.startsWith('/messages/');
+  const onSearchScreen = location.pathname === '/runners';
   const fullscreen = onRunScreen && ['recording', 'paused', 'finishing'].includes(recorder.phase);
 
   const groups: Array<{ title?: string; items: NavItem[] }> = [
     {
       items: [
         { to: '/dashboard', label: 'Home', icon: <HomeIcon /> },
-        { to: '/feed', label: 'Feed', icon: <FeedIcon /> },
+        { to: '/feed', label: 'Rant', icon: <FeedIcon /> },
+        { to: '/messages', label: 'Messages', icon: <FeedIcon />, badge: unreadMessages },
         { to: '/runners', label: 'Find runners', icon: <UsersIcon /> },
       ],
     },
     {
       title: 'Compete',
       items: [
-        { to: '/competitions', label: 'Challenges', icon: <TableIcon /> },
+        { to: '/competitions', label: 'Competitions', icon: <TableIcon /> },
         { to: '/clubs', label: 'Clubs', icon: <UsersIcon /> },
       ],
     },
@@ -121,7 +127,7 @@ function SignedInShell() {
         { to: '/wallet', label: 'Wallet', icon: <WalletIcon /> },
         { to: '/rewards', label: 'Rewards', icon: <WalletIcon /> },
         { to: '/creator', label: 'Creator', icon: <UserIcon /> },
-        { to: '/notifications', label: 'Notifications', icon: <BellIcon />, badge: unread },
+        { popover: 'notifications', label: 'Notifications', icon: <BellIcon />, badge: unread },
         { to: '/settings/profile', label: 'Settings', icon: <SettingsIcon /> },
       ],
     },
@@ -131,7 +137,7 @@ function SignedInShell() {
             title: 'Staff',
             items: [
               { to: '/admin/creators', label: 'Creator approvals', icon: <ShieldIcon /> },
-              { to: '/admin/challenges', label: 'Paid challenges', icon: <ShieldIcon /> },
+              { to: '/admin/challenges', label: 'Paid competitions', icon: <ShieldIcon /> },
               { to: '/admin/payouts', label: 'Payouts', icon: <WalletIcon /> },
             ] as NavItem[],
           },
@@ -158,19 +164,11 @@ function SignedInShell() {
           {groups.map((group, index) => (
             <div key={index} className="mb-4">
               {group.title && <p className="eyebrow mb-1 px-2 text-ink-3">{group.title}</p>}
-              {group.items.map((item) => (
-                <Link
-                  key={item.label}
-                  to={item.to}
-                  className="flex h-10 items-center gap-3 rounded px-2 text-[14px] font-semibold text-ink-2 hover:bg-ink/[0.05] hover:text-ink [&.active]:bg-ink [&.active]:text-paper"
-                >
-                  <span className="opacity-90">{item.icon}</span>
-                  <span className="flex-1">{item.label}</span>
-                  {item.badge ? (
-                    <span className="num rounded-sm bg-track px-1.5 text-[11px] font-bold text-ink">{item.badge}</span>
-                  ) : null}
-                </Link>
-              ))}
+              {group.items.map((item) => {
+                const content = <><span className="opacity-90">{item.icon}</span><span className="flex-1 text-left">{item.label}</span>{item.badge ? <span className={cx('num min-w-[18px] rounded-full px-1.5 text-center text-[11px] font-bold', item.label === 'Messages' ? 'bg-bad text-paper' : 'bg-track text-ink')}>{item.badge > 9 ? '9+' : item.badge}</span> : null}</>;
+                const className = 'flex h-10 w-full items-center gap-3 rounded px-2 text-[14px] font-semibold text-ink-2 hover:bg-ink/[0.05] hover:text-ink [&.active]:bg-ink [&.active]:text-paper';
+                return item.popover ? <button key={item.label} type="button" className={className} onClick={(event) => quickPanels.toggleNotifications(event.currentTarget)}>{content}</button> : <Link key={item.label} to={item.to!} className={className}>{content}</Link>;
+              })}
             </div>
           ))}
         </nav>
@@ -186,7 +184,7 @@ function SignedInShell() {
       </aside>
 
       {/* Mobile top bar */}
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-paper/95 px-4 backdrop-blur md:hidden">
+      <header className={cx('sticky top-0 z-30 h-14 items-center justify-between border-b border-line bg-paper/95 px-4 backdrop-blur md:hidden', onConversation ? 'hidden' : 'flex')}>
         <Link to="/dashboard">
           <Wordmark />
         </Link>
@@ -194,27 +192,33 @@ function SignedInShell() {
           <Link to="/runners" className="rounded p-2 text-ink" aria-label="Find runners by username" title="Find runners">
             <SearchIcon size={20} />
           </Link>
-          <Link to="/notifications" className="relative rounded p-2" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
+          <Link to="/messages" className="relative rounded p-2 text-ink" aria-label={`Messages${unreadMessages ? `, ${unreadMessages} unread` : ''}`} title="Messages">
+            <FeedIcon size={20} />
+            {unreadMessages > 0 && <span className="num absolute right-0.5 top-0.5 min-w-[18px] rounded-full border-[1.5px] border-paper bg-bad px-1 text-center text-[10px] font-bold leading-[15px] text-paper">{unreadMessages > 9 ? '9+' : unreadMessages}</span>}
+          </Link>
+          <button type="button" onClick={(event) => quickPanels.toggleNotifications(event.currentTarget)} className="relative rounded p-2" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
             <BellIcon />
             {unread > 0 && (
               <span className="num absolute right-0.5 top-0.5 min-w-[18px] rounded-sm border-[1.5px] border-paper bg-track px-1 text-center text-[10px] font-bold leading-[15px]">
                 {unread > 9 ? '9+' : unread}
               </span>
             )}
-          </Link>
+          </button>
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 pb-32 pt-6 md:px-8 md:pb-16 md:pt-10">
-        <LiveRunBar hidden={onRunScreen} />
-        <PendingPaymentsBar hidden={location.pathname === '/payments/return'} />
+      <div className={cx('mx-auto max-w-5xl md:px-8 md:pb-16 md:pt-10', onConversation ? 'px-0 pb-0 pt-0' : onSearchScreen ? 'px-0 pb-32 pt-0' : 'px-4 pb-32 pt-6')}>
+        <div className={onConversation || onSearchScreen ? 'hidden md:block' : undefined}>
+          <LiveRunBar hidden={onRunScreen} />
+          <PendingPaymentsBar hidden={location.pathname === '/payments/return'} />
+        </div>
         <div key={location.pathname} className="animate-rise">
           <Outlet />
         </div>
       </div>
 
       {/* Mobile tabs */}
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t-[1.5px] border-ink bg-paper md:hidden" aria-label="Main">
+      <nav className={cx('safe-bottom fixed inset-x-0 bottom-0 z-30 border-t-[1.5px] border-ink bg-paper md:hidden', onConversation && 'hidden')} aria-label="Main">
         <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pt-1.5">
           <Tab to="/dashboard" label="Home" icon={<HomeIcon />} />
           <Tab to="/competitions" label="Compete" icon={<TableIcon />} />
@@ -224,7 +228,7 @@ function SignedInShell() {
             </span>
             <span className="text-[10px] font-bold uppercase tracking-[0.08em]">Run</span>
           </Link>
-          <Tab to="/feed" label="Feed" icon={<FeedIcon />} />
+          <Tab to="/feed" label="Rant" icon={<FeedIcon />} />
           <Tab to="/settings/profile" label="You" icon={<UserIcon />} />
         </div>
       </nav>
@@ -237,8 +241,8 @@ const TAB_PATHS: Record<string, string[]> = {
   Home: ['/dashboard'],
   Compete: ['/competitions', '/clubs'],
   Run: ['/run', '/runs'],
-  Feed: ['/feed'],
-  You: ['/settings', '/activities', '/runners', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
+  Rant: ['/feed'],
+  You: ['/settings', '/activities', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
 };
 
 function useTabActive(label: string) {

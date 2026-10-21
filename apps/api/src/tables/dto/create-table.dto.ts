@@ -28,8 +28,17 @@ export class CreateTableDto {
   @IsOptional() @IsUUID()
   communityId?: string;
 
-  @IsOptional() @IsInt() @Min(100) @Max(1000000000)
+  @IsOptional() @IsInt() @Min(1000000) @Max(1000000000)
   guaranteedPrizeKobo?: number;
+
+  @IsOptional() @IsIn(['WINNERS', 'CHARITY'])
+  fundingDestination?: 'WINNERS' | 'CHARITY';
+
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(120)
+  charityName?: string;
+
+  @IsOptional() @IsIn([true])
+  fundedFree?: true;
 
   @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsInt({ each: true }) @Min(1, { each: true })
   prizeSplitBps?: number[];

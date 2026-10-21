@@ -28,4 +28,21 @@ describe('FeedService', () => {
     await expect(service.list('runner', 'all')).rejects.toThrow('Invalid feed scope');
     await expect(service.list('runner', 'following', '-1')).rejects.toThrow('Invalid feed page');
   });
+
+  it('does not let a runner react to a hidden post', async () => {
+    query.mockResolvedValueOnce([]);
+    await expect(service.react('viewer', 'post', 'LIKE')).rejects.toThrow('Post not found');
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('trims comments and checks visibility before inserting', async () => {
+    query.mockResolvedValueOnce([{}]).mockResolvedValueOnce([{ id: 'comment' }]);
+    await service.comment('viewer', 'post', '  Nice run!  ');
+    expect(query.mock.calls[1][1]).toEqual(['post', 'viewer', 'Nice run!']);
+  });
+
+  it('does not reveal a post that the viewer cannot see', async () => {
+    query.mockResolvedValueOnce([]);
+    await expect(service.post('viewer', 'hidden-post')).rejects.toThrow('Post not found');
+  });
 });

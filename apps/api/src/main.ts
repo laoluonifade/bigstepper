@@ -30,7 +30,7 @@ async function bootstrap() {
   if (config.get<string>('NODE_ENV') !== 'production') {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Jump API')
-      .setDescription('API for verified activity challenges, communities, creator earnings, and gated payments.')
+      .setDescription('API for verified activity competitions, communities, creator earnings, and gated payments.')
       .setVersion('1.0')
       .addBearerAuth()
       .build();

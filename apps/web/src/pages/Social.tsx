@@ -418,7 +418,7 @@ export function ClubDetailPage() {
       <PageHeader back={{ to: '/clubs', label: 'Clubs' }} eyebrow={`/${club.data.slug}`} title={club.data.name} />
       {canManage && (
         <Link to="/competitions/new" search={{ club: club.data.id }} className="btn-primary mb-6">
-          <PlusIcon size={16} /> Start a challenge · invite members
+          <PlusIcon size={16} /> Start a competition · invite members
         </Link>
       )}
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">

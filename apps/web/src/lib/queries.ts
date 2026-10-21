@@ -15,6 +15,7 @@ export const keys = {
   payment: (reference: string) => ['payment', reference] as const,
   rewards: ['rewards'] as const,
   notifications: ['notifications'] as const,
+  messagesUnread: ['messages', 'unread'] as const,
   leagues: ['leagues'] as const,
   myLeagues: ['leagues', 'me'] as const,
   leagueStandings: (seasonId: string) => ['leagues', 'standings', seasonId] as const,
@@ -78,6 +79,16 @@ export function useNotifications() {
     queryFn: () => api<Notification[]>('/notifications'),
     enabled: Boolean(user),
     refetchInterval: 60_000,
+  });
+}
+
+export function useUnreadMessages() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: keys.messagesUnread,
+    queryFn: () => api<{ count: number }>('/messages/unread-count'),
+    enabled: Boolean(user),
+    refetchInterval: 30_000,
   });
 }
 

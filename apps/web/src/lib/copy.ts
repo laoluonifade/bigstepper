@@ -102,7 +102,7 @@ export const AWARD_STATUS: Record<string, string> = {
 export function joinConflictCopy(message: string) {
   const lower = message.toLowerCase();
   if (lower.includes('already')) return 'You’re already on this table.';
-  if (lower.includes('full')) return 'This challenge is full. Every seat has been taken.';
+  if (lower.includes('full')) return 'This competition is full. Every seat has been taken.';
   if (lower.includes('not open')) return 'Entry has closed for this table.';
   return message;
 }

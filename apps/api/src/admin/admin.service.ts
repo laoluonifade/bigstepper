@@ -12,8 +12,8 @@ import { ApprovePaidTableDto, CreatePaidTableDto } from './paid-table.dto';
 import { reminderConfig } from '../tables/reminder-config';
 import { PaymentsService } from '../payments/payments.service';
 import { assertScoringConfiguration } from '../tables/challenge-types';
-import { calculatePrizeBreakdown } from '../payments/financial-policy';
-import { allocatePrizes, assertPrizeSplit } from '../tables/prize-split';
+import { calculatePrizeBreakdown, cashPrizeEligible } from '../payments/financial-policy';
+import { allocateFundedPrizes, allocatePrizes, assertPrizeSplit } from '../tables/prize-split';
 import { paidPrizePot } from '../tables/paid-prize';
 import { User } from '../users/user.entity';
 import * as bcrypt from 'bcrypt';
@@ -37,6 +37,14 @@ export class AdminService {
 
   payouts(view: 'pending' | 'history') {
     return this.paymentsService.listPayouts(view);
+  }
+
+  charityAllocations() {
+    return this.dataSource.query(
+      `SELECT a."tableId",t."code",t."title",a."charityName",a."grossKobo",a."platformFeeKobo",a."charityKobo",a."status",a."createdAt"
+       FROM "charity_allocations" a JOIN "competition_tables" t ON t."id"=a."tableId"
+       ORDER BY a."createdAt" ASC LIMIT 200`,
+    );
   }
 
   paidChallenges(view: 'pending' | 'approved') {
@@ -95,8 +103,8 @@ export class AdminService {
         status === 'ACTIVE' ? 'CREATOR_APPROVED' : 'CREATOR_SUSPENDED',
         status === 'ACTIVE' ? 'You’re approved as a creator' : 'Creator account suspended',
         status === 'ACTIVE'
-          ? 'You can now host paid challenges on Jump. Create one from Compete.'
-          : 'You can’t host new paid challenges for now. Contact Jump support if you think this is a mistake.',
+          ? 'You can now host paid competitions on Jump. Create one from Compete.'
+          : 'You can’t host new paid competitions for now. Contact Jump support if you think this is a mistake.',
       ]);
       return rows[0];
     });
@@ -166,7 +174,7 @@ export class AdminService {
     try {
       assertScoringConfiguration(input.challengeType, input.scoringMethod, input.targetDistanceMetres);
     } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid challenge scoring');
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid competition scoring');
     }
     let guaranteedPrizeKobo: number;
     try { guaranteedPrizeKobo = paidPrizePot(input.capacity, input.entryFeeKobo); }
@@ -180,7 +188,7 @@ export class AdminService {
     const entryClosesAt = new Date(input.entryClosesAt ?? input.scoringClosesAt);
     const scoringClosesAt = new Date(input.scoringClosesAt);
     if ((input.minimumEntrants ?? 2) > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
-      throw new ConflictException('Paid challenge dates or entrant limits are invalid');
+      throw new ConflictException('Paid competition dates or entrant limits are invalid');
     }
     const creator = (await this.dataSource.query(`SELECT "id" FROM "creator_profiles" WHERE "userId"=$1 AND "status"='ACTIVE'`, [input.creatorId]) as Array<{ id: string }>)[0];
     const table = await this.dataSource.transaction(async (manager) => {
@@ -213,11 +221,11 @@ export class AdminService {
     }
     return this.dataSource.transaction(async (manager) => {
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId, type: 'paid' }, lock: { mode: 'pessimistic_write' } });
-      if (!table) throw new NotFoundException('Paid challenge not found');
-      if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('Challenge is not pending approval');
+      if (!table) throw new NotFoundException('Paid competition not found');
+      if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('Competition is not pending approval');
       table.status = 'OPEN_FOR_ENTRY';
       await manager.save(table);
-      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAID_CHALLENGE_APPROVED','Your challenge is open',$2)`, [table.creatorId, `${table.title} is approved. Runners can now join with code ${table.code}.`]);
+      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAID_CHALLENGE_APPROVED','Your competition is open',$2)`, [table.creatorId, `${table.title} is approved. Runners can now join with code ${table.code}.`]);
       await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAID_TABLE_APPROVED','competition_table',$2,$3)`, [actorUserId, tableId, JSON.stringify(input)]);
       return table;
     });
@@ -229,21 +237,25 @@ export class AdminService {
         where: { id: tableId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!table) throw new NotFoundException('Challenge not found');
+      if (!table) throw new NotFoundException('Competition not found');
       if (!table.scoringClosesAt || table.scoringClosesAt > new Date()) {
         throw new ConflictException('Scoring has not closed');
       }
-      let fundingUserId: string | null = null;
+      let fundedPrizeKobo = table.guaranteedPrizeKobo ?? 0;
+      const fundingUserIds = new Set<string>();
       if (table.type === 'sponsored') {
         const funding = await manager.query(
-          `SELECT "userId","status" FROM "payment_intents" WHERE "tableId"=$1 AND "purpose"='SPONSOR_FUNDING' ORDER BY "createdAt" DESC`,
+          `SELECT "userId","status","amountKobo" FROM "payment_intents" WHERE "tableId"=$1 AND "purpose"='SPONSOR_FUNDING'`,
           [tableId],
-        ) as Array<{ userId: string; status: string }>;
+        ) as Array<{ userId: string; status: string; amountKobo: string }>;
         const successful = funding.filter((intent) => intent.status === 'SUCCEEDED');
-        if (!table.fundedAt || successful.length !== 1 || funding.some((intent) => intent.status === 'DISPUTED')) {
+        if (funding.some((intent) => intent.status === 'DISPUTED') ||
+            (table.guaranteedPrizeKobo !== null && (!table.fundedAt || successful.length !== 1))) {
           throw new ConflictException('Prize funding is not verified or is under dispute');
         }
-        fundingUserId = successful[0].userId;
+        fundedPrizeKobo = successful.reduce((sum, intent) => sum + Number(intent.amountKobo), 0);
+        if (!Number.isSafeInteger(fundedPrizeKobo) || fundedPrizeKobo > 1_000_000_000) throw new ConflictException('Prize funding exceeds the supported limit');
+        successful.forEach((intent) => fundingUserIds.add(intent.userId));
       }
       const pending = await manager.query(
         `SELECT COUNT(*)::integer count FROM "activities" a JOIN "table_registrations" r ON r."userId" = a."userId"
@@ -262,13 +274,13 @@ export class AdminService {
         [tableId],
       )) as Array<{ userId: string; creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null; joinedAt: Date; rank: number }>;
       const eligible = standings.filter((row) =>
-        (table.type === 'free' || (row.userId !== table.creatorId && row.userId !== fundingUserId)) &&
+        cashPrizeEligible(table, row.userId, fundingUserIds) &&
         (!['FASTEST_FIXED_DISTANCE', 'FASTEST_TIME'].includes(table.scoringMethod) || row.completionTimeSeconds !== null));
       const winner = eligible[0];
       if (table.type === 'paid' && standings.filter((row) => row.userId !== table.creatorId).length < table.minimumEntrants) {
-        throw new ConflictException('Minimum entrants were not met; cancel and refund the challenge');
+        throw new ConflictException('Minimum entrants were not met; cancel and refund the competition');
       }
-      if (['paid', 'sponsored'].includes(table.type) && !winner) throw new ConflictException('No eligible finisher is available for the funded prize');
+      if ((table.type === 'paid' || (table.type === 'sponsored' && table.fundingDestination !== 'CHARITY' && fundedPrizeKobo > 0)) && !winner) throw new ConflictException('No eligible finisher is available for the funded prize');
       const existing = (await manager.query(`SELECT COALESCE(MAX("version"),0)::integer version FROM "table_settlements" WHERE "tableId" = $1`, [tableId])) as Array<{ version: number }>;
       const version = Number(existing[0].version) + 1;
       const snapshots = (await manager.query(
@@ -277,17 +289,23 @@ export class AdminService {
       )) as Array<{ id: string }>;
       const settlements = (await manager.query(
         `INSERT INTO "table_settlements" ("tableId","version","snapshotId","winnerUserId","settledByUserId") VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [tableId, version, snapshots[0].id, winner?.userId ?? null, actorUserId],
+        [tableId, version, snapshots[0].id, table.fundingDestination === 'CHARITY' ? null : winner?.userId ?? null, actorUserId],
       )) as Array<Record<string, unknown>>;
       await manager.update(CompetitionTable, { id: tableId }, { status: 'SETTLED' });
-      if (['paid', 'sponsored'].includes(table.type) && table.guaranteedPrizeKobo) {
-        const { creatorCommissionKobo, winnerAmountKobo } = calculatePrizeBreakdown(
-          table.guaranteedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps,
+      if (table.type === 'sponsored' && table.fundingDestination === 'CHARITY' && fundedPrizeKobo) {
+        const platformFeeKobo = Math.floor(fundedPrizeKobo * table.platformFeeBps / 10000);
+        await manager.query(
+          `INSERT INTO "charity_allocations" ("tableId","charityName","grossKobo","platformFeeKobo","charityKobo") VALUES ($1,$2,$3,$4,$5) ON CONFLICT ("tableId") DO NOTHING`,
+          [tableId, table.charityName, fundedPrizeKobo, platformFeeKobo, fundedPrizeKobo - platformFeeKobo],
         );
-        const shares = (table.prizeSplitBps ?? [10000]).slice(0, eligible.length);
+      } else if (['paid', 'sponsored'].includes(table.type) && fundedPrizeKobo) {
+        const { creatorCommissionKobo, winnerAmountKobo } = calculatePrizeBreakdown(
+          fundedPrizeKobo, table.platformFeeBps, table.creatorCommissionBps,
+        );
+        const shares = (table.prizeSplitBps ?? [10000]).slice(0, table.type === 'sponsored' ? Math.min(eligible.length, winnerAmountKobo) : eligible.length);
         const recipients = eligible.slice(0, shares.length);
-        const gross = allocatePrizes(table.guaranteedPrizeKobo, shares);
-        const prizes = allocatePrizes(winnerAmountKobo, shares);
+        const gross = table.type === 'sponsored' ? allocateFundedPrizes(fundedPrizeKobo, shares) : allocatePrizes(fundedPrizeKobo, shares);
+        const prizes = table.type === 'sponsored' ? allocateFundedPrizes(winnerAmountKobo, shares) : allocatePrizes(winnerAmountKobo, shares);
         const commission = shares.map((share) => Math.floor(creatorCommissionKobo * share / shares.reduce((sum, part) => sum + part, 0)));
         commission[0] += creatorCommissionKobo - commission.reduce((sum, value) => sum + value, 0);
         await manager.query(
@@ -301,7 +319,7 @@ export class AdminService {
           await manager.query(
             `INSERT INTO "creator_earnings" ("creatorProfileId","tableId","grossPrizeKobo","amountKobo")
              SELECT c."id",$1,$2,$3 FROM "creator_profiles" c WHERE c."userId"=$4 AND c."status"='ACTIVE' ON CONFLICT ("tableId") DO NOTHING`,
-            [tableId, table.guaranteedPrizeKobo, creatorCommissionKobo, table.creatorId],
+            [tableId, fundedPrizeKobo, creatorCommissionKobo, table.creatorId],
           );
         }
       }

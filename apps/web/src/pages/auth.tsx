@@ -32,7 +32,7 @@ export function AuthLayout() {
             {[
               ['01', 'Record runs with your phone’s GPS.'],
               ['02', 'Distance is checked before it counts. No shortcuts.'],
-              ['03', 'Join challenges, climb the standings, take the top spot.'],
+              ['03', 'Join competitions, climb the standings, take the top spot.'],
             ].map(([n, text]) => (
               <li key={n} className="flex gap-4">
                 <span className="score w-7 text-[20px] text-track">{n}</span>
@@ -176,7 +176,7 @@ export function RegisterPage() {
   return (
     <>
       <AuthHeading eyebrow="Free to join" title="Create your account">
-        Record your first run today. Free challenges never cost a thing.
+        Record your first run today. Free competitions never cost a thing.
       </AuthHeading>
       <form className="space-y-5" onSubmit={submit}>
         <Field label="Display name" hint="Shown on leaderboards. You can change it later." optional>

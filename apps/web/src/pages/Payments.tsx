@@ -1,9 +1,9 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { CheckIcon } from '../components/icons';
 import { CopyButton, cx, EmptyState, ErrorNotice, PageHeader } from '../components/ui';
-import { api, isApiError } from '../lib/api';
+import { api, isApiError, post } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { paymentCopy } from '../lib/copy';
 import { formatMoney, formatRelative } from '../lib/format';
@@ -26,7 +26,7 @@ export function PaymentReturnPage() {
           title="No payments on this device"
           action={
             <Link to="/competitions" className="btn-secondary">
-              Browse challenges
+              Browse competitions
             </Link>
           }
         >
@@ -34,8 +34,8 @@ export function PaymentReturnPage() {
         </EmptyState>
       ) : (
         <div className="space-y-4">
-          {payments.map((payment) => (
-            <PaymentCard key={payment.reference} payment={payment} />
+          {payments.map((payment, index) => (
+            <PaymentCard key={payment.reference} payment={payment} autoVerify={index === 0} />
           ))}
         </div>
       )}
@@ -45,9 +45,10 @@ export function PaymentReturnPage() {
 
 const SLOW_AFTER_MS = 2 * 60_000;
 
-function PaymentCard({ payment }: { payment: SavedPayment }) {
+function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerify: boolean }) {
   const user = useUser();
   const queryClient = useQueryClient();
+  const checkedOnReturn = useRef(false);
   const status = useQuery({
     queryKey: keys.payment(payment.reference),
     queryFn: () => api<PaymentStatus>(`/payments/${encodeURIComponent(payment.reference)}/status`),
@@ -63,9 +64,26 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
 
   const value = status.data?.status ?? payment.lastStatus ?? 'PENDING';
   const copy = payment.purpose === 'SPONSOR_FUNDING' && value === 'SUCCEEDED'
-    ? { label: 'Funded', title: 'Prize funded', body: 'Paystack confirmed your deposit. The free challenge is open. Its prize split is shown on the challenge page; as the funder, you cannot receive its cash prize.', terminal: true }
+    ? { label: 'Funded', title: 'Prize funded', body: 'Paystack confirmed your contribution. It has been added to the prize pool. Joining remains free. Runners in a growing winner pool remain prize-eligible when they contribute; hosts cannot win their own cash prize.', terminal: true }
+    : payment.purpose === 'SPONSOR_FUNDING' && value === 'FAILED'
+      ? { label: 'Not paid', title: 'Checkout ended', body: 'Paystack did not confirm a contribution. You can still join the free competition, or start a new contribution.', terminal: true }
     : paymentCopy(value);
   const succeeded = value === 'SUCCEEDED';
+  const verify = useMutation({
+    mutationFn: () => post<PaymentStatus>(`/payments/${encodeURIComponent(payment.reference)}/verify`),
+    onSuccess(result) {
+      updatePaymentStatus(payment.reference, result.status);
+      void queryClient.invalidateQueries({ queryKey: keys.payment(payment.reference) });
+      void queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] });
+      if (payment.tableCode) void queryClient.invalidateQueries({ queryKey: keys.table(payment.tableCode) });
+    },
+  });
+
+  useEffect(() => {
+    if (!autoVerify || payment.purpose !== 'SPONSOR_FUNDING' || status.isLoading || status.error || paymentCopy(value).terminal || checkedOnReturn.current) return;
+    checkedOnReturn.current = true;
+    verify.mutate();
+  }, [autoVerify, payment.purpose, status.isLoading, status.error, value, verify]);
 
   useEffect(() => {
     if (!status.data) return;
@@ -75,6 +93,7 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
       void queryClient.invalidateQueries({ queryKey: keys.standings(payment.tableId) });
       void queryClient.invalidateQueries({ queryKey: keys.table(payment.tableCode) });
       void queryClient.invalidateQueries({ queryKey: keys.tables });
+      void queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] });
     } else if (status.data.status === 'SUCCEEDED' && payment.purpose === 'WALLET_FUNDING') {
       void queryClient.invalidateQueries({ queryKey: keys.wallet });
       void queryClient.invalidateQueries({ queryKey: keys.walletTransactions });
@@ -100,6 +119,7 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
         </p>
 
         {status.error && !notFound && <ErrorNotice error={status.error} className="mt-4" />}
+        <ErrorNotice error={verify.error} className="mt-4" />
 
         <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4 text-[13px]">
           <div>
@@ -113,9 +133,10 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
         </dl>
 
         <div className="mt-5 flex flex-wrap gap-2">
+          {!copy.terminal && !notFound && <button type="button" className="btn-secondary btn-sm" disabled={verify.isPending} onClick={() => verify.mutate()}>{verify.isPending ? 'Checking Paystack…' : 'Check with Paystack'}</button>}
           {succeeded && payment.tableCode && (
             <Link to="/competitions/$code" params={{ code: payment.tableCode }} className="btn-primary btn-sm">
-              Go to challenge
+              Go to competition
             </Link>
           )}
           {succeeded && payment.purpose === 'WALLET_FUNDING' && (
@@ -125,9 +146,10 @@ function PaymentCard({ payment }: { payment: SavedPayment }) {
           )}
           {(value === 'FAILED' || notFound) && payment.tableCode && (
             <Link to="/competitions/$code" params={{ code: payment.tableCode }} className="btn-secondary btn-sm">
-              Back to challenge
+              Back to competition
             </Link>
           )}
+          {!copy.terminal && payment.tableCode && <Link to="/competitions/$code" params={{ code: payment.tableCode }} className="btn-secondary btn-sm">Back to competition</Link>}
           <CopyButton value={payment.reference} label="Copy reference" />
           {(copy.terminal || notFound) && (
             <button type="button" className="btn-quiet btn-sm" onClick={() => dismissPayment(payment.reference)}>

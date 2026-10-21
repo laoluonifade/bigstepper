@@ -85,7 +85,7 @@ function ReadyScreen() {
           {[
             ['Stay on this screen', 'We keep it awake while you move. Browsers pause GPS in the background, so don’t switch apps.'],
             ['Head outdoors', 'Open sky gives the cleanest signal. Points less accurate than 50 m don’t count.'],
-            ['Only verified distance scores', 'After you finish we check the route. Verified distance is what challenges credit.'],
+            ['Only verified distance scores', 'After you finish we check the route. Verified distance is what competitions credit.'],
           ].map(([title, body]) => (
             <li key={title} className="flex gap-3 px-5 py-4">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-ink text-volt">
@@ -123,10 +123,10 @@ function ReadyScreen() {
         <div className="w-full max-w-md rounded-md border-2 border-ink bg-paper p-5 shadow-hard">
           <p className="eyebrow">Before you start</p>
           <h2 className="wide mt-1 text-[24px] font-extrabold uppercase">Your {activityType} counts</h2>
-          <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After verification, this {activityType} automatically scores in active {activityType} challenges you already joined, plus eligible distance, step and timed challenges. Verified distance also counts in your active league.</p>
-          <p className="mt-2 text-[12px] text-ink-2">Paid distance challenges use your GPS-verified distance. Walks do not score in run-only challenges, and runs do not score in walk-only challenges.</p>
+          <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After verification, this {activityType} automatically scores in active {activityType} competitions you already joined, plus eligible distance, step and timed competitions. Verified distance also counts in your active league.</p>
+          <p className="mt-2 text-[12px] text-ink-2">Paid distance competitions use your GPS-verified distance. Walks do not score in run-only competitions, and runs do not score in walk-only competitions.</p>
           <div className="mt-4 border-y border-line py-3">
-            <p className="text-[13px] font-bold">Your matching challenges right now</p>
+            <p className="text-[13px] font-bold">Your matching competitions right now</p>
             {eligible.isLoading ? <p className="mt-2 text-[12px] text-ink-2">Checking…</p> : eligible.error ? <ErrorNotice error={eligible.error} onRetry={() => void eligible.refetch()} className="mt-2" /> : eligible.data?.length ? (
               <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-[13px]">{eligible.data.map((table) => <li key={table.id}>• {table.title} <span className="text-ink-3">({table.challengeType.toLowerCase()})</span></li>)}</ul>
             ) : <p className="mt-2 text-[12px] text-ink-2">None yet. You can still record this activity and earn league distance.</p>}
