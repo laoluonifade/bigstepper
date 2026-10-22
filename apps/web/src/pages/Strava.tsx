@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { formatRelative } from '../lib/format';
 import { keys } from '../lib/queries';
-import { startStravaAuth, STRAVA_SIGNUP_KEY, takePendingStravaAuth, useStravaPublic, type StravaIntent } from '../lib/strava';
+import { startStravaAuth, STRAVA_SIGNUP_KEY, takePendingStravaAuth, useStravaConfigured, type StravaIntent } from '../lib/strava';
 import type { AuthResponse, StravaLoginResponse, StravaStatus } from '../lib/types';
 
 /** Strava's brand orange, required on "Connect with Strava" buttons. */
@@ -243,11 +243,11 @@ export function StravaConnection() {
     onSuccess: (next) => queryClient.setQueryData(['strava'], next),
   });
 
-  const stravaPublic = useStravaPublic();
+  const configured = useStravaConfigured();
   if (status.isPending) return null;
   const data = status.data;
-  // Until Strava approves the app, only an athlete who's already connected sees this row.
-  if (!stravaPublic && !data?.connected) return null;
+  // Any signed-in runner can connect once the server has Strava set up; sign-in with Strava is separate.
+  if (!configured && !data?.connected) return null;
 
   return (
     <div className="mt-4 flex items-center gap-3 border-t border-line pt-4">

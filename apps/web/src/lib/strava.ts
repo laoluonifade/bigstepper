@@ -42,8 +42,17 @@ export function takePendingStravaAuth(state: string | null): PendingAuth | null 
   }
 }
 
-/** Whether Strava sign-in/connect is open to everyone (it stays hidden until Strava approves the app). */
+function useStravaConfig() {
+  return useQuery({ queryKey: ['strava-config'], queryFn: () => api<{ clientId: string | null; public: boolean }>('/strava/config'), staleTime: 5 * 60_000 });
+}
+
+/** Whether "Continue with Strava" shows on log-in and sign-up (hidden until Strava approves the app). */
 export function useStravaPublic() {
-  const config = useQuery({ queryKey: ['strava-config'], queryFn: () => api<{ clientId: string | null; public: boolean }>('/strava/config'), staleTime: 5 * 60_000 });
+  const config = useStravaConfig();
   return Boolean(config.data?.clientId && config.data.public);
+}
+
+/** Whether signed-in runners can connect Strava from settings: whenever the server has Strava set up. */
+export function useStravaConfigured() {
+  return Boolean(useStravaConfig().data?.clientId);
 }
