@@ -31,11 +31,13 @@ export function MessagesPage() {
     <header className="mb-4"><p className="eyebrow">Community</p><h1 className="display mt-1 text-[30px] leading-none">Rant</h1></header>
     <div className="-mx-4 mb-4 sm:mx-0"><RantTabs active="dms" unread={unread} /></div>
     <ErrorNotice error={inbox.error} onRetry={() => void inbox.refetch()} />
-    {inbox.isLoading ? <Skeleton className="h-32" /> : !inbox.data?.length ? <EmptyState mark={<FeedIcon size={30} />} title="No messages yet" action={<Link to="/runners" className="btn-secondary">Find runners</Link>}>Open a runner’s profile and tap Message to say hello.</EmptyState> : <ul className="space-y-2">
-      {inbox.data.map((row) => <li key={row.username}><Link to="/messages/$username" params={{ username: row.username }} className="flex items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3 hover:border-ink">
-        <Avatar name={row.displayName} src={row.avatarUrl} size={42} />
-        <span className="min-w-0 flex-1"><span className="block truncate font-bold">{row.displayName} <span className="font-normal text-ink-3">@{row.username}</span></span><span className={`block truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{row.body}</span></span>
-        <span className="flex shrink-0 flex-col items-end gap-1"><time className="text-[12px] text-ink-3">{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time>{row.unreadCount > 0 && <span className="num min-w-[20px] rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${row.unreadCount} unread messages`}>{row.unreadCount > 9 ? '9+' : row.unreadCount}</span>}</span>
+    {inbox.isLoading ? <Skeleton className="h-32" /> : !inbox.data?.length ? <EmptyState mark={<FeedIcon size={30} />} title="No messages yet" action={<Link to="/runners" className="btn-secondary">Find runners</Link>}>Open a runner’s profile and tap Message to say hello.</EmptyState> : <ul className="-mx-4 divide-y divide-line border-b border-line sm:mx-0">
+      {inbox.data.map((row) => <li key={row.username}><Link to="/messages/$username" params={{ username: row.username }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
+        <Avatar name={row.displayName} src={row.avatarUrl} size={48} className="shrink-0 rounded-full" />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.displayName}</span> <span className="text-[13px] text-ink-3">@{row.username}</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
+          <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{row.body}</span>{row.unreadCount > 0 && <span className="num min-w-[20px] shrink-0 rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${row.unreadCount} unread messages`}>{row.unreadCount > 9 ? '9+' : row.unreadCount}</span>}</span>
+        </span>
       </Link></li>)}
     </ul>}
   </div>;
