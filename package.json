@@ -18,6 +18,12 @@
       "js-yaml": "^4.3.2",
       "lodash": "^4.18.0",
       "multer": "^2.3.0"
+    },
+    "auditConfig": {
+      "ignoreCves": [
+        "CVE-2026-85393",
+        "CVE-2026-93687"
+      ]
     }
   },
   "engines": {

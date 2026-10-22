@@ -1,4 +1,6 @@
-import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
+import type { FeatureCollection } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { cx } from './ui';
@@ -15,14 +17,14 @@ export type LivePosition = { latitude: number; longitude: number; accuracy: numb
 
 const toLngLat = ([lat, lng]: LatLng): [number, number] => [lng, lat];
 
-function routeData(route: LatLng[]): GeoJSON.FeatureCollection {
+function routeData(route: LatLng[]): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: route.length >= 2 ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.map(toLngLat) } }] : [],
   };
 }
 
-function startData(route: LatLng[]): GeoJSON.FeatureCollection {
+function startData(route: LatLng[]): FeatureCollection {
   return { type: 'FeatureCollection', features: route.length ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: toLngLat(route[0]) } }] : [] };
 }
 
@@ -226,8 +228,9 @@ export function renderRouteMap(route: LatLng[], width: number, height: number): 
       attributionControl: false,
       fadeDuration: 0,
       pixelRatio: 1,
-      preserveDrawingBuffer: true,
-      } as maplibregl.MapOptions & { preserveDrawingBuffer: boolean });
+      // Keeps the frame readable after drawing, so the share image can be copied off the canvas.
+      canvasContextAttributes: { preserveDrawingBuffer: true },
+      });
     } catch {
       holder.remove();
       resolve(null);
