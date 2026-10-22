@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import { CSSProperties, FormEvent, useEffect, useRef, useState } from 'react';
-import { ArrowLeftIcon, FeedIcon, SendIcon } from '../components/icons';
+import { CSSProperties, FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowLeftIcon, CheckIcon, FeedIcon, SendIcon } from '../components/icons';
 import { EmojiPopover } from '../components/EmojiPopover';
 import { Avatar, EmptyState, ErrorNotice, Skeleton } from '../components/ui';
 import { RantTabs } from '../components/RantTabs';
@@ -47,6 +47,8 @@ export function ConversationPage() {
   const queryClient = useQueryClient();
   const [body, setBody] = useState('');
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [editing, setEditing] = useState<Message | null>(null);
+  const stashedDraft = useRef<{ body: string; replyTo: Message | null }>({ body: '', replyTo: null });
   const [showEmoji, setShowEmoji] = useState(false);
   const [viewport, setViewport] = useState<{ height: number; top: number; keyboardOpen: boolean } | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -109,11 +111,52 @@ export function ConversationPage() {
       setReplyTo((current) => current ?? context?.reply ?? null);
     },
   });
+  const edit = useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) => patch<Pick<Message, 'id' | 'body' | 'editedAt'>>(`/messages/${id}`, { body: text }),
+    onSuccess(updated) {
+      queryClient.setQueryData<Conversation>(['messages', username], (current) => current && {
+        ...current,
+        messages: current.messages.map((item) => item.id === updated.id ? { ...item, ...updated } : item.replyToId === updated.id ? { ...item, replyToBody: updated.body } : item),
+      });
+      stopEditing();
+      void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] });
+      void queryClient.invalidateQueries({ queryKey: ['messages', username] });
+    },
+  });
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    composer.style.height = 'auto';
+    composer.style.height = `${Math.min(composer.scrollHeight, 168)}px`;
+  }, [body, conversation.data]);
   useEffect(() => {
     const thread = threadRef.current;
     if (thread && followLatest.current) thread.scrollTop = thread.scrollHeight;
   }, [username, conversation.data?.messages.length, viewport?.height]);
-  function submit(event: FormEvent) { event.preventDefault(); if (body.trim() && !send.isPending) send.mutate({ text: body.trim(), reply: replyTo }); }
+  function startEditing(message: Message) {
+    if (!editing) stashedDraft.current = { body, replyTo };
+    setEditing(message);
+    setReplyTo(null);
+    setBody(message.body);
+    setShowEmoji(false);
+    edit.reset();
+    requestAnimationFrame(() => { const composer = composerRef.current; if (composer) { composer.focus(); composer.setSelectionRange(composer.value.length, composer.value.length); } });
+  }
+  function stopEditing() {
+    setEditing(null);
+    setBody(stashedDraft.current.body);
+    setReplyTo(stashedDraft.current.replyTo);
+    stashedDraft.current = { body: '', replyTo: null };
+  }
+  function sendOrSave() {
+    const text = body.trim();
+    if (editing) {
+      if (!text || edit.isPending) return;
+      if (text === editing.body) stopEditing();
+      else edit.mutate({ id: editing.id, text });
+    } else if (text && !send.isPending) send.mutate({ text, reply: replyTo });
+  }
+  function submit(event: FormEvent) { event.preventDefault(); sendOrSave(); }
   return <div className="fixed inset-x-0 z-40 mx-auto flex h-[var(--chat-height)] min-w-0 max-w-[600px] flex-col overflow-hidden bg-paper md:static md:h-auto md:overflow-visible md:bg-transparent" style={{ '--chat-height': viewport ? `${viewport.height}px` : '100dvh', top: viewport?.top ?? 0 } as CSSProperties}>
     <Link to="/messages" className="mb-4 hidden items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink md:inline-flex"><ArrowLeftIcon size={16} /> Messages</Link>
     <ErrorNotice error={conversation.error} onRetry={() => void conversation.refetch()} />
@@ -126,25 +169,26 @@ export function ConversationPage() {
       </header>
       <div ref={threadRef} onScroll={(event) => { const target = event.currentTarget; followLatest.current = target.scrollHeight - target.scrollTop - target.clientHeight < 80; }} className="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain p-3 pb-5 sm:p-4 md:max-h-[65vh] md:min-h-[45vh] md:flex-none md:rounded-2xl md:border md:border-line md:bg-paper" aria-label="Conversation">
         {!conversation.data.messages.length && <p className="py-12 text-center text-[14px] text-ink-3">No messages yet. Say hello.</p>}
-        {conversation.data.messages.map((message) => <MessageBubble key={message.id} message={message} viewerId={user.id} username={username} onReply={() => { setReplyTo(message); composerRef.current?.focus(); }} />)}
+        {conversation.data.messages.map((message) => <MessageBubble key={message.id} message={message} viewerId={user.id} username={username} beingEdited={editing?.id === message.id} onEdit={() => startEditing(message)} onReply={() => { if (editing) stopEditing(); setReplyTo(message); composerRef.current?.focus(); }} />)}
       </div>
       <form onSubmit={submit} className={`shrink-0 border-t border-line bg-card px-3 pt-2 md:mt-3 md:rounded-2xl md:border md:p-3 ${viewport?.keyboardOpen ? 'pb-2' : 'pb-[max(env(safe-area-inset-bottom),0.5rem)]'}`}>
         <ErrorNotice error={send.error} className="mb-2" />
+        <ErrorNotice error={edit.error} className="mb-2" />
+        {editing && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border-l-4 border-volt bg-paper px-3 py-2 text-[12px]"><span className="min-w-0 truncate"><strong>Editing message</strong><span className="ml-2 text-ink-2">{editing.body}</span></span><button type="button" className="font-bold" onClick={stopEditing} aria-label="Cancel editing">×</button></div>}
         {replyTo && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border-l-4 border-track bg-paper px-3 py-2 text-[12px]"><span className="min-w-0 truncate"><strong>Replying to {replyTo.senderId === user.id ? 'yourself' : conversation.data.runner.displayName}</strong><span className="ml-2 text-ink-2">{replyTo.body}</span></span><button type="button" className="font-bold" onClick={() => setReplyTo(null)} aria-label="Cancel reply">×</button></div>}
-        <div className="flex min-w-0 items-end gap-2"><button ref={emojiAnchor} type="button" className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-[23px] hover:bg-paper" onClick={() => setShowEmoji((open) => !open)} aria-label="Choose emoji" aria-expanded={showEmoji}>☺</button><textarea ref={composerRef} rows={1} className="field !min-h-11 max-h-28 min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl !py-2.5" aria-label="Write a private message" maxLength={1000} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (body.trim() && !send.isPending) send.mutate({ text: body.trim(), reply: replyTo }); } }} placeholder="Message…" /><button className="btn-dark !h-11 !w-11 shrink-0 rounded-xl !px-0" aria-label={send.isPending ? 'Sending message' : 'Send message'} title="Send message" disabled={!body.trim() || send.isPending}><SendIcon size={19} /></button></div>
+        <div className="flex min-w-0 items-end gap-2"><button ref={emojiAnchor} type="button" className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-[23px] hover:bg-paper" onClick={() => setShowEmoji((open) => !open)} aria-label="Choose emoji" aria-expanded={showEmoji}>☺</button><textarea ref={composerRef} rows={1} className="field !min-h-11 max-h-[168px] min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl !py-2.5" aria-label={editing ? 'Edit message' : 'Write a private message'} maxLength={1000} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape' && editing) { event.preventDefault(); stopEditing(); } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); sendOrSave(); } }} placeholder="Message…" />{editing
+          ? <button className="btn-dark !h-11 !w-11 shrink-0 rounded-xl !px-0" aria-label={edit.isPending ? 'Saving edit' : 'Save edit'} title="Save edit" disabled={!body.trim() || edit.isPending}><CheckIcon size={19} /></button>
+          : <button className="btn-dark !h-11 !w-11 shrink-0 rounded-xl !px-0" aria-label={send.isPending ? 'Sending message' : 'Send message'} title="Send message" disabled={!body.trim() || send.isPending}><SendIcon size={19} /></button>}</div>
         {showEmoji && <EmojiPopover anchor={emojiAnchor} label="Add emoji" width={208} height={112} onClose={() => setShowEmoji(false)}><div className="grid grid-cols-4 gap-1">{COMPOSER_EMOJI.map((emoji) => <button key={emoji} type="button" className="flex h-11 w-11 items-center justify-center rounded-xl text-[22px] hover:bg-paper" onClick={() => { setBody((value) => value + emoji); setShowEmoji(false); composerRef.current?.focus(); }}>{emoji}</button>)}</div></EmojiPopover>}
       </form>
     </>}
   </div>;
 }
 
-function MessageBubble({ message, viewerId, username, onReply }: { message: Message; viewerId: string; username: string; onReply: () => void }) {
+function MessageBubble({ message, viewerId, username, beingEdited, onEdit, onReply }: { message: Message; viewerId: string; username: string; beingEdited: boolean; onEdit: () => void; onReply: () => void }) {
   const queryClient = useQueryClient();
   const [showReactions, setShowReactions] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(message.body);
   const reactionAnchor = useRef<HTMLDivElement | null>(null);
-  const editForm = useRef<HTMLFormElement | null>(null);
   const [dragX, setDragX] = useState(0);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const dragDistance = useRef(0);
@@ -156,46 +200,29 @@ function MessageBubble({ message, viewerId, username, onReply }: { message: Mess
     mutationFn: (reaction: MessageReaction | null) => reaction ? post(`/messages/${message.id}/reaction`, { reaction }) : api(`/messages/${message.id}/reaction`, { method: 'DELETE' }),
     onSuccess() { setShowReactions(false); void queryClient.invalidateQueries({ queryKey: ['messages', username] }); },
   });
-  const edit = useMutation({
-    mutationFn: (body: string) => patch<Pick<Message, 'id' | 'body' | 'editedAt'>>(`/messages/${message.id}`, { body }),
-    onSuccess(updated) {
-      queryClient.setQueryData<Conversation>(['messages', username], (current) => current && {
-        ...current,
-        messages: current.messages.map((item) => item.id === updated.id ? { ...item, ...updated } : item.replyToId === updated.id ? { ...item, replyToBody: updated.body } : item),
-      });
-      setEditing(false);
-      void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] });
-      void queryClient.invalidateQueries({ queryKey: ['messages', username] });
-    },
-  });
   const counts = MESSAGE_REACTIONS.map((choice) => ({ ...choice, count: message.reactions.filter((item) => item.reaction === choice.value).length })).filter((choice) => choice.count);
   const inviteCode = /^Join .+ on Jump: https?:\/\/[^\s]+\/competitions\/([A-F0-9]{8})$/.exec(message.body)?.[1];
-  function cancelEdit() { setEditing(false); setEditBody(message.body); edit.reset(); }
   function clearHold() { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); holdTimer.current = null; }
   return <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
     <div className={`max-w-[88%] select-none sm:max-w-[78%] ${message.pending ? 'pointer-events-none opacity-75' : ''}`} style={{ transform: `translateX(${dragX}px)`, touchAction: 'pan-y', WebkitTouchCallout: 'none' }}
       onDragStart={(event) => event.preventDefault()}
-      onPointerDown={(event) => { if (editing) return; suppressClick.current = false; if ((event.target as HTMLElement).closest('a,button,input,select,textarea')) return; pointerStart.current = { x: event.clientX, y: event.clientY }; clearHold(); if (event.pointerType === 'touch') holdTimer.current = window.setTimeout(() => { if (pointerStart.current) { suppressClick.current = true; setShowReactions(true); } }, 450); }}
+      onPointerDown={(event) => { suppressClick.current = false; if ((event.target as HTMLElement).closest('a,button,input,select,textarea')) return; pointerStart.current = { x: event.clientX, y: event.clientY }; clearHold(); if (event.pointerType === 'touch') holdTimer.current = window.setTimeout(() => { if (pointerStart.current) { suppressClick.current = true; setShowReactions(true); } }, 450); }}
       onPointerMove={(event) => { if (!pointerStart.current) return; const dx = event.clientX - pointerStart.current.x; const dy = event.clientY - pointerStart.current.y; if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearHold(); if (Math.abs(dx) > Math.abs(dy) && dx > 0) { dragDistance.current = Math.min(dx, 72); setDragX(dragDistance.current); } }}
       onPointerUp={() => { clearHold(); if (dragDistance.current >= 56) { suppressClick.current = true; setShowReactions(false); onReply(); } pointerStart.current = null; dragDistance.current = 0; setDragX(0); }}
       onPointerCancel={() => { clearHold(); pointerStart.current = null; dragDistance.current = 0; setDragX(0); }}>
-      <div className={`rounded-2xl border px-3.5 py-2.5 ${mine && !message.invitationId ? 'rounded-br-sm border-ink bg-ink text-paper' : mine ? 'rounded-br-sm border-ink bg-volt text-ink' : 'rounded-bl-sm border-line bg-card text-ink'}`}>
-        {editing ? <form ref={editForm} onSubmit={(event) => { event.preventDefault(); const trimmed = editBody.trim(); if (trimmed && trimmed !== message.body && !edit.isPending) edit.mutate(trimmed); }} className="min-w-[180px]">
-          <textarea autoFocus rows={Math.min(5, editBody.split('\n').length)} maxLength={1000} aria-label="Edit message" className="block w-full select-text resize-none bg-transparent text-[14px] leading-relaxed text-inherit outline-none" style={{ WebkitTouchCallout: 'default' }} value={editBody} onChange={(event) => setEditBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); cancelEdit(); } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); editForm.current?.requestSubmit(); } }} />
-          <div className="mt-1.5 flex items-center justify-end gap-3 border-t border-current/15 pt-1.5 text-[12px] font-bold"><button type="button" className="opacity-70 hover:opacity-100" disabled={edit.isPending} onClick={cancelEdit}>Cancel</button><button type="submit" className="text-volt disabled:opacity-40" disabled={edit.isPending || !editBody.trim() || editBody.trim() === message.body}>{edit.isPending ? 'Saving…' : 'Save'}</button></div>
-          <ErrorNotice error={edit.error} />
-        </form> : <div ref={reactionAnchor} role="button" tabIndex={0} aria-label="React to message; swipe right to reply" aria-expanded={showReactions} className="cursor-pointer outline-offset-4"
+      <div className={`rounded-2xl border px-3.5 py-2.5 ${beingEdited ? 'ring-2 ring-volt ring-offset-2 ring-offset-paper' : ''} ${mine && !message.invitationId ? 'rounded-br-sm border-ink bg-ink text-paper' : mine ? 'rounded-br-sm border-ink bg-volt text-ink' : 'rounded-bl-sm border-line bg-card text-ink'}`}>
+        <div ref={reactionAnchor} role="button" tabIndex={0} aria-label="React to message; swipe right to reply" aria-expanded={showReactions} className="cursor-pointer outline-offset-4"
           onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } setShowReactions((open) => !open); }}
           onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setShowReactions((open) => !open); } else if (event.key === 'ArrowRight') { event.preventDefault(); onReply(); } }}
           onContextMenu={(event) => { event.preventDefault(); suppressClick.current = true; setShowReactions(true); }}>
           {message.replyToBody && <div className={`mb-2 rounded-lg border-l-2 px-2 py-1 text-[12px] ${mine && !message.invitationId ? 'border-volt bg-paper/10' : 'border-track bg-paper'}`}><span className="block font-bold">{message.replyToSenderId === viewerId ? 'You' : username}</span><span className="block truncate opacity-75">{message.replyToBody}</span></div>}
           <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">{message.body}</p>
           <time className={`mt-1 block text-right text-[10px] ${mine && !message.invitationId ? 'text-paper/60' : 'text-ink-3'}`}>{message.pending ? 'Sending…' : <>{new Date(message.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}{message.editedAt ? ' · Edited' : ''}</>}</time>
-        </div>}
+        </div>
         {message.invitationId ? <InvitationActions message={message} received={message.recipientId === viewerId} username={username} /> : inviteCode && <Link to="/competitions/$code" params={{ code: inviteCode }} className="mt-2 inline-block text-[12px] font-bold underline">View competition</Link>}
       </div>
       {counts.length > 0 && <div className={`mt-1 flex flex-wrap gap-1 ${mine ? 'justify-end' : 'justify-start'}`}>{counts.map((choice) => <button key={choice.value} type="button" className={`rounded-full border px-2 py-0.5 text-[12px] ${ownReaction === choice.value ? 'border-ink bg-volt' : 'border-line bg-card'}`} onClick={() => react.mutate(ownReaction === choice.value ? null : choice.value)} aria-label={`${choice.label} reaction, ${choice.count}`}>{choice.emoji} {choice.count}</button>)}</div>}
-      {showReactions && <EmojiPopover anchor={reactionAnchor} label="Message actions" width={246} height={mine && !message.invitationId ? 106 : 62} onClose={() => setShowReactions(false)}><div className="flex gap-0.5">{MESSAGE_REACTIONS.map((choice) => <button key={choice.value} type="button" className="flex h-11 w-11 items-center justify-center rounded-xl text-[22px] hover:bg-paper" title={choice.label} aria-label={choice.label} disabled={react.isPending} onClick={() => react.mutate(ownReaction === choice.value ? null : choice.value)}>{choice.emoji}</button>)}</div>{mine && !message.invitationId && <button type="button" className="mt-1 w-full rounded-lg border-t border-line px-2 py-2 text-left text-[13px] font-semibold hover:bg-paper" onClick={() => { setShowReactions(false); setEditBody(message.body); edit.reset(); setEditing(true); }}>Edit message</button>}</EmojiPopover>}
+      {showReactions && <EmojiPopover anchor={reactionAnchor} label="Message actions" width={246} height={mine && !message.invitationId ? 106 : 62} onClose={() => setShowReactions(false)}><div className="flex gap-0.5">{MESSAGE_REACTIONS.map((choice) => <button key={choice.value} type="button" className="flex h-11 w-11 items-center justify-center rounded-xl text-[22px] hover:bg-paper" title={choice.label} aria-label={choice.label} disabled={react.isPending} onClick={() => react.mutate(ownReaction === choice.value ? null : choice.value)}>{choice.emoji}</button>)}</div>{mine && !message.invitationId && <button type="button" className="mt-1 w-full rounded-lg border-t border-line px-2 py-2 text-left text-[13px] font-semibold hover:bg-paper" onClick={() => { setShowReactions(false); onEdit(); }}>Edit message</button>}</EmojiPopover>}
       <ErrorNotice error={react.error} className="mt-1" />
     </div>
   </div>;
