@@ -104,7 +104,7 @@ export class LeagueSeasonsService {
           : result.outcome === 'RELEGATED'
             ? [`Moved down to ${to.name}`, `${place}. ${next.name} starts now in ${to.name}. Log verified distance to climb back.`]
             : [`You stay in ${to.name}`, `${place}. ${next.name} starts now.`];
-      await manager.query(`INSERT INTO "notifications" ("userId", "type", "title", "body") VALUES ($1, 'LEAGUE_RESULT', $2, $3)`, [
+      await manager.query(`INSERT INTO "notifications" ("userId", "type", "title", "body", "link") VALUES ($1, 'LEAGUE_RESULT', $2, $3, '/leagues')`, [
         member.userId,
         title,
         body,

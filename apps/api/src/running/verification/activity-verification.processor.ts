@@ -126,18 +126,19 @@ export class ActivityVerificationProcessor extends WorkerHost {
         );
         if (!cycling) await refreshLeagueDistance(manager, activity.userId);
         await manager.query(
-          `INSERT INTO "notifications" ("userId","type","title","body")
+          `INSERT INTO "notifications" ("userId","type","title","body","link")
            SELECT $2,'LEADERBOARD_UPDATE','Your standings updated',
-                  'Your verified ' || $3 || ' now counts in ' || t."title" || '.'
+                  'Your verified ' || $3 || ' now counts in ' || t."title" || '.', '/competitions/' || t."code"
            FROM "table_activity_credits" c JOIN "competition_tables" t ON t."id"=c."tableId"
            WHERE c."activityId"=$1`, [activity.id, activity.userId, activity.activityType],
         );
       }
       await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,$2,$3,$4)`,
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,$5)`,
         [activity.userId, status === 'VERIFIED' ? 'ACTIVITY_VERIFIED' : 'ACTIVITY_REVIEW',
           status === 'VERIFIED' ? `Your ${activity.activityType} is verified` : `Your ${activity.activityType} needs review`,
-          status === 'VERIFIED' ? 'Your distance and steps are checked. Open Jump to see your progress.' : 'Open Jump to see what needs attention.'],
+          status === 'VERIFIED' ? 'Your distance and steps are checked. Open Jump to see your progress.' : 'Open Jump to see what needs attention.',
+          `/activities/${activity.id}`],
       );
     });
     this.logger.log(`Activity ${activity.id} processed as ${status}`);

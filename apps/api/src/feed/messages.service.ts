@@ -107,8 +107,8 @@ export class MessagesService {
        RETURNING "id","senderId","recipientId","body","replyToId","createdAt"`, [userId, runner.userId, trimmed, replyToId ?? null],
     );
     await this.notify(
-      `INSERT INTO "notifications" ("userId","type","title","body")
-       SELECT $2,'DIRECT_MESSAGE',p."displayName" || ' sent you a message','Open Messages to reply.'
+      `INSERT INTO "notifications" ("userId","type","title","body","link")
+       SELECT $2,'DIRECT_MESSAGE',p."displayName" || ' sent you a message','Open Messages to reply.','/messages/' || p."username"
        FROM "profiles" p WHERE p."userId"=$1`, [userId, runner.userId],
     );
     return message;
@@ -142,9 +142,9 @@ export class MessagesService {
         [messageId, userId, reaction],
       ) as Array<{ messageId: string }>;
       if (changed.length) await this.notify(
-        `INSERT INTO "notifications" ("userId","type","title","body")
+        `INSERT INTO "notifications" ("userId","type","title","body","link")
          SELECT CASE WHEN m."senderId"=$2 THEN m."recipientId" ELSE m."senderId" END,
-                'MESSAGE_REACTION',p."displayName" || ' reacted to your message','Open Messages to see the reaction.'
+                'MESSAGE_REACTION',p."displayName" || ' reacted to your message','Open Messages to see the reaction.','/messages/' || p."username"
          FROM "direct_messages" m JOIN "profiles" p ON p."userId"=$2 WHERE m."id"=$1`,
         [messageId, userId],
       );

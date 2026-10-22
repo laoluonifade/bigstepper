@@ -98,7 +98,7 @@ export class AdminService {
         `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,'creator_profile',$3,'{}')`,
         [actorUserId, status === 'ACTIVE' ? 'CREATOR_APPROVED' : 'CREATOR_SUSPENDED', creatorId],
       );
-      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,$2,$3,$4)`, [
+      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,'/creator')`, [
         rows[0].userId,
         status === 'ACTIVE' ? 'CREATOR_APPROVED' : 'CREATOR_SUSPENDED',
         status === 'ACTIVE' ? 'You’re approved as a creator' : 'Creator account suspended',
@@ -227,7 +227,7 @@ export class AdminService {
       if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('Competition is not pending approval');
       table.status = 'OPEN_FOR_ENTRY';
       await manager.save(table);
-      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAID_CHALLENGE_APPROVED','Your competition is open',$2)`, [table.creatorId, `${table.title} is approved. Runners can now join with code ${table.code}.`]);
+      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAID_CHALLENGE_APPROVED','Your competition is open',$2,$3)`, [table.creatorId, `${table.title} is approved. Runners can now join with code ${table.code}.`, `/competitions/${table.code}`]);
       await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAID_TABLE_APPROVED','competition_table',$2,$3)`, [actorUserId, tableId, JSON.stringify(input)]);
       return table;
     });
@@ -330,18 +330,19 @@ export class AdminService {
         [actorUserId, tableId, JSON.stringify({ version })],
       );
       await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body")
+        `INSERT INTO "notifications" ("userId","type","title","body","link")
          SELECT r."userId",'COMPETITION_RESULT',
                 CASE WHEN a."id" IS NOT NULL THEN 'You placed in ' || $2
                      WHEN $3::uuid IS NOT NULL THEN COALESCE(w."displayName",'A runner') || ' won ' || $2
                      ELSE $2 || ' has finished' END,
                 CASE WHEN a."id" IS NOT NULL THEN 'Your prize is ready to view in Jump.'
-                     ELSE 'The final leaderboard is ready. Open Jump to see the results.' END
+                     ELSE 'The final leaderboard is ready. Open Jump to see the results.' END,
+                '/competitions/' || $4
          FROM "table_registrations" r
          LEFT JOIN "prize_awards" a ON a."tableId"=r."tableId" AND a."winnerUserId"=r."userId"
          LEFT JOIN "profiles" w ON w."userId"=$3
          WHERE r."tableId"=$1`,
-        [tableId, table.title, table.fundingDestination === 'CHARITY' ? null : winner?.userId ?? null],
+        [tableId, table.title, table.fundingDestination === 'CHARITY' ? null : winner?.userId ?? null, table.code],
       );
       return settlements[0];
     });

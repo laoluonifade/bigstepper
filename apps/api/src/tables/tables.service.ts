@@ -341,14 +341,14 @@ export class TablesService {
       [table.id, phones],
     );
     if (input.inviteClubMembers || emails.length) await manager.query(
-      `INSERT INTO "notifications" ("userId","type","title","body")
-       SELECT DISTINCT targets."userId",'CHALLENGE_INVITE','You’re invited to a competition',$2
+      `INSERT INTO "notifications" ("userId","type","title","body","link")
+       SELECT DISTINCT targets."userId",'CHALLENGE_INVITE','You’re invited to a competition',$2,$4
        FROM (
          SELECT i."invitedUserId" "userId" FROM "challenge_invitations" i WHERE i."tableId"=$1 AND i."invitedUserId" IS NOT NULL
          UNION
          SELECT u."id" FROM "challenge_invitations" i JOIN "users" u ON lower(u."email")=i."email" WHERE i."tableId"=$1
        ) targets WHERE targets."userId"<>$3`,
-      [table.id, `Join ${table.title} with code ${table.code}.`, table.creatorId],
+      [table.id, `Join ${table.title} with code ${table.code}.`, table.creatorId, `/competitions/${table.code}`],
     );
   }
 
@@ -396,8 +396,8 @@ export class TablesService {
       ) as Array<{ id: string }>;
       if (!message.length) throw new ConflictException('This runner was already invited in messages');
       await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'CHALLENGE_INVITE','You’re invited to a competition',$2)`,
-        [runner.userId, body],
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'CHALLENGE_INVITE','You’re invited to a competition',$2,$3)`,
+        [runner.userId, body, `/competitions/${table.code}`],
       );
       return { runner, table, link };
     });

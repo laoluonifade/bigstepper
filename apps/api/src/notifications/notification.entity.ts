@@ -17,6 +17,10 @@ export class Notification {
   @Column()
   body: string;
 
+  /** In-app path the notification opens, e.g. `/feed/<id>`. */
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  link: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   readAt: Date | null;
 

@@ -85,8 +85,8 @@ export class FeedService {
       [postId, viewerId, reaction],
     ) as Array<{ postId: string }>;
     if (changed.length) await this.notify(
-      `INSERT INTO "notifications" ("userId","type","title","body")
-       SELECT f."userId",'RANT_REACTION',p."displayName" || ' reacted to your Rant','Open Jump to see the reaction.'
+      `INSERT INTO "notifications" ("userId","type","title","body","link")
+       SELECT f."userId",'RANT_REACTION',p."displayName" || ' reacted to your Rant','Open Jump to see the reaction.','/feed/' || f."id"
        FROM "feed_posts" f JOIN "profiles" p ON p."userId"=$2
        WHERE f."id"=$1 AND f."userId"<>$2`, [postId, viewerId],
     );
@@ -118,8 +118,8 @@ export class FeedService {
       [postId, viewerId, trimmed],
     );
     await this.notify(
-      `INSERT INTO "notifications" ("userId","type","title","body")
-       SELECT f."userId",'RANT_COMMENT',p."displayName" || ' commented on your Rant','Open Jump to read the comment.'
+      `INSERT INTO "notifications" ("userId","type","title","body","link")
+       SELECT f."userId",'RANT_COMMENT',p."displayName" || ' commented on your Rant','Open Jump to read the comment.','/feed/' || f."id"
        FROM "feed_posts" f JOIN "profiles" p ON p."userId"=$2
        WHERE f."id"=$1 AND f."userId"<>$2`, [postId, viewerId],
     );
@@ -147,10 +147,10 @@ export class FeedService {
        RETURNING "id","createdAt"`, [userId, body, input.activityId ?? null],
     );
     await this.notify(
-      `INSERT INTO "notifications" ("userId","type","title","body")
-       SELECT fol."followerId",'FOLLOWING_POST',p."displayName" || ' posted a Rant','See their latest update on Jump.'
+      `INSERT INTO "notifications" ("userId","type","title","body","link")
+       SELECT fol."followerId",'FOLLOWING_POST',p."displayName" || ' posted a Rant','See their latest update on Jump.','/feed/' || $2
        FROM "follows" fol JOIN "profiles" p ON p."userId"=$1
-       WHERE fol."followingId"=$1`, [userId],
+       WHERE fol."followingId"=$1`, [userId, post.id],
     );
     return post;
   }

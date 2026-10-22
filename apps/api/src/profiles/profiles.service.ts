@@ -165,10 +165,11 @@ export class ProfilesService {
     );
     if (created.length) {
       const follower = await this.getMine(followerId);
-      await this.dataSource.query(`INSERT INTO "notifications" ("userId", "type", "title", "body") VALUES ($1, 'NEW_FOLLOWER', $2, $3)`, [
+      await this.dataSource.query(`INSERT INTO "notifications" ("userId", "type", "title", "body", "link") VALUES ($1, 'NEW_FOLLOWER', $2, $3, $4)`, [
         target.userId,
         `${follower.displayName} followed you`,
         `@${follower.username} now follows your walks and runs.`,
+        `/runners/${follower.username}`,
       ]);
     }
     return { following: true };

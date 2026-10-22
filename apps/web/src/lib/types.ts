@@ -354,6 +354,8 @@ export interface Notification {
   type: string;
   title: string;
   body: string;
+  /** In-app path to open, e.g. `/feed/<id>`. */
+  link: string | null;
   readAt: string | null;
   createdAt: string;
 }

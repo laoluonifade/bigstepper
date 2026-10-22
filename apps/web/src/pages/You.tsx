@@ -27,9 +27,9 @@ import { AWARD_STATUS } from '../lib/copy';
 import { activityName, formatDate, formatDistanceNumber, formatDuration, formatMoney, formatNairaInput, formatPace, formatRelative, formatSpeed, nairaInputToKobo, shortId } from '../lib/format';
 import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
-import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useProfile, useStaffAccess, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
+import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useStaffAccess, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
 import { savePayment } from '../lib/payments';
-import type { CheckoutResponse, CreatorProfile, Notification, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit, Visibility } from '../lib/types';
+import type { CheckoutResponse, CreatorProfile, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit, Visibility } from '../lib/types';
 import { COUNTRIES } from '../lib/countries';
 
 export const YOU_NAV = [
@@ -783,16 +783,7 @@ export function CreatorPage() {
 
 export function NotificationsPage() {
   const notifications = useNotifications();
-  const queryClient = useQueryClient();
-  const markRead = useMutation({
-    mutationFn: (id: string) => patch<{ success: boolean }>(`/notifications/${id}/read`),
-    onMutate(id) {
-      queryClient.setQueryData<Notification[]>(keys.notifications, (current) =>
-        current?.map((item) => (item.id === id ? { ...item, readAt: new Date().toISOString() } : item)),
-      );
-    },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: keys.notifications }),
-  });
+  const { markRead, open } = useOpenNotification();
   const list = notifications.data ?? [];
   const unread = list.filter((item) => !item.readAt);
 
@@ -824,7 +815,7 @@ export function NotificationsPage() {
               <button
                 type="button"
                 className={cx('flex w-full gap-4 px-2 py-4 text-left hover:bg-ink/[0.025]', !item.readAt && 'bg-card')}
-                onClick={() => !item.readAt && markRead.mutate(item.id)}
+                onClick={() => open(item)}
               >
                 <span className={cx('mt-1.5 h-2.5 w-2.5 shrink-0 rounded-sm', item.readAt ? 'bg-transparent' : 'bg-track')} aria-label={item.readAt ? undefined : 'Unread'} />
                 <span className="min-w-0 flex-1">

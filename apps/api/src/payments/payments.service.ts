@@ -235,7 +235,7 @@ export class PaymentsService {
       );
       if (existing[0]) {
         await manager.query(
-          `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAYOUT_RECIPIENT_CHANGED','Payout account changed','Your payout account was changed. Payouts are paused for 24 hours; contact support immediately if this was not you.')`,
+          `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_RECIPIENT_CHANGED','Payout account changed','Your payout account was changed. Payouts are paused for 24 hours; contact support immediately if this was not you.','/wallet')`,
           [userId],
         );
       }
@@ -364,7 +364,7 @@ export class PaymentsService {
         [transfer.transfer_code, transfer.status.toUpperCase(), JSON.stringify(transfer), claimed.reference],
       );
       await this.dataSource.query(
-        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAYOUT_SENT','Your payout is on its way',$2)`,
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_SENT','Your payout is on its way',$2,'/wallet')`,
         [claimed.userId, `₦${(Number(claimed.amountKobo) / 100).toLocaleString('en-NG')} is being sent to your bank. It usually arrives within minutes.`],
       );
       return { reference: claimed.reference, status: transfer.status };
@@ -393,7 +393,7 @@ export class PaymentsService {
         [actorUserId, payoutId, JSON.stringify({ reason })],
       );
       await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'PAYOUT_REJECTED','Payout not approved',$2)`,
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_REJECTED','Payout not approved',$2,'/wallet')`,
         [rows[0].userId, `${reason} You can request it again once that’s sorted.`],
       );
       return { id: rows[0].id, status: 'REJECTED' };

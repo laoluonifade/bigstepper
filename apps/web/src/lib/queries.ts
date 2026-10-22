@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { api, isApiError } from './api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from '@tanstack/react-router';
+import { api, isApiError, patch } from './api';
 import { useAuth } from './auth';
 import type { Activity, CompetitionTable, CreatorEarning, CreatorProfile, FinalResult, LeagueDivision, LeagueMembership, LeagueRules, LeagueSeason, Notification, Profile, StandingRow, Unit, VerificationReview, Wallet, WalletTransaction } from './types';
 
@@ -161,4 +162,37 @@ export function useCreatorEarnings(enabled = true) {
     queryFn: () => api<CreatorEarning[]>('/creators/me/earnings'),
     enabled,
   });
+}
+
+/** Where a notification opens; older rows without a stored link fall back to their section. */
+export function notificationLink(item: Notification) {
+  if (item.link?.startsWith('/')) return item.link;
+  if (/^(DIRECT_MESSAGE|MESSAGE_)/.test(item.type)) return '/messages';
+  if (/^(RANT_|FOLLOWING_POST)/.test(item.type)) return '/feed';
+  if (item.type.startsWith('ACTIVITY_')) return '/activities';
+  if (/^(CHALLENGE_|COMPETITION_|LEADERBOARD_|PAID_CHALLENGE_)/.test(item.type)) return '/competitions';
+  return null;
+}
+
+/** Marks a notification read and opens the thing it is about. */
+export function useOpenNotification() {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const markRead = useMutation({
+    mutationFn: (id: string) => patch<{ success: boolean }>(`/notifications/${id}/read`),
+    onMutate(id) {
+      queryClient.setQueryData<Notification[]>(keys.notifications, (current) =>
+        current?.map((item) => (item.id === id ? { ...item, readAt: new Date().toISOString() } : item)),
+      );
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: keys.notifications }),
+  });
+  return {
+    markRead,
+    open(item: Notification) {
+      if (!item.readAt) markRead.mutate(item.id);
+      const link = notificationLink(item);
+      if (link) router.history.push(link);
+    },
+  };
 }
