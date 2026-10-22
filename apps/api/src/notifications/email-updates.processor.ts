@@ -5,7 +5,8 @@ import { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { EMAIL_UPDATES_QUEUE } from '../jobs/jobs.module';
 import { MailService } from '../mail/mail.service';
-import { activityUpdatesEmail, competitionDigestEmail } from '../mail/templates';
+import { activityUpdatesEmail, competitionDigestEmail, streakReminderEmail } from '../mail/templates';
+import { STREAK_DAY_SQL, STREAK_TIME_ZONE } from '../running/streaks';
 
 type PendingUpdate = { id: string; userId: string; type: string; title: string; email: string; displayName: string | null; emailVerified: boolean; emailActivityEnabled: boolean };
 type DigestRecipient = { userId: string; email: string; displayName: string | null };
@@ -27,12 +28,14 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
   async onModuleInit() {
     await this.queue.upsertJobScheduler('notification-emails', { every: 60_000 }, { name: 'send-notifications' });
     await this.queue.upsertJobScheduler('three-day-competition-digest', { every: 5 * 60_000 }, { name: 'send-digests' });
+    await this.queue.upsertJobScheduler('streak-reminders', { every: 15 * 60_000 }, { name: 'send-streak-reminders' });
   }
 
   async process(job: Job): Promise<void> {
     if (!this.mail.configured) return;
     if (job.name === 'send-notifications') await this.sendNotifications();
     if (job.name === 'send-digests') await this.sendDigests();
+    if (job.name === 'send-streak-reminders') await this.sendStreakReminders();
   }
 
   private origin() { return this.config.getOrThrow<string>('WEB_ORIGIN').replace(/\/$/, ''); }
@@ -126,5 +129,55 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
         }
       }
     }));
+  }
+
+  /**
+   * From 6pm Lagos time: runners who were active yesterday but not yet today get one email before their
+   * streak ends at midnight. `streakReminderSentOn` keeps it to one a day.
+   */
+  private async sendStreakReminders() {
+    const rows = await this.dataSource.query(
+      `WITH local AS (SELECT (now() AT TIME ZONE $1) AS at),
+       today AS (SELECT at::date AS d FROM local WHERE extract(hour FROM at) BETWEEN 18 AND 22),
+       days AS (
+         SELECT DISTINCT a."userId", ${STREAK_DAY_SQL} AS d
+         FROM "activities" a
+         WHERE a."startedAt" > now() - interval '400 days' AND a."verificationStatus"<>'REJECTED'
+           AND GREATEST(a."recordedDistanceMetres", a."validatedDistanceMetres", a."stepDistanceMetres") >= 100
+       ),
+       due AS (
+         SELECT p."userId" FROM "profiles" p JOIN "users" u ON u."id"=p."userId", today
+         WHERE u."emailVerified"=true AND p."emailActivityEnabled"=true
+           AND (p."streakReminderSentOn" IS NULL OR p."streakReminderSentOn" < today.d)
+           AND EXISTS (SELECT 1 FROM days WHERE days."userId"=p."userId" AND days.d = today.d - 1)
+           AND NOT EXISTS (SELECT 1 FROM days WHERE days."userId"=p."userId" AND days.d = today.d)
+         LIMIT 200
+       ),
+       -- Gaps and islands: days minus their rank is constant within an unbroken run of days.
+       islands AS (
+         SELECT days."userId", days.d, days.d - (ROW_NUMBER() OVER (PARTITION BY days."userId" ORDER BY days.d))::integer AS island
+         FROM days JOIN due ON due."userId"=days."userId"
+       ),
+       claimed AS (
+         UPDATE "profiles" p SET "streakReminderSentOn"=today.d FROM due, today
+         WHERE p."userId"=due."userId" RETURNING p."userId"
+       )
+       SELECT c."userId", u."email", u."displayName",
+              (SELECT COUNT(*)::integer FROM islands i WHERE i."userId"=c."userId" AND i.island =
+                 (SELECT i2.island FROM islands i2 WHERE i2."userId"=c."userId" ORDER BY i2.d DESC LIMIT 1)) AS "streak"
+       FROM claimed c JOIN "users" u ON u."id"=c."userId"`,
+      [STREAK_TIME_ZONE],
+    ) as Array<{ userId: string; email: string; displayName: string | null; streak: number }>;
+    for (const row of rows) {
+      try {
+        const origin = this.origin();
+        await this.mail.send(streakReminderEmail(
+          { address: row.email, name: row.displayName ?? undefined }, Math.max(1, row.streak),
+          `${origin}/run`, `${origin}/settings/profile#email-preferences`,
+        ));
+      } catch (error) {
+        this.logger.error(`Streak reminder failed for ${row.userId}`, error instanceof Error ? error.stack : String(error));
+      }
+    }
   }
 }

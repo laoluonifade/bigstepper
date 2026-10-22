@@ -1,10 +1,18 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { CloudinaryService } from '../profiles/cloudinary.service';
 import { DataSource } from 'typeorm';
+
+export interface SendExtras {
+  replyToId?: string;
+  activityId?: string;
+  audioUrl?: string;
+  audioSeconds?: number;
+}
 
 @Injectable()
 export class MessagesService {
   private readonly logger = new Logger(MessagesService.name);
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly dataSource: DataSource, private readonly cloudinary: CloudinaryService) {}
 
   private async notify(sql: string, params: unknown[]) {
     try { await this.dataSource.query(sql, params); }
@@ -23,10 +31,11 @@ export class MessagesService {
   async inbox(userId: string) {
     return this.dataSource.query(
       `WITH latest AS (
-         SELECT DISTINCT ON (peer) peer,"body","createdAt","senderId"
+         SELECT DISTINCT ON (peer) peer,"body","createdAt","senderId","kind"
          FROM (
            SELECT CASE WHEN "senderId"=$1 THEN "recipientId" ELSE "senderId" END peer,
-                  "body","createdAt","senderId","id"
+                  "body","createdAt","senderId","id",
+                  CASE WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
            FROM "direct_messages" WHERE "senderId"=$1 OR "recipientId"=$1
          ) m ORDER BY peer,"createdAt" DESC,"id" DESC
        )
@@ -34,7 +43,7 @@ export class MessagesService {
          SELECT "senderId",COUNT(*)::integer "count" FROM "direct_messages"
          WHERE "recipientId"=$1 AND "readAt" IS NULL GROUP BY "senderId"
        )
-       SELECT l."body",l."createdAt",l."senderId",p."username",p."displayName",p."avatarUrl",
+       SELECT l."body",l."kind",l."createdAt",l."senderId",p."username",p."displayName",p."avatarUrl",
               COALESCE(u."count",0) "unreadCount"
        FROM latest l JOIN "profiles" p ON p."userId"=l.peer
        LEFT JOIN unread u ON u."senderId"=l.peer
@@ -65,12 +74,17 @@ export class MessagesService {
     const runner = await this.recipient(username);
     if (runner.userId === userId) throw new BadRequestException('You cannot message yourself');
     const messages = await this.dataSource.query(
-      `SELECT m."id",m."senderId",m."recipientId",m."body",m."createdAt",m."editedAt",
+      `SELECT m."id",m."senderId",m."recipientId",m."body",m."createdAt",m."editedAt",m."audioUrl",m."audioSeconds",
               i."id" "invitationId",i."status" "invitationStatus",t."id" "tableId",t."code" "tableCode",
               t."title" "tableTitle",t."type" "tableType",t."status" "tableStatus",
               t."guaranteedPrizeKobo",t."entryFeeKobo",m."replyToId",reply."body" "replyToBody",
-              reply."senderId" "replyToSenderId"
+              reply."senderId" "replyToSenderId",
+              CASE WHEN a."id" IS NULL THEN NULL ELSE json_build_object(
+                'id', a."id", 'activityType', a."activityType", 'startedAt', a."startedAt", 'verificationStatus', a."verificationStatus",
+                'distanceMetres', CASE WHEN a."verificationStatus"='VERIFIED' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."recordedDistanceMetres" END,
+                'movingSeconds', a."movingSeconds", 'steps', a."validatedSteps") END "activity"
        FROM "direct_messages" m
+       LEFT JOIN "activities" a ON a."id"=m."activityId"
        LEFT JOIN "challenge_invitations" i ON i."id"=m."invitationId"
        LEFT JOIN "competition_tables" t ON t."id"=i."tableId"
        LEFT JOIN "direct_messages" reply ON reply."id"=m."replyToId"
@@ -90,9 +104,24 @@ export class MessagesService {
     return { runner, canMessage: true, messages: messages.reverse().map((message) => ({ ...message, reactions: byMessage.get(message.id) ?? [] })) };
   }
 
-  async send(userId: string, username: string, body: string, replyToId?: string) {
+  async uploadVoiceNote(userId: string, file: { buffer: Buffer; mimetype: string; size: number } | undefined) {
+    if (!file) throw new BadRequestException('Record a voice note');
+    if (!/^audio\/(webm|ogg|mp4|mpeg|aac|x-m4a|wav)\b/.test(file.mimetype)) throw new BadRequestException('That recording format isn’t supported');
+    return { url: await this.cloudinary.uploadVoiceNote(userId, file) };
+  }
+
+  async send(userId: string, username: string, body: string, extras: SendExtras = {}) {
+    const { replyToId, activityId, audioUrl, audioSeconds } = extras;
     const trimmed = body.trim();
-    if (!trimmed) throw new BadRequestException('Write a message');
+    if (!trimmed && !activityId && !audioUrl) throw new BadRequestException('Write a message');
+    if (audioUrl && !this.cloudinary.isOwnVoiceNote(userId, audioUrl)) throw new BadRequestException('Record the voice note again');
+    if (activityId) {
+      // Runners share their own activities; every activity is public, so the recipient may see it.
+      const owned = await this.dataSource.query(
+        `SELECT 1 FROM "activities" WHERE "id"=$1 AND "userId"=$2 AND "verificationStatus"<>'REJECTED'`, [activityId, userId],
+      ) as unknown[];
+      if (!owned.length) throw new BadRequestException('Choose one of your activities to share');
+    }
     const runner = await this.recipient(username);
     if (runner.userId === userId) throw new BadRequestException('You cannot message yourself');
     if (replyToId) {
@@ -103,8 +132,9 @@ export class MessagesService {
       if (!reply.length) throw new BadRequestException('Choose a message from this conversation to reply to');
     }
     const [message] = await this.dataSource.query(
-      `INSERT INTO "direct_messages" ("senderId","recipientId","body","replyToId") VALUES ($1,$2,$3,$4)
-       RETURNING "id","senderId","recipientId","body","replyToId","createdAt"`, [userId, runner.userId, trimmed, replyToId ?? null],
+      `INSERT INTO "direct_messages" ("senderId","recipientId","body","replyToId","activityId","audioUrl","audioSeconds") VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING "id","senderId","recipientId","body","replyToId","activityId","audioUrl","audioSeconds","createdAt"`,
+      [userId, runner.userId, trimmed, replyToId ?? null, activityId ?? null, audioUrl ?? null, audioUrl ? audioSeconds ?? null : null],
     );
     await this.notify(
       `INSERT INTO "notifications" ("userId","type","title","body","link")

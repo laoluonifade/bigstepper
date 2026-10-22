@@ -1,28 +1,12 @@
+import { StravaSyncBar } from '../pages/Strava';
 import { Link, Outlet, useLocation, type LinkProps } from '@tanstack/react-router';
 import { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { formatDistanceNumber, formatDuration } from '../lib/format';
 import { OPEN_PAYMENT_STATUSES, useSavedPayments } from '../lib/payments';
 import { useNotifications, useStaffAccess, useUnit, useUnreadMessages } from '../lib/queries';
-import { movingSeconds, RecorderProvider, useRecorder } from '../lib/recorder';
-import {
-  ActivityIcon,
-  ArrowRightIcon,
-  BellIcon,
-  FeedIcon,
-  HomeIcon,
-  LadderIcon,
-  LogoutIcon,
-  RunIcon,
-  SearchIcon,
-  SettingsIcon,
-  ShieldIcon,
-  JumpLogo,
-  TableIcon,
-  UserIcon,
-  UsersIcon,
-  WalletIcon,
-} from './icons';
+import { movingSeconds, RecorderProvider, START_ACTIVITY_EVENT, useRecorder } from '../lib/recorder';
+import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, RunIcon, SearchIcon, SettingsIcon, ShieldIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon } from './icons';
 import { cx, LiveDot, Redirect, useNow } from './ui';
 import { QuickPanelsProvider, useQuickPanels } from './QuickPanels';
 
@@ -211,6 +195,7 @@ function SignedInShell() {
         <div className={onConversation || onSearchScreen ? 'hidden md:block' : undefined}>
           <LiveRunBar hidden={onRunScreen} />
           <PendingPaymentsBar hidden={location.pathname === '/payments/return'} />
+          <StravaSyncBar hidden={onRunScreen} />
         </div>
         <div key={location.pathname} className={onConversation ? undefined : 'animate-rise'}>
           <Outlet />
@@ -222,12 +207,24 @@ function SignedInShell() {
         <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pt-1.5">
           <Tab to="/dashboard" label="Home" icon={<HomeIcon />} />
           <Tab to="/competitions" label="Compete" icon={<TableIcon />} />
-          <Link to="/run" className="-mt-5 flex flex-col items-center gap-1" aria-label="Run">
-            <span className="flex h-14 w-14 items-center justify-center rounded-md border-2 border-ink bg-track shadow-hard active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
-              <RunIcon size={22} />
-            </span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.08em]">Run</span>
-          </Link>
+          {location.pathname === '/run' && !['recording', 'paused', 'finishing'].includes(recorder.phase) ? (
+            // On the run page the big centre button is Start, and shows the GPS search once you've tapped it.
+            <button type="button" onClick={() => window.dispatchEvent(new Event(START_ACTIVITY_EVENT))} disabled={recorder.phase === 'locating'} className="-mt-5 flex flex-col items-center gap-1" aria-label={recorder.phase === 'locating' ? 'Finding GPS signal' : 'Start activity'} aria-busy={recorder.phase === 'locating'}>
+              <span className={cx('flex h-14 w-14 items-center justify-center rounded-md border-2 border-ink bg-track shadow-hard', recorder.phase === 'locating' ? 'translate-x-[3px] translate-y-[3px] shadow-none' : 'animate-pop active:translate-x-[3px] active:translate-y-[3px] active:shadow-none')}>
+                {recorder.phase === 'locating'
+                  ? <span className="h-6 w-6 animate-spin rounded-full border-[3px] border-ink border-t-transparent" />
+                  : <PlayIcon size={24} className="translate-x-[1px]" />}
+              </span>
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.08em]">{recorder.phase === 'locating' ? 'GPS…' : 'Start'}</span>
+            </button>
+          ) : (
+            <Link to="/run" className="-mt-5 flex flex-col items-center gap-1" aria-label="Run">
+              <span className="flex h-14 w-14 items-center justify-center rounded-md border-2 border-ink bg-track shadow-hard active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
+                <RunIcon size={22} />
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.08em]">Run</span>
+            </Link>
+          )}
           <Tab to="/feed" label="Rant" icon={<FeedIcon />} />
           <Tab to="/settings/profile" label="You" icon={<UserIcon />} />
         </div>

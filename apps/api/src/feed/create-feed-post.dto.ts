@@ -6,4 +6,8 @@ export class CreateFeedPostDto {
 
   @IsOptional() @IsUUID()
   activityId?: string;
+
+  /** A URL returned by POST /feed/images. */
+  @IsOptional() @IsString() @MaxLength(400)
+  imageUrl?: string;
 }

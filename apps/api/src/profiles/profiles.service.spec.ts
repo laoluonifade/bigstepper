@@ -18,26 +18,15 @@ describe('ProfilesService public profile', () => {
     query.mockReset();
   });
 
-  it('shows verified totals to a non-follower without exposing dated activities', async () => {
-    findOne.mockResolvedValue({ userId: 'runner', username: 'runner', activityVisibility: 'followers', weightKg: 72.5 });
-    query.mockResolvedValueOnce([{ followers: 1, following: 0, followedByMe: false, followsMe: false }]).mockResolvedValueOnce([totals]);
+  it('shows verified totals and recent activities to anyone, without private fields', async () => {
+    findOne.mockResolvedValue({ userId: 'runner', username: 'runner', weightKg: 72.5 });
+    query.mockResolvedValueOnce([{ followers: 0, following: 0, followedByMe: false, followsMe: false }]).mockResolvedValueOnce([totals]).mockResolvedValueOnce([{ activityType: 'run', metres: 3000 }]);
 
     const profile = await service.getPublic('runner', 'visitor');
 
     expect(profile.stats).toMatchObject({ totalMetres: 4200, runMetres: 3000, walkMetres: 1200 });
-    expect(profile.runsVisible).toBe(false);
+    expect(profile.runsVisible).toBe(true);
     expect(profile).not.toHaveProperty('weightKg');
-    expect(profile).not.toHaveProperty('recent');
-    expect(query).toHaveBeenCalledTimes(2);
-  });
-
-  it('still shows dated activities when the runner shares them publicly', async () => {
-    findOne.mockResolvedValue({ userId: 'runner', username: 'runner', activityVisibility: 'public' });
-    query.mockResolvedValueOnce([{ followers: 0, following: 0, followedByMe: false, followsMe: false }]).mockResolvedValueOnce([totals]).mockResolvedValueOnce([{ activityType: 'run', metres: 3000 }]);
-
-    const profile = await service.getPublic('runner');
-
-    expect(profile.stats).toMatchObject({ totalMetres: 4200 });
     expect(profile).toHaveProperty('recent', [{ activityType: 'run', metres: 3000 }]);
     expect(query).toHaveBeenCalledTimes(3);
   });

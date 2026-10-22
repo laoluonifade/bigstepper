@@ -82,6 +82,10 @@ export class CompetitionTable {
   @Column({ type: 'integer', default: 1 })
   minimumEntrants: number;
 
+  /** Private competitions are hidden from browsing; only the host and invited runners can join. */
+  @Column({ type: 'varchar', length: 10, default: 'public' })
+  visibility: 'public' | 'private';
+
   @Column()
   creatorId: string;
 

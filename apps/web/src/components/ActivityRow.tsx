@@ -42,6 +42,7 @@ export function ActivityRow({ activity, unit }: { activity: Activity; unit: Unit
         <p className="num mt-0.5 text-[12px] text-ink-2">
           <span className="font-bold capitalize text-ink">{activity.activityType === 'cycle' ? 'Ride' : activity.activityType}</span> · {formatTime(activity.startedAt)} · {formatDuration(activity.movingSeconds || activity.elapsedSeconds)}
           {pace && ` · ${pace}${activity.activityType === 'cycle' ? '' : ` /${unit}`}`}
+          {activity.source === 'strava' && <span className="font-bold text-[#FC5200]"> · Strava</span>}
         </p>
       </div>
       <VerificationTag status={activity.verificationStatus} />

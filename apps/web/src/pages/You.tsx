@@ -1,3 +1,4 @@
+import { StravaConnection } from './Strava';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
@@ -29,8 +30,9 @@ import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
 import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useStaffAccess, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
 import { savePayment } from '../lib/payments';
-import type { CheckoutResponse, CreatorProfile, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit, Visibility } from '../lib/types';
+import type { CheckoutResponse, CreatorProfile, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
 import { COUNTRIES } from '../lib/countries';
+import { CountryPicker, PhoneField } from '../components/CountryPicker';
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
@@ -43,11 +45,6 @@ export const YOU_NAV = [
   { to: '/notifications', label: 'Notifications' },
 ] as const;
 
-const VISIBILITY: Array<{ value: Visibility; title: string; body: string }> = [
-  { value: 'private', title: 'Private', body: 'Only you see your individual activities.' },
-  { value: 'followers', title: 'Followers', body: 'Followers see your individual activities.' },
-  { value: 'public', title: 'Public', body: 'Anyone can see your individual activities.' },
-];
 
 export function ProfileSettingsPage() {
   const user = useUser();
@@ -108,7 +105,6 @@ export function ProfileSettingsPage() {
   if (profile.isLoading) return <Loading />;
   if (profile.error || !profile.data) return <ErrorNotice error={profile.error} onRetry={() => void profile.refetch()} />;
 
-  const countryKnown = COUNTRIES.some(([code]) => code === merged.countryCode);
   const bioLength = (merged.bio ?? '').length;
 
   return (
@@ -137,13 +133,7 @@ export function ProfileSettingsPage() {
       >
         {activities.isLoading ? <Skeleton className="mt-5 h-20" /> : <ProfileStats stats={stats} unit={unit} />}
         <Link to="/activities" className="link mt-3 inline-block text-[13px]">View your activity and calendar →</Link>
-        <p className="mt-3 text-[12px] text-ink-3">
-          Your verified totals and run/walk split are public. {profile.data.activityVisibility === 'public'
-            ? 'Anyone can also see your recent activities.'
-            : profile.data.activityVisibility === 'followers'
-              ? 'Only followers can see your recent activities.'
-              : 'Only you can see your recent activities.'}
-        </p>
+        <StravaConnection />
       </ProfileHero>
 
       <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -217,50 +207,12 @@ export function ProfileSettingsPage() {
             <p className="text-[12px] text-ink-3">Account-security and payment emails are separate from these choices.</p>
           </fieldset>
 
-          <fieldset>
-            <legend className="label">Who can see your runs</legend>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {VISIBILITY.map((option) => {
-                const active = merged.activityVisibility === option.value;
-                return (
-                  <label
-                    key={option.value}
-                    className={cx(
-                      'cursor-pointer rounded-md border-[1.5px] p-3.5 transition-colors',
-                      active ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink-3',
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="visibility"
-                      className="sr-only"
-                      checked={active}
-                      onChange={() => setDraft((current) => ({ ...current, activityVisibility: option.value }))}
-                    />
-                    <span className="wide block text-[13px] font-extrabold uppercase">{option.title}</span>
-                    <span className={cx('mt-1 block text-[12px] leading-snug', active ? 'text-paper/70' : 'text-ink-2')}>{option.body}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
-
           <Field label="Country of residence">
-            {(props) => (
-              <select
-                {...props}
-                className="field"
-                value={merged.countryCode}
-                onChange={(event) => setDraft((current) => ({ ...current, countryCode: event.target.value }))}
-              >
-                {!countryKnown && <option value={merged.countryCode}>{merged.countryCode}</option>}
-                {COUNTRIES.map(([code, name]) => (
-                  <option key={code} value={code}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            )}
+            {(props) => <CountryPicker id={props.id} value={merged.countryCode} onChange={(countryCode) => setDraft((current) => ({ ...current, countryCode }))} />}
+          </Field>
+
+          <Field label="WhatsApp number" optional hint="Private. Only Jump uses it, to reach you about prizes and your account.">
+            {(props) => <PhoneField id={props.id} value={merged.whatsappNumber ?? ''} defaultCountry={merged.countryCode} onChange={(whatsappNumber) => setDraft((current) => (current.whatsappNumber ?? profile.data?.whatsappNumber ?? '') === whatsappNumber ? current : { ...current, whatsappNumber: whatsappNumber || null })} />}
           </Field>
 
           <ErrorNotice error={save.error} />

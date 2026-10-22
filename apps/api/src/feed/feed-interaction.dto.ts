@@ -1,8 +1,9 @@
 import { IsIn, IsString, MaxLength, MinLength } from 'class-validator';
+import { Reaction, REACTIONS } from './reactions';
 
 export class ReactToPostDto {
-  @IsIn(['LIKE', 'FIRE', 'CLAP', 'HEART'])
-  reaction: 'LIKE' | 'FIRE' | 'CLAP' | 'HEART';
+  @IsIn(REACTIONS)
+  reaction: Reaction;
 }
 
 export class WriteCommentDto {

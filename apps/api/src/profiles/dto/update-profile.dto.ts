@@ -18,10 +18,6 @@ export class UpdateProfileDto {
   preferredUnit?: 'km' | 'mi';
 
   @IsOptional()
-  @IsIn(['private', 'followers', 'public'])
-  activityVisibility?: 'private' | 'followers' | 'public';
-
-  @IsOptional()
   @Matches(/^[A-Z]{2}$/)
   countryCode?: string;
 
@@ -50,4 +46,9 @@ export class UpdateProfileDto {
 
   @IsOptional() @IsBoolean()
   emailDigestEnabled?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Matches(/^\+[1-9]\d{7,14}$/, { message: 'Enter your WhatsApp number with its country code' })
+  whatsappNumber?: string | null;
 }

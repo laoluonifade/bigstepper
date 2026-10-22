@@ -23,6 +23,8 @@ import { CreatorsModule } from './creators/creators.module';
 import { WalletsModule } from './wallets/wallets.module';
 import { MailModule } from './mail/mail.module';
 import { FeedModule } from './feed/feed.module';
+import { StravaModule } from './strava/strava.module';
+import { GeoModule } from './geo/geo.module';
 
 @Module({
   imports: [
@@ -58,6 +60,8 @@ import { FeedModule } from './feed/feed.module';
     WalletsModule,
     RunningModule,
     TablesModule,
+    StravaModule,
+    GeoModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

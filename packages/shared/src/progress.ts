@@ -92,16 +92,22 @@ export function summariseWeek(activities: Activity[], now = new Date()): WeekSum
   };
 }
 
+/** Shorter than this is a mis-tap, not a day's activity. Same rule as the API's streak reminder email. */
+export const STREAK_MIN_METRES = 100;
+
+/** Any walk, run or ride of at least 100 m that wasn't rejected keeps the streak going. */
+export function countsForStreak(activity: Activity) {
+  return activity.verificationStatus !== 'REJECTED' &&
+    Math.max(activity.recordedDistanceMetres, activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) >= STREAK_MIN_METRES;
+}
+
 /**
- * A day counts toward a streak when it has at least one run that hasn't been rejected.
- * The current streak survives until the end of today, so a runner who ran yesterday
- * still sees their streak alive this morning.
+ * The current streak survives until the end of today, so a runner who moved yesterday still sees
+ * their streak alive this morning (`atRisk` until they move again).
  */
 export function computeStreaks(activities: Activity[], now = new Date()) {
   const days = new Set(
-    activities
-      .filter((activity) => activity.verificationStatus !== 'REJECTED' && Math.max(activity.recordedDistanceMetres, creditedMetres(activity)) >= 500)
-      .map((activity) => startOfDay(new Date(activity.startedAt)).getTime()),
+    activities.filter(countsForStreak).map((activity) => startOfDay(new Date(activity.startedAt)).getTime()),
   );
   const sorted = [...days].sort((a, b) => a - b);
 
@@ -121,7 +127,8 @@ export function computeStreaks(activities: Activity[], now = new Date()) {
     current += 1;
     cursor = startOfDay(new Date(cursor - DAY / 2)).getTime();
   }
-  return { current, best, ranToday: days.has(today) };
+  const ranToday = days.has(today);
+  return { current, best, ranToday, atRisk: current > 0 && !ranToday };
 }
 
 export interface Milestone {

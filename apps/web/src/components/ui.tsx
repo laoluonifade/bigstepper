@@ -1,10 +1,11 @@
 import { Link, useNavigate, type LinkProps, type NavigateOptions } from '@tanstack/react-router';
 import { ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { isApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 import { VERIFICATION_LABEL } from '../lib/copy';
 import { initials } from '../lib/format';
 import type { VerificationStatus } from '../lib/types';
-import { AlertIcon, ArrowLeftIcon, CheckIcon, CopyIcon, InfoIcon, OfflineIcon } from './icons';
+import { AlertIcon, ArrowLeftIcon, CheckIcon, CopyIcon, InfoIcon } from './icons';
 
 /**
  * Navigates once when mounted. TanStack's `<Navigate>` re-navigates whenever its props object changes,
@@ -176,30 +177,25 @@ export function Notice({
   );
 }
 
-export function ErrorNotice({ error, onRetry, className }: { error: unknown; onRetry?: () => void; className?: string }) {
-  if (!error) return null;
-  const message = error instanceof Error ? error.message : 'Something went wrong.';
-  const offline = isApiError(error, 0);
-  const disabled = isApiError(error, 503);
-  return (
-    <Notice
-      tone={disabled ? 'warn' : 'bad'}
-      className={className}
-      title={offline ? 'You’re offline' : disabled ? 'Not available right now' : undefined}
-      action={
-        onRetry && !disabled ? (
-          <button type="button" className="btn-quiet btn-sm" onClick={onRetry}>
-            Try again
-          </button>
-        ) : undefined
-      }
-    >
-      <span className="inline-flex items-center gap-2">
-        {offline && <OfflineIcon size={16} />}
-        {message}
-      </span>
-    </Notice>
-  );
+/**
+ * Errors show as a toast rather than inline. Kept as a component so every caller just passes its error;
+ * each new error object raises one toast (with "Try again" when a retry is offered).
+ */
+export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () => void; className?: string }) {
+  const retry = useRef(onRetry);
+  retry.current = onRetry;
+  useEffect(() => {
+    if (!error) return;
+    const offline = isApiError(error, 0);
+    const disabled = isApiError(error, 503);
+    toast({
+      tone: disabled ? 'warn' : 'bad',
+      title: offline ? 'You’re offline' : disabled ? 'Not available right now' : undefined,
+      message: error instanceof Error ? error.message : 'Something went wrong.',
+      action: retry.current && !disabled ? { label: 'Retry', run: () => retry.current?.() } : undefined,
+    });
+  }, [error]);
+  return null;
 }
 
 export function Loading({ label = 'Loading' }: { label?: string }) {
@@ -422,14 +418,17 @@ export function Segmented<T extends string>({
   options,
   onChange,
   label,
+  size = 'md',
 }: {
   value: T;
   options: Array<{ value: T; label: ReactNode }>;
   onChange: (value: T) => void;
   label: string;
+  size?: 'sm' | 'md';
 }) {
+  // Never wider than its container: on a narrow phone it scrolls sideways instead of spilling out.
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded border-[1.5px] border-ink bg-card p-0.5">
+    <div role="radiogroup" aria-label={label} className="no-scrollbar inline-flex max-w-full overflow-x-auto rounded-md border-[1.5px] border-ink bg-card p-[3px] shadow-hard-sm">
       {options.map((option) => {
         const active = option.value === value;
         return (
@@ -440,7 +439,8 @@ export function Segmented<T extends string>({
             aria-checked={active}
             onClick={() => onChange(option.value)}
             className={cx(
-              'wide min-h-9 rounded-sm px-4 text-[12px] font-bold uppercase tracking-[0.06em] transition-colors',
+              'wide shrink-0 whitespace-nowrap rounded-[4px] font-extrabold uppercase tracking-[0.06em] transition-colors',
+              size === 'sm' ? 'min-h-7 px-3 text-[10.5px]' : 'min-h-8 px-3.5 text-[11px] sm:px-4 sm:text-[11.5px]',
               active ? 'bg-ink text-paper' : 'text-ink-2 hover:text-ink',
             )}
           >

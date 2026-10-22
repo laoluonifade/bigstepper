@@ -36,6 +36,9 @@ export type RecorderPhase =
 
 export type Connection = 'online' | 'offline';
 
+/** Fired by the bottom nav's Start button on the run page; the run screen opens its start flow. */
+export const START_ACTIVITY_EVENT = 'jump:start-activity';
+
 interface RecorderState {
   phase: RecorderPhase;
   session: RunSession | null;
@@ -50,9 +53,14 @@ interface RecorderState {
   connection: Connection;
   accuracy: number | null;
   lastFixAt: number | null;
+  /** Usable fixes so far, [lat, lng], for drawing the route live. */
+  route: Array<[number, number]>;
+  /** Latest fix, for the "you are here" dot. */
+  position: { latitude: number; longitude: number; accuracy: number | null } | null;
   gpsError: string | null;
   error: string | null;
-  start: (activityType?: 'walk' | 'run' | 'cycle') => Promise<void>;
+  /** `fix`: a recent position the page already has (the map's), so starting doesn't wait for a new one. */
+  start: (activityType?: 'walk' | 'run' | 'cycle', fix?: GeolocationPosition | null) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   finish: () => Promise<Activity | null>;
@@ -77,6 +85,8 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
   const [connection, setConnection] = useState<Connection>('online');
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [lastFixAt, setLastFixAt] = useState<number | null>(null);
+  const [route, setRoute] = useState<Array<[number, number]>>([]);
+  const [position, setPosition] = useState<RecorderState['position']>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
@@ -85,6 +95,10 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
   const activityTypeRef = useRef<'walk' | 'run' | 'cycle'>('run');
   const phaseRef = useRef<RecorderPhase>('restoring');
   const watchRef = useRef<number | null>(null);
+  /** Backup watch without high accuracy, for when GPS is slow to lock (or the device has no GPS chip). */
+  const coarseWatchRef = useRef<number | null>(null);
+  const coarseTimerRef = useRef<number | null>(null);
+  const preciseFixRef = useRef(false);
   /** Fixes recorded on this device for the current run, measured with the server's rule. */
   const fixesRef = useRef<TrackPoint[]>([]);
   const lastFixTimeRef = useRef(0);
@@ -147,12 +161,20 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
     return job;
   }, [refreshPending]);
 
+  const stopCoarseWatch = useCallback(() => {
+    if (coarseTimerRef.current !== null) window.clearTimeout(coarseTimerRef.current);
+    coarseTimerRef.current = null;
+    if (coarseWatchRef.current !== null) navigator.geolocation.clearWatch(coarseWatchRef.current);
+    coarseWatchRef.current = null;
+  }, []);
+
   const stopWatch = useCallback(() => {
     if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current);
     watchRef.current = null;
+    stopCoarseWatch();
     pedometerRef.current?.stop();
     pedometerRef.current = null;
-  }, []);
+  }, [stopCoarseWatch]);
 
   /** Record the latest step total now, so steps taken since the last GPS fix aren't lost on pause/finish. */
   const checkpointSteps = useCallback(async () => {
@@ -170,11 +192,13 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       setAccuracy(acc);
       setLastFixAt(position.timestamp);
       setGpsError(null);
+      setPosition({ latitude, longitude, accuracy: acc });
 
       if (position.timestamp <= lastFixTimeRef.current) return;
       lastFixTimeRef.current = position.timestamp;
       // Same rule the server verifies with (trailing-only, as the future isn't known yet).
       fixesRef.current.push({ latitude, longitude, accuracy: acc, recordedAt: new Date(position.timestamp) });
+      if (acc <= MAX_USABLE_ACCURACY_METRES) setRoute((current) => [...current, [latitude, longitude]]);
       setLocalMetres(measureTrack(fixesRef.current, { trailing: true, activityType: activityTypeRef.current }).distanceMetres);
       if (acc > MAX_USABLE_ACCURACY_METRES) setGpsError(`Weak GPS (±${Math.round(acc)} m). Head outdoors with open sky. Weak fixes don’t count.`);
 
@@ -200,12 +224,30 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       });
     }
     if (watchRef.current !== null || !('geolocation' in navigator)) return;
+    preciseFixRef.current = false;
+    // No timeout: a slow first lock just means waiting, not an error. Accurate fixes retire the backup watch.
     watchRef.current = navigator.geolocation.watchPosition(
-      (position) => void recordFix(position),
-      (geoError) => setGpsError(describeGeoError(geoError)),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 },
+      (position) => {
+        if (position.coords.accuracy <= MAX_USABLE_ACCURACY_METRES) {
+          preciseFixRef.current = true;
+          stopCoarseWatch();
+        }
+        void recordFix(position);
+      },
+      (geoError) => setGpsError(geoError.code === 1 ? describeGeoError(geoError) : 'Waiting for GPS to lock on. Keep Jump open with a clear view of the sky.'),
+      { enableHighAccuracy: true, maximumAge: 1_000 },
     );
-  }, [recordFix]);
+    // If high-accuracy GPS hasn't answered in 12 s, also listen to network location so the map moves.
+    coarseTimerRef.current = window.setTimeout(() => {
+      coarseTimerRef.current = null;
+      if (preciseFixRef.current || coarseWatchRef.current !== null) return;
+      coarseWatchRef.current = navigator.geolocation.watchPosition(
+        (position) => void recordFix(position),
+        () => undefined,
+        { enableHighAccuracy: false, maximumAge: 5_000 },
+      );
+    }, 12_000);
+  }, [recordFix, stopCoarseWatch]);
 
   const adopt = useCallback((run: RunSession) => {
     runIdRef.current = run.id;
@@ -233,6 +275,8 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
     setPendingCount(0);
     setAccuracy(null);
     setLastFixAt(null);
+    setRoute([]);
+    setPosition(null);
   }, [stopWatch]);
 
   // Restore a run that was in progress before a refresh or crash.
@@ -315,20 +359,28 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
 
   useEffect(() => stopWatch, [stopWatch]);
 
-  const start = useCallback(async (activityType: 'walk' | 'run' | 'cycle' = 'run') => {
+  const start = useCallback(async (activityType: 'walk' | 'run' | 'cycle' = 'run', fix: GeolocationPosition | null = null) => {
     // Must be the first thing a tap does: iOS only shows the motion prompt straight from the gesture.
     const motion = activityType === 'cycle' ? Promise.resolve(false) : requestMotionPermission();
     setError(null);
     setGpsError(null);
     setPhase('locating');
-    let first: GeolocationPosition;
-    try {
-      // Ask for location before creating a server run, so we never start one we can't record.
-      first = await getCurrentPosition();
-    } catch (geoError) {
-      setGpsError(describeGeoError(geoError));
-      setPhase('idle');
-      return;
+    // Starting needs location permission, not a precise fix: weak fixes are filtered out when measuring,
+    // and waiting for a sharp one indoors could take forever. Use what the map already has, else a quick
+    // coarse check. Only a refusal (or no geolocation at all) stops the start.
+    let first: GeolocationPosition | null = fix && Date.now() - fix.timestamp < 30_000 ? fix : null;
+    if (!first) {
+      try {
+        first = await getCurrentPosition(8_000, { enableHighAccuracy: false, maximumAge: 60_000 });
+      } catch (geoError) {
+        const code = (geoError as GeolocationPositionError | undefined)?.code;
+        if (code === 1 || (geoError instanceof Error && geoError.message === 'unsupported')) {
+          setGpsError(describeGeoError(geoError));
+          setPhase('idle');
+          return;
+        }
+        first = null; // No fix yet: start anyway, the watch picks up GPS when it arrives.
+      }
     }
     try {
       const run = await post<RunSession>('/runs/start', { activityType });
@@ -342,7 +394,8 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       setLocalMetres(0);
       phaseRef.current = 'recording';
       setPhase('recording');
-      await recordFix(first);
+      if (first) await recordFix(first);
+      else setGpsError('Waiting for GPS to lock on. Keep Jump open with a clear view of the sky.');
       startWatch();
     } catch (err) {
       if (isApiError(err, 409)) setPhase('blocked');
@@ -472,6 +525,8 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       connection,
       accuracy,
       lastFixAt,
+      route,
+      position,
       gpsError,
       error,
       start,
@@ -482,7 +537,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       retryRestore: () => setRestoreAttempt((n) => n + 1),
       clearError: () => setError(null),
     }),
-    [accuracy, connection, discard, error, finish, gpsError, stepMetres, steps, lastFixAt, localMetres, pause, pendingCount, phase, resume, session, start, uploadedMetres],
+    [accuracy, connection, discard, error, finish, gpsError, stepMetres, steps, lastFixAt, localMetres, pause, pendingCount, phase, position, resume, route, session, start, uploadedMetres],
   );
 
   return <RecorderContext.Provider value={value}>{children}</RecorderContext.Provider>;

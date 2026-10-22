@@ -68,10 +68,16 @@ export default {
         draw: { from: { strokeDashoffset: '1' }, to: { strokeDashoffset: '0' } },
         'arrow-in': { from: { transform: 'translate(-22px, 12px)', opacity: '0' }, to: { transform: 'translate(0, 0)', opacity: '1' } },
         'arrow-nudge': { '0%, 100%': { transform: 'translate(0, 0)' }, '50%': { transform: 'translate(8px, -6px)' } },
+        flicker: {
+          '0%, 100%': { transform: 'scale(1) rotate(0deg)' },
+          '30%': { transform: 'scale(1.06, 0.97) rotate(-2deg)' },
+          '60%': { transform: 'scale(0.97, 1.05) rotate(2deg)' },
+        },
         hop: { '0%, 100%': { transform: 'translate(0, 0)' }, '45%': { transform: 'translate(-3px, -14px)' }, '60%': { transform: 'translate(-3px, -14px)' } },
       },
       animation: {
         blink: 'blink 1.4s ease-in-out infinite',
+        flicker: 'flicker 1.8s ease-in-out infinite',
         rise: 'rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         'rise-lg': 'rise-lg 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         fade: 'fade 400ms ease-out both',

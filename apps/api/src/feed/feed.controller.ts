@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { AVATAR_MAX_BYTES } from '../profiles/profiles.service';
 import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -20,6 +22,14 @@ export class FeedController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   create(@CurrentUser() user: AuthenticatedUser, @Body() input: CreateFeedPostDto) {
     return this.feed.create(user.id, input);
+  }
+
+  /** Step one of a photo post: upload, then send the returned URL with the post. */
+  @Post('images')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: AVATAR_MAX_BYTES, files: 1 } }))
+  uploadImage(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file?: { buffer: Buffer; mimetype: string; size: number }) {
+    return this.feed.uploadImage(user.id, file);
   }
 
   @Get(':id')

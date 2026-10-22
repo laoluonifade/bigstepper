@@ -92,5 +92,11 @@ export function validateEnvironment(env: Environment) {
     CLOUDINARY_CLOUD_NAME: env.CLOUDINARY_CLOUD_NAME?.trim() || '',
     CLOUDINARY_API_KEY: env.CLOUDINARY_API_KEY?.trim() || '',
     CLOUDINARY_API_SECRET: env.CLOUDINARY_API_SECRET?.trim() || '',
+    // Strava sign-in and activity sync stay off until the client id and secret are set.
+    STRAVA_CLIENT_ID: env.STRAVA_CLIENT_ID?.trim() || '',
+    STRAVA_CLIENT_SECRET: env.STRAVA_CLIENT_SECRET?.trim() || '',
+    STRAVA_WEBHOOK_VERIFY_TOKEN: env.STRAVA_WEBHOOK_VERIFY_TOKEN?.trim() || '',
+    // Off until Strava raises the app's athlete limit: hides Strava sign-in and connect for everyone new.
+    STRAVA_PUBLIC: env.STRAVA_PUBLIC?.trim().toLowerCase() === 'true',
   };
 }

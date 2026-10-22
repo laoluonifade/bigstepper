@@ -1,22 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
 import { ChallengeMark } from '../components/competition';
 import { InstallPrompt } from '../components/InstallPrompt';
-import { RunIcon, ArrowRightIcon } from '../components/icons';
+import { RunIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, FlameIcon } from '../components/icons';
+import { EmojiPopover } from '../components/EmojiPopover';
 import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/league';
 import { MilestoneBadge } from '../components/Milestones';
 import { WeekChart } from '../components/WeekChart';
-import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Segmented, Skeleton, useNow } from '../components/ui';
+import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Segmented, Skeleton, Stat, useNow } from '../components/ui';
 import { api, patch } from '../lib/api';
 import { useUser } from '../lib/auth';
-import { distanceValue, formatDistance, formatDistanceNumber, ordinal, toMetres } from '../lib/format';
+import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, ordinal, toMetres } from '../lib/format';
 import { setFlag, storageKeys, useStored } from '../lib/local';
-import { ActivityKind, computeMilestones, computeStreaks, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
+import { ActivityKind, computeMilestones, computeStreaks, countsForStreak, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
 import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useStandings, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
-import type { Profile, Unit } from '../lib/types';
+import type { Activity, Profile, Unit } from '../lib/types';
 import { getDevVerifyToken, useResendVerification } from './auth';
 
 function greeting(hour: number) {
@@ -39,7 +40,8 @@ export function DashboardPage() {
   const list = useMemo(() => ofKind(all, kind), [all, kind]);
   const footActivities = useMemo(() => list.filter((activity) => activity.activityType !== 'cycle'), [list]);
   const week = useMemo(() => summariseWeek(footActivities, new Date(now)), [footActivities, now]);
-  const streak = useMemo(() => computeStreaks(footActivities, new Date(now)), [footActivities, now]);
+  // Any walk, run or ride keeps the streak, whatever the filter above shows.
+  const streak = useMemo(() => computeStreaks(all, new Date(now)), [all, now]);
   const milestones = useMemo(() => computeMilestones(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
   const next = nextMilestone(milestones);
   const earned = milestones.filter((m) => m.earned).length;
@@ -71,24 +73,34 @@ export function DashboardPage() {
       </div>
 
       <div className="stagger grid gap-4 lg:grid-cols-3">
-        <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} loading={activities.isLoading || profile.isLoading} />
+        <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} activities={footActivities} now={now} loading={activities.isLoading || profile.isLoading} />
 
         <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
           <section className="panel-strong p-5" aria-labelledby="streak-title">
             <p id="streak-title" className="eyebrow">
               Streak
             </p>
-            <p className="mt-2 flex items-baseline gap-2">
-              <span className="score text-[56px]">{activities.isLoading ? '–' : <CountUp value={streak.current} />}</span>
-              <span className="text-[14px] font-semibold text-ink-2">{streak.current === 1 ? 'day' : 'days'}</span>
-            </p>
-            <StreakDots activities={footActivities} now={now} />
+            <div className="mt-2 flex items-center gap-3">
+              <FlameIcon
+                size={44}
+                className={cx(
+                  'shrink-0 transition-colors',
+                  streak.ranToday ? 'animate-flicker text-track drop-shadow-[0_2px_6px_rgba(255,77,18,0.45)]' : streak.atRisk ? 'text-track/35' : 'text-ink/15',
+                )}
+                aria-label={streak.ranToday ? 'Streak lit today' : streak.atRisk ? 'Streak at risk' : 'No streak'}
+              />
+              <p className="flex items-baseline gap-2">
+                <span className="score text-[56px]">{activities.isLoading ? '–' : <CountUp value={streak.current} />}</span>
+                <span className="text-[14px] font-semibold text-ink-2">{streak.current === 1 ? 'day' : 'days'}</span>
+              </p>
+            </div>
+            <StreakDots activities={all} now={now} />
             <p className="mt-3 text-[13px] text-ink-2">
               {streak.ranToday
-                ? 'Today’s done. Come back tomorrow to keep it going.'
-                : streak.current > 0
-                  ? `Run today to make it ${streak.current + 1}.`
-                  : 'Run today to start a streak.'}
+                ? 'Fire’s lit for today. Move again tomorrow to keep it burning.'
+                : streak.atRisk
+                  ? `Move today or your ${streak.current}-day streak goes out at midnight.`
+                  : 'Walk, run or ride today to light your streak.'}
               {streak.best > streak.current && ` Best: ${streak.best}.`}
             </p>
           </section>
@@ -256,14 +268,19 @@ function WeekPanel({
   unit,
   week,
   kind,
+  activities,
+  now,
   loading,
 }: {
   userId: string;
   unit: Unit;
   week: ReturnType<typeof summariseWeek>;
   kind: ActivityKind;
+  activities: Activity[];
+  now: number;
   loading: boolean;
 }) {
+  const [period, setPeriod] = useStored<Period>(`jump_dashboard_period:${userId}`, 'week');
   // No goal until the runner picks one — never show an invented target. It covers walks and runs together.
   const [savedGoal, setGoal] = useWeeklyGoal(userId);
   const goal = kind === 'all' ? savedGoal : null;
@@ -272,12 +289,20 @@ function WeekPanel({
   const reached = goal !== null && week.verifiedMetres >= goal;
   const remaining = goal === null ? 0 : Math.max(0, goal - week.verifiedMetres);
 
+  if (period !== 'week') {
+    return (
+      <section className="panel-strong p-5 lg:col-span-2" aria-labelledby="week-title">
+        <PeriodTotals id="week-title" period={period} onPeriod={setPeriod} activities={activities} kind={kind} unit={unit} now={now} loading={loading} />
+      </section>
+    );
+  }
+
   return (
     <section className="panel-strong p-5 lg:col-span-2" aria-labelledby="week-title">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p id="week-title" className="eyebrow">
-            This week · {kind === 'run' ? 'runs' : kind === 'walk' ? 'walks' : 'verified'}
+          <p id="week-title" className="eyebrow flex items-center gap-1">
+            <PeriodPicker period={period} onChange={setPeriod} now={now} /> · {kind === 'run' ? 'runs' : kind === 'walk' ? 'walks' : 'verified'}
           </p>
           <p className="mt-2 flex items-baseline gap-2">
             <span className="score text-[64px] sm:text-[76px]">{loading ? '–' : <CountUp value={week.verifiedMetres} format={(m) => formatDistanceNumber(m, unit)} />}</span>
@@ -315,7 +340,7 @@ function WeekPanel({
                   setGoal(metres);
                   setEditing(false);
                 }}
-                className={cx('btn btn-sm border-[1.5px] border-ink', active ? 'bg-ink text-paper' : 'bg-card')}
+                className={cx('wide h-9 rounded-md border-[1.5px] border-ink px-4 text-[12px] font-extrabold uppercase transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none', active ? 'bg-ink text-paper' : 'bg-card shadow-hard-sm hover:bg-track-wash')}
               >
                 {option} {unit}
               </button>
@@ -345,17 +370,65 @@ function WeekPanel({
   );
 }
 
+type Period = 'week' | 'month' | 'all';
+
+/** Verified totals for this month or all time: distance, count, time moving, longest and average pace. */
+/** The panel's eyebrow doubles as the period menu: "This week ▾". */
+function PeriodPicker({ period, onChange, now }: { period: Period; onChange: (period: Period) => void; now: number }) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement | null>(null);
+  const labels: Record<Period, string> = { week: 'This week', month: new Date(now).toLocaleDateString('en-GB', { month: 'long' }), all: 'All time' };
+  return <>
+    <button ref={anchor} type="button" className="eyebrow inline-flex items-center gap-1 rounded-full text-ink underline decoration-ink/30 decoration-2 underline-offset-4 hover:decoration-ink" onClick={() => setOpen((value) => !value)} aria-haspopup="menu" aria-expanded={open}>
+      {labels[period]}<ChevronDownIcon size={13} className={cx('transition-transform', open && 'rotate-180')} />
+    </button>
+    {open && <EmojiPopover anchor={anchor} label="Choose a period" width={180} height={140} onClose={() => setOpen(false)}>
+      <div role="menu">
+        {(['week', 'month', 'all'] as const).map((value) => <button key={value} type="button" role="menuitemradio" aria-checked={period === value} className={cx('flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[14px] font-semibold normal-case tracking-normal', period === value ? 'bg-ink/[0.06]' : 'hover:bg-ink/[0.04]')} onClick={() => { onChange(value); setOpen(false); }}>
+          {value === 'month' ? `This month` : labels[value]}{period === value && <CheckIcon size={15} className="text-track" />}
+        </button>)}
+      </div>
+    </EmojiPopover>}
+  </>;
+}
+
+function PeriodTotals({ id, period, onPeriod, activities, kind, unit, now, loading }: { id: string; period: Exclude<Period, 'week'>; onPeriod: (period: Period) => void; activities: Activity[]; kind: ActivityKind; unit: Unit; now: number; loading: boolean }) {
+  const totals = useMemo(() => {
+    const today = new Date(now);
+    const from = period === 'month' ? new Date(today.getFullYear(), today.getMonth(), 1).getTime() : 0;
+    const counted = activities.filter((activity) => isVerified(activity) && new Date(activity.startedAt).getTime() >= from);
+    const metres = counted.reduce((sum, activity) => sum + creditedMetres(activity), 0);
+    const seconds = counted.reduce((sum, activity) => sum + (activity.movingSeconds || activity.elapsedSeconds), 0);
+    const longest = counted.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0);
+    const first = counted.reduce<string | null>((earliest, activity) => (!earliest || activity.startedAt < earliest ? activity.startedAt : earliest), null);
+    return { metres, seconds, longest, count: counted.length, first };
+  }, [activities, period, now]);
+  const noun = kind === 'walk' ? 'walks' : kind === 'run' ? 'runs' : 'activities';
+  const pace = formatPace(totals.metres, totals.seconds, unit);
+
+  return <>
+    <p id={id} className="eyebrow flex items-center gap-1"><PeriodPicker period={period} onChange={onPeriod} now={now} /> · {kind === 'all' ? 'verified' : noun}</p>
+    <p className="mt-2 flex items-baseline gap-2">
+      <span className="score text-[64px] sm:text-[76px]">{loading ? '–' : <CountUp value={totals.metres} format={(m) => formatDistanceNumber(m, unit)} />}</span>
+      <span className="text-[15px] font-semibold text-ink-2">{unit}</span>
+    </p>
+    {period === 'all' && totals.first && <p className="text-[13px] text-ink-2">Since {new Date(totals.first).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
+    <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 sm:grid-cols-4">
+      <Stat label={noun.charAt(0).toUpperCase() + noun.slice(1)} value={totals.count.toLocaleString('en-GB')} />
+      <Stat label="Time moving" value={formatDuration(totals.seconds)} />
+      <Stat label="Longest" value={formatDistanceNumber(totals.longest, unit)} unit={unit} />
+      <Stat label={`Avg pace /${unit}`} value={pace ?? '–'} />
+    </div>
+  </>;
+}
+
 function StreakDots({ activities, now }: { activities: ReturnType<typeof useActivities>['data'] & object; now: number }) {
   const days = useMemo(() => {
-    const ran = new Set(
-      activities
-        .filter((a) => a.verificationStatus !== 'REJECTED' && a.recordedDistanceMetres >= 500)
-        .map((a) => new Date(a.startedAt).toDateString()),
-    );
+    const moved = new Set(activities.filter(countsForStreak).map((a) => new Date(a.startedAt).toDateString()));
     return Array.from({ length: 7 }, (_, i) => {
       const date = new Date(now);
       date.setDate(date.getDate() - (6 - i));
-      return { ran: ran.has(date.toDateString()), today: i === 6, label: date.toLocaleDateString('en-GB', { weekday: 'narrow' }) };
+      return { moved: moved.has(date.toDateString()), today: i === 6, label: date.toLocaleDateString('en-GB', { weekday: 'narrow' }) };
     });
   }, [activities, now]);
   return (
@@ -364,11 +437,13 @@ function StreakDots({ activities, now }: { activities: ReturnType<typeof useActi
         <div key={index} className="flex flex-col items-center gap-1">
           <span
             className={cx(
-              'h-6 w-6 rounded-sm',
-              day.ran ? 'bg-track' : day.today ? 'border-[1.5px] border-dashed border-ink' : 'bg-ink/10',
+              'flex h-7 w-7 items-center justify-center rounded-md',
+              day.moved ? 'bg-track text-paper' : day.today ? 'border-[1.5px] border-dashed border-ink text-ink/25' : 'bg-ink/[0.06] text-ink/20',
             )}
-            title={day.ran ? 'Ran' : 'Rest'}
-          />
+            title={day.moved ? 'Moved' : day.today ? 'Not yet today' : 'Rest'}
+          >
+            <FlameIcon size={14} />
+          </span>
           <span className={cx('text-[10px] font-bold', day.today ? 'text-ink' : 'text-ink-3')}>{day.label}</span>
         </div>
       ))}

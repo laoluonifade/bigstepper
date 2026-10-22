@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useMemo, useState } from 'react';
 import { ActivityRow, fromSteps, shownMetres } from '../components/ActivityRow';
 import { ActivityCalendar } from '../components/ActivityCalendar';
+import { SendActivityButton } from '../components/SendActivitySheet';
 import { ShareRun } from '../components/ShareRun';
-import { CheckIcon, RunIcon } from '../components/icons';
+import { CheckIcon, FeedIcon, RunIcon, SendIcon } from '../components/icons';
 import { CountUp, cx, EmptyState, ErrorNotice, Field, Loading, Meter, Notice, PageHeader, Segmented, Skeleton, Stat, VerificationTag } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { estimatedCalories } from '../lib/calories';
@@ -51,7 +52,7 @@ export function ActivitiesPage() {
         eyebrow="Activity"
         title="Your activities"
         actions={
-          <Link to="/run" className="btn-primary">
+          <Link to="/run" className="btn-primary btn-sm hidden sm:inline-flex">
             <RunIcon size={16} /> New activity
           </Link>
         }
@@ -61,7 +62,7 @@ export function ActivitiesPage() {
         <KindFilter value={kind} onChange={setKind} />
       </div>
 
-      <div key={kind} className="panel-strong mb-8 grid animate-rise grid-cols-2 gap-y-5 p-5 sm:grid-cols-4">
+      <div key={kind} className="panel-strong mb-6 grid animate-rise grid-cols-2 gap-x-4 gap-y-5 p-5 sm:grid-cols-4">
         <Stat label={kind === 'run' ? 'Run distance' : kind === 'walk' ? 'Walk distance' : 'Verified distance'} value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
         <Stat label={kind === 'run' ? 'Verified runs' : kind === 'walk' ? 'Verified walks' : 'Verified activities'} value={activities.isLoading ? '–' : stats.verifiedRuns} />
         <Stat label="Longest" value={activities.isLoading ? '–' : formatDistanceNumber(stats.longestMetres, unit)} unit={unit} />
@@ -70,18 +71,23 @@ export function ActivitiesPage() {
 
       <ActivityCalendar unit={unit} />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Segmented<Filter>
-          label="Filter activities"
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 'verified', label: 'Verified' },
-            { value: 'attention', label: `Needs attention${attention ? ` · ${attention}` : ''}` },
-          ]}
-        />
-        <p className="text-[12px] text-ink-3">Showing your latest {Math.min(list.length, 100)} activities</p>
+      <div className="mb-4">
+        <div className="flex items-end justify-between gap-3">
+          <h2 className="wide text-[16px] font-extrabold uppercase sm:text-[18px]">History</h2>
+          <p className="text-[12px] text-ink-3">Latest {Math.min(list.length, 100)}</p>
+        </div>
+        <div className="mt-3">
+          <Segmented<Filter>
+            label="Filter activities"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'verified', label: 'Verified' },
+              { value: 'attention', label: attention ? `Review · ${attention}` : 'Review' },
+            ]}
+          />
+        </div>
       </div>
 
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} />
@@ -113,7 +119,7 @@ export function ActivitiesPage() {
       ) : (
         groups.map(([month, items]) => (
           <section key={month} className="mb-6">
-            <h2 className="eyebrow mb-1 border-b-2 border-ink pb-2">{month}</h2>
+            <h2 className="eyebrow mb-1 flex items-baseline justify-between border-b-2 border-ink pb-2">{month}<span className="num normal-case tracking-normal text-ink-3">{items.length} {items.length === 1 ? 'activity' : 'activities'}</span></h2>
             {items.map((activity) => (
               <ActivityRow key={activity.id} activity={activity} unit={unit} />
             ))}
@@ -124,6 +130,8 @@ export function ActivitiesPage() {
   );
 }
 
+
+const ACTIVITY_ACTION = 'inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-line bg-card text-[14px] font-semibold text-ink transition-colors hover:border-ink';
 
 export function ActivityDetailPage() {
   const { id } = useParams({ strict: false }) as { id: string };
@@ -159,16 +167,19 @@ export function ActivityDetailPage() {
     <div className="animate-rise">
       <PageHeader
         back={{ to: '/activities', label: 'Activities' }}
-        eyebrow={formatDateTime(a.startedAt)}
-        title={activityName(a.startedAt, a.activityType)}
-        actions={
-          <span className="flex items-center gap-2">
-            <VerificationTag status={a.verificationStatus} />
-            {verified && <Link to="/feed" search={{ activity: a.id }} className="btn-secondary btn-sm">Post to Rant</Link>}
-            <ShareRun activity={a} unit={unit} className="btn-sm" autoOpen={Boolean(search.fresh) && verified} />
-          </span>
-        }
+        eyebrow={<span className="flex flex-wrap items-center gap-2">{formatDateTime(a.startedAt)} <VerificationTag status={a.verificationStatus} /></span>}
+        title={<>{activityName(a.startedAt, a.activityType)}{a.source === 'strava' && <span className="ml-2 align-middle text-[12px] font-bold normal-case tracking-normal text-[#FC5200]">via Strava</span>}</>}
       />
+      {/* Equal, quiet actions that fit one row on a phone. */}
+      <div className="-mt-2 mb-6 grid grid-cols-3 gap-2 md:max-w-md">
+        {verified
+          ? <Link to="/feed" search={{ activity: a.id }} className={ACTIVITY_ACTION}><FeedIcon size={17} />Post</Link>
+          : <span className={cx(ACTIVITY_ACTION, 'pointer-events-none opacity-40')}><FeedIcon size={17} />Post</span>}
+        <ShareRun activity={a} unit={unit} className={ACTIVITY_ACTION} plain autoOpen={Boolean(search.fresh) && verified} />
+        {a.verificationStatus !== 'REJECTED'
+          ? <SendActivityButton activity={a} unit={unit} className={ACTIVITY_ACTION} plain />
+          : <span className={cx(ACTIVITY_ACTION, 'pointer-events-none opacity-40')}><SendIcon size={16} />Send</span>}
+      </div>
 
       {search.fresh && verified && (
         <div className="mb-6 flex animate-pop items-center gap-4 rounded-md border-2 border-ink bg-volt px-5 py-4 shadow-hard">
@@ -183,8 +194,6 @@ export function ActivityDetailPage() {
           </div>
         </div>
       )}
-
-      {verified && <ActivityCredits activityId={a.id} unit={unit} />}
 
       <section className="panel-strong overflow-hidden">
         <div className="grid gap-6 p-5 sm:grid-cols-[1.3fr_1fr] sm:p-6">
@@ -229,6 +238,8 @@ export function ActivityDetailPage() {
           </div>
         )}
       </section>
+
+      {verified && <div className="mt-6"><ActivityCredits activityId={a.id} unit={unit} /></div>}
 
       {pending && (
         <Notice tone="warn" className="mt-6" title="Checking your route">

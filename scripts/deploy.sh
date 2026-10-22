@@ -19,7 +19,7 @@ echo "→ Installing, building, migrating, restarting"
 ssh "$HOST" "chown -R deploy:deploy $APP_DIR && sudo -u deploy bash -c '
   set -euo pipefail
   cd $APP_DIR
-  pnpm install --frozen-lockfile
+  pnpm install --frozen-lockfile --filter @jump/api... --filter @jump/web...
   pnpm --filter @jump/api build
   VITE_API_URL=https://api.startajump.com/v1 pnpm --filter @jump/web build
   cd apps/api

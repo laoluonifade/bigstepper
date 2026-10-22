@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Modal } from '../components/Modal';
+import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, PlusIcon, ShareIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, LockIcon, PlusIcon, ShareIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -243,6 +245,8 @@ export function NewCompetitionPage() {
   const [winnerCount, setWinnerCount] = useState('1');
   const [shares, setShares] = useState(['100']);
   const [inviteClubMembers, setInviteClubMembers] = useState(Boolean(clubId));
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [invitesOpen, setInvitesOpen] = useState(false);
   const [emailText, setEmailText] = useState('');
   const [phoneText, setPhoneText] = useState('');
 
@@ -259,6 +263,11 @@ export function NewCompetitionPage() {
   const needsTarget = scoringMethod === 'FASTEST_FIXED_DISTANCE' || scoringMethod === 'FASTEST_TIME';
   const inviteEmails = emailText.split(/[\s,;]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
   const invitePhones = phoneText.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
+  const inviteSummary = [
+    club.data && inviteClubMembers ? `Everyone in ${club.data.name}` : '',
+    inviteEmails.length ? `${inviteEmails.length} ${inviteEmails.length === 1 ? 'email' : 'emails'}` : '',
+    invitePhones.length ? `${invitePhones.length} ${invitePhones.length === 1 ? 'phone' : 'phones'}` : '',
+  ].filter(Boolean).join(' · ');
   const isCharity = mode === 'sponsored' && fundingDestination === 'CHARITY';
   const prizeSplitBps = isCharity ? [10000] : shares.map((value) => Math.round(Number(value) * 100));
   const hasPrize = mode !== 'free';
@@ -278,7 +287,8 @@ export function NewCompetitionPage() {
     invites: !draftOnCreate && (inviteEmails.length > 50 || invitePhones.length > 50 || inviteEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || invitePhones.some((phone) => !/^\+[1-9]\d{7,14}$/.test(phone))) ? 'Use valid emails and international phone numbers, up to 50 of each.' : undefined,
     club: clubId && !club.data ? 'This club could not be loaded.' : undefined,
   };
-  const invalid = Object.values(errors).some(Boolean) || title.trim().length < 3;
+  // The first thing stopping you, shown under the pinned Create button.
+  const blocker = title.trim().length < 3 ? 'Give it a name of at least 3 characters.' : Object.values(errors).find(Boolean) ?? null;
 
   const create = useMutation({
     mutationFn: () =>
@@ -298,6 +308,7 @@ export function NewCompetitionPage() {
         ...(mode === 'paid' ? { entryFeeKobo } : {}),
         ...(club.data ? { communityId: club.data.id, ...(!draftOnCreate && inviteClubMembers ? { inviteClubMembers: true } : {}) } : {}),
         ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
+        ...(mode !== 'paid' && isPrivate ? { visibility: 'private' } : {}),
         ...(!draftOnCreate && invitePhones.length ? { invitePhones } : {}),
       }),
     async onSuccess(table) {
@@ -356,15 +367,24 @@ export function NewCompetitionPage() {
           className="space-y-6"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!invalid) create.mutate();
+            if (blocker) toast({ tone: 'warn', message: blocker });
+            else create.mutate();
           }}
         >
-          {challengeType === 'CYCLING' ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice> : <Segmented<'free' | 'sponsored' | 'paid'>
-            label="Competition type"
-            value={mode}
-            onChange={setMode}
-            options={[{ value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Free · funded prize' }, { value: 'paid', label: 'Paid · creator' }]}
-          />}
+          {challengeType === 'CYCLING' ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice> : <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Competition type">
+            {([
+              ['free', 'Free', 'No entry fee, no prize'],
+              ['sponsored', 'Funded', 'Free entry, cash prize'],
+              ['paid', 'Paid', 'Entry fee, creators only'],
+            ] as const).map(([value, title, body]) => <label key={value} className={cx(
+              'flex cursor-pointer flex-col rounded-md border-[1.5px] border-ink p-3 transition-all',
+              mode === value ? 'bg-ink text-paper shadow-none' : 'bg-card shadow-hard-sm hover:bg-track-wash',
+            )}>
+              <input type="radio" name="competition-mode" className="sr-only" checked={mode === value} onChange={() => setMode(value)} />
+              <span className="wide text-[13px] font-extrabold uppercase">{title}</span>
+              <span className={cx('mt-1 text-[11.5px] leading-snug', mode === value ? 'text-paper/70' : 'text-ink-2')}>{body}</span>
+            </label>)}
+          </div>}
           {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>This competition will be linked to your club. You can invite all {club.data.memberCount} members below.</Notice>}
           {mode === 'paid' && !creator.data && (
             <Notice tone="warn" title="Creator account required" action={<Link to="/creator" className="btn-quiet btn-sm">Become a creator</Link>}>
@@ -551,28 +571,49 @@ export function NewCompetitionPage() {
                 : fundingStyle === 'FIXED' ? 'Entry is free. The competition opens after your fixed contribution is confirmed.' : 'Joining opens immediately, with no creator funding required. Anyone can contribute any amount from ₦1 through Paystack before scoring closes and still compete for the cash prize.'}</p>
             </div>
           )}
-          {errors.paid && mode === 'paid' && <Notice tone="warn">{errors.paid}</Notice>}
-          {errors.funding && mode === 'sponsored' && <Notice tone="warn">{errors.funding}</Notice>}
-          {errors.prize && hasPrize && <Notice tone="warn">{errors.prize}</Notice>}
 
-          {!draftOnCreate ? <section className="panel space-y-4 p-5">
-            <SectionTitle>Invite runners</SectionTitle>
-            {club.data && <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Invite everyone in {club.data.name}</label>}
-            <Field label="Email addresses" optional hint="Separate multiple addresses with commas or new lines. Email invitations are sent when a mail provider is configured.">
-              {(props) => <textarea {...props} className="field min-h-20" value={emailText} onChange={(event) => setEmailText(event.target.value)} placeholder="runner@example.com" />}
-            </Field>
-            <Field label="Phone numbers" optional hint="Include country code, for example +2348012345678. Text links are prepared after creation.">
-              {(props) => <textarea {...props} className="field min-h-20" value={phoneText} onChange={(event) => setPhoneText(event.target.value)} placeholder="+2348012345678" />}
-            </Field>
-            {errors.invites && <Notice tone="warn">{errors.invites}</Notice>}
+          {mode !== 'paid' && <section className="panel space-y-3 p-5">
+            <SectionTitle>Who can join</SectionTitle>
+            <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Who can join">
+              {([
+                [false, 'Public', 'Listed on Compete. Any runner can join.'],
+                [true, 'Private', 'Hidden from Compete. Only runners you invite can join.'],
+              ] as const).map(([value, title, body]) => <label key={title} className={cx('cursor-pointer rounded-md border-[1.5px] p-3.5 transition-colors', isPrivate === value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink-3')}>
+                <input type="radio" name="competition-visibility" className="sr-only" checked={isPrivate === value} onChange={() => setIsPrivate(value)} />
+                <span className="wide block text-[13px] font-extrabold uppercase">{title}</span>
+                <span className={cx('mt-1 block text-[12px] leading-snug', isPrivate === value ? 'text-paper/70' : 'text-ink-2')}>{body}</span>
+              </label>)}
+            </div>
+            {isPrivate && <p className="text-[12px] text-ink-3">Invite by email below, or by username from the competition page after you create it.</p>}
+          </section>}
+
+          {!draftOnCreate ? <section className="panel flex items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <p className="wide text-[13px] font-extrabold uppercase">Invite runners</p>
+              <p className="truncate text-[12px] text-ink-2">{inviteSummary || 'Optional. Invite by email, phone or club.'}</p>
+            </div>
+            <button type="button" className="btn-secondary btn-sm shrink-0" onClick={() => setInvitesOpen(true)}>{inviteSummary ? 'Edit' : 'Add'}</button>
           </section> : <Notice tone="neutral" title="Invite after launch">Save this draft first. You can invite runners after funding or approval opens entry.</Notice>}
+          {invitesOpen && <Modal title="Invite runners" onClose={() => setInvitesOpen(false)}>
+            <div className="space-y-4">
+              {club.data && <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Invite everyone in {club.data.name}</label>}
+              <Field label="Email addresses" optional hint="Separate with commas or new lines.">
+                {(props) => <textarea {...props} autoFocus className="field min-h-20" value={emailText} onChange={(event) => setEmailText(event.target.value)} placeholder="runner@example.com" />}
+              </Field>
+              <Field label="Phone numbers" optional hint="With country code, e.g. +2348012345678. Text links are ready after you create it.">
+                {(props) => <textarea {...props} className="field min-h-20" value={phoneText} onChange={(event) => setPhoneText(event.target.value)} placeholder="+2348012345678" />}
+              </Field>
+              <button type="button" className="btn-primary w-full" onClick={() => { if (errors.invites) toast({ tone: 'warn', message: errors.invites }); else setInvitesOpen(false); }}>Done</button>
+            </div>
+          </Modal>}
 
           <ErrorNotice error={create.error} />
-          <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
-            <button className="btn-primary min-h-12 px-6" disabled={create.isPending || invalid}>
+          {/* Always in reach: pinned above the mobile tab bar, at the bottom of the window on desktop. */}
+          <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 -mx-4 bg-paper px-4 pb-2.5 pt-3 shadow-[0_-16px_16px_-4px_#F2EFE8] md:bottom-0 md:mx-0 md:px-0">
+            <button className="btn-primary min-h-12 w-full md:w-auto md:px-8" disabled={create.isPending || Boolean(blocker)}>
               {create.isPending ? 'Saving…' : mode === 'paid' ? 'Submit paid draft' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Save funding draft' : 'Create competition'}
             </button>
-            <p className="text-[12px] text-ink-3">{mode === 'paid' ? 'Paid competitions are reviewed by Jump staff.' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Saved to your account. Only you can fund it; entry opens after Paystack confirms payment.' : 'Free-entry competitions open immediately.'}</p>
+            <p className="mt-1.5 truncate text-center text-[12px] text-ink-3 md:text-left">{blocker ?? (mode === 'paid' ? 'Jump reviews paid competitions before they open.' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Entry opens once your payment is confirmed.' : 'Opens as soon as you create it.')}</p>
           </div>
         </form>
 
@@ -684,7 +725,8 @@ export function CompetitionDetailPage() {
         {/* Cover, title, host and the leaderboard */}
         <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           <ChallengeCover table={t} unit={unit} now={now} />
-          <h1 className="display mt-5 break-words text-[34px] leading-[0.95] sm:text-[44px]">{t.title}</h1>
+          {t.visibility === 'private' && <p className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-ink px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-paper"><LockIcon size={12} /> Private · invite only</p>}
+          <h1 className={cx('display break-words text-[34px] leading-[0.95] sm:text-[44px]', t.visibility === 'private' ? 'mt-3' : 'mt-5')}>{t.title}</h1>
           <div className="mt-4 flex items-center gap-3">
             <Avatar name={hostName} src={t.creator?.avatarUrl} size={40} className="rounded-full" />
             <p className="min-w-0 text-[14px] leading-snug">

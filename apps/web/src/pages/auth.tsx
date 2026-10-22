@@ -8,7 +8,9 @@ import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { setFlag, storageKeys } from '../lib/local';
 import type { AuthResponse } from '../lib/types';
-import { COUNTRIES } from '../lib/countries';
+import { CountryPicker, PhoneField } from '../components/CountryPicker';
+import { StravaButton } from './Strava';
+import { useStravaPublic } from '../lib/strava';
 
 const DEV_VERIFY_KEY = 'jump_dev_verify_token';
 
@@ -81,6 +83,16 @@ function AuthHeading({ eyebrow, title, children }: { eyebrow: string; title: Rea
   );
 }
 
+function OrDivider() {
+  return (
+    <div className="my-6 flex items-center gap-3 text-[13px] text-ink-3" aria-hidden="true">
+      <span className="h-px flex-1 bg-line" />
+      or
+      <span className="h-px flex-1 bg-line" />
+    </div>
+  );
+}
+
 const AUTH_PATHS = ['/login', '/register', '/forgot-password', '/reset-password'];
 
 function safeRedirect(target: string | undefined) {
@@ -91,6 +103,7 @@ function safeRedirect(target: string | undefined) {
 
 export function LoginPage() {
   const auth = useAuth();
+  const stravaPublic = useStravaPublic();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { redirect?: string };
   const login = useMutation({
@@ -129,6 +142,7 @@ export function LoginPage() {
           {login.isPending ? 'Logging in…' : 'Log in'}
         </button>
       </form>
+      {stravaPublic && <><OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} /></>}
       <div className="mt-6 flex flex-wrap justify-between gap-3 text-[14px]">
         <Link to="/forgot-password" className="link">
           Forgot password?
@@ -146,11 +160,14 @@ export function LoginPage() {
 
 export function RegisterPage() {
   const auth = useAuth();
+  const stravaPublic = useStravaPublic();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { redirect?: string };
   const [password, setPassword] = useState('');
+  const [country, setCountry] = useState('NG');
+  const [whatsapp, setWhatsapp] = useState('');
   const register = useMutation({
-    mutationFn: (values: { email: string; password: string; countryCode: string; displayName?: string }) => post<AuthResponse>('/auth/register', values),
+    mutationFn: (values: { email: string; password: string; countryCode: string; displayName?: string; whatsappNumber?: string }) => post<AuthResponse>('/auth/register', values),
     onSuccess(response) {
       flushSync(() => auth.authenticate(response));
       setFlag(storageKeys.verifyPrompt(response.user.id), true);
@@ -170,8 +187,9 @@ export function RegisterPage() {
     register.mutate({
       email: String(form.get('email')).trim(),
       password: String(form.get('password')),
-      countryCode: String(form.get('countryCode')),
+      countryCode: country,
       ...(displayName ? { displayName } : {}),
+      ...(whatsapp ? { whatsappNumber: whatsapp } : {}),
     });
   }
 
@@ -188,10 +206,10 @@ export function RegisterPage() {
           {(props) => <input {...props} className="field" name="email" type="email" autoComplete="email" required />}
         </Field>
         <Field label="Country of residence">
-          {(props) => <select {...props} className="field" name="countryCode" autoComplete="country" defaultValue="" required>
-            <option value="" disabled>Choose your country</option>
-            {COUNTRIES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-          </select>}
+          {(props) => <CountryPicker id={props.id} value={country} onChange={setCountry} required />}
+        </Field>
+        <Field label="WhatsApp number" optional hint="Private. Only Jump uses it, to reach you about prizes and your account.">
+          {(props) => <PhoneField id={props.id} value={whatsapp} onChange={setWhatsapp} defaultCountry={country} />}
         </Field>
         <Field label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}>
           {(props) => (
@@ -213,6 +231,7 @@ export function RegisterPage() {
           {register.isPending ? 'Creating account…' : 'Create account'}
         </button>
       </form>
+      {stravaPublic && <><OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} label="Sign up with Strava" /></>}
       <p className="mt-6 text-[14px] text-ink-2">
         Already running with us?{' '}
         <Link to="/login" className="link text-ink">

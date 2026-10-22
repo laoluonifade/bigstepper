@@ -22,9 +22,6 @@ export class Profile {
   @Column({ default: 'km' })
   preferredUnit: 'km' | 'mi';
 
-  @Column({ default: 'private' })
-  activityVisibility: 'private' | 'followers' | 'public';
-
   @Column({ length: 2, default: 'NG' })
   countryCode: string;
 
@@ -44,6 +41,14 @@ export class Profile {
 
   @Column({ default: true })
   emailActivityEnabled: boolean;
+
+  /** Private contact number in international format; never on public profiles. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  whatsappNumber: string | null;
+
+  /** Lagos date of the last "keep your streak alive" email, so it goes out at most once a day. */
+  @Column({ type: 'date', nullable: true })
+  streakReminderSentOn: string | null;
 
   @Column({ default: true })
   emailDigestEnabled: boolean;

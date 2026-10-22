@@ -10,6 +10,9 @@ export class CreateTableDto {
   @IsOptional() @IsString() @MaxLength(280)
   description?: string;
 
+  @IsOptional() @IsIn(['public', 'private'])
+  visibility?: 'public' | 'private';
+
   @IsOptional() @IsIn(CHALLENGE_TYPES)
   challengeType?: ChallengeType;
 

@@ -1,5 +1,4 @@
 export type Unit = 'km' | 'mi';
-export type Visibility = 'private' | 'followers' | 'public';
 
 export interface User {
   id: string;
@@ -21,7 +20,6 @@ export interface Profile {
   username: string;
   displayName: string;
   preferredUnit: Unit;
-  activityVisibility: Visibility;
   countryCode: string;
   avatarUrl: string | null;
   bio: string | null;
@@ -33,6 +31,8 @@ export interface Profile {
   emailDigestEnabled: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Private; only on your own profile. */
+  whatsappNumber?: string | null;
 }
 
 export interface PublicStats {
@@ -117,6 +117,8 @@ export interface Activity {
   gpsConfidence: number;
   verificationReasons: string[];
   algorithmVersion: string;
+  /** Recorded in Jump, or imported from Strava. */
+  source?: 'jump' | 'strava';
   startedAt: string;
   finishedAt: string;
   createdAt: string;
@@ -125,6 +127,8 @@ export interface Activity {
 export interface CompetitionTable {
   id: string;
   title: string;
+  /** Private competitions are hidden from browsing and invite-only. */
+  visibility?: 'public' | 'private';
   /** Host's short pitch, up to 280 characters. */
   description: string | null;
   code: string;
@@ -369,3 +373,11 @@ export interface VerificationReview {
   createdAt: string;
   activity: Activity;
 }
+
+export type StravaStatus =
+  | { connected: false }
+  | { connected: true; athleteName: string | null; avatarUrl: string | null; lastSyncedAt: string | null; syncing: boolean; canReadActivities: boolean };
+
+export type StravaLoginResponse =
+  | (AuthResponse & { status: 'signed-in' })
+  | { status: 'needs-signup'; signupToken: string; athlete: { name: string | null; avatarUrl: string | null } };

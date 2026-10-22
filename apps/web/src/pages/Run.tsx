@@ -1,12 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
-import { CheckIcon, CycleIcon, OfflineIcon, PauseIcon, RunIcon, JumpLogo, SignalIcon, StopIcon } from '../components/icons';
-import { CountUp, cx, ErrorNotice, KeyValue, LiveDot, Loading, Notice, PageHeader, Redirect, Segmented, useCountUp, useNow } from '../components/ui';
+import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CheckIcon, ChevronDownIcon, CloseIcon, CycleIcon, OfflineIcon, PauseIcon, PlayIcon, RunIcon, JumpLogo, SignalIcon, StopIcon, WalkIcon } from '../components/icons';
+import { Modal } from '../components/Modal';
+import { RunMap, type LivePosition } from '../components/LazyRunMap';
+import { usePlaceName } from '../lib/place';
+import { toast } from '../lib/toast';
+import { cx, ErrorNotice, KeyValue, Loading, Notice, PageHeader, Redirect, useCountUp, useNow } from '../components/ui';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
 import { keys, useActivities, useUnit } from '../lib/queries';
-import { movingSeconds, useRecorder } from '../lib/recorder';
+import { movingSeconds, START_ACTIVITY_EVENT, useRecorder } from '../lib/recorder';
 import type { Activity, RunSession } from '../lib/types';
 
 export function RunPage() {
@@ -37,16 +41,69 @@ export function RunPage() {
   }
 }
 
+/**
+ * Where you are before you start, without asking for location until the runner opts in: if permission
+ * is already granted it watches straight away, otherwise `enable()` asks.
+ */
+function usePreviewPosition() {
+  const [position, setPosition] = useState<LivePosition | null>(null);
+  const [state, setState] = useState<'idle' | 'locating' | 'ready' | 'denied' | 'unsupported'>('idle');
+  const watch = useRef<number | null>(null);
+  /** The raw latest fix, handed to the recorder so Start doesn't wait for a new one. */
+  const latest = useRef<GeolocationPosition | null>(null);
+
+  const enable = useCallback(() => {
+    if (!('geolocation' in navigator)) return setState('unsupported');
+    if (watch.current !== null) return;
+    setState('locating');
+    watch.current = navigator.geolocation.watchPosition(
+      (fix) => { latest.current = fix; setPosition({ latitude: fix.coords.latitude, longitude: fix.coords.longitude, accuracy: fix.coords.accuracy }); setState('ready'); },
+      (error) => setState(error.code === 1 ? 'denied' : 'locating'),
+      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    navigator.permissions?.query({ name: 'geolocation' as PermissionName })
+      .then((status) => { if (!cancelled && status.state === 'granted') enable(); })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (watch.current !== null) navigator.geolocation.clearWatch(watch.current);
+      watch.current = null;
+    };
+  }, [enable]);
+
+  return { position, state, enable, latest };
+}
+
+const ACTIVITY_CHOICES = [
+  { value: 'run', label: 'Run', icon: RunIcon },
+  { value: 'walk', label: 'Walk', icon: WalkIcon },
+  { value: 'cycle', label: 'Ride', icon: CycleIcon },
+] as const;
+
 function ReadyScreen() {
   const recorder = useRecorder();
   const locating = recorder.phase === 'locating';
   const [activityType, setActivityType] = useState<'walk' | 'run' | 'cycle'>('run');
   const [showStartInfo, setShowStartInfo] = useState(false);
+  const [showHowItCounts, setShowHowItCounts] = useState(false);
+  const preview = usePreviewPosition();
   const eligible = useQuery({
     queryKey: ['tables', 'eligible', activityType],
     queryFn: () => api<Array<{ id: string; code: string; title: string; challengeType: string; type: string }>>(`/tables/eligible?activity=${activityType}`),
     enabled: showStartInfo,
   });
+  // The bottom nav's centre button becomes "Start" on this page.
+  useEffect(() => {
+    const open = () => setShowStartInfo(true);
+    window.addEventListener(START_ACTIVITY_EVENT, open);
+    return () => window.removeEventListener(START_ACTIVITY_EVENT, open);
+  }, []);
+  const gpsError = recorder.gpsError;
+  useEffect(() => { if (gpsError) toast({ tone: 'warn', title: 'No location yet', message: gpsError }); }, [gpsError]);
 
   if (recorder.phase === 'blocked') {
     return (
@@ -63,85 +120,101 @@ function ReadyScreen() {
     );
   }
 
-  return (
-    <div className="mx-auto max-w-xl animate-rise">
-      <PageHeader eyebrow="Activity" title="Ready when you are" />
+  const accuracy = preview.position?.accuracy ?? null;
+  const placeName = usePlaceName(preview.position);
+  const strength = signalStrength(accuracy);
+  const gpsLabel = preview.state === 'ready' ? (strength >= 3 ? 'GPS ready' : strength === 2 ? 'GPS fair' : 'GPS weak')
+    : preview.state === 'locating' ? 'Finding you…' : preview.state === 'denied' ? 'Location blocked' : preview.state === 'unsupported' ? 'No GPS on this device' : 'Show my location';
 
-      <div className="mb-5">
-        <Segmented<'walk' | 'run' | 'cycle'>
-          label="Activity type"
-          value={activityType}
-          onChange={setActivityType}
-          options={[{ value: 'run', label: 'Run' }, { value: 'walk', label: 'Walk' }, { value: 'cycle', label: 'Cycle' }]}
-        />
+  return (
+    <div className="mx-auto max-w-xl animate-fade">
+      {/* Full-bleed map on phones, a rounded card on larger screens. */}
+      <div className="relative -mx-4 -mt-6 md:mx-0 md:mt-0">
+        <RunMap route={[]} position={preview.position} zoom={14} className="h-[46dvh] min-h-[300px] md:h-[420px] md:rounded-[28px] md:border-2 md:border-ink md:shadow-hard" />
+        <button
+          type="button"
+          onClick={preview.enable}
+          disabled={preview.state === 'ready' || preview.state === 'locating'}
+          className="absolute left-4 top-4 z-10 flex h-9 items-center gap-2 rounded-full border-[1.5px] border-ink bg-card/80 px-3.5 text-[13px] font-semibold shadow-hard-sm backdrop-blur-md md:left-5 md:top-5"
+        >
+          <span className={cx('h-2 w-2 rounded-full', preview.state === 'ready' ? (strength >= 3 ? 'bg-ok' : 'bg-warn') : preview.state === 'locating' ? 'animate-blink bg-[#0A84FF]' : 'bg-ink-3')} />
+          {preview.state === 'ready' && placeName ? <span className="max-w-[52vw] truncate">{placeName}</span> : gpsLabel}
+          {accuracy !== null && preview.state === 'ready' && <span className="num text-ink-3">±{Math.round(accuracy)} m</span>}
+        </button>
       </div>
 
-      <div className="panel-strong overflow-hidden">
-        <div className="bg-ink px-6 py-10 text-center text-paper">
-          <p className="eyebrow text-paper/60">Distance</p>
-          <p className="score mt-2 animate-pop text-[96px] text-paper/25">0.00</p>
+      <section className="relative -mx-4 -mt-6 rounded-t-[28px] border-t-2 border-ink bg-card px-5 pb-6 pt-3 md:mx-0 md:mt-5 md:rounded-[28px] md:border-2 md:pt-6 md:shadow-hard">
+        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-ink/20 md:hidden" aria-hidden="true" />
+        <div className="flex items-end justify-between gap-3">
+          <h1 className="display text-[30px] leading-[0.95]">Ready?</h1>
+          <button type="button" className="shrink-0 text-[15px] font-semibold text-[#0A84FF]" onClick={() => setShowHowItCounts(true)}>How it counts</button>
         </div>
-        <ul className="stagger divide-y divide-line">
+
+        <div className="mt-4 grid grid-cols-3 gap-2.5" role="radiogroup" aria-label="Activity type">
+          {ACTIVITY_CHOICES.map(({ value, label, icon: Icon }) => {
+            const active = activityType === value;
+            return <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => setActivityType(value)}
+              className={cx('flex flex-col items-center gap-2 rounded-[20px] border-2 border-ink py-4 transition-all duration-200 active:scale-[0.96]', active ? 'translate-x-[2px] translate-y-[2px] bg-ink text-paper shadow-none' : 'bg-card text-ink shadow-hard hover:bg-track-wash')}
+            >
+              <span className={cx('flex h-11 w-11 items-center justify-center rounded-full border-2', active ? 'border-track bg-track text-ink' : 'border-ink bg-paper text-ink')}><Icon size={22} /></span>
+              <span className="text-[15px] font-semibold">{label}</span>
+            </button>;
+          })}
+        </div>
+
+        {/* Phones start from the big button in the tab bar; larger screens have no tab bar, so show one here. */}
+        <button
+          type="button"
+          className="btn-primary mt-5 hidden min-h-16 w-full rounded-full text-[16px] md:inline-flex"
+          onClick={() => setShowStartInfo(true)}
+          disabled={locating}
+        >
+          {locating ? <><JumpLogo height={12} motion="loop" /> Finding GPS signal…</> : <><PlayIcon size={18} /> Start {activityType === 'cycle' ? 'ride' : activityType}</>}
+        </button>
+        {locating
+          ? <p className="mt-4 flex items-center justify-center gap-2 text-[13px] font-semibold md:hidden"><JumpLogo height={11} motion="loop" /> Finding GPS signal…</p>
+          : <p className="mt-5 text-center text-[14px] font-medium text-ink-2 md:hidden">Tap <span className="rounded-full border-[1.5px] border-ink bg-track px-2 py-0.5 font-semibold text-ink">Start</span> below when you’re ready</p>}
+        <p className="mt-2 text-center text-[12px] text-ink-3">Keep Jump open while you move. Location is only recorded during an activity.</p>
+      </section>
+
+      <ErrorNotice error={recorder.error ? new Error(recorder.error) : null} />
+
+      {showHowItCounts && <Modal title="How it counts" onClose={() => setShowHowItCounts(false)}>
+        <ul className="space-y-4">
           {[
             ['Stay on this screen', 'We keep it awake while you move. Browsers pause GPS in the background, so don’t switch apps.'],
             ['Head outdoors', 'Open sky gives the cleanest signal. Points less accurate than 50 m don’t count.'],
-            ['Verified activity scores', activityType === 'cycle' ? 'After you finish, Jump checks your GPS route. Cycling distance counts only in cycling competitions.' : 'After you finish, Jump checks your route and steps. Distance and step competitions use the verified values.'],
-          ].map(([title, body]) => (
-            <li key={title} className="flex gap-3 px-5 py-4">
-              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-ink text-volt">
-                <CheckIcon size={14} />
-              </span>
-              <div>
-                <p className="text-[14px] font-bold">{title}</p>
-                <p className="mt-0.5 text-[13px] leading-relaxed text-ink-2">{body}</p>
-              </div>
-            </li>
-          ))}
+            ['Verified after you finish', activityType === 'cycle' ? 'Jump checks your GPS route. Cycling distance counts only in cycling competitions.' : 'Jump checks your route and steps. Competitions use the verified values.'],
+          ].map(([title, body]) => <li key={title} className="flex gap-3">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] bg-ink text-volt"><CheckIcon size={14} /></span>
+            <div><p className="text-[15px] font-semibold">{title}</p><p className="mt-0.5 text-[14px] leading-relaxed text-ink-2">{body}</p></div>
+          </li>)}
         </ul>
-      </div>
+      </Modal>}
 
-      {recorder.gpsError && (
-        <Notice tone="bad" className="mt-5" title="No location yet">
-          {recorder.gpsError}
-        </Notice>
-      )}
-      <ErrorNotice error={recorder.error ? new Error(recorder.error) : null} className="mt-5" />
-
-      <button type="button" className="btn-primary mt-6 min-h-16 w-full text-[16px]" onClick={() => setShowStartInfo(true)} disabled={locating}>
-        {locating ? (
-          <>
-            <JumpLogo height={12} motion="loop" /> Finding GPS signal…
-          </>
-        ) : (
-          <>
-            {activityType === 'cycle' ? <CycleIcon size={18} /> : <RunIcon size={18} />} Start {activityType}
-          </>
-        )}
-      </button>
-      <p className="mt-3 text-center text-[12px] text-ink-3">Your location is only recorded while an activity is active.</p>
-      {showStartInfo && <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={`Before your ${activityType}`}>
-        <div className="w-full max-w-md rounded-md border-2 border-ink bg-paper p-5 shadow-hard">
-          <p className="eyebrow">Before you start</p>
-          <h2 className="wide mt-1 text-[24px] font-extrabold uppercase">Your {activityType} counts</h2>
-          {activityType === 'cycle' ? <>
-            <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After GPS verification, this ride automatically adds distance to active cycling competitions you already joined. Cycling does not add steps or distance to run, walk, distance, timed or league standings.</p>
-            <p className="mt-2 text-[12px] text-ink-2">Cycling competitions are free only for now. GPS cannot reliably distinguish every bicycle ride from a slow vehicle trip, so cash prizes are paused.</p>
-          </> : <>
-            <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After verification, this {activityType} automatically scores in active {activityType} competitions you already joined, plus eligible distance, step and timed competitions. Runs and walks both add verified steps to step competitions when your device records them. Verified distance also counts in your active league.</p>
-            <p className="mt-2 text-[12px] text-ink-2">Paid distance competitions use your GPS-verified distance. Walks do not score in run-only competitions, and runs do not score in walk-only competitions.</p>
-          </>}
-          <div className="mt-4 border-y border-line py-3">
-            <p className="text-[13px] font-bold">Your matching competitions right now</p>
-            {eligible.isLoading ? <p className="mt-2 text-[12px] text-ink-2">Checking…</p> : eligible.error ? <ErrorNotice error={eligible.error} onRetry={() => void eligible.refetch()} className="mt-2" /> : eligible.data?.length ? (
-              <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-[13px]">{eligible.data.map((table) => <li key={table.id}>• {table.title} <span className="text-ink-3">({table.challengeType.toLowerCase()})</span></li>)}</ul>
-            ) : <p className="mt-2 text-[12px] text-ink-2">None yet. You can still record this {activityType}{activityType === 'cycle' ? '.' : ' and earn league distance.'}</p>}
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button type="button" className="btn-secondary" onClick={() => setShowStartInfo(false)}>Not yet</button>
-            <button type="button" className="btn-primary" onClick={() => { setShowStartInfo(false); void recorder.start(activityType); }} disabled={locating}>Start {activityType}</button>
-          </div>
+      {showStartInfo && <Modal title={`Before your ${activityType === 'cycle' ? 'ride' : activityType}`} onClose={() => setShowStartInfo(false)}>
+        <p className="text-[14px] leading-relaxed text-ink-2">
+          {activityType === 'cycle'
+            ? 'After GPS verification, this ride counts in cycling competitions you’ve joined. Cycling doesn’t add to run, walk, step or league standings.'
+            : `After verification, this ${activityType} counts in ${activityType} competitions you’ve joined, plus distance, step and timed ones, and your league.`}
+        </p>
+        <div className="mt-4 rounded-md border-[1.5px] border-ink bg-paper p-4">
+          <p className="text-[13px] font-semibold">Counting toward</p>
+          {eligible.isLoading ? <p className="mt-1 text-[13px] text-ink-3">Checking…</p> : eligible.data?.length ? (
+            <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto text-[14px]">{eligible.data.map((table) => <li key={table.id} className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-track" />{table.title}</li>)}</ul>
+          ) : <p className="mt-1 text-[13px] text-ink-3">No competitions yet.{activityType === 'cycle' ? '' : ' It still counts for your league.'}</p>}
+          <ErrorNotice error={eligible.error} onRetry={() => void eligible.refetch()} />
         </div>
-      </div>}
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button type="button" className="btn-secondary" onClick={() => setShowStartInfo(false)}>Not yet</button>
+          <button type="button" className="btn-primary" onClick={() => { setShowStartInfo(false); void recorder.start(activityType, preview.latest.current); }} disabled={locating}>Start</button>
+        </div>
+      </Modal>}
     </div>
   );
 }
@@ -168,8 +241,18 @@ function Scoreboard() {
   const strength = signalStrength(recorder.accuracy);
   const stale = recorder.lastFixAt !== null && now - recorder.lastFixAt > 20_000;
   const activityName = recorder.session?.activityType ?? 'run';
+  const noun = activityName === 'cycle' ? 'ride' : activityName;
   const shownMetres = useCountUp(recorder.distanceMetres, 900);
   const split = useSplitBanner(recorder.distanceMetres, unit, seconds);
+  const sheet = useRef<HTMLDivElement | null>(null);
+  const [sheetHeight, setSheetHeight] = useState(360);
+  useLayoutEffect(() => {
+    const element = sheet.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setSheetHeight(element.offsetHeight));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   async function finish() {
     const activity = await recorder.finish();
@@ -185,157 +268,87 @@ function Scoreboard() {
   // Recording with a good fix but nothing counted yet: say why, so 0.00 doesn't look broken.
   const startedAt = recorder.session ? new Date(recorder.session.startedAt).getTime() : now;
   const showStillHint = recording && recorder.distanceMetres < 1 && !recorder.steps && now - startedAt > 20_000 && strength >= 2 && !stale;
+  const warning = recorder.error ?? recorder.gpsError ?? (stale ? 'GPS signal lost. Keep this screen open and stay outdoors.' : null);
+  const placeName = usePlaceName(recorder.position);
+  const pill = 'flex h-9 items-center gap-2 rounded-full border-[1.5px] border-ink bg-card/80 px-3.5 text-[13px] font-semibold shadow-hard-sm backdrop-blur-md';
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade flex-col bg-ink text-paper">
-      {/* Live strip: sweeps while recording, still while paused. */}
-      <div className="h-1 overflow-hidden bg-paper/10" aria-hidden="true">
-        {recording && <div className="h-full w-1/3 animate-sweep bg-track" />}
-      </div>
-      <header className="flex items-center justify-between gap-3 px-5 pt-[max(env(safe-area-inset-top),1rem)]">
-        <span
-          className={cx(
-            'tag h-7 border-0 px-2.5 text-[11px]',
-            recording ? 'bg-track text-ink' : 'bg-paper/15 text-paper',
-          )}
-        >
-          {!finishing && <LiveDot live={recording} className={recording ? 'text-ink' : 'text-paper'} />}
-          {finishing ? 'Finishing' : recording ? 'Recording' : 'Paused'}
+    <div className="fixed inset-0 z-50 animate-fade bg-paper">
+      <RunMap route={recorder.route} position={recorder.position} className="absolute inset-0" bottomInset={sheetHeight} />
+
+      {/* Floating status over the map. */}
+      <header className="absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 px-4 pt-[max(env(safe-area-inset-top),0.875rem)]">
+        <span className={pill}>
+          {finishing ? 'Saving…' : <><span className={cx('h-2.5 w-2.5 rounded-full', recording ? 'animate-blink bg-track' : 'bg-warn')} />{recording ? 'Recording' : 'Paused'}</>}
         </span>
-        <div className="flex items-center gap-4 text-[12px] font-semibold text-paper/70">
-          <span className="flex items-center gap-1.5" title="GPS accuracy">
-            <SignalIcon size={16} className={cx(strength >= 3 ? 'text-volt' : strength === 2 ? 'text-paper' : 'text-track', stale && 'opacity-40')} />
-            {recorder.accuracy !== null ? `±${Math.round(recorder.accuracy)} m` : 'Searching'}
+        <div className="flex items-center gap-2">
+          <span className={pill} title="GPS accuracy">
+            <SignalIcon size={15} className={cx(strength >= 3 ? 'text-ok' : strength === 2 ? 'text-warn' : 'text-bad', stale && 'opacity-40')} />
+            <span className="num">{recorder.accuracy !== null ? `±${Math.round(recorder.accuracy)} m` : 'GPS'}</span>
+            {recorder.connection === 'offline' ? <OfflineIcon size={15} className="text-track" /> : recorder.pendingCount > 0 ? <span className="num text-ink-3">{recorder.pendingCount}↑</span> : null}
           </span>
-          <span className="flex items-center gap-1.5">
-            {recorder.connection === 'offline' ? (
-              <>
-                <OfflineIcon size={16} className="text-track" /> {recorder.pendingCount} saved
-              </>
-            ) : recorder.pendingCount > 0 ? (
-              `${recorder.pendingCount} to sync`
-            ) : (
-              'Synced'
-            )}
-          </span>
+          <Link to="/dashboard" className={cx(pill, 'w-9 justify-center px-0')} aria-label="Minimise, keep recording">
+            <ChevronDownIcon size={18} />
+          </Link>
         </div>
-        <Link to="/dashboard" className="text-[12px] font-bold uppercase tracking-[0.1em] text-paper/60 hover:text-paper">
-          Minimise
-        </Link>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-5 text-center">
-        <p className="eyebrow text-paper/50">Distance · {unit}{recorder.distanceFromSteps ? ' · from steps' : ''}</p>
-        <p
-          className={cx('score num mt-1 animate-pop text-[clamp(104px,32vw,220px)] transition-colors duration-500', recording ? 'text-volt' : 'text-paper/60')}
-          aria-live="off"
-        >
-          {formatDistanceNumber(shownMetres, unit)}
+      {split && <div className="absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),0.875rem)+3.25rem)] z-10 flex justify-center">
+        <p key={split.count} className="num animate-pop rounded-full border-2 border-ink bg-ink px-4 py-2 text-[15px] font-semibold text-paper shadow-hard" role="status">
+          {split.count} {unit} · {formatDuration(split.seconds)}
         </p>
-        {recorder.steps !== null && (
-          <p className="num -mt-1 text-[15px] font-semibold text-paper/70">
-            <CountUp value={recorder.steps} format={(n) => Math.round(n).toLocaleString('en-GB')} /> steps
-          </p>
-        )}
-        <div className="h-10">
-          {split && (
-            <p key={split.count} className="tag h-8 animate-pop border-0 bg-volt px-3 text-[12px] text-ink" role="status">
-              {split.count} {unit} · {formatDuration(split.seconds)}
-            </p>
-          )}
-        </div>
-        <div className="mt-2 grid w-full max-w-md animate-rise-lg grid-cols-2 divide-x divide-paper/15 border-y border-paper/15 [animation-delay:150ms]">
-          <div className="py-4">
-            <p className="eyebrow text-paper/50">Time</p>
-            <p className="score num mt-1 text-[44px]">{formatDuration(seconds)}</p>
-          </div>
-          <div className="py-4">
-            <p className="eyebrow text-paper/50">{activityName === 'cycle' ? `Avg speed ${unit}/h` : `Avg pace /${unit}`}</p>
-            <p className="score num mt-1 text-[44px]">{activityName === 'cycle' ? speed ?? '–' : pace ?? '–:––'}</p>
-          </div>
-        </div>
-        {showStillHint && !recorder.gpsError && (
-          <p className="mt-5 max-w-sm animate-rise text-[13px] text-paper/70">
-            {activityName === 'cycle' ? 'No distance yet. Cycling distance needs a good outdoor GPS signal.' : 'No distance yet. Outdoors it counts once you’ve moved a few metres; indoors, allow motion access when you start so your steps can count.'}
-          </p>
-        )}
-        {(recorder.gpsError || stale) && (
-          <p className="mt-5 max-w-sm text-[13px] text-track">{recorder.gpsError ?? 'GPS signal lost. Keep this screen open and stay outdoors.'}</p>
-        )}
-        {recorder.error && <p className="mt-5 max-w-sm text-[13px] font-semibold text-track">{recorder.error}</p>}
-      </main>
+      </div>}
 
-      <footer className="safe-bottom px-5 pt-4">
-        {confirming === 'finish' ? (
-          <div className="mx-auto max-w-md animate-rise rounded-md border-2 border-paper/20 p-4">
-            <p className="wide text-[15px] font-extrabold uppercase">Finish this {activityName}?</p>
-            <p className="mt-1 text-[13px] text-paper/70">
-              {formatDistance(recorder.distanceMetres, unit)} will be submitted for verification. You can’t add to it afterwards.
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <button type="button" className="btn min-h-14 border-2 border-paper/30 text-paper" onClick={() => setConfirming(null)} disabled={finishing}>
-                Keep going
-              </button>
-              <button type="button" className="btn min-h-14 border-2 border-paper bg-paper text-ink" onClick={() => void finish()} disabled={finishing}>
-                {finishing ? 'Saving…' : 'Finish'}
-              </button>
-            </div>
-          </div>
-        ) : confirming === 'discard' ? (
-          <div className="mx-auto max-w-md animate-rise rounded-md border-2 border-track/60 p-4">
-            <p className="wide text-[15px] font-extrabold uppercase">Discard this {activityName}?</p>
-            <p className="mt-1 text-[13px] text-paper/70">It’s thrown away. Nothing is saved, submitted or counted. This can’t be undone.</p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <button type="button" className="btn min-h-14 border-2 border-paper/30 text-paper" onClick={() => setConfirming(null)} disabled={finishing}>
-                Keep it
-              </button>
-              <button type="button" className="btn min-h-14 border-2 border-track bg-track text-ink" onClick={() => void discard()} disabled={finishing}>
-                {finishing ? 'Discarding…' : 'Discard'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="mx-auto grid max-w-md animate-rise-lg grid-cols-2 gap-3 [animation-delay:250ms]">
-            {recording ? (
-              <button type="button" className="btn min-h-20 border-2 border-paper text-paper hover:bg-paper/10" onClick={() => void recorder.pause()}>
-                <PauseIcon size={22} /> Pause
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn min-h-20 border-2 border-track bg-track text-ink"
-                onClick={() => void recorder.resume()}
-                disabled={finishing}
-              >
-                <RunIcon size={22} /> Resume
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn min-h-20 border-2 border-paper bg-paper text-ink"
-              onClick={() => setConfirming('finish')}
-              disabled={finishing}
-            >
-              <StopIcon size={20} /> Finish
+      {/* Metrics and controls in a sheet, Fitness-style. */}
+      <div ref={sheet} className="safe-bottom absolute inset-x-0 bottom-0 z-10 mx-auto max-w-xl rounded-t-[32px] border-t-2 border-ink bg-card/95 px-6 pt-3 backdrop-blur-xl md:bottom-4 md:rounded-[32px] md:border-2 md:pb-5 md:shadow-hard">
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ink/20" aria-hidden="true" />
+        <p className="truncate text-[14px] font-semibold text-ink-3">{noun.charAt(0).toUpperCase() + noun.slice(1)}{placeName ? ` in ${placeName}` : ''} · Distance{recorder.distanceFromSteps ? ' from steps' : ''}</p>
+        <p className="flex items-baseline gap-2">
+          <span className={cx('score num text-[clamp(72px,22vw,104px)] leading-[0.9] transition-colors', recording ? 'text-ink' : 'text-ink-3')}>{formatDistanceNumber(shownMetres, unit)}</span>
+          <span className="text-[20px] font-semibold text-ink-3">{unit}</span>
+        </p>
+        <div className={cx('mt-3 grid divide-x divide-line rounded-2xl border-[1.5px] border-ink bg-paper/60', recorder.steps !== null ? 'grid-cols-3' : 'grid-cols-2')}>
+          <Metric label="Time" value={formatDuration(seconds)}  />
+          <Metric label={activityName === 'cycle' ? `Speed ${unit}/h` : `Pace /${unit}`} value={activityName === 'cycle' ? speed ?? '–' : pace ?? '–:––'} />
+          {recorder.steps !== null && <Metric label="Steps" value={Math.round(recorder.steps).toLocaleString('en-GB')} />}
+        </div>
+        {(warning || showStillHint) && <p className="mt-3 text-[13px] leading-snug text-track-deep">
+          {warning ?? (activityName === 'cycle' ? 'No distance yet. Cycling needs a good outdoor GPS signal.' : 'No distance yet. Outdoors it counts once you’ve moved a few metres; indoors, steps count if you allowed motion.')}
+        </p>}
+
+        {confirming ? <div className="mt-5 animate-rise">
+          <p className="text-[19px] font-bold tracking-tight">{confirming === 'finish' ? `Finish this ${noun}?` : `Discard this ${noun}?`}</p>
+          <p className="mt-1 text-[14px] text-ink-2">{confirming === 'finish' ? `${formatDistance(recorder.distanceMetres, unit)} will be submitted for verification.` : 'Nothing is saved or counted. This can’t be undone.'}</p>
+          <div className="mt-4 grid grid-cols-2 gap-3 pb-4">
+            <button type="button" className="btn-secondary min-h-14 rounded-full" onClick={() => setConfirming(null)} disabled={finishing}>{confirming === 'finish' ? 'Keep going' : 'Keep it'}</button>
+            <button type="button" className={cx('btn min-h-14 rounded-full border-2 border-ink text-paper shadow-hard active:translate-x-[3px] active:translate-y-[3px] active:shadow-none', confirming === 'finish' ? 'bg-ink' : 'bg-bad')} onClick={() => void (confirming === 'finish' ? finish() : discard())} disabled={finishing}>
+              {finishing ? 'Saving…' : confirming === 'finish' ? 'Finish' : 'Discard'}
             </button>
           </div>
-        )}
-        {!confirming && (
-          <button
-            type="button"
-            className="mx-auto mt-3 block text-[12px] font-semibold text-paper/60 underline decoration-paper/30 underline-offset-4 hover:text-paper"
-            onClick={() => setConfirming('discard')}
-            disabled={finishing}
-          >
-            Discard this {activityName}
-          </button>
-        )}
-        <p className="mx-auto mt-2 max-w-md text-center text-[11px] text-paper/45">
-          Keep this screen open. Browsers pause GPS when you switch apps.
-        </p>
-      </footer>
+        </div> : <div className="mt-5 flex items-start justify-center gap-10 pb-3">
+          <RoundControl label="Discard" onClick={() => setConfirming('discard')} disabled={finishing} className="mt-3 h-14 w-14 bg-card text-ink" icon={<CloseIcon size={22} />} />
+          {recording
+            ? <RoundControl label="Pause" onClick={() => void recorder.pause()} className="h-20 w-20 bg-track text-ink" icon={<PauseIcon size={30} />} />
+            : <RoundControl label="Resume" onClick={() => void recorder.resume()} disabled={finishing} className="h-20 w-20 bg-track text-ink" icon={<PlayIcon size={30} className="translate-x-[2px]" />} />}
+          <RoundControl label="Finish" onClick={() => setConfirming('finish')} disabled={finishing} className="mt-3 h-14 w-14 bg-ink text-paper" icon={<StopIcon size={20} />} />
+        </div>}
+      </div>
     </div>
   );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0 px-3.5 py-3">
+    <p className="truncate text-[12px] font-semibold text-ink-3">{label}</p>
+    <p className="score num mt-1 truncate text-[30px] leading-none">{value}</p>
+  </div>;
+}
+
+function RoundControl({ label, icon, onClick, disabled, className }: { label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; className?: string }) {
+  return <div className="flex flex-col items-center gap-1.5">
+    <button type="button" aria-label={label} onClick={onClick} disabled={disabled} className={cx('flex items-center justify-center rounded-full border-2 border-ink shadow-hard transition-all duration-150 active:translate-x-[3px] active:translate-y-[3px] active:scale-95 active:shadow-none disabled:opacity-50', className)}>{icon}</button>
+    <span className="text-[13px] font-semibold text-ink-2">{label}</span>
+  </div>;
 }
 
 /**

@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { activityName, formatDistanceNumber, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import type { Activity, Unit } from '../lib/types';
 import { CloseIcon, JUMP_LOGO, ShareIcon } from './icons';
+import { renderRouteMap } from './LazyRunMap';
 import { cx, Segmented } from './ui';
 
 type Format = 'story' | 'square';
@@ -25,7 +26,12 @@ interface ShareData {
   unit: Unit;
   route: Array<[number, number]> | null;
   format: Format;
+  /** The route already drawn on a real map (see renderRouteMap); used as the top of the card when present. */
+  map?: HTMLCanvasElement | null;
 }
+
+/** How tall the map band is on each card, in image pixels. */
+export const MAP_HEIGHT: Record<Format, number> = { story: 1080, square: 540 };
 
 function distanceOf(activity: Activity) {
   if (activity.verificationStatus !== 'VERIFIED') return activity.recordedDistanceMetres;
@@ -94,7 +100,7 @@ function setFont(ctx: CanvasRenderingContext2D, spec: string, stretch: 'normal' 
 }
 
 /** Draws the share image. Everything on it comes from the activity itself. */
-export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, route, format }: ShareData) {
+export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, route, format, map }: ShareData) {
   const { w, h } = SIZES[format];
   canvas.width = w;
   canvas.height = h;
@@ -119,6 +125,22 @@ export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, rout
     ctx.stroke();
   }
 
+  // A real map across the top, fading into the ink panel, with a dark wash behind the header.
+  if (map) {
+    const mapH = MAP_HEIGHT[format];
+    ctx.drawImage(map, 0, 0, w, mapH);
+    const fade = ctx.createLinearGradient(0, mapH * 0.55, 0, mapH);
+    fade.addColorStop(0, 'rgba(18,18,18,0)');
+    fade.addColorStop(1, INK);
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, mapH * 0.55, w, mapH * 0.45 + 1);
+    const top = ctx.createLinearGradient(0, 0, 0, 260);
+    top.addColorStop(0, 'rgba(18,18,18,0.7)');
+    top.addColorStop(1, 'rgba(18,18,18,0)');
+    ctx.fillStyle = top;
+    ctx.fillRect(0, 0, w, 260);
+  }
+
   // Header: wordmark, date.
   drawWordmark(ctx, pad, pad + 6, 56);
   ctx.textBaseline = 'middle';
@@ -130,7 +152,9 @@ export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, rout
 
   // Route (or the Jump steps when hidden/unavailable).
   const routeBox = story ? { x: pad + 20, y: 260, w: w - pad * 2 - 40, h: 760 } : { x: pad + 20, y: 190, w: w - pad * 2 - 40, h: 290 };
-  if (route && route.length >= 2) {
+  if (map) {
+    // The route is already on the map.
+  } else if (route && route.length >= 2) {
     const pts = fitRoute(route, routeBox);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -239,7 +263,7 @@ async function fontsReady() {
 }
 
 /** "Share" button + sheet that renders a shareable image of the run. */
-export function ShareRun({ activity, unit, className, autoOpen = false }: { activity: Activity; unit: Unit; className?: string; autoOpen?: boolean }) {
+export function ShareRun({ activity, unit, className, autoOpen = false, plain = false }: { activity: Activity; unit: Unit; className?: string; autoOpen?: boolean; plain?: boolean }) {
   const [open, setOpen] = useState(false);
   const autoOpened = useRef(false);
   const [format, setFormat] = useState<Format>('story');
@@ -248,6 +272,8 @@ export function ShareRun({ activity, unit, className, autoOpen = false }: { acti
   const [status, setStatus] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const blobRef = useRef<Blob | null>(null);
+  // Rendered map backgrounds by format, so switching back and forth doesn't redraw the map.
+  const maps = useRef(new Map<string, HTMLCanvasElement | null>());
   const track = useQuery({
     queryKey: ['activity-track', activity.id],
     queryFn: () => api<{ points: Array<[number, number]> }>(`/activities/${activity.id}/track`),
@@ -261,9 +287,15 @@ export function ShareRun({ activity, unit, className, autoOpen = false }: { acti
     void (async () => {
       await fontsReady();
       if (cancelled) return;
+      const route = showRoute ? track.data?.points ?? null : null;
+      const key = `${format}:${route?.length ?? 0}`;
+      if (route && route.length >= 2 && !maps.current.has(key)) {
+        maps.current.set(key, await renderRouteMap(route, SIZES[format].w, MAP_HEIGHT[format]));
+        if (cancelled) return;
+      }
       const canvas = canvasRef.current ?? document.createElement('canvas');
       canvasRef.current = canvas;
-      drawShareImage(canvas, { activity, unit, format, route: showRoute ? track.data?.points ?? null : null });
+      drawShareImage(canvas, { activity, unit, format, route, map: route ? maps.current.get(key) ?? null : null });
       canvas.toBlob((blob) => {
         if (cancelled || !blob) return;
         blobRef.current = blob;
@@ -325,7 +357,7 @@ export function ShareRun({ activity, unit, className, autoOpen = false }: { acti
 
   return (
     <>
-      <button type="button" className={cx('btn-secondary', className)} onClick={() => setOpen(true)}>
+      <button type="button" className={plain ? className : cx('btn-secondary', className)} onClick={() => setOpen(true)}>
         <ShareIcon size={16} /> Share
       </button>
       {open &&

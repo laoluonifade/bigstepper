@@ -56,6 +56,14 @@ export class Activity {
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   verificationReasons: string[];
 
+  /** Where the track came from: recorded in Jump, or imported from Strava. */
+  @Column({ type: 'varchar', length: 20, default: 'jump' })
+  source: 'jump' | 'strava';
+
+  /** The provider's id (Strava activity id) so an import never happens twice. */
+  @Column({ type: 'varchar', length: 40, nullable: true, unique: true })
+  externalId: string | null;
+
   @Column({ default: 'gps-v1' })
   algorithmVersion: string;
 

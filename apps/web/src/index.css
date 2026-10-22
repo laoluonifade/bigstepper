@@ -161,3 +161,51 @@
     transition-duration: 1ms !important;
   }
 }
+
+/* Sideways-scrolling rows (reaction pill) without a visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Earned medals tilt toward the pointer and catch a passing shine. */
+.medal-earned {
+  transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.medal-earned:hover {
+  transform: perspective(240px) rotateY(-14deg) rotateX(6deg) scale(1.06);
+}
+.medal-shine {
+  animation: medal-shine 4.5s ease-in-out infinite;
+}
+@keyframes medal-shine {
+  0%, 70% { transform: translateX(0) skewX(-20deg); }
+  100% { transform: translateX(120px) skewX(-20deg); }
+}
+
+/* The live "you are here" dot on run maps: Apple-style blue with a breathing halo. */
+.run-map-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #0a84ff;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.run-map-dot::after {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  border-radius: 9999px;
+  background: rgba(10, 132, 255, 0.22);
+  animation: run-map-pulse 2s ease-out infinite;
+}
+@keyframes run-map-pulse {
+  0% { transform: scale(0.5); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+}

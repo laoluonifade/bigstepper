@@ -4,6 +4,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { router } from './App';
 import './index.css';
+import { Toaster } from './components/Toaster';
 import { AuthProvider } from './lib/auth';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: 1 } } });
@@ -12,6 +13,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider><RouterProvider router={router} /></AuthProvider>
+      <Toaster />
     </QueryClientProvider>
   </React.StrictMode>,
 );

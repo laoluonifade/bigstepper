@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, ConflictException, UnauthorizedExcepti
 import { MailService } from '../mail/mail.service';
 import { passwordResetEmail, verificationEmail } from '../mail/templates';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -27,16 +27,32 @@ export class AuthService {
     private readonly mail: MailService,
   ) {}
 
-  async register(email: string, password: string, countryCode: string, displayName?: string) {
-    const normalizedEmail = email.trim().toLowerCase();
+  async register(email: string, password: string, countryCode: string, displayName?: string, whatsappNumber?: string) {
+    return this.createAccount({ email, passwordHash: await bcrypt.hash(password, 10), countryCode, displayName, whatsappNumber });
+  }
+
+  /**
+   * Creates the user, profile and league place, then emails a verification link. `afterCreate` runs in the
+   * same transaction (Strava sign-up links the athlete there). Accounts without a password get an unguessable
+   * one; the runner can set a real one through "forgot password".
+   */
+  async createAccount(input: {
+    email: string;
+    passwordHash?: string;
+    countryCode: string;
+    displayName?: string;
+    whatsappNumber?: string;
+    afterCreate?: (manager: EntityManager, user: User) => Promise<void>;
+  }) {
+    const normalizedEmail = input.email.trim().toLowerCase();
     const existing = await this.usersRepo.findOne({ where: { email: normalizedEmail } });
     if (existing) throw new ConflictException('Email already registered');
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = input.passwordHash ?? (await bcrypt.hash(randomBytes(32).toString('base64url'), 10));
     const user = this.usersRepo.create({
       email: normalizedEmail,
       passwordHash,
-      displayName: displayName?.trim() || normalizedEmail.split('@')[0],
+      displayName: input.displayName?.trim() || normalizedEmail.split('@')[0],
     });
     try {
       await this.usersRepo.manager.transaction(async (manager) => {
@@ -48,7 +64,8 @@ export class AuthService {
             userId: user.id,
             username: `${baseUsername}_${randomBytes(3).toString('hex')}`,
             displayName: user.displayName || baseUsername,
-            countryCode,
+            countryCode: input.countryCode,
+            whatsappNumber: input.whatsappNumber ?? null,
           }),
         );
         await manager.query(
@@ -58,6 +75,7 @@ export class AuthService {
            ON CONFLICT ("seasonId", "userId") DO NOTHING`,
           [user.id],
         );
+        await input.afterCreate?.(manager, user);
       });
     } catch (error) {
       if (
@@ -78,6 +96,13 @@ export class AuthService {
       ...response,
       ...(this.config.get('NODE_ENV') === 'development' ? { developmentVerificationToken: verificationToken } : {}),
     };
+  }
+
+  /** Session for a user who proved who they are some other way (Strava sign-in). */
+  async signInAs(userId: string) {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('This account no longer exists');
+    return this.generateToken(user);
   }
 
   async login(email: string, password: string) {

@@ -80,6 +80,16 @@ export function activityUpdatesEmail(to: { address: string; name?: string }, tit
   };
 }
 
+export function streakReminderEmail(to: { address: string; name?: string }, days: number, url: string, settingsUrl: string): MailMessage {
+  const streak = `${days}-day streak`;
+  return {
+    to,
+    subject: `Keep your ${streak} alive 🔥`,
+    html: layout(`Your ${streak} ends tonight`, `You haven’t moved yet today. A short walk, run or ride before midnight keeps the fire lit.`, 'Start an activity', url, `Turn off activity emails in your profile settings: ${settingsUrl}`),
+    text: `Your ${streak} ends tonight. A short walk, run or ride before midnight keeps it going.\n\nStart: ${url}\n\nEmail settings: ${settingsUrl}`,
+  };
+}
+
 export function competitionDigestEmail(to: { address: string; name?: string }, competitions: Array<{ title: string; entrants: number }>, url: string, settingsUrl: string): MailMessage {
   const intro = `Popular competitions on Jump: ${competitions.map((competition) => `${competition.title} (${competition.entrants} joined)`).join(' · ')}. Find one to move with.`;
   return {

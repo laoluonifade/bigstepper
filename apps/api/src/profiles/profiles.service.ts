@@ -36,8 +36,8 @@ export class ProfilesService {
       changes.displayName = name;
     }
     if (input.preferredUnit !== undefined) changes.preferredUnit = input.preferredUnit;
-    if (input.activityVisibility !== undefined) changes.activityVisibility = input.activityVisibility;
     if (input.countryCode !== undefined) changes.countryCode = input.countryCode;
+    if (input.whatsappNumber !== undefined) changes.whatsappNumber = input.whatsappNumber || null;
     if (input.bio !== undefined) changes.bio = input.bio?.trim() || null;
     if (input.weeklyGoalMetres !== undefined) changes.weeklyGoalMetres = input.weeklyGoalMetres;
     if (input.weightKg !== undefined) changes.weightKg = input.weightKg;
@@ -96,8 +96,8 @@ export class ProfilesService {
   }
 
   /**
-   * Verified aggregate totals are public. Dated activities still follow the runner's visibility
-   * setting; never expose routes (a start point is often someone's front door).
+   * Verified totals and recent activities are public; never expose routes (a start point is often
+   * someone's front door).
    */
   async getPublic(username: string, viewerId?: string | null) {
     const profile = await this.byUsername(username);
@@ -109,8 +109,6 @@ export class ProfilesService {
               EXISTS (SELECT 1 FROM "follows" WHERE "followerId" = $1 AND "followingId" = $2) "followsMe"`,
       [profile.userId, viewerId ?? null],
     );
-    const runsVisible =
-      isMe || profile.activityVisibility === 'public' || (profile.activityVisibility === 'followers' && counts.followedByMe);
     const base = {
       username: profile.username,
       displayName: profile.displayName,
@@ -118,7 +116,8 @@ export class ProfilesService {
       avatarUrl: profile.avatarUrl,
       bio: profile.bio,
       memberSince: profile.createdAt,
-      runsVisible,
+      // Every runner's activities are public: competitions are only fair when anyone can check the runs.
+      runsVisible: true,
       isMe,
       followers: counts.followers,
       following: counts.following,
@@ -141,7 +140,6 @@ export class ProfilesService {
       [profile.userId],
     );
     const stats = Object.fromEntries(Object.entries(totals as Record<string, string | number>).map(([key, value]) => [key, Number(value)]));
-    if (!runsVisible) return { ...base, stats };
 
     const recent = await this.dataSource.query(
       `SELECT a."activityType", a."startedAt", ${DISTANCE}::integer "metres", a."movingSeconds"

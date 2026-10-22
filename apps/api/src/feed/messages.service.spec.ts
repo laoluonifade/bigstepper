@@ -1,26 +1,27 @@
 import { DataSource } from 'typeorm';
+import { CloudinaryService } from '../profiles/cloudinary.service';
 import { MessagesService } from './messages.service';
 
 describe('MessagesService', () => {
   const query = jest.fn();
-  const service = new MessagesService({ query } as unknown as DataSource);
+  const service = new MessagesService({ query } as unknown as DataSource, {} as CloudinaryService);
   beforeEach(() => query.mockReset());
 
   it('allows a direct message from a runner profile', async () => {
     query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{ id: 'message' }]);
     await service.send('me', 'other', 'Hello');
-    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Hello', null]);
+    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Hello', null, null, null, null]);
   });
 
   it('sends trimmed text and checks that a reply belongs to this conversation', async () => {
     query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{}]).mockResolvedValueOnce([{ id: 'message' }]);
-    await service.send('me', 'other', '  Good run  ', 'reply-id');
-    expect(query.mock.calls[2][1]).toEqual(['me', 'other', 'Good run', 'reply-id']);
+    await service.send('me', 'other', '  Good run  ', { replyToId: 'reply-id' });
+    expect(query.mock.calls[2][1]).toEqual(['me', 'other', 'Good run', 'reply-id', null, null, null]);
   });
 
   it('rejects replying to a message in another conversation', async () => {
     query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]);
-    await expect(service.send('me', 'other', 'Hello', 'someone-elses-message')).rejects.toThrow('this conversation');
+    await expect(service.send('me', 'other', 'Hello', { replyToId: 'someone-elses-message' })).rejects.toThrow('this conversation');
   });
 
   it('does not allow a stranger to react to a message', async () => {
@@ -38,7 +39,7 @@ describe('MessagesService', () => {
   it('sends trimmed text without a reply', async () => {
     query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{ id: 'message' }]);
     await service.send('me', 'other', '  Good run  ');
-    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Good run', null]);
+    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Good run', null, null, null, null]);
   });
 
   it('edits only the sender’s regular message', async () => {

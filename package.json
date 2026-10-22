@@ -10,7 +10,8 @@
     "lint": "pnpm -r --if-present run lint",
     "test": "pnpm -r --if-present run test",
     "db:migrate": "pnpm --filter @jump/api migration:run",
-    "db:revert": "pnpm --filter @jump/api migration:revert"
+    "db:revert": "pnpm --filter @jump/api migration:revert",
+    "dev:mobile": "pnpm --filter @jump/mobile start"
   },
   "pnpm": {
     "overrides": {

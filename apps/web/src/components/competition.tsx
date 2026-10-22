@@ -1,15 +1,22 @@
 import { Link } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import { type ReactNode, useId } from 'react';
 import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '../lib/format';
 import type { ChallengeType, CompetitionTable, Unit } from '../lib/types';
 import { ArrowRightIcon, LockIcon, UsersIcon } from './icons';
+import { METALS } from './Milestones';
 import { cx } from './ui';
 
 export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' | 'scoring-closed' | 'final';
 
+/**
+ * A 3D tile for the competition type, in the same metals as the milestone medals: a thick base edge,
+ * a bevelled face with gloss, and an embossed symbol. The metal is picked from the code, so each
+ * competition keeps its colour.
+ */
 export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; code: string; size?: number }) {
-  const palettes = ['bg-track', 'bg-volt', 'bg-medal-bronze', 'bg-medal-silver', 'bg-card'];
-  const colour = palettes[[...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % palettes.length];
+  const uid = useId().replace(/:/g, '');
+  const metals = [METALS.flame, METALS.volt, METALS.bronze, METALS.silver, METALS.gold];
+  const metal = metals[[...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % metals.length];
   const symbol = {
     RUN: <><circle cx="26" cy="9" r="3" /><path d="m24 15-7 6 7 3 3 8m-3-17 8 4-3 6m-12-4-7 3m17 8 9 1" /></>,
     CYCLING: <><circle cx="9" cy="29" r="6" /><circle cx="31" cy="29" r="6" /><path d="m9 29 7-15 7 15H9l9-10h5l8 10m-13-15h5m-9-4h5" /></>,
@@ -18,8 +25,30 @@ export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; 
     STEP: <><path d="M5 29h8v-7h8v-7h8V8h7" /><path d="M6 34h29" /><circle cx="8" cy="12" r="2" /></>,
     TIMED: <><circle cx="20" cy="22" r="12" /><path d="M20 22V13m0 9 7 4M16 5h8M20 5v5" /></>,
   }[type];
-  return <span className={cx('flex shrink-0 items-center justify-center rounded-[10px] border-2 border-ink text-ink shadow-hard-sm', colour)} style={{ width: size, height: size }} aria-label={`${type.toLowerCase()} competition`}>
-    <svg width={size * 0.72} height={size * 0.72} viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">{symbol}</svg>
+  return <span className="medal-earned relative inline-block shrink-0" style={{ width: size, height: size }} role="img" aria-label={`${type.toLowerCase()} competition`}>
+    <svg viewBox="0 0 64 64" width={size} height={size} className="overflow-visible" aria-hidden="true">
+      <defs>
+        <linearGradient id={`trim-${uid}`} x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stopColor={metal.rim[0]} /><stop offset="1" stopColor={metal.rim[1]} /></linearGradient>
+        <radialGradient id={`tface-${uid}`} cx="0.3" cy="0.25" r="0.9"><stop offset="0" stopColor={metal.face[0]} /><stop offset="1" stopColor={metal.face[1]} /></radialGradient>
+        <linearGradient id={`tgloss-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity="0.7" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
+        <clipPath id={`tclip-${uid}`}><rect x="9" y="7" width="46" height="46" rx="11" /></clipPath>
+      </defs>
+      {/* Ink outline and hard drop keep it on-brand; the base edge gives it thickness. */}
+      <rect x="4" y="6" width="58" height="58" rx="15" fill="#121212" />
+      <rect x="2" y="2" width="58" height="58" rx="15" fill="#121212" />
+      <rect x="4" y="4" width="54" height="54" rx="13" fill={metal.edge} />
+      <rect x="4" y="2.5" width="54" height="52" rx="13" fill={`url(#trim-${uid})`} />
+      <rect x="9" y="7" width="46" height="46" rx="11" fill={metal.edge} opacity="0.5" />
+      <rect x="9" y="7.8" width="46" height="45.2" rx="11" fill={`url(#tface-${uid})`} />
+      <g transform="translate(14 13) scale(0.9)" fill="none" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
+        <g stroke="#fff" strokeOpacity="0.55" transform="translate(0.8 1)">{symbol}</g>
+        <g stroke={metal.ink}>{symbol}</g>
+      </g>
+      <g clipPath={`url(#tclip-${uid})`}>
+        <ellipse cx="24" cy="12" rx="26" ry="10" fill={`url(#tgloss-${uid})`} transform="rotate(-18 24 12)" />
+        <rect className="medal-shine" x="-30" y="0" width="12" height="64" fill="#fff" opacity="0.4" transform="skewX(-20)" />
+      </g>
+    </svg>
   </span>;
 }
 

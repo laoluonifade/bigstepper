@@ -28,10 +28,11 @@ export class ActivitiesService {
     return this.activities.query(
       `SELECT (a."startedAt" AT TIME ZONE $3)::date::text AS day,
               COUNT(*)::integer AS "activities",
-              COALESCE(SUM(a."validatedSteps"), 0)::integer AS steps,
-              COALESCE(SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")), 0)::bigint AS "distanceMetres"
+              COALESCE(SUM(a."validatedSteps") FILTER (WHERE a."verificationStatus"='VERIFIED'), 0)::integer AS steps,
+              COALESCE(SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")) FILTER (WHERE a."verificationStatus"='VERIFIED'), 0)::bigint AS "distanceMetres"
        FROM "activities" a
-       WHERE a."userId"=$1 AND a."verificationStatus"='VERIFIED'
+       -- Every day you moved is marked, even before verification finishes; totals stay verified-only.
+       WHERE a."userId"=$1 AND a."verificationStatus"<>'REJECTED'
          AND (a."startedAt" AT TIME ZONE $3)::date >= ($2 || '-01')::date
          AND (a."startedAt" AT TIME ZONE $3)::date < (($2 || '-01')::date + INTERVAL '1 month')
        GROUP BY day ORDER BY day`,

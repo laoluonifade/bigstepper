@@ -37,7 +37,7 @@ export class TablesService {
     const ranked = (await this.dataSource.query(
       `SELECT t."id", COUNT(r."id")::integer AS n
        FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId"=t."id"
-       WHERE t."status"='OPEN_FOR_ENTRY' AND ($1='all' OR t."type"=$1) AND ($2='all' OR t."challengeType"=$2)
+       WHERE t."status"='OPEN_FOR_ENTRY' AND t."visibility"='public' AND ($1='all' OR t."type"=$1) AND ($2='all' OR t."challengeType"=$2)
        GROUP BY t."id" ORDER BY ${sort === 'newest' ? 't."createdAt" DESC' : 'n DESC, t."createdAt" DESC'} LIMIT 50`,
       [type, activity],
     )) as Array<{ id: string; n: number }>;
@@ -160,6 +160,7 @@ export class TablesService {
       fundingDestination: input.fundingDestination ?? 'WINNERS',
       charityName: input.fundingDestination === 'CHARITY' ? input.charityName!.trim() : null,
       prizeSplitBps,
+      visibility: input.visibility ?? 'public',
     });
     return this.saveWithInvites(table, input);
   }
@@ -221,6 +222,14 @@ export class TablesService {
         if (!table || !['free', 'sponsored'].includes(table.type)) throw new NotFoundException('Free-entry competition not found');
         if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) {
           throw new ConflictException('This competition is not open for entry');
+        }
+        if (table.visibility === 'private' && table.creatorId !== userId) {
+          const [invited] = await manager.query(
+            `SELECT 1 FROM "challenge_invitations" i JOIN "users" u ON u."id"=$2
+             WHERE i."tableId"=$1 AND i."status"<>'DECLINED' AND (i."invitedUserId"=u."id" OR (u."emailVerified" AND lower(i."email")=lower(u."email")))`,
+            [tableId, userId],
+          );
+          if (!invited) throw new ForbiddenException('This is a private competition. Ask the host to invite you.');
         }
         if (table.capacity) {
           const count = await manager.count(TableRegistration, { where: { tableId } });
