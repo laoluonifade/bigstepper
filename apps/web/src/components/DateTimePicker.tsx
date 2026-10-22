@@ -1,43 +1,47 @@
-import { CSSProperties, KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon } from './icons';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, CloseIcon } from './icons';
+import { Modal } from './Modal';
 import { cx } from './ui';
 
 /**
- * Date + time picker that replaces `<input type="datetime-local">`, whose native UI differs on every
- * browser and is awkward on phones. Values use the same `YYYY-MM-DDTHH:mm` local-time format, so
- * `toLocalInput` / `fromLocalInput` keep working. Popover on wider screens, bottom sheet on phones.
+ * Date + time as two halves of one field. The date opens a month calendar with a few quick days; the
+ * time opens hour / minute / am-pm wheels with a few quick times. Bottom sheet on phones, dialog on
+ * desktop. Values use the `YYYY-MM-DDTHH:mm` local-time format, so `toLocalInput` / `fromLocalInput`
+ * keep working.
  */
 
-const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-const MINUTES = Array.from({ length: 12 }, (_, index) => index * 5);
-const PANEL_WIDTH = 340;
-const PANEL_HEIGHT = 470;
-const GUTTER = 8;
-const DESKTOP_QUERY = '(min-width: 640px)';
-
 const pad = (n: number) => String(n).padStart(2, '0');
-const dateKey = (year: number, month: number, day: number) => `${year}-${pad(month + 1)}-${pad(day)}`;
+const ymd = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+const local = (date: Date) => `${ymd(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+const fromYmd = (value: string) => { const [y, m, d] = value.split('-').map(Number); return new Date(y, m - 1, d); };
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-function parse(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
-  if (!match) return null;
-  const [, y, m, d, hh, mm] = match.map(Number);
-  return { year: y, month: m - 1, day: d, hour: hh, minute: mm, date: value.slice(0, 10) };
+function dayLabel(date: string) {
+  const day = fromYmd(date);
+  const today = new Date();
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (day.toDateString() === today.toDateString()) return 'Today';
+  if (day.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+  return day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: day.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
 }
 
-function label(value: string) {
-  const parts = parse(value);
-  if (!parts) return '';
-  const date = new Date(parts.year, parts.month, parts.day, parts.hour, parts.minute);
-  const day = date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-  return `${day} · ${pad(parts.hour)}:${pad(parts.minute)}`;
+function timeLabel(time: string) {
+  const [h, m] = time.split(':').map(Number);
+  return `${h % 12 || 12}:${pad(m)} ${h < 12 ? 'am' : 'pm'}`;
 }
 
-function todayKey() {
+/** Quick starts people actually pick, skipping any already in the past. */
+function presets(min?: string) {
   const now = new Date();
-  return dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const soon = new Date(Math.ceil(now.getTime() / (5 * 60_000)) * 5 * 60_000);
+  const at = (days: number, hour: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, hour, 0);
+  const saturday = (6 - now.getDay() + 7) % 7 || 7;
+  return [
+    { label: 'Now', value: local(soon) },
+    { label: 'Tonight 6pm', value: local(at(0, 18)) },
+    { label: 'Tomorrow 6am', value: local(at(1, 6)) },
+    { label: 'Sat 7am', value: local(at(saturday, 7)) },
+  ].filter((preset) => preset.value >= (min ?? local(now)).slice(0, 16));
 }
 
 export function DateTimePicker({
@@ -45,9 +49,10 @@ export function DateTimePicker({
   value,
   onChange,
   min,
-  placeholder = 'Pick a date and time',
+  placeholder = 'Pick a date',
   clearable = false,
   defaultTime = '07:00',
+  quickPicks = false,
   ...aria
 }: {
   id?: string;
@@ -59,359 +64,172 @@ export function DateTimePicker({
   clearable?: boolean;
   /** Time used when a day is picked before any time is set. */
   defaultTime?: string;
+  /** Show "Now / Tonight / Tomorrow / Sat" shortcuts under the field. */
+  quickPicks?: boolean;
   'aria-invalid'?: boolean;
   'aria-describedby'?: string;
 }) {
-  const selected = parse(value);
-  const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'date' | 'time'>('date');
-  const [view, setView] = useState(() => {
-    const base = selected ?? parse(min ?? '') ?? parse(`${todayKey()}T00:00`)!;
-    return { year: base.year, month: base.month };
-  });
-  /** Fixed-position coordinates for the desktop popover; `null` means the phone bottom sheet. */
-  const [anchor, setAnchor] = useState<CSSProperties | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const minDate = min?.slice(0, 10);
+  const [open, setOpen] = useState<'date' | 'time' | null>(null);
+  const date = value.slice(0, 10);
+  const time = value.slice(11, 16);
 
-  const close = useCallback((restoreFocus = true) => {
-    setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
-  }, []);
-
-  function openPicker() {
-    const base = selected ?? parse(min ?? '') ?? parse(`${todayKey()}T00:00`)!;
-    setView({ year: base.year, month: base.month });
-    setTab('date');
-    setAnchor(measure());
-    setOpen(true);
+  /** Never earlier than `min`: a past time on the minimum day snaps forward to it. */
+  function commit(nextDate: string, nextTime: string) {
+    if (!nextDate) return;
+    const next = `${nextDate}T${nextTime || defaultTime}`;
+    onChange(min && next < min.slice(0, 16) ? min.slice(0, 16) : next);
   }
 
-  /** Rendered in a portal (transformed ancestors break `position: fixed`), so place it from the trigger's rect. */
-  function measure(): CSSProperties | null {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect || !window.matchMedia(DESKTOP_QUERY).matches) return null;
-    const below = window.innerHeight - rect.bottom;
-    const up = below < PANEL_HEIGHT + GUTTER && rect.top > below;
-    const left = Math.max(16, Math.min(rect.left, window.innerWidth - PANEL_WIDTH - 16));
-    return up ? { left, bottom: window.innerHeight - rect.top + GUTTER } : { left, top: rect.bottom + GUTTER };
-  }
-
-  // Outside click (popover) and Escape.
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) close(false);
-    };
-    const reposition = () => setAnchor(measure());
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        close();
-      }
-    };
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', reposition);
-    window.addEventListener('scroll', reposition, true);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', reposition);
-      window.removeEventListener('scroll', reposition, true);
-    };
-  }, [close, open]);
-
-  // The bottom sheet is modal on phones: stop the page scrolling behind it.
-  useEffect(() => {
-    if (!open || anchor) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [anchor, open]);
-
-  // Move focus into the panel: the chosen day, today, or the first enabled day.
-  useLayoutEffect(() => {
-    if (!open || tab !== 'date') return;
-    const panel = panelRef.current;
-    const target =
-      panel?.querySelector<HTMLButtonElement>('[data-day][aria-pressed="true"]:not(:disabled)') ??
-      panel?.querySelector<HTMLButtonElement>('[data-day][data-today]:not(:disabled)') ??
-      panel?.querySelector<HTMLButtonElement>('[data-day][data-in-month]:not(:disabled)');
-    target?.focus({ preventScroll: true });
-  }, [open, tab, view]);
-
-  const cells = useMemo(() => {
-    const first = new Date(view.year, view.month, 1);
-    const offset = (first.getDay() + 6) % 7;
-    return Array.from({ length: 42 }, (_, index) => {
-      const date = new Date(view.year, view.month, 1 - offset + index);
-      return { year: date.getFullYear(), month: date.getMonth(), day: date.getDate(), inMonth: date.getMonth() === view.month };
-    });
-  }, [view]);
-
-  const today = todayKey();
-  const viewTitle = new Date(view.year, view.month, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  const canGoBack = !minDate || `${view.year}-${pad(view.month + 1)}` > minDate.slice(0, 7);
-
-  function shiftMonth(delta: number) {
-    setView(({ year, month }) => {
-      const next = new Date(year, month + delta, 1);
-      return { year: next.getFullYear(), month: next.getMonth() };
-    });
-  }
-
-  function pickDay(key: string) {
-    const time = selected ? `${pad(selected.hour)}:${pad(selected.minute)}` : defaultTime;
-    let next = `${key}T${time}`;
-    if (min && next < min) next = min;
-    onChange(next);
-    setTab('time');
-  }
-
-  function pickTime(hour: number, minute: number) {
-    const date = selected?.date ?? (minDate && minDate > today ? minDate : today);
-    onChange(`${date}T${pad(hour)}:${pad(minute)}`);
-  }
-
-  function timeDisabled(hour: number, minute: number) {
-    const date = selected?.date;
-    return Boolean(min && date && `${date}T${pad(hour)}:${pad(minute)}` < min);
-  }
-
-  function onGridKey(event: KeyboardEvent<HTMLDivElement>) {
-    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
-    if (!step) return;
-    event.preventDefault();
-    const current = (document.activeElement as HTMLElement | null)?.dataset.day;
-    if (!current) return;
-    const [y, m, d] = current.split('-').map(Number);
-    const next = new Date(y, m - 1, d + step);
-    const key = dateKey(next.getFullYear(), next.getMonth(), next.getDate());
-    if (next.getMonth() !== view.month || next.getFullYear() !== view.year) {
-      setView({ year: next.getFullYear(), month: next.getMonth() });
-    }
-    requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>(`[data-day="${key}"]`)?.focus());
-  }
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        ref={triggerRef}
-        id={id}
-        type="button"
-        className={cx('field num flex items-center justify-between gap-3 text-left', !value && 'text-ink-3')}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => (open ? close() : openPicker())}
-        {...aria}
-      >
-        <span className="truncate">{value ? label(value) : placeholder}</span>
-        <CalendarIcon size={18} className="shrink-0 text-ink-2" />
+  const half = 'flex min-w-0 items-center gap-2 px-3 py-3 text-left text-[16px] transition-colors hover:bg-ink/[0.025]';
+  return <div>
+    <div className={cx('field flex items-stretch overflow-hidden !p-0', aria['aria-invalid'] && 'border-bad')}>
+      <button id={id} type="button" className={cx(half, 'flex-[1.4] border-r-[1.5px] border-line')} onClick={() => setOpen('date')} aria-describedby={aria['aria-describedby']} aria-invalid={aria['aria-invalid']} aria-haspopup="dialog">
+        <CalendarIcon size={17} className="shrink-0 text-ink-3" />
+        <span className={cx('min-w-0 flex-1 truncate', !date && 'text-ink-3')}>{date ? dayLabel(date) : placeholder}</span>
       </button>
-      {clearable && value && !open && (
-        <button
-          type="button"
-          className="absolute right-11 top-1/2 -translate-y-1/2 rounded p-1.5 text-ink-3 hover:bg-ink/[0.06] hover:text-ink"
-          aria-label="Clear date"
-          onClick={() => onChange('')}
-        >
-          <CloseIcon size={16} />
-        </button>
-      )}
-
-      {open &&
-        createPortal(
-        <>
-          {/* Phone backdrop. On wider screens the panel is a plain popover. */}
-          {!anchor && <div className="fixed inset-0 z-50 animate-fade bg-ink/40" aria-hidden="true" />}
-          <div
-            ref={panelRef}
-            role="dialog"
-            aria-modal={!anchor}
-            aria-label="Choose date and time"
-            style={anchor ?? undefined}
-            className={cx(
-              'fixed z-50 bg-card',
-              anchor
-                ? 'w-[340px] animate-rise rounded-md border-2 border-ink px-4 pb-4 pt-3 shadow-hard'
-                : 'safe-bottom inset-x-0 bottom-0 max-h-[92vh] animate-sheet-up overflow-y-auto rounded-t-xl border-t-2 border-ink px-4 pt-3',
-            )}
-          >
-            {!anchor && <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line" aria-hidden="true" />}
-
-            <div className="mb-3 grid grid-cols-2 rounded border-[1.5px] border-ink p-0.5" role="tablist">
-              {(['date', 'time'] as const).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === key}
-                  onClick={() => setTab(key)}
-                  className={cx(
-                    'wide flex min-h-10 flex-col items-center justify-center rounded-sm text-[11px] font-bold uppercase tracking-[0.04em]',
-                    tab === key ? 'bg-ink text-paper' : 'text-ink-2 hover:text-ink',
-                  )}
-                >
-                  {key === 'date' ? 'Date' : 'Time'}
-                  <span className={cx('num text-[12px] normal-case tracking-normal', tab === key ? 'text-volt' : 'text-ink-3')} style={{ fontStretch: '100%' }}>
-                    {key === 'date'
-                      ? selected
-                        ? new Date(selected.year, selected.month, selected.day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-                        : '-'
-                      : selected
-                        ? `${pad(selected.hour)}:${pad(selected.minute)}`
-                        : '-'}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {tab === 'date' ? (
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <button
-                    type="button"
-                    className="rounded p-2.5 hover:bg-ink/[0.06] disabled:opacity-30"
-                    onClick={() => shiftMonth(-1)}
-                    disabled={!canGoBack}
-                    aria-label="Previous month"
-                  >
-                    <ChevronLeftIcon size={18} />
-                  </button>
-                  <p className="wide text-[14px] font-extrabold uppercase" aria-live="polite">
-                    {viewTitle}
-                  </p>
-                  <button type="button" className="rounded p-2.5 hover:bg-ink/[0.06]" onClick={() => shiftMonth(1)} aria-label="Next month">
-                    <ChevronRightIcon size={18} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-7 text-center" aria-hidden="true">
-                  {WEEKDAYS.map((day) => (
-                    <span key={day} className="eyebrow py-1 text-[10px] text-ink-3">
-                      {day}
-                    </span>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-0.5" onKeyDown={onGridKey}>
-                  {cells.map((cell) => {
-                    const key = dateKey(cell.year, cell.month, cell.day);
-                    const isSelected = selected?.date === key;
-                    const disabled = Boolean(minDate && key < minDate);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        data-day={key}
-                        data-in-month={cell.inMonth || undefined}
-                        data-today={key === today || undefined}
-                        aria-pressed={isSelected}
-                        aria-label={new Date(cell.year, cell.month, cell.day).toLocaleDateString('en-GB', {
-                          weekday: 'long',
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric',
-                        })}
-                        tabIndex={isSelected || (!selected && key === today) ? 0 : -1}
-                        disabled={disabled}
-                        onClick={() => {
-                          if (!cell.inMonth) setView({ year: cell.year, month: cell.month });
-                          pickDay(key);
-                        }}
-                        className={cx(
-                          'num flex h-11 items-center justify-center rounded text-[14px] font-semibold disabled:pointer-events-none disabled:opacity-25 sm:h-10',
-                          isSelected
-                            ? 'bg-ink text-volt'
-                            : cx('hover:bg-ink/[0.07]', key === today && 'ring-[1.5px] ring-inset ring-ink', !cell.inMonth && 'text-ink-3'),
-                        )}
-                      >
-                        {cell.day}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <p className="eyebrow mb-2 text-ink-3">Hour</p>
-                  <div className="grid grid-cols-6 gap-1">
-                    {HOURS.map((hour) => {
-                      const minute = selected?.minute ?? 0;
-                      return (
-                        <TimeChip
-                          key={hour}
-                          active={selected?.hour === hour}
-                          disabled={timeDisabled(hour, 55)}
-                          onClick={() => pickTime(hour, timeDisabled(hour, minute) ? MINUTES.find((m) => !timeDisabled(hour, m)) ?? minute : minute)}
-                        >
-                          {pad(hour)}
-                        </TimeChip>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <p className="eyebrow mb-2 text-ink-3">Minute</p>
-                  <div className="grid grid-cols-6 gap-1">
-                    {MINUTES.map((minute) => (
-                      <TimeChip
-                        key={minute}
-                        active={selected?.minute === minute}
-                        disabled={timeDisabled(selected?.hour ?? 0, minute)}
-                        onClick={() => pickTime(selected?.hour ?? Number(defaultTime.slice(0, 2)), minute)}
-                      >
-                        {`:${pad(minute)}`}
-                      </TimeChip>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              {clearable && (
-                <button
-                  type="button"
-                  className="btn-quiet flex-1"
-                  onClick={() => {
-                    onChange('');
-                    close();
-                  }}
-                >
-                  Clear
-                </button>
-              )}
-              <button type="button" className="btn-dark flex-1" onClick={() => close()}>
-                Done
-              </button>
-            </div>
-          </div>
-        </>,
-          document.body,
-        )}
+      <button type="button" className={cx(half, 'flex-1 disabled:cursor-not-allowed')} onClick={() => setOpen('time')} disabled={!date} aria-haspopup="dialog" aria-label={time ? `Time, ${timeLabel(time)}` : 'Pick a time'}>
+        <ClockIcon size={17} className="shrink-0 text-ink-3" />
+        <span className={cx('min-w-0 flex-1 truncate', !time && 'text-ink-3')}>{time ? timeLabel(time) : 'Time'}</span>
+      </button>
+      {clearable && value && <button type="button" className="shrink-0 px-2 text-ink-3 hover:text-ink" onClick={() => onChange('')} aria-label="Clear"><CloseIcon size={15} /></button>}
     </div>
-  );
+    {quickPicks && <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
+      {presets(min).map((preset) => <button key={preset.label} type="button" onClick={() => onChange(preset.value)} className={cx('shrink-0 rounded-full border-[1.5px] px-3 py-1 text-[12px] font-semibold transition-colors', value === preset.value ? 'border-ink bg-ink text-paper' : 'border-line bg-card text-ink-2 hover:border-ink hover:text-ink')}>{preset.label}</button>)}
+    </div>}
+
+    {open === 'date' && <Modal title="Date" onClose={() => setOpen(null)}>
+      <CalendarSheet value={date} min={min?.slice(0, 10)} onPick={(next) => { commit(next, time); setOpen(null); }} />
+    </Modal>}
+    {open === 'time' && <Modal title="Time" onClose={() => setOpen(null)}>
+      <TimeSheet value={time || defaultTime} onDone={(next) => { commit(date, next); setOpen(null); }} />
+    </Modal>}
+  </div>;
 }
 
-function TimeChip({ active, disabled, onClick, children }: { active: boolean; disabled: boolean; onClick: () => void; children: string }) {
-  return (
-    <button
+/** Month grid with a row of quick days. Picking a day is the whole interaction. */
+function CalendarSheet({ value, min, onPick }: { value: string; min?: string; onPick: (date: string) => void }) {
+  const today = new Date();
+  const start = value ? fromYmd(value) : min ? fromYmd(min) : today;
+  const [view, setView] = useState({ year: start.getFullYear(), month: start.getMonth() });
+  const first = new Date(view.year, view.month, 1);
+  const lead = (first.getDay() + 6) % 7;
+  const days = new Date(view.year, view.month + 1, 0).getDate();
+  const todayKey = ymd(today);
+  const minMonth = min ? fromYmd(min) : null;
+  const canGoBack = !minMonth || view.year > minMonth.getFullYear() || (view.year === minMonth.getFullYear() && view.month > minMonth.getMonth());
+  const saturday = (6 - today.getDay() + 7) % 7 || 7;
+  const monday = (8 - today.getDay()) % 7 || 7;
+  const quick = [
+    { label: 'Today', date: ymd(today) },
+    { label: 'Tomorrow', date: ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)) },
+    { label: 'Sat', date: ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + saturday)) },
+    { label: 'Next Mon', date: ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + monday)) },
+  ].filter((option) => !min || option.date >= min);
+
+  function shift(by: number) {
+    setView((current) => { const next = new Date(current.year, current.month + by, 1); return { year: next.getFullYear(), month: next.getMonth() }; });
+  }
+
+  return <div>
+    <div className="grid grid-cols-4 gap-1.5">
+      {quick.map((option) => <button key={option.label} type="button" onClick={() => onPick(option.date)} className={cx('h-9 rounded-lg border-[1.5px] text-[13px] font-semibold transition-colors', value === option.date ? 'border-ink bg-ink text-paper' : 'border-line hover:border-ink')}>{option.label}</button>)}
+    </div>
+
+    <div className="mt-4 flex items-center justify-between">
+      <p className="text-[16px] font-bold tracking-tight">{first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</p>
+      <div className="flex gap-1">
+        <button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-ink/[0.06] disabled:opacity-25" onClick={() => shift(-1)} disabled={!canGoBack} aria-label="Previous month"><ChevronLeftIcon size={18} /></button>
+        <button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-ink/[0.06]" onClick={() => shift(1)} aria-label="Next month"><ChevronRightIcon size={18} /></button>
+      </div>
+    </div>
+
+    <div className="mt-2 grid grid-cols-7 text-center">
+      {WEEKDAYS.map((day, index) => <span key={index} className="pb-1.5 text-[11px] font-semibold text-ink-3">{day}</span>)}
+      {Array.from({ length: lead }, (_, index) => <span key={`lead-${index}`} />)}
+      {Array.from({ length: days }, (_, index) => {
+        const key = ymd(new Date(view.year, view.month, index + 1));
+        const disabled = Boolean(min && key < min);
+        const selected = key === value;
+        return <div key={key} className="flex justify-center py-0.5">
+          <button type="button" disabled={disabled} onClick={() => onPick(key)} aria-pressed={selected} aria-label={fromYmd(key).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+            className={cx('num flex h-10 w-10 items-center justify-center rounded-full text-[15px] transition-colors',
+              selected ? 'bg-ink font-bold text-paper' : key === todayKey ? 'border-[1.5px] border-ink font-semibold' : 'hover:bg-ink/[0.06]',
+              disabled && 'pointer-events-none text-ink/20')}>
+            {index + 1}
+          </button>
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+const ROW = 40;
+const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
+const MINUTES = Array.from({ length: 12 }, (_, index) => index * 5);
+
+/** A scroll wheel: items snap to the centre band; tapping one scrolls it there. */
+function Wheel<T extends string | number>({ items, value, onChange, format, label }: { items: T[]; value: T; onChange: (value: T) => void; format: (value: T) => string; label: string }) {
+  const list = useRef<HTMLDivElement | null>(null);
+  const settle = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const index = items.indexOf(value);
+    if (list.current && index >= 0) list.current.scrollTop = index * ROW;
+    // Only on mount and when the value is set from outside (quick times); scrolling sets it from inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  useEffect(() => () => { if (settle.current !== null) window.clearTimeout(settle.current); }, []);
+
+  function onScroll() {
+    if (settle.current !== null) window.clearTimeout(settle.current);
+    settle.current = window.setTimeout(() => {
+      const index = Math.max(0, Math.min(items.length - 1, Math.round((list.current?.scrollTop ?? 0) / ROW)));
+      if (items[index] !== value) onChange(items[index]);
+    }, 90);
+  }
+
+  return <div
+    ref={list}
+    onScroll={onScroll}
+    role="listbox"
+    aria-label={label}
+    className="no-scrollbar relative h-[200px] flex-1 snap-y snap-mandatory overflow-y-scroll overscroll-contain"
+    style={{ paddingBlock: (200 - ROW) / 2, maskImage: 'linear-gradient(transparent, #000 35%, #000 65%, transparent)', WebkitMaskImage: 'linear-gradient(transparent, #000 35%, #000 65%, transparent)' }}
+  >
+    {items.map((item) => <button
+      key={String(item)}
       type="button"
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={cx(
-        'num flex h-11 items-center justify-center rounded border-[1.5px] text-[14px] font-semibold disabled:pointer-events-none disabled:opacity-25 sm:h-9',
-        active ? 'border-ink bg-ink text-volt' : 'border-line bg-white hover:border-ink',
-      )}
-    >
-      {children}
-    </button>
-  );
+      role="option"
+      aria-selected={item === value}
+      onClick={(event) => event.currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' })}
+      className={cx('num flex w-full snap-center items-center justify-center text-[22px] transition-colors', item === value ? 'font-bold text-ink' : 'text-ink-3')}
+      style={{ height: ROW }}
+    >{format(item)}</button>)}
+  </div>;
+}
+
+/** Hour, minute and am/pm wheels, a few common times, and Done. */
+function TimeSheet({ value, onDone }: { value: string; onDone: (time: string) => void }) {
+  const [h, m] = value.split(':').map(Number);
+  const [hour, setHour] = useState(h % 12 || 12);
+  const [minute, setMinute] = useState(Math.round(m / 5) * 5 % 60);
+  const [half, setHalf] = useState<'am' | 'pm'>(h < 12 ? 'am' : 'pm');
+  const as24 = (hour % 12) + (half === 'pm' ? 12 : 0);
+  const quick = [{ label: '6:00 am', h: 6 }, { label: '7:00 am', h: 7 }, { label: 'Noon', h: 12 }, { label: '6:00 pm', h: 18 }];
+
+  return <div>
+    <div className="grid grid-cols-4 gap-1.5">
+      {quick.map((option) => <button key={option.label} type="button" onClick={() => onDone(`${pad(option.h)}:00`)} className="h-9 rounded-lg border-[1.5px] border-line text-[13px] font-semibold transition-colors hover:border-ink">{option.label}</button>)}
+    </div>
+    <div className="relative mt-4 flex items-stretch rounded-xl border-[1.5px] border-ink bg-paper px-2">
+      {/* The selection band the wheels snap into. */}
+      <div className="pointer-events-none absolute inset-x-2 top-1/2 h-10 -translate-y-1/2 rounded-lg border-[1.5px] border-ink bg-card" aria-hidden="true" />
+      <div className="relative flex flex-1">
+        <Wheel label="Hour" items={HOURS} value={hour} onChange={setHour} format={(value) => String(value)} />
+        <span className="flex items-center text-[22px] font-bold" aria-hidden="true">:</span>
+        <Wheel label="Minute" items={MINUTES} value={minute} onChange={setMinute} format={(value) => pad(value)} />
+        <Wheel label="Morning or evening" items={['am', 'pm'] as Array<'am' | 'pm'>} value={half} onChange={setHalf} format={(value) => value} />
+      </div>
+    </div>
+    <button type="button" className="btn-dark mt-4 w-full" onClick={() => onDone(`${pad(as24)}:${pad(minute)}`)}>Set {timeLabel(`${pad(as24)}:${pad(minute)}`)}</button>
+  </div>;
 }

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { api, isApiError, patch } from './api';
 import { useAuth } from './auth';
@@ -45,6 +45,19 @@ export function useActivities() {
 
 export function useTables(sort = 'popular', type = 'all', activity = 'all') {
   return useQuery({ queryKey: [...keys.tables, sort, type, activity], queryFn: () => api<CompetitionTable[]>(`/tables?sort=${sort}&type=${type}&activity=${activity}`) });
+}
+
+export type DiscoverView = 'for-you' | 'trending' | 'starting' | 'friends' | 'newest';
+
+/** The discovery feed, 20 at a time with "load more". */
+export function useDiscover(view: DiscoverView, type = 'all', activity = 'all', enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...keys.tables, 'discover', view, type, activity],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api<{ items: CompetitionTable[]; hasMore: boolean }>(`/tables/discover?view=${view}&type=${type}&activity=${activity}&page=${pageParam}`),
+    getNextPageParam: (last, pages) => (last.hasMore ? pages.length : undefined),
+    enabled,
+  });
 }
 
 export function useStandings(tableId: string | undefined, refetchInterval: number | false = false) {

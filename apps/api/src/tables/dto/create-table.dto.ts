@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsBoolean, ArrayMinSize, IsArray, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../challenge-types';
 
 export class CreateTableDto {
@@ -12,6 +12,10 @@ export class CreateTableDto {
 
   @IsOptional() @IsIn(['public', 'private'])
   visibility?: 'public' | 'private';
+
+  /** No end date: runs until the host ends it. Free competitions only (prizes need a moment to pay out). */
+  @IsOptional() @IsBoolean()
+  openEnded?: boolean;
 
   @IsOptional() @IsIn(CHALLENGE_TYPES)
   challengeType?: ChallengeType;

@@ -174,7 +174,8 @@ export function RegisterPage() {
       if (import.meta.env.DEV && response.developmentVerificationToken) {
         sessionStorage.setItem(DEV_VERIFY_KEY, response.developmentVerificationToken);
       }
-      void navigate({ href: safeRedirect(search.redirect) });
+      // New runners go straight to picking competitions, unless they came from a specific one.
+      void navigate({ href: search.redirect ? safeRedirect(search.redirect) : '/welcome' });
     },
   });
 

@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../components/Modal';
+import { templateById } from '../lib/templates';
+import { useStravaPublic } from '../lib/strava';
+import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
-import { ChallengeMark, CompetitionCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, LockIcon, PlusIcon, ShareIcon } from '../components/icons';
+import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -16,7 +19,6 @@ import {
   Notice,
   PageHeader,
   SectionTitle,
-  Segmented,
   Skeleton,
   SubNav,
   useNow,
@@ -41,17 +43,18 @@ import {
 } from '../lib/format';
 import { rememberTable } from '../lib/local';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
-import { keys, useCreator, useFinalResult, useStandings, useTables, useUnit, useWallet } from '../lib/queries';
+import { keys, useCreator, useDiscover, useFinalResult, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
 import type { ChallengeType, CheckoutResponse, CompetitionTable, ScoringMethod, Unit } from '../lib/types';
 
 export const COMPETE_NAV = [
   { to: '/competitions', label: 'Competitions' },
+  { to: '/leaderboard', label: 'Leaderboard' },
   { to: '/clubs', label: 'Clubs' },
 ] as const;
 
 export function CompeteSubNav() {
   const { user } = useAuth();
-  return <SubNav items={user ? [...COMPETE_NAV] : COMPETE_NAV.filter((item) => item.to !== '/clubs')} />;
+  return <SubNav items={user ? [...COMPETE_NAV] : COMPETE_NAV.filter((item) => item.to === '/competitions')} />;
 }
 
 type TypeFilter = 'all' | 'free' | 'sponsored' | 'paid';
@@ -82,131 +85,181 @@ function scoreText(row: { creditedDistanceMetres: number; creditedSteps: number;
   return formatDistance(row.creditedDistanceMetres, unit);
 }
 
+const ACTIVITY_CHIPS: Array<{ value: 'all' | ChallengeType; label: string }> = [
+  { value: 'all', label: 'All' }, { value: 'RUN', label: 'Run' }, { value: 'WALK', label: 'Walk' }, { value: 'CYCLING', label: 'Ride' },
+  { value: 'DISTANCE', label: 'Distance' }, { value: 'STEP', label: 'Steps' }, { value: 'TIMED', label: 'Timed' },
+];
+const VIEW_CHIPS: Array<{ value: DiscoverView; label: string; signedIn?: boolean; guestOnly?: boolean }> = [
+  { value: 'for-you', label: 'For you', signedIn: true }, { value: 'trending', label: 'Trending' }, { value: 'starting', label: 'Starting soon' },
+  { value: 'friends', label: 'Friends', signedIn: true }, { value: 'newest', label: 'Newest', guestOnly: true },
+];
+const TYPE_CHIPS: Array<{ value: TypeFilter; label: string }> = [
+  { value: 'all', label: 'Any entry' }, { value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Cash prize' }, { value: 'paid', label: 'Paid' },
+];
+
 export function CompetitionsPage() {
   const { user } = useAuth();
   const unit = useUnit();
   const now = useNow(60_000);
   const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { q?: string; activity?: string };
   const [filter, setFilter] = useState<TypeFilter>('all');
-  const [activity, setActivity] = useState<'all' | ChallengeType>('all');
-  const [sort, setSort] = useState<'popular' | 'newest'>('popular');
-  const tables = useTables(sort, filter, activity);
+  const [activity, setActivity] = useState<'all' | ChallengeType>((ACTIVITY_CHIPS.some((chip) => chip.value === search.activity) ? search.activity : 'all') as 'all' | ChallengeType);
+  const [view, setView] = useState<DiscoverView>(user ? 'for-you' : 'trending');
+  const [term, setTerm] = useState(search.q ?? '');
+  const tables = useDiscover(view, filter, activity);
+  const loaded = tables.data?.pages.flatMap((page) => page.items) ?? [];
   const mine = useQuery({
     queryKey: ['tables', 'mine'],
-    queryFn: () => api<Array<{ id: string; code: string; title: string; status: string; hosting: boolean }>>('/tables/mine'),
+    queryFn: () => api<DraftTable[]>('/tables/mine'),
     enabled: Boolean(user),
   });
-  const [code, setCode] = useState('');
-  const list = tables.data ?? [];
-  const fundingDrafts = mine.data?.filter((table) => table.hosting && table.status === 'PENDING_FUNDING') ?? [];
+  const query = term.trim().toLowerCase();
+  const list = loaded.filter((table) => !query || table.title.toLowerCase().includes(query) || table.code.toLowerCase() === query
+    || (table.creator?.displayName ?? '').toLowerCase().includes(query));
+  const drafts = mine.data?.filter((table) => table.hosting && DRAFT_STATUSES.includes(table.status)) ?? [];
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const looksLikeCode = /^[0-9A-F]{8}$/i.test(term.trim());
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = (activity !== 'all' ? 1 : 0) + (filter !== 'all' ? 1 : 0);
+  const views = VIEW_CHIPS.filter((option) => (user ? !option.guestOnly : !option.signedIn));
 
-  function openCode(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
-    const clean = code.trim().toUpperCase();
-    if (clean) void navigate({ to: '/competitions/$code', params: { code: clean } });
+    if (looksLikeCode) void navigate({ to: '/competitions/$code', params: { code: term.trim().toUpperCase() } });
   }
 
   return (
     <div className="animate-rise">
       <CompeteSubNav />
-      <PageHeader
-        eyebrow="Compete"
-        title="Competitions"
-        description="Compete on verified distance, steps, or completion time. Every competition shows exactly how the winner is decided."
-        actions={
-          user && (
-            <Link to="/competitions/new" className="btn-primary">
-              <PlusIcon size={16} /> Create competition
-            </Link>
-          )
-        }
-      />
+      <header className="mb-4 flex items-center justify-between gap-3">
+        <h1 className="text-[24px] font-extrabold tracking-tight sm:text-[30px]">Competitions</h1>
+        {user && <Link to="/competitions/new" className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-transform active:scale-95"><PlusIcon size={15} /> Create</Link>}
+      </header>
 
-      {user && (fundingDrafts.length > 0 || mine.error) && <section className="mb-8">
-        <SectionTitle>Drafts to fund</SectionTitle>
-        <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          {fundingDrafts.map((draft) => <Link key={draft.id} to="/competitions/$code" params={{ code: draft.code }} className="flex items-center justify-between gap-3 rounded-md border border-ink bg-card px-4 py-3 shadow-hard-sm hover:bg-volt/30">
-            <span className="min-w-0"><span className="wide block truncate text-[14px] font-extrabold uppercase">{draft.title}</span><span className="block text-[12px] text-ink-2">Saved draft · fund it to open free entry</span></span>
-            <span className="btn-secondary btn-sm shrink-0">Fund draft <ArrowRightIcon size={14} /></span>
-          </Link>)}
-        </div>
-      </section>}
+      <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
+      {/* Drafts stay out of the way: one quiet row that opens a sheet to finish or discard them. */}
+      {drafts.length > 0 && <button type="button" onClick={() => setDraftsOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-xl border-[1.5px] border-dashed border-ink/40 px-3.5 py-2.5 text-left transition-colors hover:border-ink">
+        <span className="num flex h-7 min-w-7 items-center justify-center rounded-full bg-ink px-2 text-[12px] font-bold text-paper">{drafts.length}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-semibold">{drafts.length === 1 ? 'Draft' : 'Drafts'} not live yet</span>
+          <span className="block truncate text-[12px] text-ink-3">{drafts.map((draft) => draft.title).join(' · ')}</span>
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-0.5 text-[13px] font-bold">Manage<ArrowRightIcon size={14} /></span>
+      </button>}
+      {draftsOpen && <DraftsSheet drafts={drafts} onClose={() => setDraftsOpen(false)} />}
 
-      <form onSubmit={openCode} className="mb-8 flex max-w-md items-stretch gap-2">
-        <label htmlFor="invite-code" className="sr-only">
-          Invite code
+      <form onSubmit={submit} className="flex items-center gap-2">
+        <label className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl border-[1.5px] border-ink bg-card px-3.5">
+          <SearchIcon size={17} className="shrink-0 text-ink-3" />
+          <input className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-ink-3" placeholder="Search or enter a code" value={term} onChange={(event) => setTerm(event.target.value)} aria-label="Search competitions or enter an invite code" />
+          {looksLikeCode && <button className="shrink-0 text-[13px] font-bold">Open</button>}
         </label>
-        <input
-          id="invite-code"
-          className="field font-mono uppercase tracking-[0.18em] placeholder:normal-case placeholder:tracking-normal"
-          placeholder="Got an invite code?"
-          value={code}
-          maxLength={16}
-          onChange={(event) => setCode(event.target.value.replace(/[^a-z0-9]/gi, ''))}
-        />
-        <button className="btn-dark shrink-0" disabled={!code.trim()} aria-label="Open competition">
-          <ArrowRightIcon size={18} />
+        <button type="button" onClick={() => setFiltersOpen(true)} className={cx('relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-[1.5px] border-ink transition-colors', activeFilters ? 'bg-ink text-paper' : 'bg-card')} aria-label={`Filters${activeFilters ? `, ${activeFilters} on` : ''}`}>
+          <SlidersIcon size={19} />
+          {activeFilters > 0 && <span className="num absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-[1.5px] border-paper bg-ink px-1 text-[10px] font-bold text-paper">{activeFilters}</span>}
         </button>
       </form>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Segmented<TypeFilter>
-          label="Competition type"
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 'free', label: 'Free' },
-            { value: 'sponsored', label: 'Funded free' },
-            { value: 'paid', label: 'Paid' },
-          ]}
-        />
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="Activity">
-            {(props) => <select {...props} className="field min-w-28" value={activity} onChange={(event) => setActivity(event.target.value as typeof activity)}>
-              <option value="all">All activities</option><option value="WALK">Walk</option><option value="RUN">Run</option><option value="CYCLING">Cycling</option><option value="DISTANCE">Distance</option><option value="STEP">Steps</option><option value="TIMED">Timed</option>
-            </select>}
-          </Field>
-          <Field label="Order">
-            {(props) => <select {...props} className="field min-w-28" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}>
-              <option value="popular">Most joined</option><option value="newest">Newest</option>
-            </select>}
-          </Field>
-          {tables.data && <p className="num pb-3 text-[12px] text-ink-3">{list.length} open</p>}
-        </div>
+      {/* How to browse, as quiet text tabs; filters live in the sheet. */}
+      <div className="no-scrollbar -mx-4 mt-4 flex gap-5 overflow-x-auto border-b border-line px-4" role="tablist" aria-label="Browse">
+        {views.map((option) => <button key={option.value} type="button" role="tab" aria-selected={view === option.value} onClick={() => setView(option.value)} className={cx('relative shrink-0 whitespace-nowrap pb-2.5 text-[14px] font-semibold transition-colors', view === option.value ? 'text-ink' : 'text-ink-3 hover:text-ink')}>
+          {option.label}
+          {view === option.value && <span className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-ink" aria-hidden="true" />}
+        </button>)}
       </div>
 
+      {activeFilters > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[12px]">
+        {activity !== 'all' && <button type="button" onClick={() => setActivity('all')} className="inline-flex h-7 items-center gap-1 rounded-full bg-ink/[0.07] px-2.5 font-semibold">{ACTIVITY_CHIPS.find((chip) => chip.value === activity)?.label}<CloseIcon size={12} /></button>}
+        {filter !== 'all' && <button type="button" onClick={() => setFilter('all')} className="inline-flex h-7 items-center gap-1 rounded-full bg-ink/[0.07] px-2.5 font-semibold">{TYPE_CHIPS.find((chip) => chip.value === filter)?.label}<CloseIcon size={12} /></button>}
+      </div>}
+
+      {filtersOpen && <Modal title="Filters" onClose={() => setFiltersOpen(false)}>
+        <p className="mb-2 text-[13px] font-semibold text-ink-3">Activity</p>
+        <div className="grid grid-cols-3 gap-2">
+          {ACTIVITY_CHIPS.map((option) => <button key={option.value} type="button" onClick={() => setActivity(option.value)} className={cx('h-10 rounded-lg border-[1.5px] text-[14px] font-semibold transition-colors', activity === option.value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink')}>{option.label}</button>)}
+        </div>
+        <p className="mb-2 mt-5 text-[13px] font-semibold text-ink-3">Entry</p>
+        <div className="grid grid-cols-2 gap-2">
+          {TYPE_CHIPS.map((option) => <button key={option.value} type="button" onClick={() => setFilter(option.value)} className={cx('h-10 rounded-lg border-[1.5px] text-[14px] font-semibold transition-colors', filter === option.value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink')}>{option.label}</button>)}
+        </div>
+        <div className="mt-6 grid grid-cols-2 gap-2">
+          <button type="button" className="btn-secondary" onClick={() => { setActivity('all'); setFilter('all'); }}>Reset</button>
+          <button type="button" className="btn-dark" onClick={() => setFiltersOpen(false)}>Done</button>
+        </div>
+      </Modal>}
+
+      <p className="num mb-2.5 mt-4 text-[12px] font-medium text-ink-3">{tables.data ? `${list.length}${tables.hasNextPage ? '+' : ''} ${view === 'starting' ? 'starting soon' : 'open'}${query ? ` matching “${term.trim()}”` : ''}` : ' '}</p>
       <ErrorNotice error={tables.error} onRetry={() => void tables.refetch()} />
       {tables.isLoading ? (
-        <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-56" />
-          ))}
-        </div>
+        <div className="grid gap-3 sm:grid-cols-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-44 rounded-2xl" />)}</div>
       ) : list.length === 0 ? (
         <EmptyState
           mark="00"
-          title="No open competitions"
-          action={
-            user ? (
-              <Link to="/competitions/new" className="btn-primary">
-                <PlusIcon size={16} /> Start the first one
-              </Link>
-            ) : undefined
-          }
+          title={query ? 'Nothing matches that' : view === 'friends' ? 'Nothing from your people yet' : view === 'for-you' ? 'You’re in everything that fits' : 'No open competitions'}
+          action={user ? <Link to="/competitions/new" className="btn-primary"><PlusIcon size={16} /> {query ? 'Create it yourself' : 'Start the first one'}</Link> : undefined}
         >
-          Create a competition and send the invite code to your crew.
+          {query ? 'Try another name, or start a competition and send the code to your crew.' : 'Create a competition and send the invite code to your crew.'}
         </EmptyState>
       ) : (
-        <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {list.map((table) => (
-            <CompetitionCard key={table.id} table={table} unit={unit} now={now} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {list.map((table) => <CompetitionPreviewCard key={table.id} table={table} unit={unit} now={now} />)}
+          </div>
+          {tables.hasNextPage && <button type="button" className="btn-secondary mt-5 w-full" onClick={() => void tables.fetchNextPage()} disabled={tables.isFetchingNextPage}>{tables.isFetchingNextPage ? 'Loading…' : 'Load more'}</button>}
+        </>
       )}
     </div>
   );
+}
+
+const DRAFT_STATUSES = ['PENDING_FUNDING', 'PENDING_APPROVAL'];
+
+type DraftTable = { id: string; code: string; title: string; status: string; hosting: boolean; guaranteedPrizeKobo: number | null; createdAt: string };
+
+/** Everything the host started but hasn't opened: finish it (fund it, or wait on review) or throw it away. */
+function DraftsSheet({ drafts, onClose }: { drafts: DraftTable[]; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const discard = useMutation({
+    mutationFn: (id: string) => post(`/tables/${id}/discard`),
+    onSuccess(_, id) {
+      setConfirming(null);
+      toast({ tone: 'ok', message: 'Draft discarded.' });
+      queryClient.setQueryData<DraftTable[]>(['tables', 'mine'], (rows) => rows?.filter((row) => row.id !== id));
+      void queryClient.invalidateQueries({ queryKey: ['tables'] });
+      if (drafts.length <= 1) onClose();
+    },
+  });
+
+  return <Modal title="Drafts" onClose={onClose}>
+    <p className="-mt-1 mb-3 text-[13px] text-ink-3">Nobody can join these until they’re live.</p>
+    <ErrorNotice error={discard.error} />
+    <ul className="divide-y divide-line">
+      {drafts.map((draft) => {
+        const review = draft.status === 'PENDING_APPROVAL';
+        return <li key={draft.id} className="py-3">
+          {confirming === draft.id
+            ? <div className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 text-[14px]">Discard <span className="font-semibold">{draft.title}</span>? This can’t be undone.</p>
+              <button type="button" className="h-9 shrink-0 rounded-full px-3 text-[13px] font-semibold text-ink-2 hover:text-ink" onClick={() => setConfirming(null)}>Keep</button>
+              <button type="button" className="h-9 shrink-0 rounded-full bg-bad px-4 text-[13px] font-bold text-paper disabled:opacity-60" disabled={discard.isPending} onClick={() => discard.mutate(draft.id)}>{discard.isPending ? 'Discarding…' : 'Discard'}</button>
+            </div>
+            : <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[15px] font-semibold">{draft.title}</p>
+                <p className="mt-0.5 truncate text-[12px] text-ink-3">
+                  {review ? 'Waiting for Jump to review' : draft.guaranteedPrizeKobo ? `Fund the ${formatMoney(draft.guaranteedPrizeKobo).replace(/\.00$/, '')} prize to open entry` : 'Fund the prize to open entry'}
+                  {' · '}started {formatDate(draft.createdAt)}
+                </p>
+              </div>
+              <button type="button" onClick={() => setConfirming(draft.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-bad-wash hover:text-bad" aria-label={`Discard ${draft.title}`}><TrashIcon size={16} /></button>
+              <Link to="/competitions/$code" params={{ code: draft.code }} onClick={onClose} className="inline-flex h-9 shrink-0 items-center rounded-full bg-ink px-4 text-[13px] font-bold text-paper">{review ? 'View' : 'Fund'}</Link>
+            </div>}
+        </li>;
+      })}
+    </ul>
+  </Modal>;
 }
 
 const DURATIONS = [
@@ -218,26 +271,30 @@ const DURATIONS = [
 
 export function NewCompetitionPage() {
   const navigate = useNavigate();
-  const { club: clubId } = useSearch({ strict: false }) as { club?: string };
+  const { club: clubId, template: templateId } = useSearch({ strict: false }) as { club?: string; template?: string };
+  // "Challenge someone" starters arrive with everything set; the runner just names it and invites.
+  const [preset] = useState(() => templateById(templateId));
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const unit = useUnit();
   const creator = useCreator();
   const club = useQuery({ queryKey: keys.club(clubId ?? ''), queryFn: () => api<{ id: string; name: string; memberCount: number }>(`/clubs/${clubId}`), enabled: Boolean(clubId) });
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(preset?.title ?? '');
   const [description, setDescription] = useState('');
-  const [challengeType, setChallengeType] = useState<ChallengeType>('RUN');
-  const [scoringMethod, setScoringMethod] = useState<ScoringMethod>('FARTHEST_DISTANCE');
-  const [targetDistance, setTargetDistance] = useState('');
+  const [challengeType, setChallengeType] = useState<ChallengeType>(preset?.challengeType ?? 'RUN');
+  const [scoringMethod, setScoringMethod] = useState<ScoringMethod>(preset?.scoringMethod ?? 'FARTHEST_DISTANCE');
+  const [targetDistance, setTargetDistance] = useState(preset?.targetKm ? String(preset.targetKm) : '');
   const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date()));
-  const [scoringClosesAt, setScoringClosesAt] = useState(() => toLocalInput(new Date(Date.now() + 7 * 86_400_000)));
+  const [scoringClosesAt, setScoringClosesAt] = useState(() => toLocalInput(new Date(Date.now() + (preset?.days ?? 7) * 86_400_000)));
   const [remindDaily, setRemindDaily] = useState(false);
   const [reminderTime, setReminderTime] = useState('08:00');
   const reminderTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  const [capacity, setCapacity] = useState('');
+  const [capacity, setCapacity] = useState(preset ? String(preset.capacity) : '');
   const [cap, setCap] = useState('');
-  const [duration, setDuration] = useState<number | null>(7);
+  const [duration, setDuration] = useState<number | null>(preset?.days ?? 7);
+  /** No end date: free competitions only; prizes need an end to pay out. */
+  const [openEnded, setOpenEnded] = useState(false);
   const [entryFee, setEntryFee] = useState('');
   const [fundingOption, setFundingOption] = useState<'MULTI_WINNERS' | 'FIXED_WINNERS' | 'FIXED_CHARITY'>('MULTI_WINNERS');
   const [fixedPrize, setFixedPrize] = useState('');
@@ -245,13 +302,14 @@ export function NewCompetitionPage() {
   const [winnerCount, setWinnerCount] = useState('1');
   const [shares, setShares] = useState(['100']);
   const [inviteClubMembers, setInviteClubMembers] = useState(Boolean(clubId));
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(Boolean(preset));
   const [invitesOpen, setInvitesOpen] = useState(false);
   const [emailText, setEmailText] = useState('');
   const [phoneText, setPhoneText] = useState('');
 
   const startIso = fromLocalInput(startsAt);
-  const scoringIso = fromLocalInput(scoringClosesAt);
+  const endless = openEnded && mode === 'free';
+  const scoringIso = endless ? null : fromLocalInput(scoringClosesAt);
   const capMetres = cap ? toMetres(Number(cap), unit) : undefined;
   const capacityNumber = capacity ? Number(capacity) : undefined;
   const targetDistanceMetres = targetDistance ? toMetres(Number(targetDistance), unit) : undefined;
@@ -299,7 +357,7 @@ export function NewCompetitionPage() {
         scoringMethod,
         ...(targetDistanceMetres ? { targetDistanceMetres } : {}),
         ...(startIso ? { startsAt: startIso } : {}),
-        ...(scoringIso ? { scoringClosesAt: scoringIso } : {}),
+        ...(endless ? { openEnded: true } : scoringIso ? { scoringClosesAt: scoringIso } : {}),
         ...(remindDaily ? { reminderTime, reminderTimeZone } : {}),
         capacity: capacityNumber,
         ...(mode !== 'paid' && capMetres ? { distanceCapMetres: capMetres } : {}),
@@ -321,6 +379,7 @@ export function NewCompetitionPage() {
   });
 
   function pickDuration(days: number) {
+    setOpenEnded(false);
     setDuration(days);
     const start = startIso ? new Date(startIso) : new Date();
     setScoringClosesAt(toLocalInput(new Date(start.getTime() + days * 86_400_000)));
@@ -474,13 +533,15 @@ export function NewCompetitionPage() {
                   key={option.days}
                   type="button"
                   onClick={() => pickDuration(option.days)}
-                  className={cx('btn btn-sm border-[1.5px] border-ink', duration === option.days ? 'bg-ink text-paper' : 'bg-card hover:bg-white')}
-                  aria-pressed={duration === option.days}
+                  className={cx('btn btn-sm border-[1.5px] border-ink', !endless && duration === option.days ? 'bg-ink text-paper' : 'bg-card hover:bg-white')}
+                  aria-pressed={!endless && duration === option.days}
                 >
                   {option.label}
                 </button>
               ))}
+              {mode === 'free' && <button type="button" onClick={() => { setOpenEnded(true); setDuration(null); }} className={cx('btn btn-sm border-[1.5px] border-ink', endless ? 'bg-ink text-paper' : 'bg-card hover:bg-white')} aria-pressed={endless}>No end date</button>}
             </div>
+            {endless && <p className="mt-2 text-[12px] text-ink-3">Runs until you end it. Every verified activity keeps counting; the leader holds the top spot for as long as they keep it.</p>}
           </fieldset>
 
           <div className="grid gap-5 sm:grid-cols-2">
@@ -488,6 +549,7 @@ export function NewCompetitionPage() {
               {(props) => (
                 <DateTimePicker
                   {...props}
+                  quickPicks
                   value={startsAt}
                   min={toLocalInput(new Date())}
                   onChange={(next) => {
@@ -497,7 +559,7 @@ export function NewCompetitionPage() {
                 />
               )}
             </Field>
-            <Field label="Ends" error={errors.scoring} hint="Runners can join and log activities until this.">
+            {!endless && <Field label="Ends" error={errors.scoring} hint="Runners can join and log activities until this.">
               {(props) => (
                 <DateTimePicker
                   {...props}
@@ -505,11 +567,12 @@ export function NewCompetitionPage() {
                   min={startsAt || undefined}
                   onChange={(next) => {
                     setScoringClosesAt(next);
+                    setOpenEnded(false);
                     setDuration(null);
                   }}
                 />
               )}
-            </Field>
+            </Field>}
           </div>
 
           <div className="panel p-5">
@@ -1014,6 +1077,7 @@ function EntryPanel({
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const stravaPublic = useStravaPublic();
   const wallet = useWallet();
   const payments = useSavedPayments();
   const pendingPayment = payments.find((payment) => payment.tableId === table.id && OPEN_PAYMENT_STATUSES.includes(payment.lastStatus));
@@ -1023,6 +1087,21 @@ function EntryPanel({
   const [fundingAmount, setFundingAmount] = useState('1,000');
   const fundingKobo = table.guaranteedPrizeKobo ?? nairaInputToKobo(fundingAmount);
   const canFund = table.type === 'sponsored' && (table.guaranteedPrizeKobo ? table.status === 'PENDING_FUNDING' && user?.id === table.creatorId : ['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(table.status)) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now) && (table.fundingDestination !== 'CHARITY' || user?.id === table.creatorId);
+
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const leave = useMutation({
+    mutationFn: () => post(`/tables/${table.id}/leave`),
+    async onSuccess() {
+      setConfirmLeave(false);
+      toast({ tone: 'ok', message: `You left ${table.title}.` });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: keys.standings(table.id) }),
+        queryClient.invalidateQueries({ queryKey: ['table-registration', table.id, user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] }),
+        queryClient.invalidateQueries({ queryKey: keys.table(table.code) }),
+      ]);
+    },
+  });
 
   const join = useMutation({
     mutationFn: () => post(`/tables/${table.id}/register-free`),
@@ -1089,6 +1168,15 @@ function EntryPanel({
     </div>
   ) : null;
 
+  // Arrived from "Join with Strava" / sign-up / log-in on this page: join free competitions straight away.
+  const { join: joinOnArrival } = useSearch({ strict: false }) as { join?: boolean };
+  const autoJoined = useRef(false);
+  useEffect(() => {
+    if (!joinOnArrival || autoJoined.current || !user || joined || table.type === 'paid' || !open || full) return;
+    autoJoined.current = true;
+    join.mutate();
+  }, [joinOnArrival, user, joined, table.type, open, full, join]);
+
   if (joined || joinedRank !== undefined || user?.id === table.creatorId) {
     return (
       <section className="rounded-xl border-[1.5px] border-ink bg-volt p-5 shadow-hard">
@@ -1110,6 +1198,17 @@ function EntryPanel({
           </Link>
         ) : null}
         {fundingControl}
+        {joined && table.type !== 'paid' && table.status !== 'SETTLED' && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now) && (
+          confirmLeave ? <div className="mt-4 rounded-md border-[1.5px] border-ink bg-card p-3">
+            <p className="text-[14px] font-bold">Leave this competition?</p>
+            <p className="mt-0.5 text-[12px] text-ink-2">Your place and score here are removed. You can rejoin while entry is open.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn-secondary btn-sm" onClick={() => setConfirmLeave(false)} disabled={leave.isPending}>Stay in</button>
+              <button type="button" className="btn btn-sm border-2 border-ink bg-bad text-paper shadow-hard-sm" onClick={() => leave.mutate()} disabled={leave.isPending}>{leave.isPending ? 'Leaving…' : 'Leave'}</button>
+            </div>
+          </div> : <button type="button" className="mt-4 block w-full text-center text-[12px] font-bold text-ink-2 underline decoration-ink/30 decoration-2 underline-offset-4 hover:text-bad" onClick={() => setConfirmLeave(true)}>Leave competition</button>
+        )}
+        <ErrorNotice error={leave.error} />
       </section>
     );
   }
@@ -1129,9 +1228,13 @@ function EntryPanel({
         ) : full ? (
           <Notice tone="neutral">This competition is full.</Notice>
         ) : !user ? (
-          <Link to="/login" search={{ redirect: `/competitions/${table.code}` }} className="btn-primary w-full">
-            Log in to join
-          </Link>
+          <div className="space-y-2">
+            {stravaPublic && <StravaButton intent="login" redirect={`/competitions/${table.code}?join=1`} label="Join with Strava" />}
+            <Link to="/register" search={{ redirect: `/competitions/${table.code}?join=1` }} className={cx('w-full', stravaPublic ? 'btn-secondary' : 'btn-primary')}>
+              Sign up to join
+            </Link>
+            <p className="text-center text-[13px] text-ink-2">Have an account? <Link to="/login" search={{ redirect: `/competitions/${table.code}?join=1` }} className="font-bold underline">Log in</Link></p>
+          </div>
         ) : isPaid && pendingEntryPayment ? (
           <Link to="/payments/return" className="btn-secondary w-full">
             Payment in progress: check status

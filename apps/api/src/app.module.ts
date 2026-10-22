@@ -25,6 +25,7 @@ import { MailModule } from './mail/mail.module';
 import { FeedModule } from './feed/feed.module';
 import { StravaModule } from './strava/strava.module';
 import { GeoModule } from './geo/geo.module';
+import { LeaderboardModule } from './leaderboard/leaderboard.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { GeoModule } from './geo/geo.module';
     TablesModule,
     StravaModule,
     GeoModule,
+    LeaderboardModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

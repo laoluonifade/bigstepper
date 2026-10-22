@@ -11,6 +11,7 @@ import { Activity } from '../running/activity.entity';
 import { GpsSample } from '../running/gps-sample.entity';
 import { RunningSession } from '../running/running-session.entity';
 import { StravaAccount } from './strava-account.entity';
+import { stravaStepTotals } from './strava-steps';
 
 const STRAVA = 'https://www.strava.com';
 /** Strava wants the token refreshed when it has less than an hour left. */
@@ -54,6 +55,8 @@ interface StravaActivity {
 interface Streams {
   latlng?: { data: [number, number][] };
   time?: { data: number[] };
+  cadence?: { data: number[] };
+  distance?: { data: number[] };
 }
 
 export type SyncResult = { imported: number; skipped: number };
@@ -227,10 +230,11 @@ export class StravaService {
     );
     if (overlapping) return false;
 
-    const streams = await this.request<Streams>(account, `/activities/${summary.id}/streams?keys=latlng,time&key_by_type=true`);
+    const streams = await this.request<Streams>(account, `/activities/${summary.id}/streams?keys=latlng,time,cadence,distance&key_by_type=true`);
     const points = streams.latlng?.data ?? [];
     const offsets = streams.time?.data ?? [];
     if (points.length < 2 || offsets.length !== points.length) return false;
+    const stepTotals = stravaStepTotals(activityType, offsets, points, streams.cadence?.data, streams.distance?.data);
 
     const activity = await this.dataSource.transaction(async (manager) => {
       const session = await manager.save(
@@ -251,7 +255,9 @@ export class StravaService {
         sequence: index,
         latitude,
         longitude,
-        // Strava streams carry no accuracy or step count; verification treats missing accuracy as usable.
+        // Strava streams carry no accuracy (verification treats it as usable) and no step count, so the
+        // running total is rebuilt from cadence or distance and checked like a phone's.
+        stepCount: stepTotals?.[index] ?? null,
         recordedAt: new Date(startedAt.getTime() + offsets[index] * 1000),
       }));
       for (let start = 0; start < samples.length; start += 1000) {
@@ -266,7 +272,7 @@ export class StravaService {
           source: 'strava',
           externalId,
           recordedDistanceMetres: Math.round(summary.distance),
-          recordedSteps: 0,
+          recordedSteps: stepTotals?.at(-1) ?? 0,
           verificationStatus: 'PENDING_VERIFICATION',
           elapsedSeconds: summary.elapsed_time,
           movingSeconds: summary.moving_time,

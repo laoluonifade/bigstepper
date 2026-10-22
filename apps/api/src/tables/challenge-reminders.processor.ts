@@ -43,7 +43,7 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
          LEFT JOIN "challenge_reminder_deliveries" d ON d."tableId"=t."id" AND d."userId"=r."userId"
            AND d."reminderDate"=(now() AT TIME ZONE t."reminderTimeZone")::date
          WHERE t."reminderTime" IS NOT NULL AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
-           AND t."startsAt" <= now() AND t."scoringClosesAt" > now()
+           AND t."startsAt" <= now() AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now())
            AND (now() AT TIME ZONE t."reminderTimeZone")::time >= t."reminderTime"
            AND (d."id" IS NULL OR (d."sentAt" IS NULL AND d."claimedAt" < now() - INTERVAL '5 minutes'))
            AND NOT EXISTS (

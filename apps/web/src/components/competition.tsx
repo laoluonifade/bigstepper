@@ -1,8 +1,12 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { type ReactNode, useId } from 'react';
-import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '../lib/format';
+import { type ReactNode, useId, useState } from 'react';
+import { post } from '../lib/api';
+import { useAuth } from '../lib/auth';
+import { toast } from '../lib/toast';
+import { formatCountdown, formatDateTime, formatDistance, formatDuration, formatMoney } from '../lib/format';
 import type { ChallengeType, CompetitionTable, Unit } from '../lib/types';
-import { ArrowRightIcon, LockIcon, UsersIcon } from './icons';
+import { ArrowRightIcon, ChevronRightIcon, LockIcon, UsersIcon } from './icons';
 import { METALS } from './Milestones';
 import { cx } from './ui';
 
@@ -153,6 +157,156 @@ function progress(table: CompetitionTable, now: number) {
   const end = new Date(table.scoringClosesAt).getTime();
   if (end <= start) return null;
   return Math.min(1, Math.max(0, (now - start) / (end - start)));
+}
+
+/** Prize or entry in a few characters: "₦50,000", "Free", "₦1,000 entry". */
+export function prizeLabel(table: CompetitionTable, unit: Unit) {
+  const hero = challengeHeadline(table, unit);
+  if (hero.big.startsWith('₦')) return { text: hero.big, prize: true };
+  if (table.type === 'paid') return { text: `${formatMoney(table.entryFeeKobo).replace(/\.00$/, '')} entry`, prize: false };
+  return { text: table.type === 'sponsored' ? 'Funded' : 'Free', prize: false };
+}
+
+/** One row in a competition list: tile, title, what wins, who's in, time left, prize. Sits inside a bordered list. */
+export function CompetitionRow({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+  const hero = challengeHeadline(table, unit);
+  const prize = prizeLabel(table, unit);
+  const wins = hero.big.startsWith('₦') ? hero.small.replace(/^to the winner$/, 'Winner takes it') : `${hero.big} · ${hero.small}`;
+  return <Link to="/competitions/$code" params={{ code: table.code }} className="group flex items-center gap-3 px-3.5 py-3 transition-colors hover:bg-ink/[0.025]">
+    <ChallengeMark type={table.challengeType} code={table.code} size={40} />
+    <div className="min-w-0 flex-1">
+      <p className="flex items-center gap-1.5 text-[14px] font-semibold leading-tight">
+        <span className="truncate">{table.title}</span>
+        {table.visibility === 'private' && <LockIcon size={12} className="shrink-0 text-ink-3" />}
+      </p>
+      <p className="mt-0.5 truncate text-[12px] text-ink-2">{wins.charAt(0).toUpperCase() + wins.slice(1)}</p>
+      <p className="num mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-ink-3">
+        <span className="inline-flex items-center gap-0.5"><UsersIcon size={12} />{table.entrantCount ?? 0}{table.capacity ? `/${table.capacity}` : ''}</span>
+        <span aria-hidden="true">·</span>
+        <span className="truncate">{phaseLine(table, now)}</span>
+      </p>
+    </div>
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <span className={cx('num rounded-md px-2 py-0.5 text-[12px] font-bold', prize.prize ? 'bg-ok-wash text-ok' : table.type === 'paid' ? 'bg-ink text-paper' : 'bg-ink/[0.06] text-ink-2')}>{prize.text}</span>
+      <ChevronRightIcon size={15} className="text-ink-3 transition-transform group-hover:translate-x-0.5" />
+    </div>
+  </Link>;
+}
+
+function boardScore(table: CompetitionTable, score: number, unit: Unit) {
+  if (table.scoringMethod === 'MOST_STEPS') return score.toLocaleString('en-GB');
+  if (table.scoringMethod === 'FARTHEST_DISTANCE') return formatDistance(score, unit);
+  return formatDuration(score);
+}
+
+function Face({ face, size = 28, ring }: { face: { displayName: string; avatarUrl: string | null }; size?: number; ring?: string }) {
+  return <span className={cx('flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink/10 text-[11px] font-bold ring-2', ring ?? 'ring-card')} style={{ width: size, height: size }}>
+    {face.avatarUrl ? <img src={face.avatarUrl} alt="" className="h-full w-full object-cover" /> : face.displayName.charAt(0).toUpperCase()}
+  </span>;
+}
+
+/**
+ * A competition card built to make you want in: what's at stake, the race itself (runners placed along a
+ * track by score), who's in, how long is left, and one tap to join a free one.
+ */
+export function CompetitionPreviewCard({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [joined, setJoined] = useState(false);
+  const hero = challengeHeadline(table, unit);
+  const cash = hero.big.startsWith('₦');
+  const rules = cash ? hero.small.replace(/^to the winner$/, 'winner takes it') : hero.small;
+  const leaders = table.leaders ?? [];
+  const faces = table.faces ?? [];
+  const leader = leaders[0];
+  const entrants = table.entrantCount ?? 0;
+  const myRank = table.myRank ?? null;
+  const inIt = joined || myRank !== null;
+  const phase = competitionPhase(table, now);
+  const endsMs = table.scoringClosesAt ? new Date(table.scoringClosesAt).getTime() - now : null;
+  const urgent = phase === 'open' && endsMs !== null && endsMs < 24 * 3_600_000;
+  const when = phase === 'upcoming' ? `Starts in ${formatCountdown(table.startsAt!, now)}` : endsMs === null ? 'No end date' : `${formatCountdown(table.scoringClosesAt!, now)} left`;
+  const canJoin = Boolean(user) && !inIt && table.type !== 'paid' && canEnter(table, now) && (!table.capacity || entrants < table.capacity);
+  const join = useMutation({
+    mutationFn: () => post(`/tables/${table.id}/register-free`),
+    onSuccess() {
+      setJoined(true);
+      toast({ tone: 'ok', message: `You’re in ${table.title}. Your next run counts.` });
+      void queryClient.invalidateQueries({ queryKey: ['tables'] });
+    },
+  });
+
+  return <article className="group relative rounded-2xl border-[1.5px] border-ink bg-card px-4 pb-3.5 pt-4 transition-shadow hover:shadow-hard-sm">
+    <Link to="/competitions/$code" params={{ code: table.code }} className="absolute inset-0 rounded-2xl" aria-label={`Open ${table.title}`} />
+
+    <div className="flex items-start gap-3">
+      <ChallengeMark type={table.challengeType} code={table.code} size={40} />
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1.5 text-[16px] font-bold leading-snug tracking-tight">
+          <span className="truncate">{table.title}</span>
+          {table.visibility === 'private' && <LockIcon size={13} className="shrink-0 text-ink-3" />}
+        </p>
+        <p className="mt-0.5 truncate text-[13px] text-ink-3">{cash ? rules.charAt(0).toUpperCase() + rules.slice(1) : `${hero.big} · ${rules}`}</p>
+      </div>
+      <p className="shrink-0 pt-0.5 text-right">
+        {cash ? <span className="num text-[17px] font-extrabold tracking-tight">{hero.big}</span>
+          : table.type === 'paid' ? <span className="num text-[14px] font-bold">{formatMoney(table.entryFeeKobo).replace(/\.00$/, '')}</span>
+            : <span className="text-[13px] font-semibold text-ink-3">Free</span>}
+      </p>
+    </div>
+
+    {/* The race: everyone who's scored, placed along the track against the leader. */}
+    <div className="relative mt-3 h-8">
+      <span className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-ink/[0.07]" aria-hidden="true" />
+      <span className="absolute bottom-1.5 right-[6%] top-1.5 border-l-[1.5px] border-dashed border-ink/25" aria-hidden="true" />
+      {leaders.length
+        ? [...leaders].reverse().map((runner) => <span key={runner.rank} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: `${6 + (leader ? Math.min(1, runner.score / leader.score) : 0) * 88}%` }} title={`${runner.displayName} · ${boardScore(table, runner.score, unit)}`}>
+          <Face face={runner} size={26} ring={myRank === runner.rank ? 'ring-volt' : 'ring-card'} />
+        </span>)
+        : <span className="absolute left-0 top-1/2 flex -translate-y-1/2 -space-x-2">{faces.slice(0, 4).map((face, index) => <Face key={index} face={face} size={24} />)}</span>}
+    </div>
+
+    <div className="mt-2 flex items-end justify-between gap-3">
+      <div className="min-w-0">
+        <p className="truncate text-[13px] text-ink-2">
+          {leader ? <><span className="font-semibold text-ink">{leader.displayName.split(' ')[0]}</span> leads · <span className="num font-semibold text-ink">{boardScore(table, leader.score, unit)}</span></>
+            : entrants ? 'On the start line. First run leads.' : 'Nobody’s in yet. Be first.'}
+        </p>
+        <p className="num mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-ink-3">
+          <span className="inline-flex items-center gap-1"><UsersIcon size={12} />{entrants}{table.capacity ? `/${table.capacity}` : ''}</span>
+          <span aria-hidden="true">·</span>
+          <span className={cx('truncate', urgent && 'font-semibold text-bad')}>{when}</span>
+        </p>
+      </div>
+      {inIt
+        ? <span className="relative shrink-0 rounded-full border-[1.5px] border-ink px-3 py-1 text-[12px] font-bold">{myRank ? `You’re #${myRank}` : 'You’re in'}</span>
+        : canJoin
+          ? <button type="button" onClick={() => join.mutate()} disabled={join.isPending} className="relative h-9 shrink-0 rounded-full bg-ink px-5 text-[13px] font-bold text-paper transition-transform active:scale-95 disabled:opacity-60">{join.isPending ? 'Joining…' : 'Join'}</button>
+          : <span className="inline-flex shrink-0 items-center gap-0.5 text-[13px] font-bold">{table.type === 'paid' ? 'Enter' : 'View'}<ChevronRightIcon size={15} /></span>}
+    </div>
+  </article>;
+}
+
+/** A card for horizontal rails on the home screen. */
+export function TrendingCard({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+  const theme = cardTheme(table);
+  const hero = challengeHeadline(table, unit);
+  return <Link to="/competitions/$code" params={{ code: table.code }} className="group flex w-[230px] shrink-0 snap-start flex-col overflow-hidden rounded-md border-[1.5px] border-ink bg-card shadow-hard transition-transform hover:-translate-y-0.5 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
+    <div className={cx('flex items-end justify-between gap-2 px-3 pb-2.5 pt-3', theme.band)}>
+      <div className="min-w-0">
+        <p className="score truncate text-[30px] uppercase leading-[0.85]">{hero.big}</p>
+        <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.1em] opacity-75">{hero.small}</p>
+      </div>
+      <ChallengeMark type={table.challengeType} code={table.code} size={38} />
+    </div>
+    <div className="flex flex-1 flex-col px-3 py-2.5">
+      <p className="wide line-clamp-2 text-[13px] font-extrabold uppercase leading-tight">{table.title}</p>
+      <p className="num mt-auto flex items-center justify-between gap-2 pt-2 text-[12px] font-semibold text-ink-2">
+        <span className="inline-flex items-center gap-1"><UsersIcon size={13} />{table.entrantCount ?? 0} in</span>
+        <span className="truncate">{phaseLine(table, now).replace(/^Ends in /, '')}</span>
+      </p>
+    </div>
+  </Link>;
 }
 
 export function CompetitionCard({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {

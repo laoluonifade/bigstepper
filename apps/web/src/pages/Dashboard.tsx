@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
-import { ChallengeMark } from '../components/competition';
+import { ChallengeSomeone, MyCompetitions, RaceHero } from '../components/CompeteHome';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { RunIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, FlameIcon } from '../components/icons';
 import { EmojiPopover } from '../components/EmojiPopover';
@@ -10,12 +10,12 @@ import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/
 import { MilestoneBadge } from '../components/Milestones';
 import { WeekChart } from '../components/WeekChart';
 import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Segmented, Skeleton, Stat, useNow } from '../components/ui';
-import { api, patch } from '../lib/api';
+import { patch } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, ordinal, toMetres } from '../lib/format';
 import { setFlag, storageKeys, useStored } from '../lib/local';
 import { ActivityKind, computeMilestones, computeStreaks, countsForStreak, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
-import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useStandings, useUnit } from '../lib/queries';
+import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
 import type { Activity, Profile, Unit } from '../lib/types';
 import { getDevVerifyToken, useResendVerification } from './auth';
@@ -50,25 +50,31 @@ export function DashboardPage() {
 
   return (
     <div className="animate-rise">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="eyebrow mb-2">{new Date(now).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-          <h1 className="display text-[34px] sm:text-[44px]">
-            {greeting(new Date(now).getHours())},
-            <br className="sm:hidden" /> {name}.
-          </h1>
+      <header className="mb-6 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-ink-3">{new Date(now).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <h1 className="mt-0.5 truncate text-[26px] font-extrabold leading-tight tracking-tight sm:text-[30px]">{greeting(new Date(now).getHours())}, {name.split(' ')[0]}</h1>
         </div>
-        <Link to="/run" className="btn-primary hidden min-h-12 px-6 md:inline-flex">
+        <Link to="/run" className="btn-dark hidden min-h-10 px-5 md:inline-flex">
           <RunIcon size={16} />
           {live ? 'Back to your run' : 'Start a run'}
         </Link>
       </header>
 
-      <InstallPrompt />
       {showVerify && !user.emailVerified && <VerifyPrompt userId={user.id} email={user.email} />}
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} className="mb-6" />
 
-      <div className="mb-4">
+      {/* Competition first: the race, your other races, the leaderboard, then your own training. */}
+      <div className="mx-auto max-w-2xl space-y-8">
+        <RaceHero unit={unit} now={now} />
+        <MyCompetitions unit={unit} now={now} />
+        <ChallengeSomeone />
+      </div>
+
+      <div className="mt-8"><InstallPrompt /></div>
+
+      <div className="mb-4 mt-12 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-[15px] font-bold tracking-tight">Your training</h2>
         <KindFilter value={kind} onChange={setKind} />
       </div>
 
@@ -128,8 +134,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-2">
-        <YourTables userId={user.id} unit={unit} />
+      <div className="mt-10">
         <LeagueSummary unit={unit} />
       </div>
 
@@ -448,92 +453,6 @@ function StreakDots({ activities, now }: { activities: ReturnType<typeof useActi
         </div>
       ))}
     </div>
-  );
-}
-
-interface MyChallenge {
-  id: string;
-  code: string;
-  title: string;
-  hosting: boolean;
-  joined: boolean;
-  status: string;
-  challengeType: 'WALK' | 'RUN' | 'DISTANCE' | 'STEP' | 'TIMED';
-}
-
-function YourTables({ userId, unit }: { userId: string; unit: Unit }) {
-  // From the API, so challenges you created or joined on any device show up.
-  const mine = useQuery({ queryKey: ['tables', 'mine'], queryFn: () => api<MyChallenge[]>('/tables/mine') });
-  const tables = mine.data ?? [];
-  return (
-    <section>
-      <SectionTitle
-        aside={
-          <Link to="/competitions" className="link">
-            Find competitions
-          </Link>
-        }
-      >
-        Your competitions
-      </SectionTitle>
-      {mine.isLoading ? (
-        <Skeleton className="h-20" />
-      ) : tables.length === 0 ? (
-        <EmptyState
-          title="No competitions yet"
-          action={
-            <Link to="/competitions" className="btn-secondary">
-              Browse competitions
-            </Link>
-          }
-        >
-          Join a competition and every verified run moves you up the standings.
-        </EmptyState>
-      ) : (
-        <ul className="stagger space-y-2">
-          {tables.slice(0, 4).map((table) => (
-            <TableStandingRow key={table.id} table={table} userId={userId} unit={unit} />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function TableStandingRow({ table, userId, unit }: { table: MyChallenge; userId: string; unit: Unit }) {
-  const standings = useStandings(table.id);
-  const rows = standings.data ?? [];
-  const me = rows.find((row) => row.userId === userId);
-  const above = me ? rows.find((row) => row.rank === me.rank - 1) : undefined;
-  return (
-    <li>
-      <Link
-        to="/competitions/$code"
-        params={{ code: table.code }}
-        className="flex items-center gap-4 rounded-md border border-line bg-card px-4 py-3 hover:border-ink"
-      >
-        <ChallengeMark type={table.challengeType} code={table.code} size={48} />
-        <div className="min-w-0 flex-1">
-          <p className="wide truncate text-[14px] font-extrabold uppercase">
-            {table.title}
-            {table.hosting && <span className="tag ml-2 h-5 border-ink bg-volt px-1.5 align-middle text-[9.5px]">{table.status === 'PENDING_FUNDING' ? 'Draft' : 'Hosting'}</span>}
-          </p>
-          <p className="num text-[12px] text-ink-2">
-            {table.status === 'PENDING_FUNDING' ? 'Not live · fund the fixed amount to open entry' : standings.isLoading
-              ? 'Loading standings…'
-              : me
-                ? `${ordinal(me.rank)} of ${rows.length} · ${formatDistance(me.creditedDistanceMetres, unit)}`
-                : `${rows.length} ${rows.length === 1 ? 'runner' : 'runners'}${table.hosting && !table.joined ? ' · you’re hosting' : ''}`}
-          </p>
-          {above && me && (
-            <p className="text-[12px] font-semibold text-ink">
-              {formatDistance(Math.max(0, above.creditedDistanceMetres - me.creditedDistanceMetres), unit)} to take {ordinal(above.rank)}
-            </p>
-          )}
-        </div>
-        <ArrowRightIcon size={18} className="shrink-0" />
-      </Link>
-    </li>
   );
 }
 

@@ -158,6 +158,11 @@ export interface CompetitionTable {
   creatorId: string;
   creator?: { id: string; displayName: string | null; username?: string | null; avatarUrl?: string | null } | null;
   /** Runners who have joined (list and detail responses). */
+  /** Discovery cards only: the top three who have scored, and a few faces of who's in. */
+  leaders?: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number }>;
+  faces?: Array<{ displayName: string; avatarUrl: string | null }>;
+  /** Discovery cards only: your rank here when you've joined, else null. */
+  myRank?: number | null;
   entrantCount?: number;
   createdAt: string;
 }

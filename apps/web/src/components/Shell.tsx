@@ -236,7 +236,7 @@ function SignedInShell() {
 /** Which bottom tab owns a page, so "You" stays lit on Wallet, League etc. and "Compete" on Clubs. */
 const TAB_PATHS: Record<string, string[]> = {
   Home: ['/dashboard'],
-  Compete: ['/competitions', '/clubs'],
+  Compete: ['/competitions', '/leaderboard', '/clubs'],
   Run: ['/run', '/runs'],
   Rant: ['/feed'],
   You: ['/settings', '/activities', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],

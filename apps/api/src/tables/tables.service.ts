@@ -54,6 +54,122 @@ export class TablesService {
   }
 
   /**
+   * Discovery feed for open, public competitions, 20 a page.
+   * - for-you: not joined yet, ranked by your usual activity, friends involved, free entry, then popularity
+   * - trending: most joined · starting: soonest upcoming · newest · friends: ones your follows or clubs are in
+   */
+  async discover(viewerId: string | null, view = 'trending', type = 'all', activity = 'all', page = '0') {
+    if (!['for-you', 'trending', 'starting', 'newest', 'friends'].includes(view) || !['all', 'free', 'sponsored', 'paid'].includes(type) ||
+        !['all', 'WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED', 'CYCLING'].includes(activity) || !/^(0|[1-9]\d{0,3})$/.test(page)) {
+      throw new BadRequestException('Invalid competition filter');
+    }
+    if ((view === 'for-you' || view === 'friends') && !viewerId) view = 'trending';
+    // Only bind the viewer when the view uses it: Postgres can't type a parameter nothing references.
+    const params: unknown[] = [type, activity, Number(page) * 20];
+    const personal = view === 'for-you' || view === 'friends';
+    if (personal) params.push(viewerId);
+    const me = '$4::uuid';
+    const joinedCount = 'COUNT(r."id")';
+    const friendsInvolved = `(EXISTS (
+      SELECT 1 FROM "follows" f WHERE f."followerId" = ${me} AND (f."followingId" = t."creatorId"
+        OR EXISTS (SELECT 1 FROM "table_registrations" fr WHERE fr."tableId" = t."id" AND fr."userId" = f."followingId")))
+      OR (t."communityId" IS NOT NULL AND EXISTS (SELECT 1 FROM "club_memberships" cm WHERE cm."clubId" = t."communityId" AND cm."userId" = ${me})))`;
+    // The activity this runner does most decides which competition types suit them.
+    const habits = `(SELECT a."activityType" FROM "activities" a WHERE a."userId" = ${me} AND a."verificationStatus" <> 'REJECTED'
+                     GROUP BY a."activityType" ORDER BY count(*) DESC LIMIT 1)`;
+    const fits = `CASE ${habits} WHEN 'run' THEN t."challengeType" IN ('RUN','DISTANCE','TIMED')
+                                  WHEN 'walk' THEN t."challengeType" IN ('WALK','STEP','DISTANCE')
+                                  WHEN 'cycle' THEN t."challengeType" = 'CYCLING' ELSE false END`;
+    const where = [
+      `t."status" = 'OPEN_FOR_ENTRY'`, `t."visibility" = 'public'`,
+      `(t."entryClosesAt" IS NULL OR t."entryClosesAt" > now())`,
+      `($1 = 'all' OR t."type" = $1)`, `($2 = 'all' OR t."challengeType" = $2)`,
+      ...(view === 'for-you' ? [`NOT EXISTS (SELECT 1 FROM "table_registrations" mine WHERE mine."tableId" = t."id" AND mine."userId" = ${me})`] : []),
+      ...(view === 'starting' ? [`t."startsAt" > now()`] : []),
+      ...(view === 'friends' ? [friendsInvolved] : []),
+    ].join(' AND ');
+    const order = view === 'starting' ? 't."startsAt" ASC'
+      : view === 'newest' ? 't."createdAt" DESC'
+      : view === 'for-you' ? `((CASE WHEN ${fits} THEN 3 ELSE 0 END) + (CASE WHEN ${friendsInvolved} THEN 2 ELSE 0 END)
+                              + (CASE WHEN t."type" <> 'paid' THEN 1 ELSE 0 END) + ln(1 + ${joinedCount})) DESC, t."createdAt" DESC`
+      : `${joinedCount} DESC, t."createdAt" DESC`;
+    const ranked = (await this.dataSource.query(
+      `SELECT t."id", ${joinedCount}::integer AS n
+       FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId" = t."id"
+       WHERE ${where}
+       GROUP BY t."id" HAVING t."capacity" IS NULL OR ${joinedCount} < t."capacity"
+       ORDER BY ${order} LIMIT 21 OFFSET $3`,
+      params,
+    )) as Array<{ id: string; n: number }>;
+    const pageRows = ranked.slice(0, 20);
+    if (!pageRows.length) return { items: [], hasMore: false };
+    const tables = await this.tables.find({ where: { id: In(pageRows.map((row) => row.id)) }, relations: { creator: true } });
+    const byId = new Map(tables.map((table) => [table.id, table]));
+    const items = await this.present(pageRows.flatMap((row) => byId.get(row.id) ?? []), pageRows.map((row) => ({ tableId: row.id, n: row.n })));
+    const podiums = await this.podiums(pageRows.map((row) => row.id), viewerId);
+    return { items: items.map((item) => ({ ...item, ...(podiums.get(item.id) ?? { leaders: [], faces: [], myRank: null }) })), hasMore: ranked.length > 20 };
+  }
+
+  /**
+   * A glimpse of each board for cards: the top three who have scored (same order as the standings), and
+   * a few faces of who's in, for boards nobody has scored on yet.
+   */
+  private async podiums(tableIds: string[], viewerId: string | null = null) {
+    const out = new Map<string, { leaders: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number }>; faces: Array<{ displayName: string; avatarUrl: string | null }>; myRank: number | null }>();
+    if (!tableIds.length) return out;
+    const rows = (await this.dataSource.query(
+      `SELECT * FROM (
+         SELECT r."tableId", r."joinedAt", r."userId",
+                COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl",
+                CASE WHEN t."scoringMethod"='MOST_STEPS' THEN r."creditedSteps"
+                     WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN r."creditedDistanceMetres"
+                     ELSE r."completionTimeSeconds" END AS "score",
+                row_number() OVER (PARTITION BY r."tableId" ORDER BY
+                  CASE WHEN t."scoringMethod"='MOST_STEPS' THEN -r."creditedSteps"
+                       WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN -r."creditedDistanceMetres"
+                       ELSE COALESCE(r."completionTimeSeconds", 2147483647) END,
+                  r."joinedAt", r."userId")::integer AS "rank"
+         FROM "table_registrations" r
+         JOIN "competition_tables" t ON t."id" = r."tableId"
+         JOIN "users" u ON u."id" = r."userId" LEFT JOIN "profiles" p ON p."userId" = r."userId"
+         WHERE r."tableId" = ANY($1::uuid[])
+       ) ranked WHERE ranked."rank" <= 5 OR ranked."userId" = $2`,
+      [tableIds, viewerId],
+    )) as Array<{ tableId: string; userId: string; rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number | null }>;
+    for (const row of rows) {
+      const entry = out.get(row.tableId) ?? { leaders: [], faces: [], myRank: null };
+      if (viewerId && row.userId === viewerId) entry.myRank = row.rank;
+      if (row.rank > 5) { out.set(row.tableId, entry); continue; }
+      if (row.score && row.rank <= 3) entry.leaders.push({ rank: row.rank, displayName: row.displayName, username: row.username, avatarUrl: row.avatarUrl, score: Number(row.score) });
+      entry.faces.push({ displayName: row.displayName, avatarUrl: row.avatarUrl });
+      out.set(row.tableId, entry);
+    }
+    return out;
+  }
+
+  /**
+   * One tap to join several: free and funded-free entries join now; paid ones are returned for checkout
+   * instead of being charged. Each join uses the normal rules (capacity, private invites, entry window).
+   */
+  async joinMany(userId: string, tableIds: string[]) {
+    const joined: string[] = [];
+    const needsPayment: string[] = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+    for (const tableId of [...new Set(tableIds)].slice(0, 20)) {
+      const table = await this.tables.findOne({ where: { id: tableId } });
+      if (!table) { skipped.push({ id: tableId, reason: 'Not found' }); continue; }
+      if (table.type === 'paid') { needsPayment.push(tableId); continue; }
+      try {
+        await this.registerFree(tableId, userId);
+        joined.push(tableId);
+      } catch (error) {
+        skipped.push({ id: tableId, reason: error instanceof Error ? error.message : 'Couldn’t join' });
+      }
+    }
+    return { joined, needsPayment, skipped };
+  }
+
+  /**
    * Public shape of a challenge: the creator is reduced to id + display name (the relation is the full
    * user row, email included, which must never leave the API), plus how many runners have joined.
    */
@@ -79,19 +195,52 @@ export class TablesService {
     }));
   }
 
+  /**
+   * Competitions you host or joined, with where you stand: rank, entrants, your score and the leader's.
+   * Scores are in the table's unit (metres, steps, or seconds for fastest-time tables). Ranking uses the
+   * same order as the standings.
+   */
   async mine(userId: string) {
     const rows = await this.tables.query(
-      `SELECT t."id", t."code", t."title", t."type", t."challengeType", t."status", t."scoringClosesAt",
-              (t."creatorId" = $1) AS "hosting", (r."id" IS NOT NULL) AS "joined"
-       FROM "competition_tables" t
-       LEFT JOIN "table_registrations" r ON r."tableId" = t."id" AND r."userId" = $1
-       WHERE t."creatorId" = $1 OR r."id" IS NOT NULL
-       ORDER BY CASE WHEN t."creatorId"=$1 AND t."status"='PENDING_FUNDING' THEN 0 ELSE 1 END,
-                COALESCE(r."joinedAt", t."createdAt") DESC
+      `WITH mine AS (
+         SELECT t."id", (t."creatorId" = $1) AS "hosting", r."id" IS NOT NULL AS "joined", COALESCE(r."joinedAt", t."createdAt") AS "since"
+         FROM "competition_tables" t
+         LEFT JOIN "table_registrations" r ON r."tableId" = t."id" AND r."userId" = $1
+         WHERE (t."creatorId" = $1 OR r."id" IS NOT NULL) AND t."status" <> 'CANCELLED'
+       ),
+       ranked AS (
+         SELECT r."tableId", r."userId",
+                CASE WHEN t."scoringMethod"='MOST_STEPS' THEN r."creditedSteps"
+                     WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN r."creditedDistanceMetres"
+                     ELSE r."completionTimeSeconds" END AS "score",
+                row_number() OVER (PARTITION BY r."tableId" ORDER BY
+                  CASE WHEN t."scoringMethod"='MOST_STEPS' THEN -r."creditedSteps"
+                       WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN -r."creditedDistanceMetres"
+                       ELSE COALESCE(r."completionTimeSeconds", 2147483647) END,
+                  r."joinedAt", r."userId")::integer AS "rank",
+                count(*) OVER (PARTITION BY r."tableId")::integer AS "entrants"
+         FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
+         WHERE r."tableId" IN (SELECT "id" FROM mine)
+       )
+       SELECT t."id", t."code", t."title", t."type", t."challengeType", t."scoringMethod", t."targetDistanceMetres",
+              t."status", t."startsAt", t."scoringClosesAt", t."visibility", t."guaranteedPrizeKobo"::float8 AS "guaranteedPrizeKobo", t."createdAt", m."hosting", m."joined",
+              COALESCE((SELECT max(x."entrants") FROM ranked x WHERE x."tableId" = t."id"), 0) AS "entrants",
+              me."rank" AS "myRank", me."score" AS "myScore",
+              (SELECT x."score" FROM ranked x WHERE x."tableId" = t."id" AND x."rank" = 1) AS "leaderScore"
+       FROM mine m JOIN "competition_tables" t ON t."id" = m."id"
+       LEFT JOIN ranked me ON me."tableId" = t."id" AND me."userId" = $1
+       ORDER BY CASE WHEN m."hosting" AND t."status"='PENDING_FUNDING' THEN 0
+                     WHEN t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED') THEN 1 ELSE 2 END,
+                t."scoringClosesAt" ASC NULLS LAST, m."since" DESC
        LIMIT 100`,
       [userId],
     );
-    return rows as Array<{ id: string; code: string; title: string; type: string; challengeType: string; status: string; scoringClosesAt: string | null; hosting: boolean; joined: boolean }>;
+    return rows as Array<{
+      id: string; code: string; title: string; type: string; challengeType: string; scoringMethod: string; targetDistanceMetres: number | null;
+      status: string; startsAt: string | null; scoringClosesAt: string | null; visibility: string; guaranteedPrizeKobo: number | null; createdAt: string;
+      hosting: boolean; joined: boolean;
+      entrants: number; myRank: number | null; myScore: number | null; leaderScore: number | null;
+    }>;
   }
 
   async eligible(userId: string, activity?: string) {
@@ -128,12 +277,14 @@ export class TablesService {
     if (input.guaranteedPrizeKobo && input.fundingDestination !== 'CHARITY') {
       this.assertAwardAmounts(calculatePrizeBreakdown(input.guaranteedPrizeKobo, 1500, 0).winnerAmountKobo, prizeSplitBps);
     }
+    if (input.openEnded && sponsored) throw new BadRequestException('Prize competitions need an end date so winners can be paid');
     const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
-    const scoringClosesAt = input.scoringClosesAt
+    // Open-ended: no closing time at all; entry stays open and every verified activity keeps counting.
+    const scoringClosesAt = input.openEnded ? null : input.scoringClosesAt
       ? new Date(input.scoringClosesAt)
       : new Date(startsAt.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const entryClosesAt = input.entryClosesAt ? new Date(input.entryClosesAt) : scoringClosesAt;
-    if (entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
+    const entryClosesAt = input.openEnded ? null : input.entryClosesAt ? new Date(input.entryClosesAt) : scoringClosesAt;
+    if (scoringClosesAt && entryClosesAt && (entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt)) {
       throw new ConflictException('Entry and start times must be before scoring closes');
     }
     const table = this.tables.create({
@@ -249,6 +400,46 @@ export class TablesService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Leave a competition. Its credits go with the registration (ON DELETE CASCADE). Paid entries can't be
+   * withdrawn here (the fee is in the prize pot), and nobody leaves once scoring has closed.
+   */
+  async leave(tableId: string, userId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
+      if (!table) throw new NotFoundException('Competition not found');
+      const registration = await manager.findOne(TableRegistration, { where: { tableId, userId } });
+      if (!registration) throw new NotFoundException('You’re not in this competition');
+      if (table.type === 'paid') throw new ForbiddenException('Paid entries can’t be withdrawn. Contact Jump support if something’s wrong.');
+      if (table.status === 'SETTLED' || (table.scoringClosesAt && table.scoringClosesAt <= new Date())) {
+        throw new ConflictException('This competition has finished, so you can’t leave it now.');
+      }
+      await manager.delete(TableRegistration, { id: registration.id });
+      return { left: true };
+    });
+  }
+
+  /**
+   * Throws away a draft the host never opened: unfunded prize competitions and paid ones still waiting for
+   * review. It's marked CANCELLED rather than deleted because payment rows point at it; a funding payment
+   * that lands afterwards is refunded by the usual "prize funding unavailable" path.
+   */
+  async discard(tableId: string, userId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
+      if (!table) throw new NotFoundException('Competition not found');
+      if (table.creatorId !== userId) throw new ForbiddenException('Only the host can discard this draft');
+      if (table.status !== 'PENDING_FUNDING' && table.status !== 'PENDING_APPROVAL') throw new ConflictException('Only drafts can be discarded. This one is already open.');
+      const [funded] = await manager.query(
+        `SELECT 1 FROM "payment_intents" WHERE "tableId"=$1 AND "status"='SUCCEEDED' LIMIT 1`, [tableId],
+      ) as unknown[];
+      if (funded) throw new ConflictException('Money has already been paid into this draft. Contact Jump support to close it.');
+      table.status = 'CANCELLED';
+      await manager.save(table);
+      return { discarded: true };
+    });
   }
 
   async registration(tableId: string, userId: string) {

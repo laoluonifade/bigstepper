@@ -16,6 +16,8 @@ import { RunnersPage } from './pages/Runners';
 import { ClubDetailPage, ClubsPage, LeagueDetailPage, LeaguesPage } from './pages/Social';
 import { CreatorPage, NotificationsPage, ProfileSettingsPage, RewardsPage, RunnerPage, WalletPage } from './pages/You';
 import { StravaCallbackPage, StravaSignupPage } from './pages/Strava';
+import { WelcomePage } from './pages/Welcome';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { AuthLayout, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth';
 
 function protectedPage(Component: ComponentType) {
@@ -26,11 +28,23 @@ function protectedPage(Component: ComponentType) {
 
 const root = createRootRoute({ component: AppShell });
 const home = createRoute({ getParentRoute: () => root, path: '/', component: LandingPage });
-const competitions = createRoute({ getParentRoute: () => root, path: '/competitions', component: CompetitionsPage });
+const competitions = createRoute({
+  getParentRoute: () => root,
+  path: '/competitions',
+  validateSearch: (search: Record<string, unknown>): { q?: string; activity?: string } => ({
+    ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
+    ...(typeof search.activity === 'string' && search.activity ? { activity: search.activity } : {}),
+  }),
+  component: CompetitionsPage,
+});
 const competition = createRoute({
   getParentRoute: () => root,
   path: '/competitions/$code',
-  validateSearch: (search: Record<string, unknown>): { created?: boolean } => search.created === true || search.created === 'true' ? { created: true } : {},
+  validateSearch: (search: Record<string, unknown>): { created?: boolean; join?: boolean } => ({
+    ...(search.created === true || search.created === 'true' ? { created: true } : {}),
+    // Set when someone logged in or signed up from this page, so they're joined on arrival.
+    ...(search.join === true || search.join === 'true' || search.join === 1 || search.join === '1' ? { join: true } : {}),
+  }),
   component: CompetitionDetailPage,
 });
 const runner = createRoute({
@@ -51,12 +65,14 @@ const stravaSignup = createRoute({ getParentRoute: () => authLayout, path: '/str
 const stravaCallback = createRoute({ getParentRoute: () => root, path: '/auth/strava', component: StravaCallbackPage });
 const reset = createRoute({ getParentRoute: () => authLayout, path: '/reset-password', validateSearch: tokenSearch, component: ResetPasswordPage });
 
+const leaderboard = createRoute({ getParentRoute: () => root, path: '/leaderboard', component: protectedPage(LeaderboardPage) });
+const welcome = createRoute({ getParentRoute: () => root, path: '/welcome', component: protectedPage(WelcomePage) });
 const dashboard = createRoute({ getParentRoute: () => root, path: '/dashboard', component: protectedPage(DashboardPage) });
 const feed = createRoute({ getParentRoute: () => root, path: '/feed', validateSearch: (search: Record<string, unknown>): { activity?: string } => typeof search.activity === 'string' ? { activity: search.activity } : {}, component: protectedPage(FeedPage) });
 const feedPost = createRoute({ getParentRoute: () => root, path: '/feed/$id', component: protectedPage(FeedPostPage) });
 const messages = createRoute({ getParentRoute: () => root, path: '/messages', component: protectedPage(MessagesPage) });
 const conversation = createRoute({ getParentRoute: () => root, path: '/messages/$username', component: protectedPage(ConversationPage) });
-const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', validateSearch: (search: Record<string, unknown>): { club?: string } => typeof search.club === 'string' ? { club: search.club } : {}, component: protectedPage(NewCompetitionPage) });
+const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', validateSearch: (search: Record<string, unknown>): { club?: string; template?: string } => ({ ...(typeof search.club === 'string' ? { club: search.club } : {}), ...(typeof search.template === 'string' ? { template: search.template } : {}) }), component: protectedPage(NewCompetitionPage) });
 const run = createRoute({ getParentRoute: () => root, path: '/run', component: protectedPage(RunPage) });
 const runSession = createRoute({ getParentRoute: () => root, path: '/runs/$id', component: protectedPage(RunSessionPage) });
 const activities = createRoute({ getParentRoute: () => root, path: '/activities', component: protectedPage(ActivitiesPage) });
@@ -92,7 +108,7 @@ const routeTree = root.addChildren([
   home, competitions, competition, runners, runner,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
-  dashboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
+  dashboard, welcome, leaderboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
   adminPayouts, adminCreators, adminChallenges,
 ]);

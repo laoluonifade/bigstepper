@@ -87,7 +87,7 @@ export function StravaCallbackPage() {
           flushSync(() => auth.authenticate(response));
           void navigate({ href: pending.redirect ?? '/dashboard' });
         } else {
-          sessionStorage.setItem(STRAVA_SIGNUP_KEY, JSON.stringify(response));
+          sessionStorage.setItem(STRAVA_SIGNUP_KEY, JSON.stringify({ ...response, redirect: pending.redirect }));
           void navigate({ to: '/strava/signup' });
         }
       })
@@ -111,7 +111,7 @@ export function StravaSignupPage() {
   const navigate = useNavigate();
   const [pending] = useState(() => {
     try {
-      return JSON.parse(sessionStorage.getItem(STRAVA_SIGNUP_KEY) ?? 'null') as Extract<StravaLoginResponse, { status: 'needs-signup' }> | null;
+      return JSON.parse(sessionStorage.getItem(STRAVA_SIGNUP_KEY) ?? 'null') as (Extract<StravaLoginResponse, { status: 'needs-signup' }> & { redirect?: string }) | null;
     } catch {
       return null;
     }
@@ -124,7 +124,9 @@ export function StravaSignupPage() {
     onSuccess(response) {
       sessionStorage.removeItem(STRAVA_SIGNUP_KEY);
       flushSync(() => auth.authenticate(response));
-      void navigate({ to: '/dashboard' });
+      // Back to where they started (e.g. a competition, which then joins them), or onboarding.
+      const next = pending?.redirect?.startsWith('/') && !pending.redirect.startsWith('//') && pending.redirect !== '/dashboard' ? pending.redirect : '/welcome';
+      void navigate({ href: next });
     },
   });
 
