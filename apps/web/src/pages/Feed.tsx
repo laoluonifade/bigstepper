@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ActivityIcon, CloseIcon, CycleIcon, FeedIcon, LockIcon, RunIcon, TrashIcon } from '../components/icons';
+import { ActivityIcon, ArrowLeftIcon, CloseIcon, CycleIcon, FeedIcon, LockIcon, RunIcon, SendIcon, TrashIcon } from '../components/icons';
 import { EmojiPopover } from '../components/EmojiPopover';
 import { RantTabs } from '../components/RantTabs';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton } from '../components/ui';
@@ -172,30 +172,41 @@ export function FeedPostPage() {
   const user = useUser();
   const unit = useUnit();
   const post = useQuery({ queryKey: ['feed-post', id], queryFn: () => api<FeedPost>(`/feed/${encodeURIComponent(id)}`) });
+  const back = <Link to="/feed" className="inline-flex min-h-10 items-center gap-1.5 text-[13px] font-bold text-ink-2 hover:text-ink"><ArrowLeftIcon size={16} /> Rant</Link>;
   if (post.isLoading) return <Loading />;
-  if (post.error || !post.data) return <div className="mx-auto max-w-[600px]"><Link to="/feed" className="text-[13px] font-bold underline">← Rant</Link><ErrorNotice error={post.error} onRetry={() => void post.refetch()} className="mt-4" /></div>;
+  if (post.error || !post.data) return <div className="mx-auto max-w-[600px]">{back}<ErrorNotice error={post.error} onRetry={() => void post.refetch()} className="mt-4" /></div>;
   const item = post.data;
+  const posted = new Date(item.createdAt);
   return <div className="mx-auto max-w-[600px] animate-rise">
-    <Link to="/feed" className="mb-4 inline-flex min-h-10 items-center text-[13px] font-bold text-ink-2 hover:text-ink">← Rant</Link>
-    <article className="-mx-4 border-y border-line bg-card p-4 sm:mx-0 sm:rounded-2xl sm:border sm:p-5">
-      <div className="flex items-center gap-3">
-        <Link to="/runners/$username" params={{ username: item.username }} search={{}}><Avatar name={item.displayName} src={item.avatarUrl} size={44} className="rounded-full" /></Link>
-        <div className="min-w-0"><Link to="/runners/$username" params={{ username: item.username }} search={{}} className="block truncate font-bold hover:underline">{item.displayName}</Link><p className="text-[12px] text-ink-3">@{item.username} · {shortAgo(item.createdAt)}</p></div>
-      </div>
-      {item.body && <p className="mt-4 whitespace-pre-wrap break-words text-[16px] leading-relaxed">{item.body}</p>}
-      {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} />}
+    <div className="mb-2">{back}</div>
+    <div className="-mx-4 border-t border-line sm:mx-0">
+      <article className="px-4 pt-4">
+        <div className="flex items-center gap-3">
+          <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="shrink-0"><Avatar name={item.displayName} src={item.avatarUrl} size={44} className="rounded-full" /></Link>
+          <div className="min-w-0 flex-1 leading-tight">
+            <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="block truncate text-[15px] font-bold hover:underline">{item.displayName}</Link>
+            <span className="block truncate text-[13px] text-ink-3">@{item.username}</span>
+          </div>
+          {item.activityVisibility !== 'public' && <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-ink-3"><LockIcon size={12} />{item.activityVisibility === 'private' ? 'Only you' : 'Followers'}</span>}
+        </div>
+        {item.body && <p className="mt-3 whitespace-pre-wrap break-words text-[17px] leading-relaxed">{item.body}</p>}
+        {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} />}
+        <time dateTime={item.createdAt} className="mt-3 block text-[13px] text-ink-3">{posted.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {posted.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</time>
+      </article>
       <PostInteractions item={item} viewerId={user.id} detail />
-    </article>
+    </div>
   </div>;
 }
 
+function plural(count: number, word: string) { return `${count.toLocaleString('en-GB')} ${word}${count === 1 ? '' : 's'}`; }
+
 function PostInteractions({ item, viewerId, detail = false }: { item: FeedPost; viewerId: string; detail?: boolean }) {
   const queryClient = useQueryClient();
+  const profile = useProfile();
   const [showReactions, setShowReactions] = useState(false);
   const reactionAnchor = useRef<HTMLButtonElement | null>(null);
-  const showComments = detail;
   const [commentBody, setCommentBody] = useState('');
-  const comments = useQuery({ queryKey: ['feed-comments', item.id], queryFn: () => api<FeedComment[]>(`/feed/${item.id}/comments`), enabled: showComments });
+  const comments = useQuery({ queryKey: ['feed-comments', item.id], queryFn: () => api<FeedComment[]>(`/feed/${item.id}/comments`), enabled: detail });
   const refresh = () => { void queryClient.invalidateQueries({ queryKey: ['feed'] }); void queryClient.invalidateQueries({ queryKey: ['feed-post', item.id] }); void queryClient.invalidateQueries({ queryKey: ['feed-comments', item.id] }); };
   const react = useMutation({
     mutationFn: (reaction: Reaction | null) => reaction ? post(`/feed/${item.id}/reaction`, { reaction }) : api(`/feed/${item.id}/reaction`, { method: 'DELETE' }),
@@ -203,31 +214,57 @@ function PostInteractions({ item, viewerId, detail = false }: { item: FeedPost; 
   });
   const comment = useMutation({ mutationFn: () => post(`/feed/${item.id}/comments`, { body: commentBody.trim() }), onSuccess() { setCommentBody(''); refresh(); } });
   const removeComment = useMutation({ mutationFn: (id: string) => api(`/feed/comments/${id}`, { method: 'DELETE' }), onSuccess: refresh });
-  return <div className="mt-3 border-t border-line pt-2.5">
-    <div className="flex flex-wrap items-center gap-4 text-[13px] font-semibold text-ink-2">
-      <button ref={reactionAnchor} type="button" className="min-h-9 rounded-full px-2 hover:bg-paper hover:text-ink" onClick={() => setShowReactions((value) => !value)} aria-expanded={showReactions}>
-        {REACTIONS.find((reaction) => reaction.value === item.myReaction)?.symbol ?? '♡'} {item.reactionCount} {item.myReaction ? REACTIONS.find((reaction) => reaction.value === item.myReaction)?.label : 'React'}
-      </button>
-      {detail ? <span>{item.commentCount} Comments</span> : <Link to="/feed/$id" params={{ id: item.id }} className="hover:text-ink">{item.commentCount} Comments</Link>}
-      {item.userId !== viewerId && <Link to="/messages/$username" params={{ username: item.username }} className="hover:text-ink">Message</Link>}
-    </div>
-    {showReactions && <EmojiPopover anchor={reactionAnchor} label="React to post" width={208} height={62} onClose={() => setShowReactions(false)}><div className="flex gap-0.5">
-      {REACTIONS.map((choice) => <button key={choice.value} type="button" className={cx('flex h-11 w-11 items-center justify-center rounded-xl text-[22px] hover:bg-paper', item.myReaction === choice.value && 'bg-volt')} title={choice.label} aria-label={choice.label} onClick={() => react.mutate(item.myReaction === choice.value ? null : choice.value)} disabled={react.isPending}>{choice.symbol}</button>)}
-    </div></EmojiPopover>}
+  const mine = REACTIONS.find((reaction) => reaction.value === item.myReaction);
+  const action = 'inline-flex min-h-9 items-center gap-1.5 rounded-full px-2 text-ink-2 transition-colors hover:bg-ink/[0.05] hover:text-ink';
+  const reactButton = <button ref={reactionAnchor} type="button" className={cx(action, mine && 'text-ink')} onClick={() => setShowReactions((value) => !value)} aria-expanded={showReactions} aria-label={mine ? `Reacted ${mine.label}` : 'React'}>
+    <span className="text-[16px] leading-none">{mine?.symbol ?? '♡'}</span>{!detail && item.reactionCount > 0 && <span className="num">{item.reactionCount}</span>}
+  </button>;
+  const messageLink = item.userId !== viewerId && <Link to="/messages/$username" params={{ username: item.username }} className={action} aria-label={`Message ${item.displayName}`}><SendIcon size={16} /></Link>;
+  const popover = showReactions && <EmojiPopover anchor={reactionAnchor} label="React to post" width={208} height={62} onClose={() => setShowReactions(false)}><div className="flex gap-0.5">
+    {REACTIONS.map((choice) => <button key={choice.value} type="button" className={cx('flex h-11 w-11 items-center justify-center rounded-xl text-[22px] hover:bg-paper', item.myReaction === choice.value && 'bg-volt')} title={choice.label} aria-label={choice.label} onClick={() => react.mutate(item.myReaction === choice.value ? null : choice.value)} disabled={react.isPending}>{choice.symbol}</button>)}
+  </div></EmojiPopover>;
+
+  if (!detail) return <div className="-ml-2 mt-1.5 flex items-center gap-6 text-[13px]">
+    {reactButton}
+    <Link to="/feed/$id" params={{ id: item.id }} className={action} aria-label={plural(item.commentCount, 'comment')}><FeedIcon size={16} />{item.commentCount > 0 && <span className="num">{item.commentCount}</span>}</Link>
+    {messageLink}
+    {popover}
     <ErrorNotice error={react.error} className="mt-2" />
-    {showComments && <div className="mt-3 space-y-3">
-      <ErrorNotice error={comment.error || comments.error || removeComment.error} />
-      {comments.isLoading ? <Skeleton className="h-16" /> : (comments.data ?? []).map((entry) => <div key={entry.id} className="flex min-w-0 gap-2.5 rounded-xl bg-paper p-2.5">
-        <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="shrink-0"><Avatar name={entry.displayName} src={entry.avatarUrl} size={28} /></Link>
-        <p className="min-w-0 flex-1 break-words text-[13px]"><span className="font-bold">{entry.displayName}</span> <span className="whitespace-pre-wrap">{entry.body}</span></p>
-        {entry.userId === viewerId && <button type="button" className="self-start text-ink-3 hover:text-bad" onClick={() => removeComment.mutate(entry.id)} aria-label="Delete comment"><TrashIcon size={14} /></button>}
-      </div>)}
-      <form className="flex min-w-0 gap-2 border-t border-line pt-3" onSubmit={(event) => { event.preventDefault(); if (commentBody.trim() && !comment.isPending) comment.mutate(); }}>
-        <input className="field min-w-0 flex-1 rounded-xl" aria-label="Write a comment" maxLength={500} value={commentBody} onChange={(event) => setCommentBody(event.target.value)} placeholder="Write a comment" />
-        <button className="btn-dark btn-sm shrink-0 rounded-xl" disabled={!commentBody.trim() || comment.isPending}>Post</button>
-      </form>
-    </div>}
   </div>;
+
+  return <>
+    {(item.reactionCount > 0 || item.commentCount > 0) && <div className="mx-4 mt-3 flex gap-4 border-t border-line py-2.5 text-[13px] text-ink-2">
+      {item.reactionCount > 0 && <span><strong className="num text-ink">{item.reactionCount}</strong> {item.reactionCount === 1 ? 'reaction' : 'reactions'}</span>}
+      {item.commentCount > 0 && <span><strong className="num text-ink">{item.commentCount}</strong> {item.commentCount === 1 ? 'comment' : 'comments'}</span>}
+    </div>}
+    <div className={cx('mx-4 flex items-center justify-around border-y border-line py-1 text-[13px]', !(item.reactionCount > 0 || item.commentCount > 0) && 'mt-3')}>
+      {reactButton}
+      <button type="button" className={action} onClick={() => document.getElementById(`reply-${item.id}`)?.focus()} aria-label="Write a comment"><FeedIcon size={16} /></button>
+      {messageLink}
+    </div>
+    {popover}
+    <ErrorNotice error={react.error || comment.error || comments.error || removeComment.error} className="m-4" />
+    <form className="flex items-center gap-3 border-b border-line px-4 py-3" onSubmit={(event) => { event.preventDefault(); if (commentBody.trim() && !comment.isPending) comment.mutate(); }}>
+      <Avatar name={profile.data?.displayName ?? 'You'} src={profile.data?.avatarUrl} size={36} className="rounded-full" />
+      <input id={`reply-${item.id}`} className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-ink-3" aria-label="Write a comment" maxLength={500} value={commentBody} onChange={(event) => setCommentBody(event.target.value)} placeholder="Post your reply" />
+      <button className="h-9 shrink-0 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-opacity hover:bg-ink/85 disabled:opacity-30" disabled={!commentBody.trim() || comment.isPending}>{comment.isPending ? 'Replying…' : 'Reply'}</button>
+    </form>
+    {comments.isLoading ? <div className="p-4"><Skeleton className="h-14" /></div> : <div className="divide-y divide-line border-b border-line">
+      {(comments.data ?? []).map((entry) => <div key={entry.id} className="flex min-w-0 gap-3 px-4 py-3">
+        <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="shrink-0"><Avatar name={entry.displayName} src={entry.avatarUrl} size={36} className="rounded-full" /></Link>
+        <div className="min-w-0 flex-1">
+          <p className="flex min-w-0 items-baseline gap-1 text-[14px] leading-tight">
+            <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="truncate font-bold hover:underline">{entry.displayName}</Link>
+            <span className="truncate text-ink-3">@{entry.username}</span>
+            <span className="text-ink-3" aria-hidden="true">·</span>
+            <time dateTime={entry.createdAt} className="shrink-0 text-ink-3">{shortAgo(entry.createdAt)}</time>
+            {entry.userId === viewerId && <button type="button" className="ml-auto shrink-0 self-center rounded-full p-1 text-ink-3 hover:bg-bad-wash hover:text-bad" onClick={() => removeComment.mutate(entry.id)} disabled={removeComment.isPending} aria-label="Delete comment"><TrashIcon size={14} /></button>}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-snug">{entry.body}</p>
+        </div>
+      </div>)}
+    </div>}
+  </>;
 }
 
 /** Twitter-style timestamp: `now`, `5m`, `3h`, `2d`, then the date. */
