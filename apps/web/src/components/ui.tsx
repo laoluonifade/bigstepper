@@ -342,7 +342,8 @@ export function Avatar({
   return (
     <span
       className={cx(
-        'wide relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-sm font-extrabold',
+        'wide relative inline-flex shrink-0 items-center justify-center overflow-hidden font-extrabold',
+        !/(^|\s)!?rounded/.test(className ?? '') && 'rounded-sm',
         highlight ? 'bg-ink text-volt' : 'bg-ink/[0.07] text-ink',
         className,
       )}
