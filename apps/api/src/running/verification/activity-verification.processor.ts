@@ -8,6 +8,7 @@ import { GpsSample } from '../gps-sample.entity';
 import { measureTrack, stepDistanceMetres } from '../track';
 import { RunningSession } from '../running-session.entity';
 import { refreshLeagueDistance } from '../../leagues/league-credits';
+import { creditActivities } from '../../tables/competition-credits';
 
 /** Faster than any human cadence (a sprint is about 4 steps/s); shaking a phone usually is. */
 const MAX_STEPS_PER_SECOND = 5.5;
@@ -88,43 +89,7 @@ export class ActivityVerificationProcessor extends WorkerHost {
       await manager.update(RunningSession, { id: activity.runningSessionId }, { status });
 
       if (status === 'VERIFIED') {
-        await manager.query(
-          `INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
-           SELECT t."id", r."id", a."id",
-             -- Distance and steps are both recorded so every board can show km and steps; ranking
-             -- only ever reads the column that matches the scoring method.
-             LEAST(CASE WHEN t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
-                   COALESCE(t."distanceCapMetres", 2147483647)),
-             a."validatedSteps",
-             CASE WHEN t."scoringMethod" IN ('FASTEST_FIXED_DISTANCE','FASTEST_TIME') AND a."validatedDistanceMetres">=t."targetDistanceMetres" THEN a."movingSeconds" ELSE NULL END
-           FROM "activities" a
-           JOIN "table_registrations" r ON r."userId" = a."userId" AND r."joinedAt" <= a."startedAt"
-           JOIN "competition_tables" t ON t."id" = r."tableId"
-           WHERE a."id" = $1
-             AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')
-             AND ((a."activityType"='cycle' AND t."challengeType"='CYCLING') OR
-                  (a."activityType" IN ('walk','run') AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR
-                   (t."challengeType"='WALK' AND a."activityType"='walk') OR (t."challengeType"='RUN' AND a."activityType"='run'))))
-             AND a."startedAt" >= COALESCE(t."startsAt", '-infinity'::timestamptz)
-             AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
-           ON CONFLICT ("tableId", "activityId") DO NOTHING`,
-          [activity.id],
-        );
-        await manager.query(
-          `UPDATE "table_registrations" r
-           SET "creditedDistanceMetres" = totals.distance,
-               "creditedSteps" = totals.steps,
-               "completionTimeSeconds" = totals.best_time
-           FROM (
-             SELECT c."registrationId", SUM(c."creditedDistanceMetres")::integer AS distance,
-                    SUM(c."creditedSteps")::integer AS steps, MIN(c."completionTimeSeconds")::integer AS best_time
-             FROM "table_activity_credits" c
-             WHERE c."tableId" IN (SELECT "tableId" FROM "table_activity_credits" WHERE "activityId" = $1)
-             GROUP BY c."registrationId"
-           ) totals
-           WHERE r."id" = totals."registrationId"`,
-          [activity.id],
-        );
+        await creditActivities(manager, { activityId: activity.id });
         if (!cycling) await refreshLeagueDistance(manager, activity.userId);
         await manager.query(
           `INSERT INTO "notifications" ("userId","type","title","body","link")

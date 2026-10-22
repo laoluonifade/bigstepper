@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { refreshLeagueDistance } from '../leagues/league-credits';
+import { creditActivities } from '../tables/competition-credits';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { CompetitionTable } from '../tables/competition-table.entity';
@@ -150,23 +151,7 @@ export class AdminService {
       await manager.update(RunningSession, { id: review.activity.runningSessionId }, { status: verificationStatus });
 
       if (input.decision === 'APPROVED') {
-        await manager.query(
-          `INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
-           SELECT t."id", r."id", a."id",
-             LEAST(CASE WHEN t."type" IN ('free','sponsored') THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
-                   COALESCE(t."distanceCapMetres", 2147483647)),
-             a."validatedSteps",
-             CASE WHEN t."scoringMethod" IN ('FASTEST_FIXED_DISTANCE','FASTEST_TIME') AND a."validatedDistanceMetres">=t."targetDistanceMetres" THEN a."movingSeconds" ELSE NULL END
-           FROM "activities" a JOIN "table_registrations" r ON r."userId" = a."userId" AND r."joinedAt" <= a."startedAt"
-           JOIN "competition_tables" t ON t."id" = r."tableId"
-           WHERE a."id" = $1 AND a."startedAt" >= COALESCE(t."startsAt", '-infinity'::timestamptz)
-             AND ((a."activityType"='cycle' AND t."challengeType"='CYCLING') OR
-                  (a."activityType" IN ('walk','run') AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR
-                   (t."challengeType"='WALK' AND a."activityType"='walk') OR (t."challengeType"='RUN' AND a."activityType"='run'))))
-             AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
-           ON CONFLICT ("tableId", "activityId") DO NOTHING`,
-          [review.activityId],
-        );
+        await creditActivities(manager, { activityId: review.activityId });
       } else {
         await manager.query(`DELETE FROM "table_activity_credits" WHERE "activityId" = $1`, [review.activityId]);
       }

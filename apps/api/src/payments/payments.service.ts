@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { creditActivities } from '../tables/competition-credits';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -150,6 +151,7 @@ export class PaymentsService {
         [wallet.id, -table.entryFeeKobo, balanceAfter, reference],
       );
       const registration = await manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId, paymentIntentId: null }));
+      await creditActivities(manager, { tableId, userId });
       await manager.query(
         `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
          WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,
@@ -546,6 +548,7 @@ export class PaymentsService {
       locked.status = 'SUCCEEDED'; locked.providerStatus = provider.status; locked.providerTransactionId = String(provider.id);
       await manager.save(locked);
       await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: table.id, userId: locked.userId, paymentIntentId: locked.id }));
+      await creditActivities(manager, { tableId: table.id, userId: locked.userId });
       await manager.query(
         `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
          WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,

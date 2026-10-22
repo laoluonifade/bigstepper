@@ -31,11 +31,13 @@ describe('challenge invitation responses', () => {
   });
 
   it('joins a free invite and marks it accepted in the same transaction', async () => {
-    manager.query.mockResolvedValueOnce([{ id: 'invite', tableId: 'table', status: 'PENDING' }]).mockResolvedValueOnce([]);
+    manager.query.mockResolvedValueOnce([{ id: 'invite', tableId: 'table', status: 'PENDING' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     manager.findOne.mockResolvedValueOnce({ id: 'table', code: 'ABCDEFGH', type: 'sponsored', status: 'OPEN_FOR_ENTRY', capacity: 10, guaranteedPrizeKobo: null, entryClosesAt: new Date(Date.now() + 60_000) });
     await expect(service.respondToInvitation('invite', 'runner', 'ACCEPT')).resolves.toMatchObject({ status: 'ACCEPTED', joined: true, contributionOptional: true });
     expect(manager.save).toHaveBeenCalledTimes(1);
     expect(manager.query.mock.calls[1][0]).toContain(`"status"='ACCEPTED'`);
+    // Then anything they already did inside the competition's dates is put on the board.
+    expect(manager.query.mock.calls[2][0]).toContain('INSERT INTO "table_activity_credits"');
   });
 
   it('does not mark a paid invite accepted before payment', async () => {

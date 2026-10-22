@@ -47,7 +47,7 @@ export function useTables(sort = 'popular', type = 'all', activity = 'all') {
   return useQuery({ queryKey: [...keys.tables, sort, type, activity], queryFn: () => api<CompetitionTable[]>(`/tables?sort=${sort}&type=${type}&activity=${activity}`) });
 }
 
-export type DiscoverView = 'for-you' | 'trending' | 'starting' | 'friends' | 'newest';
+export type DiscoverView = 'for-you' | 'trending' | 'starting' | 'friends' | 'newest' | 'created';
 
 /** The discovery feed, 20 at a time with "load more". */
 export function useDiscover(view: DiscoverView, type = 'all', activity = 'all', enabled = true) {

@@ -98,8 +98,8 @@ const ACTIVITY_CHIPS: Array<{ value: 'all' | ChallengeType; label: string }> = [
   { value: 'DISTANCE', label: 'Distance' }, { value: 'STEP', label: 'Steps' }, { value: 'TIMED', label: 'Timed' },
 ];
 const VIEW_CHIPS: Array<{ value: DiscoverView; label: string; signedIn?: boolean; guestOnly?: boolean }> = [
-  { value: 'for-you', label: 'For you', signedIn: true }, { value: 'trending', label: 'Trending' }, { value: 'starting', label: 'Starting soon' },
-  { value: 'friends', label: 'Friends', signedIn: true }, { value: 'newest', label: 'Newest', guestOnly: true },
+  { value: 'for-you', label: 'For you', signedIn: true }, { value: 'trending', label: 'Trending' }, { value: 'starting', label: 'Upcoming' },
+  { value: 'friends', label: 'Friends', signedIn: true }, { value: 'created', label: 'Hosting', signedIn: true }, { value: 'newest', label: 'Newest', guestOnly: true },
 ];
 const TYPE_CHIPS: Array<{ value: TypeFilter; label: string }> = [
   { value: 'all', label: 'Any entry' }, { value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Cash prize' }, { value: 'paid', label: 'Paid' },
@@ -170,11 +170,15 @@ export function CompetitionsPage() {
       </form>
 
       {/* How to browse, as quiet text tabs; filters live in the sheet. */}
-      <div className="no-scrollbar -mx-4 mt-4 flex gap-5 overflow-x-auto border-b border-line px-4" role="tablist" aria-label="Browse">
-        {views.map((option) => <button key={option.value} type="button" role="tab" aria-selected={view === option.value} onClick={() => setView(option.value)} className={cx('relative shrink-0 whitespace-nowrap pb-2.5 text-[14px] font-semibold transition-colors', view === option.value ? 'text-ink' : 'text-ink-3 hover:text-ink')}>
-          {option.label}
-          {view === option.value && <span className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-ink" aria-hidden="true" />}
-        </button>)}
+      {/* Fits a phone; on narrower screens it scrolls, and the fade on the right shows there's more. */}
+      <div className="relative -mx-4 mt-4">
+        <div className="no-scrollbar flex gap-4 overflow-x-auto border-b border-line px-4" role="tablist" aria-label="Browse">
+          {views.map((option) => <button key={option.value} type="button" role="tab" aria-selected={view === option.value} onClick={(event) => { setView(option.value); event.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); }} className={cx('relative shrink-0 whitespace-nowrap pb-2.5 text-[14px] font-semibold transition-colors', view === option.value ? 'text-ink' : 'text-ink-3 hover:text-ink')}>
+            {option.label}
+            {view === option.value && <span className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-ink" aria-hidden="true" />}
+          </button>)}
+        </div>
+        <span className="pointer-events-none absolute bottom-px right-0 top-0 w-8 bg-gradient-to-l from-paper to-transparent" aria-hidden="true" />
       </div>
 
       {activeFilters > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[12px]">
@@ -197,14 +201,14 @@ export function CompetitionsPage() {
         </div>
       </Modal>}
 
-      <p className="num mb-2.5 mt-4 text-[12px] font-medium text-ink-3">{tables.data ? `${list.length}${tables.hasNextPage ? '+' : ''} ${view === 'starting' ? 'starting soon' : 'open'}${query ? ` matching “${term.trim()}”` : ''}` : ' '}</p>
+      <p className="num mb-2.5 mt-4 text-[12px] font-medium text-ink-3">{tables.data ? `${list.length}${tables.hasNextPage ? '+' : ''} ${view === 'starting' ? 'starting soon' : view === 'created' ? 'you’re hosting' : 'open'}${query ? ` matching “${term.trim()}”` : ''}` : ' '}</p>
       <ErrorNotice error={tables.error} onRetry={() => void tables.refetch()} />
       {tables.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-44 rounded-2xl" />)}</div>
       ) : list.length === 0 ? (
         <EmptyState
           mark="00"
-          title={query ? 'Nothing matches that' : view === 'friends' ? 'Nothing from your people yet' : view === 'for-you' ? 'You’re in everything that fits' : 'No open competitions'}
+          title={query ? 'Nothing matches that' : view === 'created' ? 'You haven’t created one yet' : view === 'friends' ? 'Nothing from your people yet' : view === 'for-you' ? 'You’re in everything that fits' : 'No open competitions'}
           action={user ? <Link to="/competitions/new" className="btn-primary"><PlusIcon size={16} /> {query ? 'Create it yourself' : 'Start the first one'}</Link> : undefined}
         >
           {query ? 'Try another name, or start a competition and send the code to your crew.' : 'Create a competition and send the invite code to your crew.'}

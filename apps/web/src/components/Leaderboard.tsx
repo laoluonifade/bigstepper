@@ -89,10 +89,16 @@ export function Leaderboard({
   return (
     <div className="overflow-hidden rounded-md border-[1.5px] border-ink bg-card">
       {caption && <div className="border-b border-line px-4 py-2.5 text-[12px] text-ink-2">{caption}</div>}
-      <table className="w-full border-collapse text-left">
+      {/* Fixed columns: a long name truncates instead of pushing the score off the edge. */}
+      <table className="w-full table-fixed border-collapse text-left">
+        <colgroup>
+          <col className="w-14" />
+          <col />
+          <col className="w-[112px]" />
+        </colgroup>
         <thead>
           <tr className="border-b-[1.5px] border-ink text-[10.5px] font-bold uppercase tracking-[0.12em] text-ink-2">
-            <th scope="col" className="w-14 py-2 pl-4 font-bold">
+            <th scope="col" className="py-2 pl-4 font-bold">
               Pos
             </th>
             <th scope="col" className="py-2 font-bold">
@@ -132,7 +138,7 @@ function Row({ row, isMe, unit, formatScore }: { row: LeaderboardRow; isMe: bool
       <td className="min-w-0 py-2.5 pr-2 align-middle">
         <div className="flex min-w-0 items-center gap-3">
           <Avatar name={row.name} src={row.avatarUrl} highlight={isMe} size={30} />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold">
               {row.username ? (
                 <Link to="/runners/$username" params={{ username: row.username }} className="hover:underline hover:underline-offset-4">
@@ -148,7 +154,7 @@ function Row({ row, isMe, unit, formatScore }: { row: LeaderboardRow; isMe: bool
           </div>
         </div>
       </td>
-      <td className="py-2.5 pr-4 text-right align-middle">
+      <td className="whitespace-nowrap py-2.5 pr-4 text-right align-middle">
         {formatScore ? formatScore(row) : (
           <><span className="score num text-[20px]">{formatDistanceNumber(row.metres, unit)}</span><span className="ml-1 text-[11px] font-semibold text-ink-2">{unit}</span></>
         )}

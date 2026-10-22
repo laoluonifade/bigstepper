@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { creditActivities } from './competition-credits';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typeorm';
@@ -58,16 +59,17 @@ export class TablesService {
    * - for-you: your own live competitions first (hosted or joined, public or private), then ones you
    *   haven't joined, ranked by your usual activity, friends involved, free entry, then popularity
    * - trending: most joined · starting: soonest upcoming · newest · friends: ones your follows or clubs are in
+   * - created: everything you host (public or private, live or finished; drafts live in their own sheet)
    */
   async discover(viewerId: string | null, view = 'trending', type = 'all', activity = 'all', page = '0') {
-    if (!['for-you', 'trending', 'starting', 'newest', 'friends'].includes(view) || !['all', 'free', 'sponsored', 'paid'].includes(type) ||
+    if (!['for-you', 'trending', 'starting', 'newest', 'friends', 'created'].includes(view) || !['all', 'free', 'sponsored', 'paid'].includes(type) ||
         !['all', 'WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED', 'CYCLING'].includes(activity) || !/^(0|[1-9]\d{0,3})$/.test(page)) {
       throw new BadRequestException('Invalid competition filter');
     }
-    if ((view === 'for-you' || view === 'friends') && !viewerId) view = 'trending';
+    if ((view === 'for-you' || view === 'friends' || view === 'created') && !viewerId) view = 'trending';
     // Only bind the viewer when the view uses it: Postgres can't type a parameter nothing references.
     const params: unknown[] = [type, activity, Number(page) * 20];
-    const personal = view === 'for-you' || view === 'friends';
+    const personal = view === 'for-you' || view === 'friends' || view === 'created';
     if (personal) params.push(viewerId);
     const me = '$4::uuid';
     const joinedCount = 'COUNT(r."id")';
@@ -86,13 +88,15 @@ export class TablesService {
     const mineLive = `((t."creatorId" = ${me} OR ${joinedByMe}) AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
                        AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now()))`;
     const discoverable = `(t."status" = 'OPEN_FOR_ENTRY' AND t."visibility" = 'public' AND (t."entryClosesAt" IS NULL OR t."entryClosesAt" > now()))`;
+    const hosted = `(t."creatorId" = ${me} AND t."status" NOT IN ('CANCELLED','PENDING_FUNDING','PENDING_APPROVAL'))`;
     const where = [
-      view === 'for-you' ? `((${discoverable} AND NOT ${joinedByMe}) OR ${mineLive})` : discoverable,
+      view === 'for-you' ? `((${discoverable} AND NOT ${joinedByMe}) OR ${mineLive})` : view === 'created' ? hosted : discoverable,
       `($1 = 'all' OR t."type" = $1)`, `($2 = 'all' OR t."challengeType" = $2)`,
       ...(view === 'starting' ? [`t."startsAt" > now()`] : []),
       ...(view === 'friends' ? [friendsInvolved] : []),
     ].join(' AND ');
-    const order = view === 'starting' ? 't."startsAt" ASC'
+    const order = view === 'created' ? `(CASE WHEN ${mineLive} THEN 0 ELSE 1 END), t."createdAt" DESC`
+      : view === 'starting' ? 't."startsAt" ASC'
       : view === 'newest' ? 't."createdAt" DESC'
       : view === 'for-you' ? `(CASE WHEN ${mineLive} THEN 1 ELSE 0 END) DESC, (CASE WHEN ${mineLive} THEN t."scoringClosesAt" END) ASC NULLS LAST,
                               ((CASE WHEN ${fits} THEN 3 ELSE 0 END) + (CASE WHEN ${friendsInvolved} THEN 2 ELSE 0 END)
@@ -102,7 +106,7 @@ export class TablesService {
       `SELECT t."id", ${joinedCount}::integer AS n
        FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId" = t."id"
        WHERE ${where}
-       GROUP BY t."id" HAVING t."capacity" IS NULL OR ${joinedCount} < t."capacity"${view === 'for-you' ? ` OR ${mineLive}` : ''}
+       GROUP BY t."id" HAVING ${view === 'created' ? 'true' : `t."capacity" IS NULL OR ${joinedCount} < t."capacity"${view === 'for-you' ? ` OR ${mineLive}` : ''}`}
        ORDER BY ${order} LIMIT 21 OFFSET $3`,
       params,
     )) as Array<{ id: string; n: number }>;
@@ -392,6 +396,7 @@ export class TablesService {
           if (count >= table.capacity) throw new ConflictException('This competition is full');
         }
         const registration = await manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId }));
+        await creditActivities(manager, { tableId, userId });
         await manager.query(
           `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
            WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,
@@ -521,6 +526,7 @@ export class TablesService {
       const created = await manager.save(CompetitionTable, table);
       // The host is visible on every board; funded prizes exclude their score at settlement.
       await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: created.id, userId: created.creatorId }));
+      await creditActivities(manager, { tableId: created.id, userId: created.creatorId });
       await this.insertInvitations(manager, created, input, emails, phones);
       return created;
     });
@@ -655,6 +661,7 @@ export class TablesService {
         }
         await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: table.id, userId }));
         await manager.query(`UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now() WHERE "id"=$1`, [invite.id]);
+        await creditActivities(manager, { tableId: table.id, userId });
         return { status: 'ACCEPTED', joined: true, tableId: table.id, code: table.code, type: table.type, contributionOptional: table.type === 'sponsored' && table.guaranteedPrizeKobo === null };
       });
     } catch (error) {
