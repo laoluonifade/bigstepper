@@ -96,6 +96,8 @@ export function validateEnvironment(env: Environment) {
     STRAVA_CLIENT_ID: env.STRAVA_CLIENT_ID?.trim() || '',
     STRAVA_CLIENT_SECRET: env.STRAVA_CLIENT_SECRET?.trim() || '',
     STRAVA_WEBHOOK_VERIFY_TOKEN: env.STRAVA_WEBHOOK_VERIFY_TOKEN?.trim() || '',
+    // e.g. https://api.startajump.com/v1/strava/webhook; with the verify token set, the API registers it on start-up.
+    STRAVA_WEBHOOK_CALLBACK_URL: env.STRAVA_WEBHOOK_CALLBACK_URL?.trim() || '',
     // Off until Strava raises the app's athlete limit: hides Strava sign-in and connect for everyone new.
     STRAVA_PUBLIC: env.STRAVA_PUBLIC?.trim().toLowerCase() === 'true',
   };

@@ -40,6 +40,13 @@ export class AdminController {
     return this.adminService.createPaidDraft(user.id, body);
   }
 
+  /** Headline numbers for the whole platform, shown to admins in settings. */
+  @Get('stats')
+  @UseGuards(AdminOnlyGuard)
+  stats() {
+    return this.adminService.stats();
+  }
+
   @Get('tables/paid-drafts')
   @UseGuards(AdminOnlyGuard)
   paidDrafts(@Query('view') view?: string) {

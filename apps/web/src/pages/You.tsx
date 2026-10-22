@@ -1,8 +1,8 @@
 import { StravaConnection } from './Strava';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRightIcon, BellIcon, CheckIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, ShieldIcon } from '../components/icons';
+import { FormEvent, ReactNode, useMemo, useState } from 'react';
+import { BellIcon, CheckIcon, ChevronRightIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, ShieldIcon } from '../components/icons';
 import { AvatarEditor, ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '../components/Profile';
 import { BankPicker } from '../components/BankPicker';
 import {
@@ -13,7 +13,6 @@ import {
   EmptyState,
   ErrorNotice,
   Field,
-  KeyValue,
   Loading,
   Notice,
   PageHeader,
@@ -32,6 +31,8 @@ import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, 
 import { savePayment } from '../lib/payments';
 import type { CheckoutResponse, CreatorProfile, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
 import { COUNTRIES } from '../lib/countries';
+import { Modal } from '../components/Modal';
+import { toast } from '../lib/toast';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 
 export const YOU_NAV = [
@@ -49,13 +50,10 @@ export const YOU_NAV = [
 export function ProfileSettingsPage() {
   const user = useUser();
   const { logout } = useAuth();
-  const queryClient = useQueryClient();
   const profile = useProfile();
   const activities = useActivities();
   const unit = useUnit();
   const { isStaff } = useStaffAccess();
-  const [draft, setDraft] = useState<Partial<Profile>>({});
-  const merged = { ...profile.data, ...draft } as Profile;
   const stats = useMemo(() => profileStats(activities.data ?? []), [activities.data]);
   // Follower counts come from the public profile.
   const social = useQuery({
@@ -63,231 +61,265 @@ export function ProfileSettingsPage() {
     queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(profile.data!.username)}`),
     enabled: Boolean(profile.data?.username),
   });
-
-  const save = useMutation({
-    mutationFn: (changes: Partial<Profile>) => patch<Profile>('/me', changes),
-    onSuccess(updated) {
-      queryClient.setQueryData(keys.profile, updated);
-      setDraft({});
-      // Your name and handle also appear on leaderboards and member lists.
-      void queryClient.invalidateQueries({ predicate: (query) => ['standings', 'result', 'leagues', 'club', 'runner'].includes(String(query.queryKey[0])) });
-    },
-  });
-
-  const { isSuccess: saved, reset: resetSave } = save;
-  useEffect(() => {
-    if (!saved) return;
-    const timer = window.setTimeout(() => resetSave(), 2500);
-    return () => window.clearTimeout(timer);
-  }, [saved, resetSave]);
-
-  const changes = useMemo(() => {
-    if (!profile.data) return {};
-    const next: Partial<Profile> = { ...draft };
-    if (next.displayName !== undefined) next.displayName = next.displayName.trim();
-    if (next.bio !== undefined) next.bio = next.bio?.trim() || null;
-    return Object.fromEntries(Object.entries(next).filter(([key, value]) => (profile.data![key as keyof Profile] ?? null) !== (value ?? null))) as Partial<Profile>;
-  }, [draft, profile.data]);
-  const dirty = Object.keys(changes).length > 0;
-  const usernameError =
-    draft.username !== undefined && !/^[a-z0-9_]{2,30}$/.test(draft.username) ? '2–30 characters: lowercase letters, numbers and underscores.' : undefined;
-  const nameError = draft.displayName !== undefined && !draft.displayName.trim() ? 'Your name can’t be empty.' : undefined;
-  const weightError = draft.weightKg !== undefined && draft.weightKg !== null &&
-    (!Number.isFinite(draft.weightKg) || draft.weightKg < 20 || draft.weightKg > 300 || !Number.isInteger(draft.weightKg * 10))
-    ? 'Enter a weight from 20 to 300 kg, to one decimal place.' : undefined;
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!dirty || usernameError || nameError || weightError) return;
-    save.mutate(changes);
-  }
+  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | null>(null);
+  const save = useSaveProfile();
 
   if (profile.isLoading) return <Loading />;
   if (profile.error || !profile.data) return <ErrorNotice error={profile.error} onRetry={() => void profile.refetch()} />;
-
-  const bioLength = (merged.bio ?? '').length;
+  const me = profile.data;
+  const emailOn = [me.emailActivityEnabled, me.emailDigestEnabled].filter(Boolean).length;
 
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
 
       <ProfileHero
-        avatar={<AvatarEditor profile={profile.data} />}
-        displayName={profile.data.displayName}
-        username={profile.data.username}
-        meta={
-          <>
-            {countryName(profile.data.countryCode)} · Joined {formatDate(profile.data.createdAt, { month: 'short', year: 'numeric' })}
-          </>
-        }
-        bio={profile.data.bio ?? <span className="text-ink-3">Add a short bio below: what you train for, your club, your goal.</span>}
+        avatar={<AvatarEditor profile={me} />}
+        displayName={me.displayName}
+        username={me.username}
+        meta={<>{countryName(me.countryCode)} · Joined {formatDate(me.createdAt, { month: 'short', year: 'numeric' })}</>}
+        bio={me.bio ?? <button type="button" onClick={() => setSheet('profile')} className="text-ink-3 hover:text-ink">Add a short bio →</button>}
         counts={{ activities: stats.activities, followers: social.data?.followers ?? 0, following: social.data?.following ?? 0 }}
         actions={
           <>
-            <Link to="/runners/$username" params={{ username: profile.data.username }} search={{}} className="btn-secondary btn-sm flex-1">
-              View as others
-            </Link>
-            <ShareProfileButton username={profile.data.username} displayName={profile.data.displayName} iconOnly />
+            <button type="button" onClick={() => setSheet('profile')} className="btn-secondary btn-sm flex-1">Edit profile</button>
+            <ShareProfileButton username={me.username} displayName={me.displayName} iconOnly />
           </>
         }
       >
         {activities.isLoading ? <Skeleton className="mt-5 h-20" /> : <ProfileStats stats={stats} unit={unit} />}
-        <Link to="/activities" className="link mt-3 inline-block text-[13px]">View your activity and calendar →</Link>
         <StravaConnection />
       </ProfileHero>
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <form onSubmit={submit} className="space-y-6">
-          <SectionTitle>Edit profile</SectionTitle>
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Display name" error={nameError} hint="Shown on leaderboards.">
-              {(props) => (
-                <input
-                  {...props}
-                  className="field"
-                  maxLength={80}
-                  value={merged.displayName ?? ''}
-                  onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="Username" error={usernameError} hint="Your profile link.">
-              {(props) => (
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3">@</span>
-                  <input
-                    {...props}
-                    className="field pl-8"
-                    maxLength={30}
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={merged.username ?? ''}
-                    onChange={(event) => setDraft((current) => ({ ...current, username: event.target.value.toLowerCase() }))}
-                  />
-                </div>
-              )}
-            </Field>
-          </div>
+      {/* Settings as short rows; anything with more than one field opens a sheet. */}
+      <div className="mx-auto mt-8 max-w-2xl space-y-7">
+        {isStaff && <PlatformSection />}
 
-          <Field label="Bio" hint={`${bioLength}/160`}>
-            {(props) => (
-              <textarea
-                {...props}
-                className="field min-h-[88px] resize-y py-3"
-                maxLength={160}
-                rows={3}
-                placeholder="Chasing a sub-25 5K. Lagos Road Runners."
-                value={merged.bio ?? ''}
-                onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
-              />
-            )}
-          </Field>
-
-          <div>
-            <p className="label">Distance units</p>
-            <Segmented<Unit>
-              label="Distance units"
-              value={merged.preferredUnit}
-              onChange={(value) => setDraft((current) => ({ ...current, preferredUnit: value }))}
-              options={[
-                { value: 'km', label: 'Kilometres' },
-                { value: 'mi', label: 'Miles' },
-              ]}
-            />
-          </div>
-
-          <Field label="Body weight · kg" optional error={weightError} hint="Private. Used only to estimate calories on your activities; not shown on your public profile.">
-            {(props) => <input {...props} className="field num" type="number" inputMode="decimal" min="20" max="300" step="0.1" value={merged.weightKg ?? ''} onChange={(event) => setDraft((current) => ({ ...current, weightKg: event.target.value === '' ? null : Number(event.target.value) }))} />}
-          </Field>
-
-          <fieldset id="email-preferences" className="space-y-3 border-t border-line pt-5">
-            <legend className="label">Email updates</legend>
-            <label className="flex items-start gap-3 text-[13px]"><input type="checkbox" className="mt-0.5" checked={merged.emailActivityEnabled} onChange={(event) => setDraft((current) => ({ ...current, emailActivityEnabled: event.target.checked }))} /><span><strong className="block">Activity and people</strong>Messages, follows, Rant interactions, competition progress and results.</span></label>
-            <label className="flex items-start gap-3 text-[13px]"><input type="checkbox" className="mt-0.5" checked={merged.emailDigestEnabled} onChange={(event) => setDraft((current) => ({ ...current, emailDigestEnabled: event.target.checked }))} /><span><strong className="block">Competition picks</strong>Popular open competitions every three days.</span></label>
-            <p className="text-[12px] text-ink-3">Account-security and payment emails are separate from these choices.</p>
-          </fieldset>
-
-          <Field label="Country of residence">
-            {(props) => <CountryPicker id={props.id} value={merged.countryCode} onChange={(countryCode) => setDraft((current) => ({ ...current, countryCode }))} />}
-          </Field>
-
-          <Field label="WhatsApp number" optional hint="Private. Only Jump uses it, to reach you about prizes and your account.">
-            {(props) => <PhoneField id={props.id} value={merged.whatsappNumber ?? ''} defaultCountry={merged.countryCode} onChange={(whatsappNumber) => setDraft((current) => (current.whatsappNumber ?? profile.data?.whatsappNumber ?? '') === whatsappNumber ? current : { ...current, whatsappNumber: whatsappNumber || null })} />}
-          </Field>
-
-          <ErrorNotice error={save.error} />
-          <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+76px)] z-10 -mx-4 flex items-center gap-4 border-t border-line bg-paper/95 px-4 py-4 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:pt-6 md:backdrop-blur-none">
-            <button className="btn-primary" disabled={!dirty || save.isPending || Boolean(usernameError) || Boolean(nameError) || Boolean(weightError)}>
-              {save.isPending ? 'Saving…' : 'Save changes'}
-            </button>
-            {save.isSuccess && (
-              <span className="flex items-center gap-1 text-[13px] font-semibold text-ok">
-                <CheckIcon size={15} /> Saved
-              </span>
-            )}
-            {dirty && !save.isPending && (
-              <button type="button" className="text-[13px] font-semibold text-ink-2 hover:text-ink" onClick={() => setDraft({})}>
-                Discard
-              </button>
-            )}
-          </div>
-        </form>
-
-        <aside className="space-y-8">
-          <section>
-            <SectionTitle>Account</SectionTitle>
-            <KeyValue
-              items={[
-                { label: 'Email', value: <span className="break-all">{user.email}</span> },
-                { label: 'Member since', value: formatDate(profile.data.createdAt, { year: 'numeric' }) },
-              ]}
-            />
-            <div className="mt-4 rounded-md border border-line bg-card p-4">
-              <p className="eyebrow">Your runner handle</p>
-              <p className="wide mt-1 break-all text-[18px] font-extrabold">@{profile.data.username}</p>
-              <p className="hint">Club admins add you to a club with this.</p>
-              <CopyButton value={`@${profile.data.username}`} label="Copy handle" className="mt-3" />
+        <SettingsGroup title="Preferences">
+          <div className={ROW}>
+            <span className="flex-1 text-[14px] font-semibold">Distance units</span>
+            <div className="w-44">
+              <Segmented<Unit> label="Distance units" value={me.preferredUnit} onChange={(value) => save.mutate({ preferredUnit: value })} options={[{ value: 'km', label: 'km' }, { value: 'mi', label: 'miles' }]} />
             </div>
-            <div className="mt-4 flex flex-col gap-2">
-              {user.emailVerified ? (
-                <p className="btn-quiet pointer-events-none justify-between text-ok">
-                  Email verified <CheckIcon size={16} />
-                </p>
-              ) : (
-                <Link to="/verify-email" className="btn-quiet justify-between">
-                  Verify email <ArrowRightIcon size={16} />
-                </Link>
-              )}
-              <Link to="/forgot-password" className="btn-quiet justify-between">
-                Change password <ArrowRightIcon size={16} />
-              </Link>
-            </div>
-          </section>
-
-          {isStaff && (
-            <section>
-              <SectionTitle>Staff tools</SectionTitle>
-              <div className="flex flex-col gap-2">
-                <Link to="/admin/creators" className="btn-quiet justify-between">
-                  <span className="flex items-center gap-2">
-                    <ShieldIcon size={16} /> Creator approvals
-                  </span>
-                  <ArrowRightIcon size={16} />
-                </Link>
-                <Link to="/admin/payouts" className="btn-quiet justify-between">
-                  Payouts <ArrowRightIcon size={16} />
-                </Link>
-              </div>
-            </section>
-          )}
-
-          <button type="button" className="btn-danger w-full" onClick={() => void logout()}>
-            <LogoutIcon size={16} /> Log out
+          </div>
+          <button type="button" className={ROW} onClick={() => setSheet('email')}>
+            <span className="flex-1 text-left text-[14px] font-semibold">Email updates</span>
+            <span className="text-[13px] text-ink-3">{emailOn === 2 ? 'All on' : emailOn === 1 ? '1 of 2 on' : 'Off'}</span>
+            <ChevronRightIcon size={16} className="text-ink-3" />
           </button>
-        </aside>
+          <button type="button" className={ROW} onClick={() => setSheet('personal')}>
+            <span className="flex-1 text-left text-[14px] font-semibold">Personal details</span>
+            <span className="truncate text-[13px] text-ink-3">{countryName(me.countryCode)}{me.whatsappNumber ? ' · WhatsApp' : ''}{me.weightKg ? ` · ${me.weightKg} kg` : ''}</span>
+            <ChevronRightIcon size={16} className="shrink-0 text-ink-3" />
+          </button>
+        </SettingsGroup>
+
+        <SettingsGroup title="Account">
+          <div className={ROW}>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-semibold">Email</span>
+              <span className="block truncate text-[13px] text-ink-3">{user.email}</span>
+            </span>
+            {user.emailVerified
+              ? <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-ok"><CheckIcon size={14} />Verified</span>
+              : <Link to="/verify-email" className="text-[13px] font-bold underline underline-offset-2">Verify</Link>}
+          </div>
+          <div className={ROW}>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-semibold">Runner handle</span>
+              <span className="block truncate text-[13px] text-ink-3">@{me.username} · clubs add you with this</span>
+            </span>
+            <CopyButton value={`@${me.username}`} label="Copy" />
+          </div>
+          <Link to="/forgot-password" className={ROW}>
+            <span className="flex-1 text-[14px] font-semibold">Change password</span>
+            <ChevronRightIcon size={16} className="text-ink-3" />
+          </Link>
+        </SettingsGroup>
+
+        <button type="button" className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-bold text-bad transition-colors hover:bg-bad-wash" onClick={() => void logout()}>
+          <LogoutIcon size={16} /> Log out
+        </button>
       </div>
+
+      {sheet === 'profile' && <EditProfileSheet profile={me} onClose={() => setSheet(null)} />}
+      {sheet === 'personal' && <PersonalSheet profile={me} onClose={() => setSheet(null)} />}
+      {sheet === 'email' && <EmailSheet profile={me} onClose={() => setSheet(null)} />}
     </div>
   );
+}
+
+const ROW = 'flex min-h-[54px] w-full items-center gap-3 px-4 py-2.5 transition-colors hover:bg-ink/[0.03]';
+
+function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+  return <section>
+    <p className="mb-2 px-1 text-[12px] font-semibold text-ink-3">{title}</p>
+    <div className="divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card">{children}</div>
+  </section>;
+}
+
+function useSaveProfile(onSaved?: () => void) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (changes: Partial<Profile>) => patch<Profile>('/me', changes),
+    onSuccess(updated) {
+      queryClient.setQueryData(keys.profile, updated);
+      // Your name and handle also appear on leaderboards and member lists.
+      void queryClient.invalidateQueries({ predicate: (query) => ['standings', 'result', 'leagues', 'club', 'runner'].includes(String(query.queryKey[0])) });
+      toast({ tone: 'ok', message: 'Saved' });
+      onSaved?.();
+    },
+  });
+}
+
+/** Only the fields that actually differ from what's saved. */
+function changedFields(profile: Profile, draft: Partial<Profile>) {
+  return Object.fromEntries(Object.entries(draft).filter(([key, value]) => (profile[key as keyof Profile] ?? null) !== (value ?? null))) as Partial<Profile>;
+}
+
+function SheetActions({ disabled, pending, onCancel }: { disabled: boolean; pending: boolean; onCancel: () => void }) {
+  return <div className="mt-6 grid grid-cols-2 gap-2">
+    <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
+    <button className="btn-dark" disabled={disabled || pending}>{pending ? 'Saving…' : 'Save'}</button>
+  </div>;
+}
+
+function EditProfileSheet({ profile, onClose }: { profile: Profile; onClose: () => void }) {
+  const [displayName, setDisplayName] = useState(profile.displayName);
+  const [username, setUsername] = useState(profile.username);
+  const [bio, setBio] = useState(profile.bio ?? '');
+  const save = useSaveProfile(onClose);
+  const usernameError = !/^[a-z0-9_]{2,30}$/.test(username) ? '2–30 characters: lowercase letters, numbers and underscores.' : undefined;
+  const nameError = !displayName.trim() ? 'Your name can’t be empty.' : undefined;
+  const changes = changedFields(profile, { displayName: displayName.trim(), username, bio: bio.trim() || null });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (usernameError || nameError || !Object.keys(changes).length) return;
+    save.mutate(changes);
+  }
+
+  return <Modal title="Edit profile" onClose={onClose}>
+    <form onSubmit={submit} className="space-y-5">
+      <Field label="Display name" error={nameError} hint="Shown on leaderboards.">
+        {(props) => <input {...props} className="field" maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />}
+      </Field>
+      <Field label="Username" error={usernameError} hint="Your profile link.">
+        {(props) => <div className="relative">
+          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3">@</span>
+          <input {...props} className="field pl-8" maxLength={30} autoCapitalize="none" spellCheck={false} value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} />
+        </div>}
+      </Field>
+      <Field label="Bio" hint={`${bio.length}/160`}>
+        {(props) => <textarea {...props} className="field min-h-[88px] resize-y py-3" maxLength={160} rows={3} placeholder="Chasing a sub-25 5K. Lagos Road Runners." value={bio} onChange={(event) => setBio(event.target.value)} />}
+      </Field>
+      <ErrorNotice error={save.error} />
+      <SheetActions disabled={Boolean(usernameError || nameError) || !Object.keys(changes).length} pending={save.isPending} onCancel={onClose} />
+    </form>
+  </Modal>;
+}
+
+function PersonalSheet({ profile, onClose }: { profile: Profile; onClose: () => void }) {
+  const [countryCode, setCountryCode] = useState(profile.countryCode);
+  const [whatsappNumber, setWhatsappNumber] = useState(profile.whatsappNumber ?? '');
+  const [weight, setWeight] = useState(profile.weightKg === null || profile.weightKg === undefined ? '' : String(profile.weightKg));
+  const save = useSaveProfile(onClose);
+  const weightKg = weight === '' ? null : Number(weight);
+  const weightError = weightKg !== null && (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 300 || !Number.isInteger(weightKg * 10))
+    ? 'Enter a weight from 20 to 300 kg, to one decimal place.' : undefined;
+  const changes = changedFields(profile, { countryCode, whatsappNumber: whatsappNumber || null, weightKg });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (weightError || !Object.keys(changes).length) return;
+    save.mutate(changes);
+  }
+
+  return <Modal title="Personal details" onClose={onClose}>
+    <form onSubmit={submit} className="space-y-5">
+      <p className="-mt-1 text-[13px] text-ink-3">Private. None of this shows on your public profile.</p>
+      <Field label="Country of residence">
+        {(props) => <CountryPicker id={props.id} value={countryCode} onChange={setCountryCode} />}
+      </Field>
+      <Field label="WhatsApp number" optional hint="Only Jump uses it, to reach you about prizes and your account.">
+        {(props) => <PhoneField id={props.id} value={whatsappNumber} defaultCountry={countryCode} onChange={setWhatsappNumber} />}
+      </Field>
+      <Field label="Body weight · kg" optional error={weightError} hint="Used only to estimate calories on your activities.">
+        {(props) => <input {...props} className="field num" type="number" inputMode="decimal" min="20" max="300" step="0.1" value={weight} onChange={(event) => setWeight(event.target.value)} />}
+      </Field>
+      <ErrorNotice error={save.error} />
+      <SheetActions disabled={Boolean(weightError) || !Object.keys(changes).length} pending={save.isPending} onCancel={onClose} />
+    </form>
+  </Modal>;
+}
+
+function EmailSheet({ profile, onClose }: { profile: Profile; onClose: () => void }) {
+  const [activity, setActivity] = useState(profile.emailActivityEnabled);
+  const [digest, setDigest] = useState(profile.emailDigestEnabled);
+  const save = useSaveProfile(onClose);
+  const changes = changedFields(profile, { emailActivityEnabled: activity, emailDigestEnabled: digest });
+
+  return <Modal title="Email updates" onClose={onClose}>
+    <form onSubmit={(event) => { event.preventDefault(); if (Object.keys(changes).length) save.mutate(changes); }}>
+      <div className="divide-y divide-line">
+        <Toggle checked={activity} onChange={setActivity} title="Activity and people" body="Messages, follows, Rant interactions, competition progress and results." />
+        <Toggle checked={digest} onChange={setDigest} title="Competition picks" body="Popular open competitions every three days." />
+      </div>
+      <p className="mt-3 text-[12px] text-ink-3">Account-security and payment emails always arrive.</p>
+      <ErrorNotice error={save.error} />
+      <SheetActions disabled={!Object.keys(changes).length} pending={save.isPending} onCancel={onClose} />
+    </form>
+  </Modal>;
+}
+
+function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange: (value: boolean) => void; title: string; body: string }) {
+  return <label className="flex cursor-pointer items-start gap-4 py-3.5">
+    <span className="min-w-0 flex-1">
+      <span className="block text-[14px] font-semibold">{title}</span>
+      <span className="mt-0.5 block text-[13px] text-ink-3">{body}</span>
+    </span>
+    <input type="checkbox" className="peer sr-only" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <span className="relative mt-0.5 h-6 w-10 shrink-0 rounded-full border-[1.5px] border-ink bg-card transition-colors after:absolute after:left-0.5 after:top-1/2 after:h-4 after:w-4 after:-translate-y-1/2 after:rounded-full after:bg-ink after:transition-transform peer-checked:bg-ink peer-checked:after:translate-x-4 peer-checked:after:bg-paper peer-focus-visible:ring-2 peer-focus-visible:ring-track" aria-hidden="true" />
+  </label>;
+}
+
+type PlatformStats = { users: number; newToday: number; newWeek: number; newMonth: number; verified: number; activeWeek: number; strava: number; liveCompetitions: number };
+
+/** Admins only: how big Jump is. Staff without admin rights just get their tools. */
+function PlatformSection() {
+  const stats = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => api<PlatformStats>('/admin/stats'), retry: false, staleTime: 60_000 });
+  const data = stats.data;
+  const number = (value: number) => value.toLocaleString('en-GB');
+  return <SettingsGroup title={data ? 'Admin' : 'Staff tools'}>
+    {data && <div className="px-4 py-4">
+      <p className="text-[13px] text-ink-3">People on Jump</p>
+      <p className="score num mt-1 text-[48px] leading-none"><CountUp value={data.users} format={(n) => number(Math.round(n))} /></p>
+      <p className="num mt-2 text-[13px] text-ink-2">
+        <span className="font-semibold text-ink">+{number(data.newToday)}</span> today · <span className="font-semibold text-ink">+{number(data.newWeek)}</span> this week · <span className="font-semibold text-ink">+{number(data.newMonth)}</span> this month
+      </p>
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4">
+        {[
+          ['Active this week', data.activeWeek],
+          ['Verified emails', data.verified],
+          ['Strava connected', data.strava],
+          ['Live competitions', data.liveCompetitions],
+        ].map(([label, value]) => <div key={label}>
+          <dt className="text-[12px] text-ink-3">{label}</dt>
+          <dd className="num text-[18px] font-bold">{number(value as number)}</dd>
+        </div>)}
+      </dl>
+    </div>}
+    <Link to="/admin/creators" className={ROW}>
+      <ShieldIcon size={16} className="text-ink-3" />
+      <span className="flex-1 text-[14px] font-semibold">Creator approvals</span>
+      <ChevronRightIcon size={16} className="text-ink-3" />
+    </Link>
+    <Link to="/admin/payouts" className={ROW}>
+      <span className="w-4" aria-hidden="true" />
+      <span className="flex-1 text-[14px] font-semibold">Payouts</span>
+      <ChevronRightIcon size={16} className="text-ink-3" />
+    </Link>
+  </SettingsGroup>;
 }
 
 function countryName(code: string) {

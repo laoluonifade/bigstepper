@@ -14,6 +14,8 @@ export interface LeaderboardRow {
   metres: number;
   score?: number | null;
   host?: boolean;
+  /** A quieter second line under the name, e.g. the km behind a steps score. */
+  detail?: string | null;
 }
 
 /** Podium metals: the winner gets platinum and a crown, then gold and bronze. */
@@ -142,6 +144,7 @@ function Row({ row, isMe, unit, formatScore }: { row: LeaderboardRow; isMe: bool
               {isMe && <span className="tag ml-2 h-5 border-ink bg-ink px-1.5 text-[9.5px] text-volt">You</span>}
               {row.host && <span className="tag ml-2 h-5 border-line bg-paper px-1.5 text-[9.5px]">Host</span>}
             </p>
+            {row.detail && <p className="num truncate text-[12px] text-ink-3">{row.detail}</p>}
           </div>
         </div>
       </td>

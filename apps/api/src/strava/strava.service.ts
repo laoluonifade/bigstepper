@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnApplicationBootstrap, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -62,7 +62,7 @@ interface Streams {
 export type SyncResult = { imported: number; skipped: number };
 
 @Injectable()
-export class StravaService {
+export class StravaService implements OnApplicationBootstrap {
   private readonly logger = new Logger(StravaService.name);
   /** One sync per runner at a time; a second request joins the one already running. */
   private readonly inFlight = new Map<string, Promise<SyncResult>>();
@@ -202,6 +202,40 @@ export class StravaService {
     if (event.object_type === 'activity' && event.aspect_type === 'create') {
       const summary = await this.request<StravaActivity>(account, `/activities/${event.object_id}`);
       await this.importActivity(account, account.userId, summary);
+    }
+  }
+
+  /**
+   * Strava only pushes new uploads to a registered webhook. Register ours on start-up when it isn't yet
+   * (needs STRAVA_WEBHOOK_VERIFY_TOKEN and STRAVA_WEBHOOK_CALLBACK_URL); otherwise imports wait for a sync.
+   */
+  async onApplicationBootstrap() {
+    const callbackUrl = this.config.get<string>('STRAVA_WEBHOOK_CALLBACK_URL');
+    const verifyToken = this.config.get<string>('STRAVA_WEBHOOK_VERIFY_TOKEN');
+    const clientId = this.config.get<string>('STRAVA_CLIENT_ID');
+    const clientSecret = this.config.get<string>('STRAVA_CLIENT_SECRET');
+    if (!callbackUrl || !verifyToken || !clientId || !clientSecret) return;
+    // After start-up, so the verification GET Strava sends back can be answered.
+    setTimeout(() => void this.ensureWebhook(callbackUrl, verifyToken, clientId, clientSecret), 5_000).unref();
+  }
+
+  private async ensureWebhook(callbackUrl: string, verifyToken: string, clientId: string, clientSecret: string) {
+    try {
+      const query = new URLSearchParams({ client_id: clientId, client_secret: clientSecret });
+      const listed = await fetch(`${STRAVA}/api/v3/push_subscriptions?${query}`);
+      const subscriptions = listed.ok ? await listed.json() as Array<{ id: number; callback_url: string }> : [];
+      if (subscriptions.some((subscription) => subscription.callback_url === callbackUrl)) return;
+      // Strava allows one subscription per app; replace one pointing somewhere else.
+      for (const old of subscriptions) await fetch(`${STRAVA}/api/v3/push_subscriptions/${old.id}?${query}`, { method: 'DELETE' });
+      const created = await fetch(`${STRAVA}/api/v3/push_subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, callback_url: callbackUrl, verify_token: verifyToken }),
+      });
+      if (created.ok) this.logger.log('Strava webhook registered');
+      else this.logger.warn(`Strava webhook registration failed with ${created.status}`);
+    } catch (error) {
+      this.logger.warn(`Strava webhook check failed: ${String(error)}`);
     }
   }
 

@@ -179,11 +179,14 @@ export function CreateCompetitionCta() {
  * Competitions picked for you, with one tap to join them. Free ones join instantly; paid ones are left
  * to pay for on their page (never charged without the runner's say).
  */
-export function RecommendedJoin({ unit, now, limit = 2, onDone, title = 'Picked for you' }: { unit: Unit; now: number; limit?: number; onDone?: () => void; title?: string }) {
+export function RecommendedJoin({ unit, now, limit = 2, onDone, title = 'Picked for you', freeOnly = false, empty = null }: {
+  unit: Unit; now: number; limit?: number; onDone?: () => void; title?: string; freeOnly?: boolean; empty?: ReactNode;
+}) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const feed = useDiscover('for-you');
-  const all = feed.data?.pages.flatMap((page) => page.items) ?? [];
+  const feed = useDiscover('for-you', freeOnly ? 'free' : 'all');
+  // For you leads with competitions you're already in; these are only the ones still to join.
+  const all = (feed.data?.pages.flatMap((page) => page.items) ?? []).filter((table) => table.myRank === null || table.myRank === undefined);
   const picks = all.slice(0, limit);
   const free = picks.filter((table) => table.type !== 'paid');
   const join = useMutation({
@@ -198,7 +201,7 @@ export function RecommendedJoin({ unit, now, limit = 2, onDone, title = 'Picked 
   });
 
   if (feed.isLoading) return <section><SectionHead title={title} /><Skeleton className="h-36 rounded-xl" /></section>;
-  if (!picks.length) return null;
+  if (!picks.length) return <>{empty}</>;
   return <section>
     <SectionHead title={title} action={all.length > limit ? <SeeAll search={{}} /> : undefined} />
     <div className={cx(CARD, 'overflow-hidden')}>

@@ -26,6 +26,21 @@ export class AdminService {
     private readonly paymentsService: PaymentsService,
   ) {}
 
+  async stats() {
+    const [row] = await this.dataSource.query(
+      `SELECT
+         (SELECT count(*) FROM "users")::integer AS "users",
+         (SELECT count(*) FROM "users" WHERE "createdAt" > now() - interval '1 day')::integer AS "newToday",
+         (SELECT count(*) FROM "users" WHERE "createdAt" > now() - interval '7 days')::integer AS "newWeek",
+         (SELECT count(*) FROM "users" WHERE "createdAt" > now() - interval '30 days')::integer AS "newMonth",
+         (SELECT count(*) FROM "users" WHERE "emailVerified")::integer AS "verified",
+         (SELECT count(DISTINCT "userId") FROM "activities" WHERE "startedAt" > now() - interval '7 days')::integer AS "activeWeek",
+         (SELECT count(*) FROM "strava_accounts" WHERE "userId" IS NOT NULL)::integer AS "strava",
+         (SELECT count(*) FROM "competition_tables" WHERE "status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED'))::integer AS "liveCompetitions"`,
+    ) as Array<Record<string, number>>;
+    return row;
+  }
+
   async approvePayout(actorUserId: string, payoutId: string, password: string) {
     await this.assertAdminPassword(actorUserId, password);
     return this.paymentsService.approvePayout(actorUserId, payoutId);
@@ -138,10 +153,9 @@ export class AdminService {
         await manager.query(
           `INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
            SELECT t."id", r."id", a."id",
-             CASE WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN LEAST(
-               CASE WHEN t."type" IN ('free','sponsored') THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
-               COALESCE(t."distanceCapMetres", 2147483647)) ELSE 0 END,
-             CASE WHEN t."scoringMethod"='MOST_STEPS' THEN a."validatedSteps" ELSE 0 END,
+             LEAST(CASE WHEN t."type" IN ('free','sponsored') THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
+                   COALESCE(t."distanceCapMetres", 2147483647)),
+             a."validatedSteps",
              CASE WHEN t."scoringMethod" IN ('FASTEST_FIXED_DISTANCE','FASTEST_TIME') AND a."validatedDistanceMetres">=t."targetDistanceMetres" THEN a."movingSeconds" ELSE NULL END
            FROM "activities" a JOIN "table_registrations" r ON r."userId" = a."userId" AND r."joinedAt" <= a."startedAt"
            JOIN "competition_tables" t ON t."id" = r."tableId"

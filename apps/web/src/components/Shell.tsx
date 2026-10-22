@@ -4,7 +4,10 @@ import { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { formatDistanceNumber, formatDuration } from '../lib/format';
 import { OPEN_PAYMENT_STATUSES, useSavedPayments } from '../lib/payments';
-import { useNotifications, useStaffAccess, useUnit, useUnreadMessages } from '../lib/queries';
+import { useNotifications, useProfile, useStaffAccess, useUnit, useUnreadMessages } from '../lib/queries';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api';
+import { onboardingSkipped } from '../lib/onboarding';
 import { movingSeconds, RecorderProvider, START_ACTIVITY_EVENT, useRecorder } from '../lib/recorder';
 import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, RunIcon, SearchIcon, SettingsIcon, ShieldIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon } from './icons';
 import { cx, LiveDot, Redirect, useNow } from './ui';
@@ -70,6 +73,23 @@ function PublicShell() {
     </div>
   );
 }
+
+/** Pages a runner can use before joining their first competition: the ways into one, and account basics. */
+const ONBOARDING_PATHS = ['/welcome', '/competitions', '/settings', '/verify-email', '/strava'];
+
+/** New runners go to the welcome page until they're in at least one competition (joined or hosting). */
+function OnboardingGate() {
+  const location = useLocation();
+  const profile = useProfile();
+  const mine = useQuery({ queryKey: ['tables', 'mine'], queryFn: () => api<Array<{ joined: boolean }>>('/tables/mine') });
+  const fresh = profile.data && new Date(profile.data.createdAt).getTime() >= ONBOARDING_REQUIRED_SINCE;
+  if (!fresh || !mine.data || mine.data.some((row) => row.joined) || onboardingSkipped()) return null;
+  if (ONBOARDING_PATHS.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))) return null;
+  return <Redirect to="/welcome" />;
+}
+
+/** Accounts created from this release on; older runners aren't pushed through onboarding again. */
+const ONBOARDING_REQUIRED_SINCE = Date.UTC(2026, 9, 22);
 
 type NavItem = { to?: LinkProps['to']; popover?: 'notifications'; label: string; icon: ReactNode; badge?: number };
 
@@ -198,6 +218,7 @@ function SignedInShell() {
           <StravaSyncBar hidden={onRunScreen} />
         </div>
         <div key={location.pathname} className={onConversation ? undefined : 'animate-rise'}>
+          <OnboardingGate />
           <Outlet />
         </div>
       </div>

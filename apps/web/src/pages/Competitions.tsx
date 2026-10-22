@@ -77,6 +77,14 @@ function scoreValue(row: { creditedDistanceMetres: number; creditedSteps: number
   return row.creditedDistanceMetres;
 }
 
+/** Whatever the board isn't ranked on: km for a steps race, steps for a distance one, both for a time trial. */
+function otherMetrics(row: { creditedDistanceMetres: number; creditedSteps: number }, method: ScoringMethod, unit: Unit) {
+  const km = row.creditedDistanceMetres > 0 ? formatDistance(row.creditedDistanceMetres, unit) : null;
+  const steps = row.creditedSteps > 0 ? `${row.creditedSteps.toLocaleString('en-GB')} steps` : null;
+  const parts = method === 'MOST_STEPS' ? [km] : method === 'FARTHEST_DISTANCE' ? [steps] : [km, steps];
+  return parts.filter(Boolean).join(' · ') || null;
+}
+
 function scoreText(row: { creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }, table: CompetitionTable, unit: Unit) {
   if (table.scoringMethod === 'MOST_STEPS') return `${row.creditedSteps.toLocaleString('en-GB')} steps`;
   if (table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') {
@@ -732,6 +740,7 @@ export function CompetitionDetailPage() {
         metres: row.creditedDistanceMetres,
         score: scoreValue(row, method),
         host: row.userId === table.data?.creatorId,
+        detail: otherMetrics(row, method, unit),
       }));
     }
     return (standings.data ?? []).map((row) => ({
@@ -743,8 +752,9 @@ export function CompetitionDetailPage() {
       metres: row.creditedDistanceMetres,
       score: scoreValue(row, method),
       host: row.userId === table.data?.creatorId,
+      detail: otherMetrics(row, method, unit),
     }));
-  }, [result.data, standings.data, table.data?.creatorId, table.data?.scoringMethod, user]);
+  }, [result.data, standings.data, table.data?.creatorId, table.data?.scoringMethod, unit, user]);
 
   if (table.isLoading) return <Loading />;
   if (table.error || !table.data) {

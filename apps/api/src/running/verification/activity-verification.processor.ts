@@ -91,10 +91,11 @@ export class ActivityVerificationProcessor extends WorkerHost {
         await manager.query(
           `INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
            SELECT t."id", r."id", a."id",
-             CASE WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN LEAST(
-               CASE WHEN t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
-               COALESCE(t."distanceCapMetres", 2147483647)) ELSE 0 END,
-             CASE WHEN t."scoringMethod"='MOST_STEPS' THEN a."validatedSteps" ELSE 0 END,
+             -- Distance and steps are both recorded so every board can show km and steps; ranking
+             -- only ever reads the column that matches the scoring method.
+             LEAST(CASE WHEN t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
+                   COALESCE(t."distanceCapMetres", 2147483647)),
+             a."validatedSteps",
              CASE WHEN t."scoringMethod" IN ('FASTEST_FIXED_DISTANCE','FASTEST_TIME') AND a."validatedDistanceMetres">=t."targetDistanceMetres" THEN a."movingSeconds" ELSE NULL END
            FROM "activities" a
            JOIN "table_registrations" r ON r."userId" = a."userId" AND r."joinedAt" <= a."startedAt"

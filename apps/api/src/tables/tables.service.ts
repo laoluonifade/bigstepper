@@ -55,7 +55,8 @@ export class TablesService {
 
   /**
    * Discovery feed for open, public competitions, 20 a page.
-   * - for-you: not joined yet, ranked by your usual activity, friends involved, free entry, then popularity
+   * - for-you: your own live competitions first (hosted or joined, public or private), then ones you
+   *   haven't joined, ranked by your usual activity, friends involved, free entry, then popularity
    * - trending: most joined · starting: soonest upcoming · newest · friends: ones your follows or clubs are in
    */
   async discover(viewerId: string | null, view = 'trending', type = 'all', activity = 'all', page = '0') {
@@ -80,24 +81,28 @@ export class TablesService {
     const fits = `CASE ${habits} WHEN 'run' THEN t."challengeType" IN ('RUN','DISTANCE','TIMED')
                                   WHEN 'walk' THEN t."challengeType" IN ('WALK','STEP','DISTANCE')
                                   WHEN 'cycle' THEN t."challengeType" = 'CYCLING' ELSE false END`;
+    const joinedByMe = `EXISTS (SELECT 1 FROM "table_registrations" mine WHERE mine."tableId" = t."id" AND mine."userId" = ${me})`;
+    // Yours and still running: shown on For you even when private, full or closed to new entries.
+    const mineLive = `((t."creatorId" = ${me} OR ${joinedByMe}) AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
+                       AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now()))`;
+    const discoverable = `(t."status" = 'OPEN_FOR_ENTRY' AND t."visibility" = 'public' AND (t."entryClosesAt" IS NULL OR t."entryClosesAt" > now()))`;
     const where = [
-      `t."status" = 'OPEN_FOR_ENTRY'`, `t."visibility" = 'public'`,
-      `(t."entryClosesAt" IS NULL OR t."entryClosesAt" > now())`,
+      view === 'for-you' ? `((${discoverable} AND NOT ${joinedByMe}) OR ${mineLive})` : discoverable,
       `($1 = 'all' OR t."type" = $1)`, `($2 = 'all' OR t."challengeType" = $2)`,
-      ...(view === 'for-you' ? [`NOT EXISTS (SELECT 1 FROM "table_registrations" mine WHERE mine."tableId" = t."id" AND mine."userId" = ${me})`] : []),
       ...(view === 'starting' ? [`t."startsAt" > now()`] : []),
       ...(view === 'friends' ? [friendsInvolved] : []),
     ].join(' AND ');
     const order = view === 'starting' ? 't."startsAt" ASC'
       : view === 'newest' ? 't."createdAt" DESC'
-      : view === 'for-you' ? `((CASE WHEN ${fits} THEN 3 ELSE 0 END) + (CASE WHEN ${friendsInvolved} THEN 2 ELSE 0 END)
+      : view === 'for-you' ? `(CASE WHEN ${mineLive} THEN 1 ELSE 0 END) DESC, (CASE WHEN ${mineLive} THEN t."scoringClosesAt" END) ASC NULLS LAST,
+                              ((CASE WHEN ${fits} THEN 3 ELSE 0 END) + (CASE WHEN ${friendsInvolved} THEN 2 ELSE 0 END)
                               + (CASE WHEN t."type" <> 'paid' THEN 1 ELSE 0 END) + ln(1 + ${joinedCount})) DESC, t."createdAt" DESC`
       : `${joinedCount} DESC, t."createdAt" DESC`;
     const ranked = (await this.dataSource.query(
       `SELECT t."id", ${joinedCount}::integer AS n
        FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId" = t."id"
        WHERE ${where}
-       GROUP BY t."id" HAVING t."capacity" IS NULL OR ${joinedCount} < t."capacity"
+       GROUP BY t."id" HAVING t."capacity" IS NULL OR ${joinedCount} < t."capacity"${view === 'for-you' ? ` OR ${mineLive}` : ''}
        ORDER BY ${order} LIMIT 21 OFFSET $3`,
       params,
     )) as Array<{ id: string; n: number }>;
