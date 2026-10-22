@@ -26,7 +26,7 @@ export class Activity {
   verificationStatus: 'PENDING_VERIFICATION' | 'VERIFIED' | 'FLAGGED' | 'REJECTED';
 
   @Column({ default: 'run' })
-  activityType: 'walk' | 'run';
+  activityType: 'walk' | 'run' | 'cycle';
 
   @Column({ type: 'integer', default: 0 })
   recordedDistanceMetres: number;

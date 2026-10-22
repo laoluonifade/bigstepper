@@ -41,6 +41,23 @@ describe('MessagesService', () => {
     expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Good run', null]);
   });
 
+  it('edits only the sender’s regular message', async () => {
+    query.mockResolvedValueOnce([{ id: 'message', body: 'Updated', editedAt: 'now' }]);
+    await expect(service.edit('me', 'message', '  Updated  ')).resolves.toMatchObject({ body: 'Updated' });
+    expect(query.mock.calls[0][0]).toContain('"senderId"=$2 AND "invitationId" IS NULL');
+    expect(query.mock.calls[0][1]).toEqual(['message', 'me', 'Updated']);
+  });
+
+  it('rejects edits to messages not owned by the sender', async () => {
+    query.mockResolvedValueOnce([]);
+    await expect(service.edit('stranger', 'message', 'Changed')).rejects.toThrow('cannot be edited');
+  });
+
+  it('rejects blank edits', async () => {
+    await expect(service.edit('me', 'message', '   ')).rejects.toThrow('Write a message');
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('counts only unread messages addressed to the runner', async () => {
     query.mockResolvedValueOnce([{ count: 3 }]);
     await expect(service.unreadCount('me')).resolves.toEqual({ count: 3 });

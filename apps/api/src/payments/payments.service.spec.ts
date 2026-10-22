@@ -67,9 +67,18 @@ describe('funded-free checkout', () => {
   });
 
   it('allows only the host to fund a fixed charity challenge', async () => {
-    Object.assign(table, { guaranteedPrizeKobo: 10_000, status: 'PENDING_FUNDING', fundingDestination: 'CHARITY', creatorId: 'host' });
+    Object.assign(table, { guaranteedPrizeKobo: 1_000_000, status: 'PENDING_FUNDING', fundingDestination: 'CHARITY', creatorId: 'host' });
     try {
-      await expect(service.fundPrize(user.id, table.id, 10_000)).rejects.toThrow('Only the host can fund a fixed competition');
+      await expect(service.fundPrize(user.id, table.id, 1_000_000)).rejects.toThrow('Only the host can fund a fixed competition');
+    } finally {
+      Object.assign(table, { guaranteedPrizeKobo: null, status: 'OPEN_FOR_ENTRY', fundingDestination: 'WINNERS', creatorId: undefined });
+    }
+  });
+
+  it.each(['WINNERS', 'CHARITY'])('rejects a fixed %s contribution under ₦10,000', async (fundingDestination) => {
+    Object.assign(table, { guaranteedPrizeKobo: 999_900, status: 'PENDING_FUNDING', fundingDestination, creatorId: user.id });
+    try {
+      await expect(service.fundPrize(user.id, table.id, 999_900)).rejects.toThrow('Fixed contributions must be at least ₦10,000');
     } finally {
       Object.assign(table, { guaranteedPrizeKobo: null, status: 'OPEN_FOR_ENTRY', fundingDestination: 'WINNERS', creatorId: undefined });
     }

@@ -80,6 +80,19 @@ describe('measureTrack', () => {
     expect(result.distanceMetres).toBeLessThan(400);
   });
 
+  it('measures cycling distance without making it a valid run', () => {
+    const ride = track(120, 8);
+    expect(measureTrack(ride, { activityType: 'cycle' }).distanceMetres).toBeGreaterThan(900);
+    expect(measureTrack(ride, { activityType: 'run' }).reasons.has('IMPLAUSIBLE_SPEED')).toBe(false);
+    const fasterRide = track(120, 10);
+    expect(measureTrack(fasterRide, { activityType: 'run' }).reasons.has('IMPLAUSIBLE_SPEED')).toBe(true);
+    expect(measureTrack(fasterRide, { activityType: 'cycle' }).distanceMetres).toBeGreaterThan(1100);
+  });
+
+  it('flags sustained vehicle-speed travel on a cycling activity', () => {
+    expect(measureTrack(track(120, 16), { activityType: 'cycle' }).reasons.has('IMPLAUSIBLE_SPEED')).toBe(true);
+  });
+
   it('ignores fixes worse than ±50 m (indoor Wi-Fi location)', () => {
     const indoor = track(6, 0).map((p, i) => ({
       ...p,

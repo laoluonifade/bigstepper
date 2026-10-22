@@ -17,7 +17,7 @@ export class RunningSession {
   status: string;
 
   @Column({ default: 'run' })
-  activityType: 'walk' | 'run';
+  activityType: 'walk' | 'run' | 'cycle';
 
   @Column({ type: 'timestamptz', nullable: true })
   startedAt: Date;

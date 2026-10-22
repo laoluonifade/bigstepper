@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -37,4 +37,17 @@ export class UpdateProfileDto {
   @Min(1000)
   @Max(1_000_000)
   weeklyGoalMetres?: number | null;
+
+  /** null removes the private estimate setting. */
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(20)
+  @Max(300)
+  weightKg?: number | null;
+
+  @IsOptional() @IsBoolean()
+  emailActivityEnabled?: boolean;
+
+  @IsOptional() @IsBoolean()
+  emailDigestEnabled?: boolean;
 }

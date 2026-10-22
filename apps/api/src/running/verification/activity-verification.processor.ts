@@ -34,7 +34,7 @@ export class ActivityVerificationProcessor extends WorkerHost {
       where: { sessionId: activity.runningSessionId },
       order: { sequence: 'ASC' },
     });
-    const track = measureTrack(samples);
+    const track = measureTrack(samples, { activityType: activity.activityType });
     const reasons = track.reasons;
     const validatedDistance = track.distanceMetres;
     const movingSeconds = track.movingSeconds;
@@ -65,8 +65,10 @@ export class ActivityVerificationProcessor extends WorkerHost {
     // faking — car-speed travel, steps going backwards or impossibly fast — flags the activity.
     const tampered = reasons.has('IMPLAUSIBLE_SPEED') || reasons.has('NON_MONOTONIC_STEPS') || reasons.has('IMPLAUSIBLE_STEP_RATE');
     const gpsOk = track.usableCount >= 2 && confidence >= 0.5;
-    const stepsOk = validatedSteps > 0;
-    const status = !tampered && (gpsOk || stepsOk) ? 'VERIFIED' : 'FLAGGED';
+    const cycling = activity.activityType === 'cycle';
+    const stepsOk = !cycling && validatedSteps > 0;
+    const status = !tampered && (cycling ? gpsOk && validatedDistance > 0 : gpsOk || stepsOk) ? 'VERIFIED' : 'FLAGGED';
+    if (cycling) validatedSteps = 0;
     const stepDistance = stepDistanceMetres(validatedSteps, activity.activityType);
 
     await this.dataSource.transaction(async (manager) => {
@@ -99,7 +101,9 @@ export class ActivityVerificationProcessor extends WorkerHost {
            JOIN "competition_tables" t ON t."id" = r."tableId"
            WHERE a."id" = $1
              AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')
-             AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR (t."challengeType"='WALK' AND a."activityType"='walk') OR (t."challengeType"='RUN' AND a."activityType"='run'))
+             AND ((a."activityType"='cycle' AND t."challengeType"='CYCLING') OR
+                  (a."activityType" IN ('walk','run') AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR
+                   (t."challengeType"='WALK' AND a."activityType"='walk') OR (t."challengeType"='RUN' AND a."activityType"='run'))))
              AND a."startedAt" >= COALESCE(t."startsAt", '-infinity'::timestamptz)
              AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
            ON CONFLICT ("tableId", "activityId") DO NOTHING`,
@@ -120,8 +124,21 @@ export class ActivityVerificationProcessor extends WorkerHost {
            WHERE r."id" = totals."registrationId"`,
           [activity.id],
         );
-        await refreshLeagueDistance(manager, activity.userId);
+        if (!cycling) await refreshLeagueDistance(manager, activity.userId);
+        await manager.query(
+          `INSERT INTO "notifications" ("userId","type","title","body")
+           SELECT $2,'LEADERBOARD_UPDATE','Your standings updated',
+                  'Your verified ' || $3 || ' now counts in ' || t."title" || '.'
+           FROM "table_activity_credits" c JOIN "competition_tables" t ON t."id"=c."tableId"
+           WHERE c."activityId"=$1`, [activity.id, activity.userId, activity.activityType],
+        );
       }
+      await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,$2,$3,$4)`,
+        [activity.userId, status === 'VERIFIED' ? 'ACTIVITY_VERIFIED' : 'ACTIVITY_REVIEW',
+          status === 'VERIFIED' ? `Your ${activity.activityType} is verified` : `Your ${activity.activityType} needs review`,
+          status === 'VERIFIED' ? 'Your distance and steps are checked. Open Jump to see your progress.' : 'Open Jump to see what needs attention.'],
+      );
     });
     this.logger.log(`Activity ${activity.id} processed as ${status}`);
   }

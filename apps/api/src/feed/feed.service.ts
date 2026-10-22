@@ -1,10 +1,16 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CreateFeedPostDto } from './create-feed-post.dto';
 
 @Injectable()
 export class FeedService {
+  private readonly logger = new Logger(FeedService.name);
   constructor(private readonly dataSource: DataSource) {}
+
+  private async notify(sql: string, params: unknown[]) {
+    try { await this.dataSource.query(sql, params); }
+    catch (error) { this.logger.error('Could not create Rant notification', error instanceof Error ? error.stack : String(error)); }
+  }
 
   async list(viewerId: string, scope = 'following', page = '0') {
     if (scope !== 'following' && scope !== 'explore') throw new BadRequestException('Invalid feed scope');
@@ -71,10 +77,18 @@ export class FeedService {
 
   async react(viewerId: string, postId: string, reaction: string) {
     await this.assertVisible(viewerId, postId);
-    await this.dataSource.query(
+    const changed = await this.dataSource.query(
       `INSERT INTO "feed_post_reactions" ("postId","userId","reaction") VALUES ($1,$2,$3)
-       ON CONFLICT ("postId","userId") DO UPDATE SET "reaction"=EXCLUDED."reaction"`,
+       ON CONFLICT ("postId","userId") DO UPDATE SET "reaction"=EXCLUDED."reaction"
+       WHERE "feed_post_reactions"."reaction" IS DISTINCT FROM EXCLUDED."reaction"
+       RETURNING "postId"`,
       [postId, viewerId, reaction],
+    ) as Array<{ postId: string }>;
+    if (changed.length) await this.notify(
+      `INSERT INTO "notifications" ("userId","type","title","body")
+       SELECT f."userId",'RANT_REACTION',p."displayName" || ' reacted to your Rant','Open Jump to see the reaction.'
+       FROM "feed_posts" f JOIN "profiles" p ON p."userId"=$2
+       WHERE f."id"=$1 AND f."userId"<>$2`, [postId, viewerId],
     );
     return { reaction };
   }
@@ -103,6 +117,12 @@ export class FeedService {
       `INSERT INTO "feed_comments" ("postId","userId","body") VALUES ($1,$2,$3) RETURNING "id","postId","userId","body","createdAt"`,
       [postId, viewerId, trimmed],
     );
+    await this.notify(
+      `INSERT INTO "notifications" ("userId","type","title","body")
+       SELECT f."userId",'RANT_COMMENT',p."displayName" || ' commented on your Rant','Open Jump to read the comment.'
+       FROM "feed_posts" f JOIN "profiles" p ON p."userId"=$2
+       WHERE f."id"=$1 AND f."userId"<>$2`, [postId, viewerId],
+    );
     return row;
   }
 
@@ -125,6 +145,12 @@ export class FeedService {
     const [post] = await this.dataSource.query(
       `INSERT INTO "feed_posts" ("userId","body","activityId") VALUES ($1,$2,$3)
        RETURNING "id","createdAt"`, [userId, body, input.activityId ?? null],
+    );
+    await this.notify(
+      `INSERT INTO "notifications" ("userId","type","title","body")
+       SELECT fol."followerId",'FOLLOWING_POST',p."displayName" || ' posted a Rant','See their latest update on Jump.'
+       FROM "follows" fol JOIN "profiles" p ON p."userId"=$1
+       WHERE fol."followingId"=$1`, [userId],
     );
     return post;
   }

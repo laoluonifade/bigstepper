@@ -38,6 +38,22 @@ export class Profile {
   @Column({ type: 'integer', nullable: true })
   weeklyGoalMetres: number | null;
 
+  /** Private; used only for an optional activity calorie estimate. */
+  @Column({ type: 'real', nullable: true })
+  weightKg: number | null;
+
+  @Column({ default: true })
+  emailActivityEnabled: boolean;
+
+  @Column({ default: true })
+  emailDigestEnabled: boolean;
+
+  @Column({ type: 'timestamptz', default: () => "now() + interval '3 days'", select: false })
+  digestNextAt: Date;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  digestClaimedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -27,6 +27,10 @@ export interface Profile {
   bio: string | null;
   /** null until the runner picks one. */
   weeklyGoalMetres: number | null;
+  /** Private optional setting; never included in public profiles. */
+  weightKg: number | null;
+  emailActivityEnabled: boolean;
+  emailDigestEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,8 +40,10 @@ export interface PublicStats {
   activities: number;
   runs: number;
   walks: number;
+  cycles: number;
   runMetres: number;
   walkMetres: number;
+  cycleMetres: number;
   longestMetres: number;
   movingSeconds: number;
   monthMetres: number;
@@ -68,7 +74,7 @@ export interface PublicProfile {
   followedByMe: boolean;
   followsMe: boolean;
   stats: PublicStats;
-  recent?: Array<{ activityType: 'walk' | 'run'; startedAt: string; metres: number; movingSeconds: number }>;
+  recent?: Array<{ activityType: 'walk' | 'run' | 'cycle'; startedAt: string; metres: number; movingSeconds: number }>;
 }
 
 export type RunStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'FLAGGED' | 'REJECTED';
@@ -80,7 +86,7 @@ export interface RunSession {
   startedAt: string;
   finishedAt: string | null;
   distanceMetres: number;
-  activityType: 'walk' | 'run';
+  activityType: 'walk' | 'run' | 'cycle';
   stepCount: number;
   pausedAt: string | null;
   pausedSeconds: number;
@@ -99,7 +105,7 @@ export interface Activity {
   runningSessionId: string;
   userId: string;
   verificationStatus: VerificationStatus;
-  activityType: 'walk' | 'run';
+  activityType: 'walk' | 'run' | 'cycle';
   recordedDistanceMetres: number;
   validatedDistanceMetres: number;
   recordedSteps: number;
@@ -224,7 +230,7 @@ export interface PayoutRecipient {
   availableForPayoutAt: string;
 }
 
-export type ChallengeType = 'WALK' | 'RUN' | 'DISTANCE' | 'STEP' | 'TIMED';
+export type ChallengeType = 'WALK' | 'RUN' | 'DISTANCE' | 'STEP' | 'TIMED' | 'CYCLING';
 export type ScoringMethod = 'MOST_STEPS' | 'FARTHEST_DISTANCE' | 'FASTEST_FIXED_DISTANCE' | 'FASTEST_TIME';
 
 export interface Wallet {

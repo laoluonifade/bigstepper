@@ -12,6 +12,7 @@ export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; 
   const colour = palettes[[...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % palettes.length];
   const symbol = {
     RUN: <><circle cx="26" cy="9" r="3" /><path d="m24 15-7 6 7 3 3 8m-3-17 8 4-3 6m-12-4-7 3m17 8 9 1" /></>,
+    CYCLING: <><circle cx="9" cy="29" r="6" /><circle cx="31" cy="29" r="6" /><path d="m9 29 7-15 7 15H9l9-10h5l8 10m-13-15h5m-9-4h5" /></>,
     WALK: <><path d="M13 7c-2 7-3 14-3 20m8-18c1 7 2 13 5 19M8 32c4-2 7-1 9 3m6-2c4-2 7-1 9 2" /><circle cx="12" cy="5" r="1" /><circle cx="18" cy="6" r="1" /></>,
     DISTANCE: <><circle cx="9" cy="29" r="3" /><circle cx="31" cy="11" r="3" /><path d="M12 28c13 2 4-15 16-16M18 20l4 2m-9 9 2-5" /></>,
     STEP: <><path d="M5 29h8v-7h8v-7h8V8h7" /><path d="M6 34h29" /><circle cx="8" cy="12" r="2" /></>,
@@ -163,7 +164,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
         <h3 className="wide line-clamp-2 text-[17px] font-extrabold uppercase leading-[1.05]">{table.title}</h3>
         <p className="mt-1 truncate text-[13px] text-ink-2">
           {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community competition'}
-          {table.distanceCapMetres ? ` · cap ${formatDistance(table.distanceCapMetres, unit)}/run` : ''}
+          {table.distanceCapMetres ? ` · cap ${formatDistance(table.distanceCapMetres, unit)}/activity` : ''}
         </p>
 
         <div className="mt-auto pt-4">

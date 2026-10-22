@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { formatDistanceNumber, formatDuration, formatPace, formatTime } from '../lib/format';
+import { formatDistanceNumber, formatDuration, formatPace, formatSpeed, formatTime } from '../lib/format';
 import type { Activity, Unit } from '../lib/types';
 import { ChevronRightIcon } from './icons';
 import { cx, VerificationTag } from './ui';
@@ -18,7 +18,7 @@ export function fromSteps(activity: Activity) {
 export function ActivityRow({ activity, unit }: { activity: Activity; unit: Unit }) {
   const started = new Date(activity.startedAt);
   const metres = shownMetres(activity);
-  const pace = formatPace(metres, activity.movingSeconds || activity.elapsedSeconds, unit);
+  const pace = activity.activityType === 'cycle' ? formatSpeed(metres, activity.movingSeconds || activity.elapsedSeconds, unit) : formatPace(metres, activity.movingSeconds || activity.elapsedSeconds, unit);
   const rejected = activity.verificationStatus === 'REJECTED';
   return (
     <Link
@@ -40,8 +40,8 @@ export function ActivityRow({ activity, unit }: { activity: Activity; unit: Unit
           <span className="text-[12px] font-semibold text-ink-2">{unit}</span>
         </p>
         <p className="num mt-0.5 text-[12px] text-ink-2">
-          <span className="font-bold capitalize text-ink">{activity.activityType}</span> · {formatTime(activity.startedAt)} · {formatDuration(activity.movingSeconds || activity.elapsedSeconds)}
-          {pace && ` · ${pace} /${unit}`}
+          <span className="font-bold capitalize text-ink">{activity.activityType === 'cycle' ? 'Ride' : activity.activityType}</span> · {formatTime(activity.startedAt)} · {formatDuration(activity.movingSeconds || activity.elapsedSeconds)}
+          {pace && ` · ${pace}${activity.activityType === 'cycle' ? '' : ` /${unit}`}`}
         </p>
       </div>
       <VerificationTag status={activity.verificationStatus} />

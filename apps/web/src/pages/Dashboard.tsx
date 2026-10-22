@@ -37,9 +37,10 @@ export function DashboardPage() {
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const all = useMemo(() => activities.data ?? [], [activities.data]);
   const list = useMemo(() => ofKind(all, kind), [all, kind]);
-  const week = useMemo(() => summariseWeek(list, new Date(now)), [list, now]);
-  const streak = useMemo(() => computeStreaks(list, new Date(now)), [list, now]);
-  const milestones = useMemo(() => computeMilestones(all, new Date(now)), [all, now]);
+  const footActivities = useMemo(() => list.filter((activity) => activity.activityType !== 'cycle'), [list]);
+  const week = useMemo(() => summariseWeek(footActivities, new Date(now)), [footActivities, now]);
+  const streak = useMemo(() => computeStreaks(footActivities, new Date(now)), [footActivities, now]);
+  const milestones = useMemo(() => computeMilestones(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
   const next = nextMilestone(milestones);
   const earned = milestones.filter((m) => m.earned).length;
   const name = profile.data?.displayName ?? user.displayName ?? 'runner';
@@ -81,7 +82,7 @@ export function DashboardPage() {
               <span className="score text-[56px]">{activities.isLoading ? '–' : <CountUp value={streak.current} />}</span>
               <span className="text-[14px] font-semibold text-ink-2">{streak.current === 1 ? 'day' : 'days'}</span>
             </p>
-            <StreakDots activities={list} now={now} />
+            <StreakDots activities={footActivities} now={now} />
             <p className="mt-3 text-[13px] text-ink-2">
               {streak.ranToday
                 ? 'Today’s done. Come back tomorrow to keep it going.'

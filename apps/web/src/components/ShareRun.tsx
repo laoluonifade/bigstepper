@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../lib/api';
-import { activityName, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
+import { activityName, formatDistanceNumber, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import type { Activity, Unit } from '../lib/types';
 import { CloseIcon, JUMP_LOGO, ShareIcon } from './icons';
 import { cx, Segmented } from './ui';
@@ -195,7 +195,9 @@ export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, rout
   const seconds = activity.movingSeconds || activity.elapsedSeconds;
   const cells = [
     ['TIME', formatDuration(seconds)],
-    [`PACE /${unit.toUpperCase()}`, formatPace(metres, seconds, unit) ?? '–:––'],
+    activity.activityType === 'cycle'
+      ? ['AVG SPEED', formatSpeed(metres, seconds, unit) ?? '–']
+      : [`PACE /${unit.toUpperCase()}`, formatPace(metres, seconds, unit) ?? '–:––'],
   ];
   const rowY = distY + (story ? 140 : 96);
   ctx.strokeStyle = 'rgba(242,239,232,0.18)';

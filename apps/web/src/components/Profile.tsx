@@ -171,8 +171,10 @@ function ProfileCounts({ username, counts }: { username: string; counts: HeroCou
 
 /** Distance totals plus a run/walk split bar. (Activity count lives in the header.) */
 export function ProfileStats({ stats, unit }: { stats: PublicStats; unit: Unit }) {
-  const split = stats.runMetres + stats.walkMetres;
+  const split = stats.runMetres + stats.walkMetres + (stats.cycleMetres ?? 0);
   const runShare = split > 0 ? stats.runMetres / split : 0;
+  const walkShare = split > 0 ? stats.walkMetres / split : 0;
+  const cycleShare = split > 0 ? (stats.cycleMetres ?? 0) / split : 0;
   const cells = [
     { label: 'Distance', value: stats.totalMetres },
     { label: 'This month', value: stats.monthMetres },
@@ -193,17 +195,19 @@ export function ProfileStats({ stats, unit }: { stats: PublicStats; unit: Unit }
       </div>
       {split > 0 && (
         <div className="border-t border-line px-3 py-3">
-          <div className="flex h-2 overflow-hidden rounded-full bg-ink/10" role="img" aria-label={`${Math.round(runShare * 100)}% running, ${Math.round((1 - runShare) * 100)}% walking`}>
+          <div className="flex h-2 overflow-hidden rounded-full bg-ink/10" role="img" aria-label={`${Math.round(runShare * 100)}% running, ${Math.round(walkShare * 100)}% walking, ${Math.round(cycleShare * 100)}% cycling`}>
             <span className="h-full origin-left animate-grow-x bg-track" style={{ width: `${runShare * 100}%` }} />
-            <span className="h-full origin-left animate-grow-x bg-ink [animation-delay:150ms]" style={{ width: `${(1 - runShare) * 100}%` }} />
+            <span className="h-full origin-left animate-grow-x bg-ink [animation-delay:150ms]" style={{ width: `${walkShare * 100}%` }} />
+            <span className="h-full origin-left animate-grow-x bg-volt [animation-delay:300ms]" style={{ width: `${cycleShare * 100}%` }} />
           </div>
-          <div className="num mt-2 flex justify-between gap-3 text-[12px] font-semibold">
+          <div className="num mt-2 flex flex-wrap justify-between gap-2 text-[12px] font-semibold">
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-track" /> {stats.runs} {stats.runs === 1 ? 'run' : 'runs'} · {formatDistanceNumber(stats.runMetres, unit)} {unit}
             </span>
             <span className="flex items-center gap-1.5">
               {stats.walks} {stats.walks === 1 ? 'walk' : 'walks'} · {formatDistanceNumber(stats.walkMetres, unit)} {unit} <span className="h-2 w-2 rounded-full bg-ink" />
             </span>
+            {(stats.cycles ?? 0) > 0 && <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-volt" /> {stats.cycles} {stats.cycles === 1 ? 'ride' : 'rides'} · {formatDistanceNumber(stats.cycleMetres, unit)} {unit}</span>}
           </div>
           {stats.movingSeconds > 0 && <p className="mt-1 text-[12px] text-ink-3">{formatDuration(stats.movingSeconds)} moving in total</p>}
         </div>

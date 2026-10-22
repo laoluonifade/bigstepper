@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
@@ -16,6 +16,11 @@ class SendMessageDto {
 class ReactToMessageDto {
   @IsIn(['LIKE', 'HEART', 'LAUGH', 'FIRE', 'CLAP'])
   reaction: 'LIKE' | 'HEART' | 'LAUGH' | 'FIRE' | 'CLAP';
+}
+
+class EditMessageDto {
+  @IsString() @MinLength(1) @MaxLength(1000)
+  body: string;
 }
 
 @Controller('messages')
@@ -38,6 +43,12 @@ export class MessagesController {
   @Delete(':id/reaction')
   unreact(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.messages.react(user.id, id, null);
+  }
+
+  @Patch(':id')
+  @Throttle({ default: { limit: 15, ttl: 60_000 } })
+  edit(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() input: EditMessageDto) {
+    return this.messages.edit(user.id, id, input.body);
   }
 
   @Get(':username')

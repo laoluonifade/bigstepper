@@ -87,7 +87,7 @@ export class ActivitiesService {
       }
       // Removing the session removes the activity, its GPS fixes and any review request with it.
       await manager.delete(RunningSession, { id: activity.runningSessionId });
-      await refreshLeagueDistance(manager, userId);
+      if (activity.activityType !== 'cycle') await refreshLeagueDistance(manager, userId);
       return { deleted: true };
     });
   }

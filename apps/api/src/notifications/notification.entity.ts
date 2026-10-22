@@ -20,6 +20,15 @@ export class Notification {
   @Column({ type: 'timestamptz', nullable: true })
   readAt: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  emailClaimedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  emailProcessedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  emailSentAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

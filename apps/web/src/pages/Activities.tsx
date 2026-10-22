@@ -7,13 +7,14 @@ import { ShareRun } from '../components/ShareRun';
 import { CheckIcon, RunIcon } from '../components/icons';
 import { CountUp, cx, EmptyState, ErrorNotice, Field, Loading, Meter, Notice, PageHeader, Segmented, Skeleton, Stat, VerificationTag } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
+import { estimatedCalories } from '../lib/calories';
 import { describeReason } from '../lib/copy';
-import { activityName, formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
+import { activityName, formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import { ActivityKind, lifetimeStats, ofKind } from '../lib/progress';
 import { storageKeys, useStored } from '../lib/local';
 import { useUser } from '../lib/auth';
 import { KindFilter } from './Dashboard';
-import { keys, useActivities, useUnit } from '../lib/queries';
+import { keys, useActivities, useProfile, useUnit } from '../lib/queries';
 import type { Activity } from '../lib/types';
 
 type Filter = 'all' | 'verified' | 'attention';
@@ -107,7 +108,7 @@ export function ActivitiesPage() {
               ? 'Verified activities will appear here.'
               : kind !== 'all'
                 ? `No ${kind}s recorded yet.`
-                : 'Record a walk or run and it’ll show up here.'}
+                : 'Record a walk, run or ride and it’ll show up here.'}
         </EmptyState>
       ) : (
         groups.map(([month, items]) => (
@@ -128,6 +129,7 @@ export function ActivityDetailPage() {
   const { id } = useParams({ strict: false }) as { id: string };
   const search = useSearch({ strict: false }) as { fresh?: boolean };
   const unit = useUnit();
+  const profile = useProfile();
   const activity = useQuery({
     queryKey: keys.activity(id),
     queryFn: () => api<Activity>(`/activities/${id}`),
@@ -149,8 +151,9 @@ export function ActivityDetailPage() {
   const verified = a.verificationStatus === 'VERIFIED';
   const metres = shownMetres(a);
   const moving = a.movingSeconds || a.elapsedSeconds;
-  const pace = formatPace(metres, moving, unit);
+  const pace = a.activityType === 'cycle' ? formatSpeed(metres, moving, unit) : formatPace(metres, moving, unit);
   const trimmed = verified ? a.recordedDistanceMetres - a.validatedDistanceMetres : 0;
+  const calories = estimatedCalories(a, profile.data?.weightKg);
 
   return (
     <div className="animate-rise">
@@ -175,7 +178,7 @@ export function ActivityDetailPage() {
           <div>
             <p className="wide text-[16px] font-black uppercase">Verified. It counts.</p>
             <p className="text-[13px]">
-              {formatDistance(shownMetres(a), unit)} counts in your active league. Eligible competitions are listed below.
+              {a.activityType === 'cycle' ? `${formatDistance(shownMetres(a), unit)} can count in your active cycling competitions. It does not count toward the running league.` : `${formatDistance(shownMetres(a), unit)} counts in your active league. Eligible competitions are listed below.`}
             </p>
           </div>
         </div>
@@ -205,13 +208,16 @@ export function ActivityDetailPage() {
             )}
           </div>
           <div className="grid grid-cols-2 gap-5 sm:border-l sm:border-line sm:pl-6">
-            <Stat label="Verified steps" value={verified ? a.validatedSteps.toLocaleString('en-GB') : a.recordedSteps.toLocaleString('en-GB')} />
+            {a.activityType !== 'cycle' && <><Stat label={verified ? 'Verified steps' : 'Recorded steps'} value={verified ? a.validatedSteps.toLocaleString('en-GB') : a.recordedSteps.toLocaleString('en-GB')} />
+            <Stat label="Step cadence" value={verified && a.validatedSteps > 0 && moving > 0 ? `${Math.round(a.validatedSteps * 60 / moving).toLocaleString('en-GB')} /min` : '–'} /></>}
+            {calories !== null && <Stat label="Estimated calories" value={calories.toLocaleString('en-GB')} unit="kcal" />}
             <Stat label="Moving time" value={formatDuration(moving)} />
-            <Stat label={`Pace /${unit}`} value={pace ?? '–'} />
+            <Stat label={a.activityType === 'cycle' ? 'Avg speed' : `Pace /${unit}`} value={pace ?? '–'} />
             <Stat label="Elapsed" value={formatDuration(a.elapsedSeconds)} />
             <Stat label="Finished" value={new Date(a.finishedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} />
           </div>
         </div>
+        {verified && <p className="border-t border-line px-5 py-3 text-[12px] text-ink-3 sm:px-6">{profile.data?.weightKg ? 'Calories are an estimate from your private body weight and verified moving time, not a device measurement.' : <>Want a calorie estimate? <Link to="/settings/profile" className="font-semibold underline">Add your private body weight</Link>.</>}</p>}
         {!pending && (
           <div className="border-t border-line px-5 py-4 sm:px-6">
             <div className="mb-2 flex items-baseline justify-between">
@@ -233,7 +239,7 @@ export function ActivityDetailPage() {
 
       {a.verificationReasons.length > 0 && (
         <section className="mt-8">
-          <h2 className="eyebrow mb-3 border-b-2 border-ink pb-2">{verified ? 'Notes from verification' : 'Why this run was flagged'}</h2>
+          <h2 className="eyebrow mb-3 border-b-2 border-ink pb-2">{verified ? 'Notes from verification' : 'Why this activity was flagged'}</h2>
           <ul className="stagger space-y-3">
             {a.verificationReasons.map((code) => {
               const reason = describeReason(code);
@@ -279,7 +285,7 @@ function ActivityCredits({ activityId, unit }: { activityId: string; unit: 'km' 
   </section>;
 }
 
-/** Remove a run you don't want (a test, a GPS mess). Its distance comes back out of free challenges and your league. */
+/** Remove an activity and recalculate any standings it affected. */
 function DeleteActivity({ activityId }: { activityId: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -301,7 +307,7 @@ function DeleteActivity({ activityId }: { activityId: string }) {
         <div className="animate-rise rounded-md border-[1.5px] border-bad/50 bg-bad-wash p-4">
           <p className="text-[15px] font-bold">Delete this activity?</p>
           <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
-            It’s removed for good, along with its distance in any free competitions still running and in your league. This can’t be undone.
+            It’s removed for good, along with its distance in any active competitions and, for walks or runs, your league. This can’t be undone.
           </p>
           <ErrorNotice error={remove.error} className="mt-3" />
           <div className="mt-4 flex flex-wrap gap-2">
@@ -333,7 +339,7 @@ function ReviewRequest({ activityId }: { activityId: string }) {
   if (request.isSuccess || alreadyPending) {
     return (
       <Notice tone="ok" className="mt-8" title={alreadyPending ? 'A review is already pending' : 'Review requested'}>
-        A person on our team will look at this run. If it’s approved, it’ll be credited to your competitions automatically.
+        A person on our team will look at this activity. If it’s approved, it’ll be credited to your competitions automatically.
       </Notice>
     );
   }

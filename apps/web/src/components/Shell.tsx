@@ -212,7 +212,7 @@ function SignedInShell() {
           <LiveRunBar hidden={onRunScreen} />
           <PendingPaymentsBar hidden={location.pathname === '/payments/return'} />
         </div>
-        <div key={location.pathname} className="animate-rise">
+        <div key={location.pathname} className={onConversation ? undefined : 'animate-rise'}>
           <Outlet />
         </div>
       </div>

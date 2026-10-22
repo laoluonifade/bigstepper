@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { CheckIcon, OfflineIcon, PauseIcon, RunIcon, JumpLogo, SignalIcon, StopIcon } from '../components/icons';
+import { CheckIcon, CycleIcon, OfflineIcon, PauseIcon, RunIcon, JumpLogo, SignalIcon, StopIcon } from '../components/icons';
 import { CountUp, cx, ErrorNotice, KeyValue, LiveDot, Loading, Notice, PageHeader, Redirect, Segmented, useCountUp, useNow } from '../components/ui';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace } from '../lib/format';
@@ -18,7 +18,7 @@ export function RunPage() {
     case 'unavailable':
       return (
         <div className="mx-auto max-w-lg">
-          <PageHeader eyebrow="Run" title="Couldn’t reach your run" />
+          <PageHeader eyebrow="Activity" title="Couldn’t reach your activity" />
           <ErrorNotice error={new Error(recorder.error ?? 'We couldn’t load your run in progress.')} />
           <p className="mt-4 text-[14px] text-ink-2">
             Your GPS points are safe on this device. They’ll upload once we can reach Jump again.
@@ -40,7 +40,7 @@ export function RunPage() {
 function ReadyScreen() {
   const recorder = useRecorder();
   const locating = recorder.phase === 'locating';
-  const [activityType, setActivityType] = useState<'walk' | 'run'>('run');
+  const [activityType, setActivityType] = useState<'walk' | 'run' | 'cycle'>('run');
   const [showStartInfo, setShowStartInfo] = useState(false);
   const eligible = useQuery({
     queryKey: ['tables', 'eligible', activityType],
@@ -51,7 +51,7 @@ function ReadyScreen() {
   if (recorder.phase === 'blocked') {
     return (
       <div className="mx-auto max-w-lg">
-        <PageHeader eyebrow="Run" title="A run is already going" />
+        <PageHeader eyebrow="Activity" title="An activity is already going" />
         <Notice tone="warn" title="You have a run in progress somewhere else">
           It was probably started on another device or in a browser whose data has since been cleared. Finish it on the device
           that started it, then come back. Recovering an interrupted run from here isn’t supported yet.
@@ -68,11 +68,11 @@ function ReadyScreen() {
       <PageHeader eyebrow="Activity" title="Ready when you are" />
 
       <div className="mb-5">
-        <Segmented<'walk' | 'run'>
+        <Segmented<'walk' | 'run' | 'cycle'>
           label="Activity type"
           value={activityType}
           onChange={setActivityType}
-          options={[{ value: 'run', label: 'Run' }, { value: 'walk', label: 'Walk' }]}
+          options={[{ value: 'run', label: 'Run' }, { value: 'walk', label: 'Walk' }, { value: 'cycle', label: 'Cycle' }]}
         />
       </div>
 
@@ -85,7 +85,7 @@ function ReadyScreen() {
           {[
             ['Stay on this screen', 'We keep it awake while you move. Browsers pause GPS in the background, so don’t switch apps.'],
             ['Head outdoors', 'Open sky gives the cleanest signal. Points less accurate than 50 m don’t count.'],
-            ['Only verified distance scores', 'After you finish we check the route. Verified distance is what competitions credit.'],
+            ['Verified activity scores', activityType === 'cycle' ? 'After you finish, Jump checks your GPS route. Cycling distance counts only in cycling competitions.' : 'After you finish, Jump checks your route and steps. Distance and step competitions use the verified values.'],
           ].map(([title, body]) => (
             <li key={title} className="flex gap-3 px-5 py-4">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-ink text-volt">
@@ -114,7 +114,7 @@ function ReadyScreen() {
           </>
         ) : (
           <>
-            <RunIcon size={18} /> Start {activityType}
+            {activityType === 'cycle' ? <CycleIcon size={18} /> : <RunIcon size={18} />} Start {activityType}
           </>
         )}
       </button>
@@ -123,13 +123,18 @@ function ReadyScreen() {
         <div className="w-full max-w-md rounded-md border-2 border-ink bg-paper p-5 shadow-hard">
           <p className="eyebrow">Before you start</p>
           <h2 className="wide mt-1 text-[24px] font-extrabold uppercase">Your {activityType} counts</h2>
-          <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After verification, this {activityType} automatically scores in active {activityType} competitions you already joined, plus eligible distance, step and timed competitions. Verified distance also counts in your active league.</p>
-          <p className="mt-2 text-[12px] text-ink-2">Paid distance competitions use your GPS-verified distance. Walks do not score in run-only competitions, and runs do not score in walk-only competitions.</p>
+          {activityType === 'cycle' ? <>
+            <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After GPS verification, this ride automatically adds distance to active cycling competitions you already joined. Cycling does not add steps or distance to run, walk, distance, timed or league standings.</p>
+            <p className="mt-2 text-[12px] text-ink-2">Cycling competitions are free only for now. GPS cannot reliably distinguish every bicycle ride from a slow vehicle trip, so cash prizes are paused.</p>
+          </> : <>
+            <p className="mt-2 text-[14px] leading-relaxed text-ink-2">After verification, this {activityType} automatically scores in active {activityType} competitions you already joined, plus eligible distance, step and timed competitions. Runs and walks both add verified steps to step competitions when your device records them. Verified distance also counts in your active league.</p>
+            <p className="mt-2 text-[12px] text-ink-2">Paid distance competitions use your GPS-verified distance. Walks do not score in run-only competitions, and runs do not score in walk-only competitions.</p>
+          </>}
           <div className="mt-4 border-y border-line py-3">
             <p className="text-[13px] font-bold">Your matching competitions right now</p>
             {eligible.isLoading ? <p className="mt-2 text-[12px] text-ink-2">Checking…</p> : eligible.error ? <ErrorNotice error={eligible.error} onRetry={() => void eligible.refetch()} className="mt-2" /> : eligible.data?.length ? (
               <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-[13px]">{eligible.data.map((table) => <li key={table.id}>• {table.title} <span className="text-ink-3">({table.challengeType.toLowerCase()})</span></li>)}</ul>
-            ) : <p className="mt-2 text-[12px] text-ink-2">None yet. You can still record this activity and earn league distance.</p>}
+            ) : <p className="mt-2 text-[12px] text-ink-2">None yet. You can still record this {activityType}{activityType === 'cycle' ? '.' : ' and earn league distance.'}</p>}
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <button type="button" className="btn-secondary" onClick={() => setShowStartInfo(false)}>Not yet</button>
@@ -159,6 +164,7 @@ function Scoreboard() {
   const finishing = recorder.phase === 'finishing';
   const seconds = movingSeconds(recorder.session, now);
   const pace = formatPace(recorder.distanceMetres, seconds, unit);
+  const speed = seconds > 0 && recorder.distanceMetres > 0 ? (recorder.distanceMetres / (unit === 'km' ? 1000 : 1609.344) / (seconds / 3600)).toFixed(1) : null;
   const strength = signalStrength(recorder.accuracy);
   const stale = recorder.lastFixAt !== null && now - recorder.lastFixAt > 20_000;
   const activityName = recorder.session?.activityType ?? 'run';
@@ -244,13 +250,13 @@ function Scoreboard() {
             <p className="score num mt-1 text-[44px]">{formatDuration(seconds)}</p>
           </div>
           <div className="py-4">
-            <p className="eyebrow text-paper/50">Avg pace /{unit}</p>
-            <p className="score num mt-1 text-[44px]">{pace ?? '–:––'}</p>
+            <p className="eyebrow text-paper/50">{activityName === 'cycle' ? `Avg speed ${unit}/h` : `Avg pace /${unit}`}</p>
+            <p className="score num mt-1 text-[44px]">{activityName === 'cycle' ? speed ?? '–' : pace ?? '–:––'}</p>
           </div>
         </div>
         {showStillHint && !recorder.gpsError && (
           <p className="mt-5 max-w-sm animate-rise text-[13px] text-paper/70">
-            No distance yet. Outdoors it counts once you’ve moved a few metres; indoors, allow motion access when you start so your steps can count.
+            {activityName === 'cycle' ? 'No distance yet. Cycling distance needs a good outdoor GPS signal.' : 'No distance yet. Outdoors it counts once you’ve moved a few metres; indoors, allow motion access when you start so your steps can count.'}
           </p>
         )}
         {(recorder.gpsError || stale) && (
@@ -384,7 +390,7 @@ export function RunSessionPage() {
   const inProgress = run.data.status === 'RUNNING' || run.data.status === 'PAUSED';
   return (
     <div className="mx-auto max-w-lg">
-      <PageHeader eyebrow="Run session" title={inProgress ? 'Run in progress' : 'Run'} back={{ to: '/activities', label: 'Runs' }} />
+      <PageHeader eyebrow="Activity session" title={inProgress ? `${run.data.activityType} in progress` : run.data.activityType} back={{ to: '/activities', label: 'Activities' }} />
       <div className="panel p-5">
         <KeyValue
           items={[

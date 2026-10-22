@@ -1,9 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
   constructor(private readonly dataSource: DataSource) {}
+
+  private async notify(sql: string, params: unknown[]) {
+    try { await this.dataSource.query(sql, params); }
+    catch (error) { this.logger.error('Could not create message notification', error instanceof Error ? error.stack : String(error)); }
+  }
 
   private async recipient(username: string) {
     const [runner] = await this.dataSource.query(
@@ -59,7 +65,7 @@ export class MessagesService {
     const runner = await this.recipient(username);
     if (runner.userId === userId) throw new BadRequestException('You cannot message yourself');
     const messages = await this.dataSource.query(
-      `SELECT m."id",m."senderId",m."recipientId",m."body",m."createdAt",
+      `SELECT m."id",m."senderId",m."recipientId",m."body",m."createdAt",m."editedAt",
               i."id" "invitationId",i."status" "invitationStatus",t."id" "tableId",t."code" "tableCode",
               t."title" "tableTitle",t."type" "tableType",t."status" "tableStatus",
               t."guaranteedPrizeKobo",t."entryFeeKobo",m."replyToId",reply."body" "replyToBody",
@@ -100,6 +106,24 @@ export class MessagesService {
       `INSERT INTO "direct_messages" ("senderId","recipientId","body","replyToId") VALUES ($1,$2,$3,$4)
        RETURNING "id","senderId","recipientId","body","replyToId","createdAt"`, [userId, runner.userId, trimmed, replyToId ?? null],
     );
+    await this.notify(
+      `INSERT INTO "notifications" ("userId","type","title","body")
+       SELECT $2,'DIRECT_MESSAGE',p."displayName" || ' sent you a message','Open Messages to reply.'
+       FROM "profiles" p WHERE p."userId"=$1`, [userId, runner.userId],
+    );
+    return message;
+  }
+
+  async edit(userId: string, messageId: string, body: string) {
+    const trimmed = body.trim();
+    if (!trimmed) throw new BadRequestException('Write a message');
+    const [message] = await this.dataSource.query(
+      `UPDATE "direct_messages" SET "body"=$3,"editedAt"=now()
+       WHERE "id"=$1 AND "senderId"=$2 AND "invitationId" IS NULL
+       RETURNING "id","body","editedAt"`,
+      [messageId, userId, trimmed],
+    ) as Array<{ id: string; body: string; editedAt: string }>;
+    if (!message) throw new NotFoundException('Message not found or cannot be edited');
     return message;
   }
 
@@ -110,10 +134,19 @@ export class MessagesService {
     ) as unknown[];
     if (!allowed.length) throw new NotFoundException('Message not found');
     if (reaction) {
-      await this.dataSource.query(
+      const changed = await this.dataSource.query(
         `INSERT INTO "direct_message_reactions" ("messageId","userId","reaction") VALUES ($1,$2,$3)
-         ON CONFLICT ("messageId","userId") DO UPDATE SET "reaction"=EXCLUDED."reaction"`,
+         ON CONFLICT ("messageId","userId") DO UPDATE SET "reaction"=EXCLUDED."reaction"
+         WHERE "direct_message_reactions"."reaction" IS DISTINCT FROM EXCLUDED."reaction"
+         RETURNING "messageId"`,
         [messageId, userId, reaction],
+      ) as Array<{ messageId: string }>;
+      if (changed.length) await this.notify(
+        `INSERT INTO "notifications" ("userId","type","title","body")
+         SELECT CASE WHEN m."senderId"=$2 THEN m."recipientId" ELSE m."senderId" END,
+                'MESSAGE_REACTION',p."displayName" || ' reacted to your message','Open Messages to see the reaction.'
+         FROM "direct_messages" m JOIN "profiles" p ON p."userId"=$2 WHERE m."id"=$1`,
+        [messageId, userId],
       );
     } else {
       await this.dataSource.query(`DELETE FROM "direct_message_reactions" WHERE "messageId"=$1 AND "userId"=$2`, [messageId, userId]);

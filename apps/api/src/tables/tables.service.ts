@@ -31,7 +31,7 @@ export class TablesService {
 
   async list(sort = 'popular', type = 'all', activity = 'all') {
     if (!['popular', 'newest'].includes(sort) || !['all', 'free', 'sponsored', 'paid'].includes(type) ||
-        !['all', 'WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED'].includes(activity)) {
+        !['all', 'WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED', 'CYCLING'].includes(activity)) {
       throw new BadRequestException('Invalid competition filter');
     }
     const ranked = (await this.dataSource.query(
@@ -95,14 +95,15 @@ export class TablesService {
   }
 
   async eligible(userId: string, activity?: string) {
-    if (activity !== 'run' && activity !== 'walk') throw new BadRequestException('Choose run or walk');
+    if (activity !== 'run' && activity !== 'walk' && activity !== 'cycle') throw new BadRequestException('Choose run, walk or cycle');
     return this.dataSource.query(
       `SELECT t."id", t."code", t."title", t."challengeType", t."type"
        FROM "table_registrations" r JOIN "competition_tables" t ON t."id"=r."tableId"
        WHERE r."userId"=$1 AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
          AND COALESCE(t."startsAt", '-infinity'::timestamptz) <= now()
          AND COALESCE(t."scoringClosesAt", 'infinity'::timestamptz) > now()
-         AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR t."challengeType"=$2)
+         AND (( $2='CYCLE' AND t."challengeType"='CYCLING') OR
+              ( $2 IN ('WALK','RUN') AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR t."challengeType"=$2)))
        ORDER BY t."scoringClosesAt" ASC LIMIT 50`,
       [userId, activity.toUpperCase()],
     );
@@ -111,6 +112,7 @@ export class TablesService {
   async create(creatorId: string, input: CreateTableDto) {
     const sponsored = Boolean(input.fundedFree || input.guaranteedPrizeKobo);
     const challengeType = input.challengeType ?? 'RUN';
+    if (challengeType === 'CYCLING' && sponsored) throw new BadRequestException('Cycling competitions are free only until bicycle verification is stronger');
     const scoringMethod = input.scoringMethod ?? (challengeType === 'WALK' || challengeType === 'STEP' ? 'MOST_STEPS' : challengeType === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
     this.validateScoring(challengeType, scoringMethod, input.targetDistanceMetres);
     await this.assertCommunityManager(creatorId, input.communityId);
@@ -163,6 +165,7 @@ export class TablesService {
   }
 
   async createPaidDraft(creatorId: string, input: CreateCreatorPaidChallengeDto) {
+    if (input.challengeType === 'CYCLING') throw new BadRequestException('Cycling competitions cannot have cash prizes yet');
     this.validateScoring(input.challengeType, input.scoringMethod, input.targetDistanceMetres);
     await this.assertCommunityManager(creatorId, input.communityId);
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
@@ -304,6 +307,11 @@ export class TablesService {
     }
     const emails = [...new Set((input.inviteEmails ?? []).map((value) => value.trim().toLowerCase()))];
     const phones = [...new Set(input.invitePhones ?? [])];
+    // Registered runners get one notification email from the outbox. Check all addresses at once.
+    const registered = emails.length ? await this.dataSource.query(
+      `SELECT lower("email") "email" FROM "users" WHERE "emailVerified"=true AND lower("email")=ANY($1::text[])`, [emails],
+    ) as Array<{ email: string }> : [];
+    const known = new Set(registered.map((row) => row.email));
     const saved = await this.dataSource.transaction(async (manager) => {
       const created = await manager.save(CompetitionTable, table);
       // The host is visible on every board; funded prizes exclude their score at settlement.
@@ -312,7 +320,7 @@ export class TablesService {
       return created;
     });
     const url = `${this.config.getOrThrow<string>('WEB_ORIGIN')}/competitions/${saved.code}`;
-    for (const email of emails) this.mail.sendInBackground(challengeInviteEmail({ address: email }, saved.title, url));
+    for (const email of emails.filter((address) => !known.has(address))) this.mail.sendInBackground(challengeInviteEmail({ address: email }, saved.title, url));
     return saved;
   }
 
@@ -393,10 +401,6 @@ export class TablesService {
       );
       return { runner, table, link };
     });
-    this.mail.sendInBackground(challengeInviteEmail(
-      { address: invitation.runner.email, name: invitation.runner.displayName },
-      invitation.table.title, invitation.link,
-    ));
     return { invited: true, username: invitation.runner.username };
   }
 

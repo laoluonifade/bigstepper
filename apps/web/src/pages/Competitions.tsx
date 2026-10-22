@@ -163,7 +163,7 @@ export function CompetitionsPage() {
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Activity">
             {(props) => <select {...props} className="field min-w-28" value={activity} onChange={(event) => setActivity(event.target.value as typeof activity)}>
-              <option value="all">All activities</option><option value="WALK">Walk</option><option value="RUN">Run</option><option value="DISTANCE">Distance</option><option value="STEP">Steps</option><option value="TIMED">Timed</option>
+              <option value="all">All activities</option><option value="WALK">Walk</option><option value="RUN">Run</option><option value="CYCLING">Cycling</option><option value="DISTANCE">Distance</option><option value="STEP">Steps</option><option value="TIMED">Timed</option>
             </select>}
           </Field>
           <Field label="Order">
@@ -359,12 +359,12 @@ export function NewCompetitionPage() {
             if (!invalid) create.mutate();
           }}
         >
-          <Segmented<'free' | 'sponsored' | 'paid'>
+          {challengeType === 'CYCLING' ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice> : <Segmented<'free' | 'sponsored' | 'paid'>
             label="Competition type"
             value={mode}
             onChange={setMode}
             options={[{ value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Free · funded prize' }, { value: 'paid', label: 'Paid · creator' }]}
-          />
+          />}
           {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>This competition will be linked to your club. You can invite all {club.data.memberCount} members below.</Notice>}
           {mode === 'paid' && !creator.data && (
             <Notice tone="warn" title="Creator account required" action={<Link to="/creator" className="btn-quiet btn-sm">Become a creator</Link>}>
@@ -416,11 +416,13 @@ export function NewCompetitionPage() {
                   onChange={(event) => {
                     const next = event.target.value as ChallengeType;
                     setChallengeType(next);
+                    if (next === 'CYCLING') setMode('free');
                     setScoringMethod(next === 'WALK' || next === 'STEP' ? 'MOST_STEPS' : next === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
                   }}
                 >
                   <option value="WALK">Walk</option>
                   <option value="RUN">Run</option>
+                  <option value="CYCLING">Cycling · GPS distance</option>
                   <option value="DISTANCE">Distance · walk or run</option>
                   <option value="STEP">Steps</option>
                   <option value="TIMED">Timed activity</option>
@@ -431,7 +433,7 @@ export function NewCompetitionPage() {
               {(props) => (
                 <select {...props} className="field" value={scoringMethod} onChange={(event) => setScoringMethod(event.target.value as ScoringMethod)}>
                   {(challengeType === 'WALK' || challengeType === 'STEP') && <option value="MOST_STEPS">Most verified steps</option>}
-                  {(challengeType === 'RUN' || challengeType === 'DISTANCE') && <option value="FARTHEST_DISTANCE">Farthest distance</option>}
+                  {(challengeType === 'RUN' || challengeType === 'DISTANCE' || challengeType === 'CYCLING') && <option value="FARTHEST_DISTANCE">Farthest distance</option>}
                   {challengeType === 'RUN' && <option value="FASTEST_FIXED_DISTANCE">Fastest fixed distance</option>}
                   {challengeType === 'TIMED' && <option value="FASTEST_TIME">Fastest completion</option>}
                 </select>
@@ -725,7 +727,7 @@ export function CompetitionDetailPage() {
                     {t.scoringMethod === 'MOST_STEPS' ? Number(row.score ?? 0).toLocaleString('en-GB') : row.score === null ? '-' : formatDuration(Number(row.score))}
                   </span>
                 )}
-                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified walk or run puts you on top.</EmptyState>}
+                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified {t.challengeType === 'CYCLING' ? 'ride' : 'walk or run'} puts you on top.</EmptyState>}
               />
             )}
             {rows.length > 10 && (
@@ -775,7 +777,8 @@ function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: U
 
 /** For people arriving from an invite who have never heard of a Jump challenge. */
 function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
-  const counts = table.challengeType === 'RUN' ? 'run' : table.challengeType === 'WALK' ? 'walk' : 'walk and run';
+  const cycling = table.challengeType === 'CYCLING';
+  const counts = table.challengeType === 'RUN' ? 'run' : table.challengeType === 'WALK' ? 'walk' : cycling ? 'ride' : 'walk and run';
   const ends = table.scoringClosesAt ? formatDate(table.scoringClosesAt) : null;
   const prizePot = table.type === 'sponsored' ? (table.fundedPrizeKobo || table.guaranteedPrizeKobo) : table.guaranteedPrizeKobo;
   const prize = table.fundingDestination === 'CHARITY'
@@ -789,8 +792,8 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
       body: table.type === 'paid' ? 'Pay securely with Paystack. Entry fees build the prize pot.' : 'One tap and you’re on the board. No fee, no catch.',
     },
     {
-      title: `${counts === 'walk and run' ? 'Walk or run' : counts === 'run' ? 'Run' : 'Walk'} with Jump`,
-      body: `Hit Run in the app whenever you head out. Every verified ${counts} after you join adds to your total.`,
+      title: cycling ? 'Cycle with Jump' : `${counts === 'walk and run' ? 'Walk or run' : counts === 'run' ? 'Run' : 'Walk'} with Jump`,
+      body: cycling ? 'Choose Cycle when you start. Every GPS-verified ride after you join adds distance to your total.' : `Hit Run in the app whenever you head out. Every verified ${counts} after you join adds to your total.`,
     },
     {
       title: 'Climb the board',
@@ -801,7 +804,7 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
     <section>
       <SectionTitle>How it works</SectionTitle>
       <p className="mb-5 max-w-xl text-[15px] leading-relaxed text-ink-2">
-        A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.
+        {cycling ? 'Record rides with Jump. GPS-verified cycling distance updates the leaderboard; rides do not score in running leagues or foot-activity competitions. Cycling is free to enter and has no cash prize.' : 'A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.'}
       </p>
       <ol className="grid gap-3 sm:grid-cols-3">
         {steps.map((step, index) => (
@@ -888,6 +891,7 @@ function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
   const items = [
     scoring,
     `${activity} Flagged activities count only after a reviewer approves them.`,
+    ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance, and there are no cash prizes.'] : []),
     'An activity counts if it starts after you join and finishes before scoring closes.',
     ...(table.reminderTime ? [`Joined runners may receive a daily email reminder at ${table.reminderTime.slice(0, 5)} (${table.reminderTimeZone}). No reminder is sent after they record an activity that day.`] : []),
     ...(table.scoringMethod === 'FARTHEST_DISTANCE'
@@ -1029,6 +1033,7 @@ function EntryPanel({
   const fundingControl = canFund && user ? (
     <div className="mt-5 border-t border-line pt-4">
       <p className="eyebrow mb-2">{table.fundingDestination === 'CHARITY' ? 'Fund the charity allocation' : 'Fund the prize'}</p>
+      {table.guaranteedPrizeKobo !== null && table.guaranteedPrizeKobo < 1_000_000 && <Notice tone="warn">This older fixed draft is below the new ₦10,000 minimum and can’t be funded. Create a new competition with at least ₦10,000.</Notice>}
       {!table.guaranteedPrizeKobo && <Field label="Your contribution · NGN" hint="Optional, any amount from ₦1. Jump keeps 15%; eligible winners share the rest.">
         {(props) => <input {...props} type="text" inputMode="decimal" className="field num" value={fundingAmount} onChange={(event) => setFundingAmount(formatNairaInput(event.target.value))} />}
       </Field>}
@@ -1158,7 +1163,7 @@ function Stakes({ table }: { table: CompetitionTable }) {
   return (
     <div>
       <p className="score text-[44px] leading-none">Free</p>
-      <p className="mt-1.5 text-[13px] text-ink-2">to join · just walk or run</p>
+      <p className="mt-1.5 text-[13px] text-ink-2">to join · {table.challengeType === 'CYCLING' ? 'record a GPS ride' : 'just walk or run'}</p>
     </div>
   );
 }

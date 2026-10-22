@@ -62,6 +62,12 @@ export function formatPace(metres: number, seconds: number, unit: Unit = 'km'): 
   return s === 60 ? `${m + 1}:00` : `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Average speed for cycling; GPS distance divided by moving time. */
+export function formatSpeed(metres: number, seconds: number, unit: Unit = 'km'): string | null {
+  if (metres < 50 || seconds <= 0) return null;
+  return `${(distanceValue(metres, unit) * 3600 / seconds).toFixed(1)} ${unit}/h`;
+}
+
 export function formatDate(iso: string | null | undefined, options: Intl.DateTimeFormatOptions = {}): string {
   if (!iso) return '-';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...options });
@@ -140,9 +146,9 @@ export function fromLocalInput(value: string): string | undefined {
 }
 
 /** "Monday evening run", from when it started. */
-export function activityName(iso: string, type: 'walk' | 'run') {
+export function activityName(iso: string, type: 'walk' | 'run' | 'cycle') {
   const date = new Date(iso);
   const hour = date.getHours();
   const part = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
-  return `${date.toLocaleDateString('en-GB', { weekday: 'long' })} ${part} ${type}`;
+  return `${date.toLocaleDateString('en-GB', { weekday: 'long' })} ${part} ${type === 'cycle' ? 'ride' : type}`;
 }

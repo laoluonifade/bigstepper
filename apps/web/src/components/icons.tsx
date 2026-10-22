@@ -41,6 +41,13 @@ export const RunIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const CycleIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="5" cy="17" r="3" /><circle cx="19" cy="17" r="3" />
+    <path d="m5 17 4-9 5 9H5l5-6h4l5 6m-10-9h3m-2-3h3" />
+  </Icon>
+);
+
 export const ActivityIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M3 12h4l2.5-6 5 12 2.5-6h4" />

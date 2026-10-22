@@ -40,6 +40,9 @@ export class ProfilesService {
     if (input.countryCode !== undefined) changes.countryCode = input.countryCode;
     if (input.bio !== undefined) changes.bio = input.bio?.trim() || null;
     if (input.weeklyGoalMetres !== undefined) changes.weeklyGoalMetres = input.weeklyGoalMetres;
+    if (input.weightKg !== undefined) changes.weightKg = input.weightKg;
+    if (input.emailActivityEnabled !== undefined) changes.emailActivityEnabled = input.emailActivityEnabled;
+    if (input.emailDigestEnabled !== undefined) changes.emailDigestEnabled = input.emailDigestEnabled;
     Object.assign(profile, changes);
     try {
       const saved = await this.profiles.save(profile);
@@ -127,8 +130,10 @@ export class ProfilesService {
               COUNT(*)::integer "activities",
               COUNT(*) FILTER (WHERE a."activityType" = 'run')::integer "runs",
               COUNT(*) FILTER (WHERE a."activityType" = 'walk')::integer "walks",
+              COUNT(*) FILTER (WHERE a."activityType" = 'cycle')::integer "cycles",
               COALESCE(SUM(${DISTANCE}) FILTER (WHERE a."activityType" = 'run'), 0)::bigint "runMetres",
               COALESCE(SUM(${DISTANCE}) FILTER (WHERE a."activityType" = 'walk'), 0)::bigint "walkMetres",
+              COALESCE(SUM(${DISTANCE}) FILTER (WHERE a."activityType" = 'cycle'), 0)::bigint "cycleMetres",
               COALESCE(MAX(${DISTANCE}), 0)::integer "longestMetres",
               COALESCE(SUM(a."movingSeconds"), 0)::bigint "movingSeconds",
               COALESCE(SUM(${DISTANCE}) FILTER (WHERE a."startedAt" >= date_trunc('month', now())), 0)::bigint "monthMetres"

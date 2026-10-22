@@ -2,9 +2,9 @@
 import { haversineMetres } from './geo';
 
 /** Metres per step, used where GPS can't measure (indoors). Steps count for leagues and free challenges only. */
-export const STRIDE_METRES = { walk: 0.72, run: 1.0 } as const;
+export const STRIDE_METRES = { walk: 0.72, run: 1.0, cycle: 0 } as const;
 
-export function stepDistanceMetres(steps: number, activityType: 'walk' | 'run') {
+export function stepDistanceMetres(steps: number, activityType: 'walk' | 'run' | 'cycle') {
   return Math.round(Math.max(0, steps) * STRIDE_METRES[activityType]);
 }
 
@@ -12,6 +12,8 @@ export function stepDistanceMetres(steps: number, activityType: 'walk' | 'run') 
 export const MAX_USABLE_ACCURACY_METRES = 50;
 /** Faster than this between two points isn't on foot (≈ a 1:51/km sprint). */
 export const MAX_FOOT_SPEED_MPS = 9;
+/** 45 km/h allows typical cycling; GPS alone still cannot distinguish a slow car. */
+export const MAX_CYCLING_SPEED_MPS = 12.5;
 /** Slower than this isn't walking: it's the phone's position drifting while you stand still. */
 export const MIN_FOOT_SPEED_MPS = 0.4;
 /** Fixes are averaged with their neighbours this far either side, so random wobble cancels out. */
@@ -85,7 +87,7 @@ export function smoothTrack(points: TrackPoint[], trailing = false): Smoothed[] 
  * - moves slower than walking pace (drift while standing still) never count;
  * - a lone too-fast hop is a spike and is skipped; sustained too-fast travel (a car) flags the run.
  */
-export function measureTrack(points: TrackPoint[], options: { trailing?: boolean } = {}): TrackMeasure {
+export function measureTrack(points: TrackPoint[], options: { trailing?: boolean; activityType?: 'walk' | 'run' | 'cycle' } = {}): TrackMeasure {
   const reasons = new Set<string>();
   const usable = points
     .filter((point) => point.accuracy === null || point.accuracy <= MAX_USABLE_ACCURACY_METRES)
@@ -107,7 +109,7 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
     const metres = haversineMetres(anchor.lat, anchor.lon, point.lat, point.lon);
     if (metres < MIN_STEP_METRES) continue; // not far enough yet: keep measuring from the anchor
     const speed = metres / seconds;
-    if (speed > MAX_FOOT_SPEED_MPS) {
+    if (speed > (options.activityType === 'cycle' ? MAX_CYCLING_SPEED_MPS : MAX_FOOT_SPEED_MPS)) {
       fastInARow += 1;
       // One too-fast hop is a GPS spike: skip it. Two or more in a row is real non-foot travel.
       if (fastInARow >= 2) {

@@ -8,6 +8,7 @@ import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { setFlag, storageKeys } from '../lib/local';
 import type { AuthResponse } from '../lib/types';
+import { COUNTRIES } from '../lib/countries';
 
 const DEV_VERIFY_KEY = 'jump_dev_verify_token';
 
@@ -149,7 +150,7 @@ export function RegisterPage() {
   const search = useSearch({ strict: false }) as { redirect?: string };
   const [password, setPassword] = useState('');
   const register = useMutation({
-    mutationFn: (values: { email: string; password: string; displayName?: string }) => post<AuthResponse>('/auth/register', values),
+    mutationFn: (values: { email: string; password: string; countryCode: string; displayName?: string }) => post<AuthResponse>('/auth/register', values),
     onSuccess(response) {
       flushSync(() => auth.authenticate(response));
       setFlag(storageKeys.verifyPrompt(response.user.id), true);
@@ -169,6 +170,7 @@ export function RegisterPage() {
     register.mutate({
       email: String(form.get('email')).trim(),
       password: String(form.get('password')),
+      countryCode: String(form.get('countryCode')),
       ...(displayName ? { displayName } : {}),
     });
   }
@@ -184,6 +186,12 @@ export function RegisterPage() {
         </Field>
         <Field label="Email">
           {(props) => <input {...props} className="field" name="email" type="email" autoComplete="email" required />}
+        </Field>
+        <Field label="Country of residence">
+          {(props) => <select {...props} className="field" name="countryCode" autoComplete="country" defaultValue="" required>
+            <option value="" disabled>Choose your country</option>
+            {COUNTRIES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>}
         </Field>
         <Field label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}>
           {(props) => (

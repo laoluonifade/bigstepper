@@ -191,13 +191,16 @@ export function profileStats(activities: Activity[], now = new Date()): PublicSt
   const sum = (list: Activity[]) => list.reduce((total, activity) => total + creditedMetres(activity), 0);
   const runs = verified.filter((activity) => activity.activityType === 'run');
   const walks = verified.filter((activity) => activity.activityType === 'walk');
+  const cycles = verified.filter((activity) => activity.activityType === 'cycle');
   return {
     totalMetres: sum(verified),
     activities: verified.length,
     runs: runs.length,
     walks: walks.length,
+    cycles: cycles.length,
     runMetres: sum(runs),
     walkMetres: sum(walks),
+    cycleMetres: sum(cycles),
     longestMetres: verified.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0),
     movingSeconds: verified.reduce((total, activity) => total + activity.movingSeconds, 0),
     monthMetres: sum(verified.filter((activity) => new Date(activity.startedAt) >= monthStart)),

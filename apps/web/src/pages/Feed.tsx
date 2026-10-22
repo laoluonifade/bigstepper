@@ -1,9 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ActivityIcon, CloseIcon, FeedIcon, LockIcon, RunIcon, SearchIcon, TrashIcon } from '../components/icons';
+import { ActivityIcon, CloseIcon, CycleIcon, FeedIcon, LockIcon, RunIcon, TrashIcon } from '../components/icons';
 import { EmojiPopover } from '../components/EmojiPopover';
-import { ProfileTabs } from '../components/Profile';
+import { RantTabs } from '../components/RantTabs';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton } from '../components/ui';
 import { api, post } from '../lib/api';
 import { useUser } from '../lib/auth';
@@ -11,7 +11,6 @@ import { activityName, formatDistance, formatDuration } from '../lib/format';
 import type { Unit } from '../lib/types';
 import { useActivities, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
 
-type FeedScope = 'following' | 'explore';
 type FeedPost = {
   id: string;
   body: string;
@@ -22,7 +21,7 @@ type FeedPost = {
   displayName: string;
   avatarUrl: string | null;
   activityVisibility: 'public' | 'followers' | 'private';
-  activityType: 'walk' | 'run' | null;
+  activityType: 'walk' | 'run' | 'cycle' | null;
   startedAt: string | null;
   validatedSteps: number | null;
   distanceMetres: number | null;
@@ -47,16 +46,15 @@ export function FeedPage() {
   const activities = useActivities();
   const search = useSearch({ strict: false }) as { activity?: string };
   const queryClient = useQueryClient();
-  const [scope, setScope] = useState<FeedScope>('following');
   const [body, setBody] = useState('');
   const [activityId, setActivityId] = useState(search.activity ?? '');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   useEffect(() => { if (search.activity) setActivityId(search.activity); }, [search.activity]);
 
   const feed = useInfiniteQuery({
-    queryKey: ['feed', scope],
+    queryKey: ['feed', 'explore'],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => api<FeedPost[]>(`/feed?scope=${scope}&page=${pageParam}`),
+    queryFn: ({ pageParam }) => api<FeedPost[]>(`/feed?scope=explore&page=${pageParam}`),
     getNextPageParam: (lastPage, pages) => lastPage.length === 20 ? pages.length : undefined,
   });
   const create = useMutation({
@@ -89,11 +87,10 @@ export function FeedPage() {
         <p className="eyebrow">Community</p>
         <h1 className="display mt-1 text-[30px] leading-none">Rant</h1>
       </div>
-      <div className="flex shrink-0 items-center gap-1 sm:gap-4"><Link to="/messages" className="relative flex min-h-11 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold text-ink-2 hover:bg-card hover:text-ink" aria-label={`Messages${unreadMessages ? `, ${unreadMessages} unread` : ''}`}><FeedIcon size={18} /> <span className="hidden min-[380px]:inline">Messages</span>{unreadMessages > 0 && <span className="num min-w-[18px] rounded-full bg-bad px-1 text-center text-[10px] font-bold leading-[18px] text-paper">{unreadMessages > 9 ? '9+' : unreadMessages}</span>}</Link><Link to="/runners" className="flex h-11 w-11 items-center justify-center rounded-full text-ink-2 hover:bg-card hover:text-ink sm:w-auto sm:gap-1.5 sm:px-2" aria-label="Find runners"><SearchIcon size={19} /><span className="hidden sm:inline">Find runners</span></Link></div>
     </header>
 
     <div className="-mx-4 sm:mx-0">
-      <div className="sticky top-14 z-10 bg-paper/95 backdrop-blur md:top-0"><ProfileTabs<FeedScope> label="Rant view" value={scope} onChange={setScope} tabs={[{ value: 'following', label: 'Following' }, { value: 'explore', label: 'Explore' }]} /></div>
+      <div className="sticky top-14 z-10 bg-paper/95 backdrop-blur md:top-0"><RantTabs active="explore" unread={unreadMessages} /></div>
 
       <form onSubmit={publish} className="flex gap-3 border-b border-line px-4 pb-3 pt-4">
         <Avatar name={myName} src={profile.data?.avatarUrl} size={40} className="rounded-full" />
@@ -137,8 +134,8 @@ export function FeedPage() {
 
       <ErrorNotice error={feed.error} onRetry={() => void feed.refetch()} className="m-4" />
       {feed.isLoading ? <div className="space-y-3 p-4">{[0, 1, 2].map((key) => <Skeleton key={key} className="h-20" />)}</div> : !posts.length ? (<div className="px-4 py-6">
-        <EmptyState mark={<FeedIcon size={30} />} title={scope === 'following' ? 'Your circle is quiet' : 'No updates yet'} action={<Link to="/runners" className="btn-secondary">Find runners</Link>}>
-          {scope === 'following' ? 'Follow runners or write the first update.' : 'Public workout updates will appear here.'}
+        <EmptyState mark={<FeedIcon size={30} />} title="No updates yet" action={<Link to="/runners" className="btn-secondary">Find runners</Link>}>
+          Public workout updates will appear here.
         </EmptyState>
       </div>) : <div className="divide-y divide-line border-b border-line">
         {posts.map((item) => <article key={item.id} className="flex gap-3 px-4 py-3 transition-colors hover:bg-ink/[0.025]">
@@ -244,20 +241,20 @@ function shortAgo(iso: string) {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 
-function ActivityChip({ type, distance }: { type: 'walk' | 'run'; distance: string }) {
+function ActivityChip({ type, distance }: { type: 'walk' | 'run' | 'cycle'; distance: string }) {
   return <span className={cx('wide inline-flex h-7 items-center gap-1.5 rounded-full border border-ink px-2.5 text-[11px] font-extrabold uppercase', type === 'run' ? 'bg-track-wash' : 'bg-volt')}>
-    <RunIcon size={13} /> {type} · {distance}
+    {type === 'cycle' ? <CycleIcon size={13} /> : <RunIcon size={13} />} {type === 'cycle' ? 'ride' : type} · {distance}
   </span>;
 }
 
 function ActivityAttachment({ item, unit, mine }: { item: FeedPost; unit: Unit; mine: boolean }) {
   const run = item.activityType === 'run';
   const card = <span className="mt-2.5 flex items-stretch overflow-hidden rounded-xl border border-line">
-    <span className={cx('flex w-12 shrink-0 items-center justify-center', run ? 'bg-track' : 'bg-volt')}><RunIcon size={20} /></span>
+    <span className={cx('flex w-12 shrink-0 items-center justify-center', run ? 'bg-track' : 'bg-volt')}>{item.activityType === 'cycle' ? <CycleIcon size={20} /> : <RunIcon size={20} />}</span>
     <span className="flex min-w-0 flex-1 items-center justify-between gap-3 bg-card px-3 py-2.5">
       <span className="min-w-0">
         <span className="wide block text-[10.5px] font-extrabold uppercase tracking-[0.1em] text-ink-2">{item.startedAt ? activityName(item.startedAt, item.activityType!) : item.activityType}</span>
-        <span className="num block truncate text-[12px] text-ink-2">{(item.validatedSteps ?? 0).toLocaleString('en-GB')} steps · {formatDuration(item.movingSeconds ?? 0)}</span>
+        <span className="num block truncate text-[12px] text-ink-2">{item.activityType === 'cycle' ? 'GPS distance' : `${(item.validatedSteps ?? 0).toLocaleString('en-GB')} steps`} · {formatDuration(item.movingSeconds ?? 0)}</span>
       </span>
       <span className="score num shrink-0 text-[24px] leading-none">{formatDistance(item.distanceMetres ?? 0, unit)}</span>
     </span>

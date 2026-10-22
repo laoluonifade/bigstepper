@@ -6,6 +6,7 @@ describe('challenge scoring configuration', () => {
     ['STEP', 'MOST_STEPS'],
     ['RUN', 'FARTHEST_DISTANCE'],
     ['DISTANCE', 'FARTHEST_DISTANCE'],
+    ['CYCLING', 'FARTHEST_DISTANCE'],
   ] as const)('accepts %s with %s', (type, scoring) => {
     expect(() => assertScoringConfiguration(type, scoring)).not.toThrow();
   });
@@ -20,5 +21,6 @@ describe('challenge scoring configuration', () => {
 
   it('rejects a scoring method that does not match the challenge type', () => {
     expect(() => assertScoringConfiguration('WALK', 'FARTHEST_DISTANCE')).toThrow('not valid');
+    expect(() => assertScoringConfiguration('CYCLING', 'FASTEST_TIME')).toThrow('not valid');
   });
 });

@@ -52,7 +52,7 @@ interface RecorderState {
   lastFixAt: number | null;
   gpsError: string | null;
   error: string | null;
-  start: (activityType?: 'walk' | 'run') => Promise<void>;
+  start: (activityType?: 'walk' | 'run' | 'cycle') => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   finish: () => Promise<Activity | null>;
@@ -82,6 +82,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
   const [restoreAttempt, setRestoreAttempt] = useState(0);
 
   const runIdRef = useRef<string | null>(null);
+  const activityTypeRef = useRef<'walk' | 'run' | 'cycle'>('run');
   const phaseRef = useRef<RecorderPhase>('restoring');
   const watchRef = useRef<number | null>(null);
   /** Fixes recorded on this device for the current run, measured with the server's rule. */
@@ -174,7 +175,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       lastFixTimeRef.current = position.timestamp;
       // Same rule the server verifies with (trailing-only, as the future isn't known yet).
       fixesRef.current.push({ latitude, longitude, accuracy: acc, recordedAt: new Date(position.timestamp) });
-      setLocalMetres(measureTrack(fixesRef.current, { trailing: true }).distanceMetres);
+      setLocalMetres(measureTrack(fixesRef.current, { trailing: true, activityType: activityTypeRef.current }).distanceMetres);
       if (acc > MAX_USABLE_ACCURACY_METRES) setGpsError(`Weak GPS (±${Math.round(acc)} m). Head outdoors with open sky. Weak fixes don’t count.`);
 
       lastFixRef.current = { latitude, longitude, accuracy: Math.round(acc * 10) / 10 };
@@ -192,7 +193,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
   );
 
   const startWatch = useCallback(() => {
-    if (motionAllowedRef.current && !pedometerRef.current) {
+    if (activityTypeRef.current !== 'cycle' && motionAllowedRef.current && !pedometerRef.current) {
       pedometerRef.current = startPedometer((added) => {
         stepsRef.current += added;
         setSteps(stepsRef.current);
@@ -208,6 +209,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
 
   const adopt = useCallback((run: RunSession) => {
     runIdRef.current = run.id;
+    activityTypeRef.current = run.activityType;
     setSession(run);
     setUploadedMetres(run.distanceMetres);
     setLocalMetres(run.distanceMetres);
@@ -313,9 +315,9 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
 
   useEffect(() => stopWatch, [stopWatch]);
 
-  const start = useCallback(async (activityType: 'walk' | 'run' = 'run') => {
+  const start = useCallback(async (activityType: 'walk' | 'run' | 'cycle' = 'run') => {
     // Must be the first thing a tap does: iOS only shows the motion prompt straight from the gesture.
-    const motion = requestMotionPermission();
+    const motion = activityType === 'cycle' ? Promise.resolve(false) : requestMotionPermission();
     setError(null);
     setGpsError(null);
     setPhase('locating');
@@ -336,7 +338,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       lastFixTimeRef.current = 0;
       stepsRef.current = 0;
       motionAllowedRef.current = await motion;
-      setSteps(motionAllowedRef.current ? 0 : null);
+      setSteps(activityType === 'cycle' ? null : motionAllowedRef.current ? 0 : null);
       setLocalMetres(0);
       phaseRef.current = 'recording';
       setPhase('recording');

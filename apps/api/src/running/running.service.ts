@@ -20,7 +20,7 @@ export class RunningService {
     private readonly verificationQueue: Queue,
   ) {}
 
-  async start(userId: string, activityType: 'walk' | 'run') {
+  async start(userId: string, activityType: 'walk' | 'run' | 'cycle') {
     try {
       return await this.sessions.save(
         this.sessions.create({ userId, activityType, status: 'RUNNING', startedAt: new Date(), pausedAt: null }),
@@ -70,8 +70,8 @@ export class RunningService {
         order: { sequence: 'ASC' },
       });
       // Same measurement verification uses, so the live number matches the verified one.
-      session.distanceMetres = measureTrack(all).distanceMetres;
-      session.stepCount = Math.max(0, ...all.map((sample) => sample.stepCount ?? 0));
+      session.distanceMetres = measureTrack(all, { activityType: session.activityType }).distanceMetres;
+      session.stepCount = session.activityType === 'cycle' ? 0 : Math.max(0, ...all.map((sample) => sample.stepCount ?? 0));
       await manager.save(session);
       return { distanceMetres: session.distanceMetres, stepCount: session.stepCount, sampleCount: all.length };
     });

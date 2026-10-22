@@ -27,7 +27,7 @@ export class AuthService {
     private readonly mail: MailService,
   ) {}
 
-  async register(email: string, password: string, displayName?: string) {
+  async register(email: string, password: string, countryCode: string, displayName?: string) {
     const normalizedEmail = email.trim().toLowerCase();
     const existing = await this.usersRepo.findOne({ where: { email: normalizedEmail } });
     if (existing) throw new ConflictException('Email already registered');
@@ -48,6 +48,7 @@ export class AuthService {
             userId: user.id,
             username: `${baseUsername}_${randomBytes(3).toString('hex')}`,
             displayName: user.displayName || baseUsername,
+            countryCode,
           }),
         );
         await manager.query(

@@ -1,4 +1,4 @@
-export const CHALLENGE_TYPES = ['WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED'] as const;
+export const CHALLENGE_TYPES = ['WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED', 'CYCLING'] as const;
 export type ChallengeType = (typeof CHALLENGE_TYPES)[number];
 
 export const SCORING_METHODS = ['MOST_STEPS', 'FARTHEST_DISTANCE', 'FASTEST_FIXED_DISTANCE', 'FASTEST_TIME'] as const;
@@ -15,6 +15,7 @@ export function assertScoringConfiguration(
     DISTANCE: ['FARTHEST_DISTANCE'],
     STEP: ['MOST_STEPS'],
     TIMED: ['FASTEST_TIME'],
+    CYCLING: ['FARTHEST_DISTANCE'],
   };
   if (!allowed[challengeType].includes(scoringMethod)) {
     throw new Error(`${scoringMethod} is not valid for a ${challengeType} competition`);

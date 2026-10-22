@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 
 export class LoginDto {
   @IsEmail()
@@ -10,6 +10,9 @@ export class LoginDto {
 }
 
 export class RegisterDto extends LoginDto {
+  @Matches(/^[A-Z]{2}$/, { message: 'Choose your country of residence' })
+  countryCode: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(80)

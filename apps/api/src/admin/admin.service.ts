@@ -146,7 +146,9 @@ export class AdminService {
            FROM "activities" a JOIN "table_registrations" r ON r."userId" = a."userId" AND r."joinedAt" <= a."startedAt"
            JOIN "competition_tables" t ON t."id" = r."tableId"
            WHERE a."id" = $1 AND a."startedAt" >= COALESCE(t."startsAt", '-infinity'::timestamptz)
-             AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR (t."challengeType"='WALK' AND a."activityType"='walk') OR (t."challengeType"='RUN' AND a."activityType"='run'))
+             AND ((a."activityType"='cycle' AND t."challengeType"='CYCLING') OR
+                  (a."activityType" IN ('walk','run') AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR
+                   (t."challengeType"='WALK' AND a."activityType"='walk') OR (t."challengeType"='RUN' AND a."activityType"='run'))))
              AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
            ON CONFLICT ("tableId", "activityId") DO NOTHING`,
           [review.activityId],
@@ -165,7 +167,7 @@ export class AdminService {
         `INSERT INTO "admin_audit_events" ("actorUserId", "action", "targetType", "targetId", "metadata") VALUES ($1,$2,'activity_review',$3,$4)`,
         [actorUserId, `REVIEW_${input.decision}`, reviewId, JSON.stringify({ note: input.note })],
       );
-      await refreshLeagueDistance(manager, review.activity.userId);
+      if (review.activity.activityType !== 'cycle') await refreshLeagueDistance(manager, review.activity.userId);
       return { id: review.id, status: review.status };
     });
   }
@@ -326,6 +328,20 @@ export class AdminService {
       await manager.query(
         `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'TABLE_SETTLED','competition_table',$2,$3)`,
         [actorUserId, tableId, JSON.stringify({ version })],
+      );
+      await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body")
+         SELECT r."userId",'COMPETITION_RESULT',
+                CASE WHEN a."id" IS NOT NULL THEN 'You placed in ' || $2
+                     WHEN $3::uuid IS NOT NULL THEN COALESCE(w."displayName",'A runner') || ' won ' || $2
+                     ELSE $2 || ' has finished' END,
+                CASE WHEN a."id" IS NOT NULL THEN 'Your prize is ready to view in Jump.'
+                     ELSE 'The final leaderboard is ready. Open Jump to see the results.' END
+         FROM "table_registrations" r
+         LEFT JOIN "prize_awards" a ON a."tableId"=r."tableId" AND a."winnerUserId"=r."userId"
+         LEFT JOIN "profiles" w ON w."userId"=$3
+         WHERE r."tableId"=$1`,
+        [tableId, table.title, table.fundingDestination === 'CHARITY' ? null : winner?.userId ?? null],
       );
       return settlements[0];
     });

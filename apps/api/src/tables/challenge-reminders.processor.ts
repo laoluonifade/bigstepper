@@ -39,6 +39,7 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
          FROM "competition_tables" t
          JOIN "table_registrations" r ON r."tableId"=t."id"
          JOIN "users" u ON u."id"=r."userId" AND u."emailVerified"=true
+         JOIN "profiles" p ON p."userId"=r."userId" AND p."emailActivityEnabled"=true
          LEFT JOIN "challenge_reminder_deliveries" d ON d."tableId"=t."id" AND d."userId"=r."userId"
            AND d."reminderDate"=(now() AT TIME ZONE t."reminderTimeZone")::date
          WHERE t."reminderTime" IS NOT NULL AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')

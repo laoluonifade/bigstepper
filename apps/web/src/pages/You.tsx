@@ -24,12 +24,13 @@ import {
 import { api, isApiError, patch, post } from '../lib/api';
 import { useAuth, useUser } from '../lib/auth';
 import { AWARD_STATUS } from '../lib/copy';
-import { activityName, formatDate, formatDistanceNumber, formatDuration, formatMoney, formatPace, formatRelative, shortId } from '../lib/format';
+import { activityName, formatDate, formatDistanceNumber, formatDuration, formatMoney, formatNairaInput, formatPace, formatRelative, formatSpeed, nairaInputToKobo, shortId } from '../lib/format';
 import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
 import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useProfile, useStaffAccess, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
 import { savePayment } from '../lib/payments';
 import type { CheckoutResponse, CreatorProfile, Notification, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit, Visibility } from '../lib/types';
+import { COUNTRIES } from '../lib/countries';
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
@@ -41,30 +42,6 @@ export const YOU_NAV = [
   { to: '/creator', label: 'Creator' },
   { to: '/notifications', label: 'Notifications' },
 ] as const;
-
-const COUNTRIES: Array<[string, string]> = [
-  ['NG', 'Nigeria'],
-  ['GH', 'Ghana'],
-  ['KE', 'Kenya'],
-  ['ZA', 'South Africa'],
-  ['CM', 'Cameroon'],
-  ['CI', 'Côte d’Ivoire'],
-  ['SN', 'Senegal'],
-  ['RW', 'Rwanda'],
-  ['UG', 'Uganda'],
-  ['TZ', 'Tanzania'],
-  ['ET', 'Ethiopia'],
-  ['EG', 'Egypt'],
-  ['MA', 'Morocco'],
-  ['GB', 'United Kingdom'],
-  ['IE', 'Ireland'],
-  ['US', 'United States'],
-  ['CA', 'Canada'],
-  ['DE', 'Germany'],
-  ['FR', 'France'],
-  ['NL', 'Netherlands'],
-  ['AE', 'United Arab Emirates'],
-];
 
 const VISIBILITY: Array<{ value: Visibility; title: string; body: string }> = [
   { value: 'private', title: 'Private', body: 'Only you see your individual activities.' },
@@ -118,10 +95,13 @@ export function ProfileSettingsPage() {
   const usernameError =
     draft.username !== undefined && !/^[a-z0-9_]{2,30}$/.test(draft.username) ? '2–30 characters: lowercase letters, numbers and underscores.' : undefined;
   const nameError = draft.displayName !== undefined && !draft.displayName.trim() ? 'Your name can’t be empty.' : undefined;
+  const weightError = draft.weightKg !== undefined && draft.weightKg !== null &&
+    (!Number.isFinite(draft.weightKg) || draft.weightKg < 20 || draft.weightKg > 300 || !Number.isInteger(draft.weightKg * 10))
+    ? 'Enter a weight from 20 to 300 kg, to one decimal place.' : undefined;
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!dirty || usernameError || nameError) return;
+    if (!dirty || usernameError || nameError || weightError) return;
     save.mutate(changes);
   }
 
@@ -226,6 +206,17 @@ export function ProfileSettingsPage() {
             />
           </div>
 
+          <Field label="Body weight · kg" optional error={weightError} hint="Private. Used only to estimate calories on your activities; not shown on your public profile.">
+            {(props) => <input {...props} className="field num" type="number" inputMode="decimal" min="20" max="300" step="0.1" value={merged.weightKg ?? ''} onChange={(event) => setDraft((current) => ({ ...current, weightKg: event.target.value === '' ? null : Number(event.target.value) }))} />}
+          </Field>
+
+          <fieldset id="email-preferences" className="space-y-3 border-t border-line pt-5">
+            <legend className="label">Email updates</legend>
+            <label className="flex items-start gap-3 text-[13px]"><input type="checkbox" className="mt-0.5" checked={merged.emailActivityEnabled} onChange={(event) => setDraft((current) => ({ ...current, emailActivityEnabled: event.target.checked }))} /><span><strong className="block">Activity and people</strong>Messages, follows, Rant interactions, competition progress and results.</span></label>
+            <label className="flex items-start gap-3 text-[13px]"><input type="checkbox" className="mt-0.5" checked={merged.emailDigestEnabled} onChange={(event) => setDraft((current) => ({ ...current, emailDigestEnabled: event.target.checked }))} /><span><strong className="block">Competition picks</strong>Popular open competitions every three days.</span></label>
+            <p className="text-[12px] text-ink-3">Account-security and payment emails are separate from these choices.</p>
+          </fieldset>
+
           <fieldset>
             <legend className="label">Who can see your runs</legend>
             <div className="grid gap-2 sm:grid-cols-3">
@@ -254,7 +245,7 @@ export function ProfileSettingsPage() {
             </div>
           </fieldset>
 
-          <Field label="Country">
+          <Field label="Country of residence">
             {(props) => (
               <select
                 {...props}
@@ -274,7 +265,7 @@ export function ProfileSettingsPage() {
 
           <ErrorNotice error={save.error} />
           <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+76px)] z-10 -mx-4 flex items-center gap-4 border-t border-line bg-paper/95 px-4 py-4 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:pt-6 md:backdrop-blur-none">
-            <button className="btn-primary" disabled={!dirty || save.isPending || Boolean(usernameError) || Boolean(nameError)}>
+            <button className="btn-primary" disabled={!dirty || save.isPending || Boolean(usernameError) || Boolean(nameError) || Boolean(weightError)}>
               {save.isPending ? 'Saving…' : 'Save changes'}
             </button>
             {save.isSuccess && (
@@ -594,7 +585,7 @@ export function WalletPage() {
   const wallet = useWallet();
   const transactions = useWalletTransactions();
   const [amount, setAmount] = useState('');
-  const amountKobo = Math.round(Number(amount || 0) * 100);
+  const amountKobo = nairaInputToKobo(amount);
   const fund = useMutation({
     mutationFn: () => post<CheckoutResponse>('/wallet/fund', { amountKobo }),
     onSuccess(response) {
@@ -657,7 +648,7 @@ export function WalletPage() {
                 {(props) => (
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold">₦</span>
-                    <input {...props} className="field pl-8 num" type="number" inputMode="decimal" min="100" step="100" value={amount} onChange={(event) => setAmount(event.target.value)} />
+                    <input {...props} className="field pl-8 num" type="text" inputMode="decimal" value={amount} onChange={(event) => setAmount(formatNairaInput(event.target.value))} />
                   </div>
                 )}
               </Field>
@@ -931,7 +922,7 @@ export function RunnerPage() {
           ) : (
             <ul className="stagger divide-y divide-line border-y border-line">
               {data.recent.map((item, index) => {
-                const pace = formatPace(item.metres, item.movingSeconds, unit);
+                const pace = item.activityType === 'cycle' ? formatSpeed(item.metres, item.movingSeconds, unit) : formatPace(item.metres, item.movingSeconds, unit);
                 return (
                   <li key={index} className="flex items-center gap-4 px-1 py-3.5 sm:px-3">
                     <span
@@ -947,7 +938,7 @@ export function RunnerPage() {
                       <p className="truncate text-[14px] font-bold">{activityName(item.startedAt, item.activityType)}</p>
                       <p className="num text-[12px] text-ink-2">
                         {formatRelative(item.startedAt)} · {formatDuration(item.movingSeconds)}
-                        {pace && ` · ${pace} /${unit}`}
+                        {pace && ` · ${pace}${item.activityType === 'cycle' ? '' : ` /${unit}`}`}
                       </p>
                     </div>
                     <p className="flex items-baseline gap-1">

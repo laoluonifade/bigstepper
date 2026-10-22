@@ -69,3 +69,23 @@ export function challengeReminderEmail(to: { address: string; name?: string }, t
     text: `${intro}\n\nView competition: ${url}\n\nYou receive this because you joined this competition.`,
   };
 }
+
+export function activityUpdatesEmail(to: { address: string; name?: string }, titles: string[], url: string, settingsUrl: string): MailMessage {
+  const intro = titles.length === 1 ? titles[0] : `You have ${titles.length} new updates: ${titles.slice(0, 3).join(' · ')}${titles.length > 3 ? ' · and more' : ''}`;
+  return {
+    to,
+    subject: titles.length === 1 ? `${titles[0]} · Jump` : `${titles.length} new updates on Jump`,
+    html: layout('Your Jump updates', intro, 'Open Jump', url, `You can turn off activity emails in your profile settings: ${settingsUrl}`),
+    text: `${intro}\n\nOpen Jump: ${url}\n\nEmail settings: ${settingsUrl}`,
+  };
+}
+
+export function competitionDigestEmail(to: { address: string; name?: string }, competitions: Array<{ title: string; entrants: number }>, url: string, settingsUrl: string): MailMessage {
+  const intro = `Popular competitions on Jump: ${competitions.map((competition) => `${competition.title} (${competition.entrants} joined)`).join(' · ')}. Find one to move with.`;
+  return {
+    to,
+    subject: 'Popular competitions on Jump',
+    html: layout('Find your next competition', intro, 'Explore competitions', url, `Sent every three days. Turn it off in your profile settings: ${settingsUrl}`),
+    text: `Popular competitions on Jump:\n${competitions.map((competition) => `• ${competition.title} — ${competition.entrants} joined`).join('\n')}\n\nExplore: ${url}\n\nEmail settings: ${settingsUrl}`,
+  };
+}
