@@ -8,7 +8,7 @@ import { SettleTableDto } from './settle-table.dto';
 import { ApprovePaidTableDto, CreatePaidTableDto } from './paid-table.dto';
 import { AdminOnlyGuard } from './admin-only.guard';
 import { ReviewCreatorDto } from './review-creator.dto';
-import { ConfirmAdminActionDto, RejectPayoutDto } from './confirm-admin-action.dto';
+import { ApprovePayoutDto, ConfirmAdminActionDto, RejectPayoutDto } from './confirm-admin-action.dto';
 import { Throttle } from '@nestjs/throttler';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 import { UpdateAwardDto } from '../sponsors/dto/sponsor.dto';
@@ -177,9 +177,9 @@ export class AdminController {
   approvePayout(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: ConfirmAdminActionDto,
+    @Body() body: ApprovePayoutDto,
   ) {
-    return this.adminService.approvePayout(user.id, id, body.code);
+    return this.adminService.approvePayout(user.id, id, body.code, body.note);
   }
 
   @Get('payouts')

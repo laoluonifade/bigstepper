@@ -47,6 +47,8 @@ interface ClientConfig {
   /** Must be synchronous; platforms with async storage keep the token cached in memory. */
   getToken: () => string | null;
   clearToken: () => void;
+  /** A stable id for this install, sent so the API can spot several accounts on one device. */
+  getDeviceId?: () => string | null;
 }
 
 /** One fetch wrapper for web and mobile, so both handle errors and expired sessions the same way. */
@@ -56,6 +58,7 @@ export function createApiClient(config: ClientConfig) {
 
   async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const token = config.getToken();
+    const deviceId = config.getDeviceId?.();
     const form = typeof FormData !== 'undefined' && options.body instanceof FormData ? options.body : null;
     let response: Response;
     try {
@@ -66,6 +69,7 @@ export function createApiClient(config: ClientConfig) {
           Accept: 'application/json',
           ...(options.body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(token && deviceId ? { 'X-Device-Id': deviceId } : {}),
         },
         body: form ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
       });

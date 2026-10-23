@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { creditActivities, retotal } from './competition-credits';
 import { enrolClubMembers } from './club-competitions';
+import { AmlService } from '../aml/aml.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typeorm';
@@ -33,6 +34,7 @@ export class TablesService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly sponsors: SponsorsService,
+    private readonly aml: AmlService,
   ) {}
 
   async list(sort = 'popular', type = 'all', activity = 'all') {
@@ -358,10 +360,15 @@ export class TablesService {
       [creatorId],
     ) as Array<{ id: string }>)[0];
     if (!creator) throw new ForbiddenException('An active creator account is required for paid competitions');
+    await this.aml.assertVerified(creatorId);
+    // Bigger pots need more entrants before they can start or pay out.
+    const minimumEntrants = await this.aml.assertPaidChallengeLimits(creatorId, {
+      entryFeeKobo: input.entryFeeKobo, potKobo: guaranteedPrizeKobo, capacity: input.capacity, minimumEntrants: input.minimumEntrants,
+    });
     const startsAt = new Date(input.startsAt);
     const entryClosesAt = new Date(input.entryClosesAt ?? input.scoringClosesAt);
     const scoringClosesAt = new Date(input.scoringClosesAt);
-    if ((input.minimumEntrants ?? 2) > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
+    if (minimumEntrants > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
       throw new ConflictException('Competition dates or entrant limits are invalid');
     }
     return this.saveWithInvites(this.tables.create({
@@ -373,7 +380,7 @@ export class TablesService {
       status: 'PENDING_APPROVAL',
       entryFeeKobo: input.entryFeeKobo,
       guaranteedPrizeKobo,
-      minimumEntrants: (input.minimumEntrants ?? 2),
+      minimumEntrants,
       capacity: input.capacity,
       startsAt,
       entryClosesAt,

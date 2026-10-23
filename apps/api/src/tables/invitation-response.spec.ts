@@ -10,7 +10,7 @@ describe('challenge invitation responses', () => {
     save: jest.fn(async (_: unknown, value: unknown) => value),
   };
   const dataSource = { transaction: jest.fn(async (work: (value: unknown) => Promise<unknown>) => work(manager)) };
-  const service = new TablesService({} as never, {} as never, dataSource as never, {} as never, {} as never, {} as never);
+  const service = new TablesService({} as never, {} as never, dataSource as never, {} as never, {} as never, {} as never, {} as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -51,7 +51,7 @@ describe('challenge invitation responses', () => {
 describe('growing funded-free creation', () => {
   it('opens free entry without requiring a creator deposit', async () => {
     const tables = { create: jest.fn((value) => value) };
-    const service = new TablesService(tables as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+    const service = new TablesService(tables as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
     jest.spyOn(service as unknown as { saveWithInvites: (table: unknown, input: unknown) => Promise<unknown> }, 'saveWithInvites')
       .mockImplementation(async (table) => table);
     const created = await service.create('host', { title: 'Community run', fundedFree: true, capacity: 10, prizeSplitBps: [10000] });

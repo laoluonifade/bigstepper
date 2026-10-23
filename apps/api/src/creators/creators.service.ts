@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { CreatorProfile } from './creator-profile.entity';
 import { CreatorSignupDto } from './creator.dto';
+import { AmlService } from '../aml/aml.service';
 
 @Injectable()
 export class CreatorsService {
-  constructor(@InjectRepository(CreatorProfile) private readonly creators: Repository<CreatorProfile>) {}
+  constructor(@InjectRepository(CreatorProfile) private readonly creators: Repository<CreatorProfile>, private readonly aml: AmlService) {}
 
   async signup(userId: string, input: CreatorSignupDto) {
+    // Creators host paid challenges and earn commission, so they need KYC Level 2 first.
+    await this.aml.assertVerified(userId);
     try {
       // Pending until an admin approves it; only active creators can host paid challenges.
       return await this.creators.save(this.creators.create({

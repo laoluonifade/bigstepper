@@ -6,6 +6,7 @@ import { FormEvent, ReactNode, useMemo, useState } from 'react';
 import { BellIcon, CheckIcon, ChevronRightIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon } from '../components/icons';
 import { AvatarEditor, ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '../components/Profile';
 import { BankPicker } from '../components/BankPicker';
+import { KycPanel, useKyc } from '../components/KycPanel';
 import {
   Avatar,
   CopyButton,
@@ -329,12 +330,16 @@ export function RewardsPage() {
   // Only the masked summary the API returns is kept — never the full account number.
   const [recipient, setRecipient] = useStored<SavedRecipient | null>(`jump_recipient:${user.id}`, null);
   const [editing, setEditing] = useState(false);
+  const kyc = useKyc();
+  // With KYC on, payouts go to the verified account; otherwise to the account saved below.
+  const kycRequired = kyc.data?.required ?? false;
+  const canRequest = kycRequired ? kyc.data?.status === 'VERIFIED' : Boolean(recipient);
   const list = rewards.data ?? [];
   const total = list.reduce((sum, award) => sum + Number(award.amountKobo), 0);
   const paid = list.filter((award) => award.status === 'PAID').reduce((sum, award) => sum + Number(award.amountKobo), 0);
 
   const requestPayout = useMutation({
-    mutationFn: (awardId: string) => post(`/me/rewards/${awardId}/payout`),
+    mutationFn: (awardId: string) => post<{ riskHold?: boolean }>(`/me/rewards/${awardId}/payout`),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.rewards }),
   });
 
@@ -365,7 +370,7 @@ export function RewardsPage() {
                   Prize payouts aren’t enabled yet. Your prize is safe and will be claimable once they are.
                 </Notice>
               ) : isApiError(requestPayout.error, 409) ? (
-                <Notice tone="neutral">A payout was already requested for this prize, or it isn’t claimable. Add payout details first if you haven’t.</Notice>
+                <Notice tone="neutral">{requestPayout.error.message}</Notice>
               ) : (
                 <ErrorNotice error={requestPayout.error} />
               )}
@@ -396,8 +401,8 @@ export function RewardsPage() {
                       <button
                         type="button"
                         className="btn-primary btn-sm"
-                        disabled={!recipient || requestPayout.isPending}
-                        title={recipient ? undefined : 'Add payout details first'}
+                        disabled={!canRequest || requestPayout.isPending}
+                        title={canRequest ? undefined : kycRequired ? 'Verify your identity first' : 'Add payout details first'}
                         onClick={() => requestPayout.mutate(award.id)}
                       >
                         {requestPayout.isPending && requestPayout.variables === award.id ? 'Requesting…' : 'Request payout'}
@@ -410,14 +415,16 @@ export function RewardsPage() {
           )}
           {requestPayout.isSuccess && (
             <Notice tone="ok" className="mt-4" title="Payout requested">
-              Jump reviews every payout before sending it. You’ll get a notification when it’s on its way.
+              {requestPayout.data?.riskHold
+                ? 'This one needs a closer review before it’s sent, which can take up to two working days. You’ll get a notification when it’s on its way.'
+                : 'Jump reviews every payout before sending it. You’ll get a notification when it’s on its way.'}
             </Notice>
           )}
         </section>
 
         <section>
           <SectionTitle>Payout details</SectionTitle>
-          {recipient && !editing ? (
+          {kycRequired ? <KycPanel /> : recipient && !editing ? (
             <div className="rounded-md border border-line bg-card p-4">
               <p className="text-[15px] font-bold">{recipient.accountName}</p>
               <p className="num mt-1 text-[13px] text-ink-2">
@@ -439,9 +446,9 @@ export function RewardsPage() {
               onCancel={recipient ? () => setEditing(false) : undefined}
             />
           )}
-          <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
+          {!kycRequired && <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
             We only keep the account name, bank and last four digits. Jump reviews and approves every payout before it’s sent.
-          </p>
+          </p>}
         </section>
       </div>
     </div>
@@ -629,6 +636,10 @@ export function WalletPage() {
               </button>
               {fund.error && <ErrorNotice error={fund.error} />}
             </form>
+          </div>
+          <div id="verify" className="mt-8 scroll-mt-24">
+            <SectionTitle>Identity &amp; payouts</SectionTitle>
+            <KycPanel />
           </div>
         </aside>
       </div>

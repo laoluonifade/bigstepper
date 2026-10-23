@@ -46,6 +46,20 @@ export class PaystackClient {
     );
   }
 
+  /** Creates the Paystack customer for an email, or returns the existing one (https://paystack.com/docs/api/customer/#create). */
+  createCustomer(input: { email: string; first_name: string; last_name: string }) {
+    return this.request<{ customer_code: string; id: number }>('/customer', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  /**
+   * Starts identity validation: Paystack checks the BVN belongs to the named holder of the bank account.
+   * The result arrives as a customeridentification.success or .failed webhook
+   * (https://paystack.com/docs/identity-verification/validate-customer/).
+   */
+  validateCustomer(customerCode: string, input: { country: 'NG'; type: 'bank_account'; account_number: string; bvn: string; bank_code: string; first_name: string; last_name: string }) {
+    return this.request<unknown>(`/customer/${encodeURIComponent(customerCode)}/identification`, { method: 'POST', body: JSON.stringify(input) });
+  }
+
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const secret = this.config.getOrThrow<string>('PAYSTACK_SECRET_KEY');
     let response: Response;

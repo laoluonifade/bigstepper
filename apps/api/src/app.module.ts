@@ -27,6 +27,7 @@ import { StravaModule } from './strava/strava.module';
 import { GeoModule } from './geo/geo.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { SponsorsModule } from './sponsors/sponsors.module';
+import { AmlModule } from './aml/aml.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { SponsorsModule } from './sponsors/sponsors.module';
     }),
     RedisModule,
     MailModule,
+    AmlModule,
     FeedModule,
     JobsModule,
     AuthModule,

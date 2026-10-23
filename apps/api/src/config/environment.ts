@@ -87,6 +87,10 @@ export function validateEnvironment(env: Environment) {
     LEGAL_APPROVAL_CONFIRMED: live,
     PAYSTACK_APPROVAL_CONFIRMED: live,
     PAYSTACK_SECRET_KEY: paystackSecretKey,
+    // Salt for BVN and account-number hashes, so duplicates can be matched without storing them.
+    KYC_HASH_SECRET: env.KYC_HASH_SECRET?.trim() || `kyc:${jwtSecret}`,
+    // Sandbox only: verify KYC straight away instead of waiting for Paystack's identity webhook.
+    KYC_SANDBOX_AUTOVERIFY: paymentsMode === 'test' && env.KYC_SANDBOX_AUTOVERIFY?.trim().toLowerCase() === 'true',
     ZEPTOMAIL_API_KEY: env.ZEPTOMAIL_API_KEY?.trim() || '',
     ZEPTOMAIL_API_URL: env.ZEPTOMAIL_API_URL?.trim() || 'https://api.zeptomail.com/v1.1/email',
     ZEPTOMAIL_FROM_ADDRESS: env.ZEPTOMAIL_FROM_ADDRESS?.trim() || '',

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AppLink } from '../router';
+import { AdminLink, AppLink } from '../router';
 import { appUrl } from '../api';
 import { FormEvent, useState } from 'react';
 import { CheckIcon, WalletIcon } from '../icons';
@@ -30,7 +30,23 @@ interface PayoutRequest {
   blocked: boolean;
   reviewedBy: string | null;
   transferStatus: string | null;
+  /** Held for a documented review: why, from the AML checks. */
+  riskHold: boolean;
+  holdReasons: string[];
+  escalatedAt: string | null;
+  decisionNote: string | null;
+  kycVerified: boolean;
+  riskScore: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  accountHold: boolean;
+  openFlags: number;
 }
+
+export const RISK_TONE: Record<string, string> = {
+  LOW: 'border-ok/60 bg-ok-wash text-ok',
+  MEDIUM: 'border-warn/60 bg-warn-wash text-warn',
+  HIGH: 'border-bad/60 bg-bad-wash text-bad',
+};
 
 type View = 'pending' | 'history';
 
@@ -102,28 +118,31 @@ export function AdminPayoutsPage() {
 
 function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<'idle' | 'approve' | 'reject'>('idle');
+  const [mode, setMode] = useState<'idle' | 'approve' | 'reject' | 'escalate'>('idle');
+  const [note, setNote] = useState('');
   // Sending money needs a fresh code emailed to the signed-in admin.
   const [code, setCode] = useState('');
   const sendCode = useMutation({ mutationFn: () => post('/admin-auth/confirm-code') });
   const [reason, setReason] = useState('');
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
   const approve = useMutation({
-    mutationFn: () => post<{ status: string }>(`/admin/payouts/${item.id}/approve`, { code }),
+    mutationFn: () => post<{ status: string }>(`/admin/payouts/${item.id}/approve`, { code, note: note.trim() || undefined }),
     onSuccess: refresh,
     onSettled: () => setCode(''),
   });
   const reject = useMutation({ mutationFn: () => post(`/admin/payouts/${item.id}/reject`, { reason: reason.trim() }), onSuccess: refresh });
+  const escalate = useMutation({ mutationFn: () => post(`/admin/risk/payouts/${item.id}/escalate`, { note: note.trim() }), onSuccess: () => { setMode('idle'); setNote(''); refresh(); } });
+  const needsNote = item.riskHold && note.trim().length < 10;
 
   const name = item.displayName ?? item.email;
   const pending = item.status === 'PENDING_APPROVAL';
   const onHold = new Date(item.availableForPayoutAt) > new Date();
-  const blocked = item.blocked || onHold;
+  const blocked = item.blocked || onHold || item.accountHold || !item.kycVerified;
   const status = STATUS[item.transferStatus === 'RECONCILIATION_REQUIRED' ? 'PROCESSING' : item.status] ?? { label: item.status, tone: 'border-line bg-paper text-ink-2' };
 
   function submitApprove(event: FormEvent) {
     event.preventDefault();
-    if (code.length === 6) approve.mutate();
+    if (code.length === 6 && !needsNote) approve.mutate();
   }
   function submitReject(event: FormEvent) {
     event.preventDefault();
@@ -182,8 +201,35 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
         </p>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5 text-[12px]">
+        <span className={cx('tag h-5 px-1.5 text-[9.5px]', RISK_TONE[item.riskLevel])}>{item.riskLevel} risk · {item.riskScore}</span>
+        {item.openFlags > 0 && <span className="font-semibold text-bad">{item.openFlags} open flag{item.openFlags === 1 ? '' : 's'}</span>}
+        {!item.kycVerified && <span className="font-semibold text-bad">Not the KYC-verified account</span>}
+        {item.escalatedAt && <span className="tag h-5 border-bad/60 bg-bad-wash px-1.5 text-[9.5px] text-bad">Escalated {formatRelative(item.escalatedAt)}</span>}
+        <AdminLink to={`/risk?user=${item.userId}`} className="ml-auto font-semibold underline underline-offset-4">Risk profile</AdminLink>
+      </div>
+
+      {pending && item.riskHold && item.holdReasons.length > 0 && (
+        <div className="px-4 pb-3">
+          <Notice tone="warn" title="Held for review">
+            <ul className="list-disc space-y-0.5 pl-4">{item.holdReasons.map((why) => <li key={why}>{why}</li>)}</ul>
+            {item.decisionNote && <p className="mt-2">Note: “{item.decisionNote}”</p>}
+          </Notice>
+        </div>
+      )}
+
       {pending && blocked && (
         <div className="px-4 pb-3">
+          {item.accountHold && (
+            <Notice tone="warn" title="Account on payout hold" className="mb-2">
+              Review the risk profile and release the hold before sending this.
+            </Notice>
+          )}
+          {!item.kycVerified && (
+            <Notice tone="warn" title="Unverified payout account" className="mb-2">
+              This account wasn’t verified with the runner’s BVN. They need to complete KYC before this can be sent.
+            </Notice>
+          )}
           {item.blocked && (
             <Notice tone="warn" title="Payment hold">
               This recipient or the competition funding is under review, so the prize can’t be paid out yet. Wait until the issue is resolved.
@@ -203,6 +249,7 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
           {item.reviewedBy && ` by ${item.reviewedBy}`}
           {item.reviewedAt && ` on ${formatDate(item.reviewedAt, { year: 'numeric' })}`}
           {item.rejectionReason && <span className="mt-1 block text-ink">“{item.rejectionReason}”</span>}
+          {item.status !== 'REJECTED' && item.decisionNote && <span className="mt-1 block text-ink">Decision: “{item.decisionNote}”</span>}
         </p>
       )}
 
@@ -214,7 +261,22 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
           <button type="button" className="btn-quiet btn-sm" onClick={() => setMode('reject')}>
             Reject
           </button>
+          {!item.escalatedAt && <button type="button" className="btn-quiet btn-sm text-bad" onClick={() => setMode('escalate')}>
+            Escalate
+          </button>}
         </div>
+      )}
+
+      {pending && mode === 'escalate' && (
+        <form onSubmit={(event) => { event.preventDefault(); if (note.trim().length >= 5) escalate.mutate(); }} className="space-y-3 border-t border-line bg-paper px-4 py-4">
+          <p className="text-[14px]">Escalate for investigation, for suspected coordinated laundering or repeat violations. The account’s payouts are held and its open flags escalated until someone clears it.</p>
+          <textarea className="field min-h-[72px] py-3" maxLength={1000} placeholder="What you found and why it needs investigating" value={note} onChange={(event) => setNote(event.target.value)} />
+          {escalate.error && <p className="text-[13px] font-semibold text-bad">{escalate.error.message}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-danger btn-sm" disabled={note.trim().length < 5 || escalate.isPending}>{escalate.isPending ? 'Escalating…' : 'Escalate'}</button>
+            <button type="button" className="btn-quiet btn-sm" onClick={() => setMode('idle')}>Cancel</button>
+          </div>
+        </form>
       )}
 
       {pending && mode === 'approve' && (
@@ -222,6 +284,10 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
           <p className="text-[14px]">
             Send <span className="font-bold">{formatMoney(item.amountKobo)}</span> to {item.accountName} now? Paystack starts the transfer immediately and it can’t be pulled back.
           </p>
+          {item.riskHold && <label className="block">
+            <span className="label">Your decision, for the audit log</span>
+            <textarea className="field min-h-[72px] py-3" maxLength={1000} placeholder="Why this payout is legitimate despite the hold (at least 10 characters)" value={note} onChange={(event) => setNote(event.target.value)} />
+          </label>}
           {!sendCode.isSuccess ? <button type="button" className="btn-secondary btn-sm" disabled={sendCode.isPending} onClick={() => sendCode.mutate()}>
             {sendCode.isPending ? 'Sending…' : 'Email me a confirmation code'}
           </button> : <label className="block">
@@ -234,7 +300,7 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <button className="btn-primary btn-sm" disabled={code.length !== 6 || approve.isPending}>
+            <button className="btn-primary btn-sm" disabled={code.length !== 6 || needsNote || approve.isPending}>
               {approve.isPending ? 'Sending…' : `Send ${formatMoney(item.amountKobo)}`}
             </button>
             <button type="button" className="btn-quiet btn-sm" onClick={() => setMode('idle')} disabled={approve.isPending}>

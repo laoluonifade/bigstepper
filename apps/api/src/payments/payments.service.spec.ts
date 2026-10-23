@@ -9,6 +9,7 @@ describe('PaymentsService webhook signatures', () => {
     {} as never,
     { getOrThrow: () => secret, get: (key: string) => key === 'PAID_CONTESTS_ENABLED' ? true : secret } as never,
     {} as never,
+    {} as never,
   );
 
   it('accepts the exact HMAC SHA512 signature for the raw body', () => {
@@ -45,7 +46,8 @@ describe('funded-free checkout', () => {
     get: jest.fn((key) => key === 'PAID_CONTESTS_ENABLED' ? true : key === 'PAYSTACK_SECRET_KEY' ? 'sk_test_example' : undefined),
     getOrThrow: jest.fn((key) => key === 'WEB_ORIGIN' ? 'https://jump.example' : undefined),
   };
-  const service = new PaymentsService(intents as never, {} as never, dataSource as never, config as never, paystack as never);
+  const aml = { assertVerified: jest.fn(), assertPrizeFunding: jest.fn(), assertWalletFunding: jest.fn() };
+  const service = new PaymentsService(intents as never, {} as never, dataSource as never, config as never, paystack as never, aml as never);
 
   it('uses the funder-selected amount for an open free challenge', async () => {
     const result = await service.fundPrize(user.id, table.id, 12_345);
@@ -116,7 +118,7 @@ describe('prize funding settlement', () => {
       query: jest.fn().mockResolvedValueOnce([{ amount: '0' }]).mockResolvedValueOnce([{ id: 'journal' }]).mockResolvedValueOnce([]),
     };
     const dataSource = { transaction: jest.fn(async (work: (transactionManager: typeof manager) => Promise<unknown>) => work(manager)) };
-    const service = new PaymentsService({} as never, {} as never, dataSource as never, {} as never, {} as never);
+    const service = new PaymentsService({} as never, {} as never, dataSource as never, {} as never, {} as never, {} as never);
 
     await (service as unknown as { fulfillPrizeFunding: (payment: typeof intent, provider: { id: number; status: string }) => Promise<void> })
       .fulfillPrizeFunding(intent, { id: 123, status: 'success' });

@@ -222,7 +222,7 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
   return <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
     <div className="min-w-0">
       {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-      <h1 className="mt-0.5 text-[26px] font-extrabold tracking-tight">{title}</h1>
+      <h1 className="mt-0.5 text-[22px] font-extrabold tracking-tight sm:text-[26px]">{title}</h1>
       {description && <p className="mt-1 max-w-2xl text-[14px] text-ink-2">{description}</p>}
     </div>
     {actions && <div className="flex shrink-0 gap-2">{actions}</div>}

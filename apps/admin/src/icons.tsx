@@ -109,3 +109,15 @@ export const TableIcon = (p: IconProps) => (
     <path d="M8 5v15" />
   </Icon>
 );
+
+export const MenuIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </Icon>
+);
+
+export const MoreIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth={3} strokeLinecap="round" />
+  </Icon>
+);

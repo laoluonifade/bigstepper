@@ -192,7 +192,10 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () =
       tone: disabled ? 'warn' : 'bad',
       title: offline ? 'You’re offline' : disabled ? 'Not available right now' : undefined,
       message: error instanceof Error ? error.message : 'Something went wrong.',
-      action: retry.current && !disabled ? { label: 'Retry', run: () => retry.current?.() } : undefined,
+      // The API asks for KYC before paid features; send people straight to it.
+      action: error instanceof Error && error.message.startsWith('Verify your identity')
+        ? { label: 'Verify now', run: () => window.location.assign('/wallet#verify') }
+        : retry.current && !disabled ? { label: 'Retry', run: () => retry.current?.() } : undefined,
     });
   }, [error]);
   return null;

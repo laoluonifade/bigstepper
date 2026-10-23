@@ -13,6 +13,7 @@ import { PaystackClient } from './paystack.client';
 import { ProviderWebhook } from './provider-webhook.entity';
 import { CreateRecipientDto } from './payout.dto';
 import * as bcrypt from 'bcrypt';
+import { AmlService } from '../aml/aml.service';
 
 @Injectable()
 export class PaymentsService {
@@ -22,6 +23,7 @@ export class PaymentsService {
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly paystack: PaystackClient,
+    private readonly aml: AmlService,
   ) {}
 
   /** The return page is for navigation only; webhooks and verification still decide payment status. */
@@ -78,6 +80,7 @@ export class PaymentsService {
     await this.assertPaidEligibility(userId);
     const legacyFixed = table.guaranteedPrizeKobo !== null;
     if (!Number.isSafeInteger(amountKobo) || amountKobo < 100 || amountKobo > (legacyFixed ? 1_000_000_000 : 100_000_000)) throw new BadRequestException('Funding amount is outside the allowed range');
+    await this.aml.assertPrizeFunding(amountKobo);
     if ((legacyFixed ? table.status !== 'PENDING_FUNDING' || amountKobo !== table.guaranteedPrizeKobo : !['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(table.status)) ||
         (table.scoringClosesAt && table.scoringClosesAt <= new Date())) throw new ConflictException('Prize funding is unavailable or the amount is invalid');
     const pending = await this.intents.exist({ where: { userId, tableId, purpose: 'SPONSOR_FUNDING', status: In(['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED']) } });
@@ -107,6 +110,7 @@ export class PaymentsService {
     if (!user) throw new NotFoundException('User not found');
     if (!user.emailVerified) throw new ForbiddenException('Verify your email before funding a wallet');
     await this.assertPaidEligibility(userId);
+    await this.aml.assertWalletFunding(userId, amountKobo);
     const intent = await this.intents.save(this.intents.create({
       userId,
       tableId: null,
@@ -218,9 +222,16 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * Only used while KYC is switched off. With KYC on, the payout account is the bank account verified
+   * with the runner's BVN (AmlService.submitKyc), so payouts never go to a third party's account.
+   */
   async createPayoutRecipient(userId: string, input: CreateRecipientDto) {
     this.assertPayoutsEnabled();
     await this.assertPaidEligibility(userId);
+    if ((await this.aml.settings()).kycRequired) {
+      throw new ForbiddenException('Payouts go to the bank account you verified. To use a different account, verify your identity again with it.');
+    }
     const user = await this.dataSource.getRepository(User)
       .createQueryBuilder('user')
       .addSelect('user.passwordHash')
@@ -235,11 +246,12 @@ export class PaymentsService {
       const existing = await manager.query(`SELECT "id" FROM "payout_recipients" WHERE "userId"=$1 FOR UPDATE`, [userId]) as Array<{ id: string }>;
       const availableForPayoutAt = existing[0] ? new Date(Date.now() + 24 * 60 * 60 * 1000) : new Date();
       const rows = await manager.query(
-        `INSERT INTO "payout_recipients" ("userId","providerRecipientCode","accountName","bankCode","accountLast4","availableForPayoutAt") VALUES ($1,$2,$3,$4,$5,$6)
+        `INSERT INTO "payout_recipients" ("userId","providerRecipientCode","accountName","bankCode","accountLast4","availableForPayoutAt","accountHash","kycVerified") VALUES ($1,$2,$3,$4,$5,$6,$7,false)
          ON CONFLICT ("userId") DO UPDATE SET "providerRecipientCode"=EXCLUDED."providerRecipientCode","accountName"=EXCLUDED."accountName",
-           "bankCode"=EXCLUDED."bankCode","accountLast4"=EXCLUDED."accountLast4","availableForPayoutAt"=EXCLUDED."availableForPayoutAt","updatedAt"=now()
+           "bankCode"=EXCLUDED."bankCode","accountLast4"=EXCLUDED."accountLast4","availableForPayoutAt"=EXCLUDED."availableForPayoutAt",
+           "accountHash"=EXCLUDED."accountHash","kycVerified"=false,"updatedAt"=now()
          RETURNING "id","accountName","bankCode","accountLast4","currency","availableForPayoutAt"`,
-        [userId, recipient.recipient_code, recipient.details.account_name, input.bankCode, input.accountNumber.slice(-4), availableForPayoutAt],
+        [userId, recipient.recipient_code, recipient.details.account_name, input.bankCode, input.accountNumber.slice(-4), availableForPayoutAt, this.aml.accountHash(input.bankCode, input.accountNumber)],
       ) as Array<Record<string, unknown>>;
       await manager.query(
         `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,'payout_recipient',$3,$4)`,
@@ -255,29 +267,44 @@ export class PaymentsService {
     });
   }
 
+  /**
+   * Checks the withdrawal limits for the account's risk level first. Requests over the review threshold,
+   * or from flagged, held or new accounts, are saved with a risk hold for a documented admin decision.
+   */
   async requestPayout(userId: string, awardId: string) {
     this.assertPayoutsEnabled();
     await this.assertPaidEligibility(userId);
-    const rows = await this.dataSource.query(
-      `INSERT INTO "payout_requests" ("awardId","recipientId")
-       SELECT a."id",r."id" FROM "prize_awards" a
-       JOIN "payout_recipients" r ON r."userId"=a."winnerUserId"
-       JOIN "competition_tables" t ON t."id"=a."tableId"
-       WHERE a."id"=$1 AND a."winnerUserId"=$2 AND a."status"='PENDING_APPROVAL' AND r."availableForPayoutAt" <= now()
-         AND (t."type"<>'sponsored' OR (
-           EXISTS (SELECT 1 FROM "payment_intents" i WHERE i."tableId"=t."id" AND i."purpose"='SPONSOR_FUNDING' AND i."status"='SUCCEEDED')
-           AND NOT EXISTS (SELECT 1 FROM "payment_intents" i WHERE i."tableId"=t."id" AND i."purpose"='SPONSOR_FUNDING' AND i."status"='DISPUTED')
-         ))
-       ON CONFLICT ("awardId") WHERE "status" <> 'REJECTED' DO NOTHING RETURNING *`, [awardId, userId],
-    ) as Array<Record<string, unknown>>;
-    if (!rows[0]) throw new ConflictException('Award is unavailable or a payout was already requested');
-    return rows[0];
+    return this.dataSource.transaction(async (manager) => {
+      const [award] = await manager.query(`SELECT "amountKobo" FROM "prize_awards" WHERE "id"=$1 AND "winnerUserId"=$2 FOR UPDATE`, [awardId, userId]) as Array<{ amountKobo: string }>;
+      if (!award) throw new NotFoundException('Award not found');
+      const holdReasons = await this.aml.assessPayout(manager, userId, Number(award.amountKobo));
+      const rows = await manager.query(
+        `INSERT INTO "payout_requests" ("awardId","recipientId")
+         SELECT a."id",r."id" FROM "prize_awards" a
+         JOIN "payout_recipients" r ON r."userId"=a."winnerUserId"
+         JOIN "competition_tables" t ON t."id"=a."tableId"
+         WHERE a."id"=$1 AND a."winnerUserId"=$2 AND a."status"='PENDING_APPROVAL' AND r."availableForPayoutAt" <= now()
+           AND (t."type"<>'sponsored' OR (
+             EXISTS (SELECT 1 FROM "payment_intents" i WHERE i."tableId"=t."id" AND i."purpose"='SPONSOR_FUNDING' AND i."status"='SUCCEEDED')
+             AND NOT EXISTS (SELECT 1 FROM "payment_intents" i WHERE i."tableId"=t."id" AND i."purpose"='SPONSOR_FUNDING' AND i."status"='DISPUTED')
+           ))
+         ON CONFLICT ("awardId") WHERE "status" <> 'REJECTED' DO NOTHING RETURNING *`, [awardId, userId],
+      ) as Array<Record<string, unknown>>;
+      if (!rows[0]) throw new ConflictException('Award is unavailable or a payout was already requested');
+      await this.aml.holdPayout(manager, rows[0].id as string, userId, holdReasons);
+      return { ...rows[0], riskHold: holdReasons.length > 0 };
+    });
   }
 
   async requestCreatorPayout(userId: string, earningId: string) {
     this.assertPayoutsEnabled();
     await this.assertPaidEligibility(userId);
     return this.dataSource.transaction(async (manager) => {
+      const [earning] = await manager.query(
+        `SELECT e."amountKobo" FROM "creator_earnings" e JOIN "creator_profiles" c ON c."id"=e."creatorProfileId" WHERE e."id"=$1 AND c."userId"=$2 FOR UPDATE OF e`, [earningId, userId],
+      ) as Array<{ amountKobo: string }>;
+      if (!earning) throw new NotFoundException('Creator earning not found');
+      const holdReasons = await this.aml.assessPayout(manager, userId, Number(earning.amountKobo));
       const rows = await manager.query(
         `INSERT INTO "payout_requests" ("creatorEarningId","recipientId")
          SELECT e."id",r."id" FROM "creator_earnings" e
@@ -289,7 +316,8 @@ export class PaymentsService {
       ) as Array<Record<string, unknown>>;
       if (!rows[0]) throw new ConflictException('Creator earning is unavailable, has no payout recipient, or was already requested');
       await manager.query(`UPDATE "creator_earnings" SET "status"='PENDING_PAYOUT' WHERE "id"=$1`, [earningId]);
-      return rows[0];
+      await this.aml.holdPayout(manager, rows[0].id as string, userId, holdReasons);
+      return { ...rows[0], riskHold: holdReasons.length > 0 };
     });
   }
 
@@ -308,6 +336,9 @@ export class PaymentsService {
                  EXISTS (SELECT 1 FROM "payment_intents" fi WHERE fi."tableId"=at."id" AND fi."purpose"='SPONSOR_FUNDING' AND fi."status"='DISPUTED')
                ))) "blocked",
               reviewer."displayName" "reviewedBy",
+              p."riskHold", p."holdReasons", p."escalatedAt", p."decisionNote", r."kycVerified",
+              COALESCE(ur."score", 0) "riskScore", COALESCE(ur."level", 'LOW') "riskLevel", COALESCE(ur."payoutHold", false) "accountHold",
+              (SELECT count(*)::integer FROM "risk_flags" f WHERE f."status" IN ('OPEN','ESCALATED') AND (f."userId"=u."id" OR f."relatedUserIds" ? u."id"::text)) "openFlags",
               (SELECT pa."status" FROM "payout_attempts" pa WHERE pa."payoutRequestId" = p."id" ORDER BY pa."createdAt" DESC LIMIT 1) "transferStatus"
        FROM "payout_requests" p
        JOIN "payout_recipients" r ON r."id" = p."recipientId"
@@ -319,8 +350,9 @@ export class PaymentsService {
        LEFT JOIN "creator_earnings" e ON e."id" = p."creatorEarningId"
        LEFT JOIN "competition_tables" et ON et."id" = e."tableId"
        LEFT JOIN "profiles" reviewer ON reviewer."userId" = p."approvedByUserId"
+       LEFT JOIN "user_risk" ur ON ur."userId" = u."id"
        WHERE ($1 = 'pending') = (p."status" = 'PENDING_APPROVAL')
-       ORDER BY CASE WHEN $1 = 'pending' THEN p."createdAt" END ASC, p."updatedAt" DESC
+       ORDER BY CASE WHEN $1 = 'pending' THEN p."escalatedAt" IS NULL END, CASE WHEN $1 = 'pending' THEN p."createdAt" END ASC, p."updatedAt" DESC
        LIMIT 200`,
       [view],
     );
@@ -328,14 +360,15 @@ export class PaymentsService {
 
   /**
    * Approving a payout sends it: one admin reviews the request and the Paystack transfer starts
-   * straight away. Admins can't approve a payout to themselves.
+   * straight away. Admins can't approve a payout to themselves. A payout held for risk needs a written
+   * decision, and an account on a payout hold must be cleared first.
    */
-  async approvePayout(actorUserId: string, payoutId: string) {
+  async approvePayout(actorUserId: string, payoutId: string, note?: string) {
     this.assertPayoutsEnabled();
     const claimed = await this.dataSource.transaction(async (manager) => {
       const rows = await manager.query(
         `SELECT p."id", p."status", r."userId", COALESCE(a."amountKobo", e."amountKobo") "amountKobo",
-                r."providerRecipientCode", r."availableForPayoutAt",
+                r."providerRecipientCode", r."availableForPayoutAt", p."riskHold", r."kycVerified",
                 (COALESCE(ue."paidCompetitionEligible" = false, false) OR
                  (t."type"='sponsored' AND (
                    NOT EXISTS (SELECT 1 FROM "payment_intents" fi WHERE fi."tableId"=t."id" AND fi."purpose"='SPONSOR_FUNDING' AND fi."status"='SUCCEEDED') OR
@@ -349,22 +382,23 @@ export class PaymentsService {
          LEFT JOIN "user_eligibility" ue ON ue."userId" = r."userId"
          WHERE p."id" = $1 FOR UPDATE OF p`,
         [payoutId],
-      ) as Array<{ id: string; status: string; userId: string; amountKobo: string; providerRecipientCode: string; availableForPayoutAt: Date; blocked: boolean }>;
+      ) as Array<{ id: string; status: string; userId: string; amountKobo: string; providerRecipientCode: string; availableForPayoutAt: Date; blocked: boolean; riskHold: boolean; kycVerified: boolean }>;
       const payout = rows[0];
       if (!payout) throw new NotFoundException('Payout request not found');
       if (payout.status !== 'PENDING_APPROVAL') throw new ConflictException('This payout was already reviewed');
       if (payout.userId === actorUserId) throw new ForbiddenException('You can’t approve a payout to yourself');
       if (payout.blocked) throw new ConflictException('The recipient or competition funding is under a payment hold');
       if (new Date(payout.availableForPayoutAt) > new Date()) throw new ConflictException('Their bank details changed recently, so this payout is on a 24-hour security hold');
+      await this.aml.assertApprovable(manager, payout, note);
       const reference = `payout-${randomUUID()}`;
       await manager.query(
-        `UPDATE "payout_requests" SET "status"='PROCESSING',"approvedByUserId"=$1,"reviewedAt"=now(),"updatedAt"=now() WHERE "id"=$2`,
-        [actorUserId, payoutId],
+        `UPDATE "payout_requests" SET "status"='PROCESSING',"approvedByUserId"=$1,"reviewedAt"=now(),"decisionNote"=COALESCE($3,"decisionNote"),"updatedAt"=now() WHERE "id"=$2`,
+        [actorUserId, payoutId, note?.trim() || null],
       );
       await manager.query(`INSERT INTO "payout_attempts" ("payoutRequestId","reference") VALUES ($1,$2)`, [payoutId, reference]);
       await manager.query(
         `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAYOUT_APPROVED','payout_request',$2,$3)`,
-        [actorUserId, payoutId, JSON.stringify({ amountKobo: Number(payout.amountKobo), reference })],
+        [actorUserId, payoutId, JSON.stringify({ amountKobo: Number(payout.amountKobo), reference, userId: payout.userId, riskHold: payout.riskHold, note: note?.trim() || null })],
       );
       return { ...payout, reference };
     });
@@ -392,7 +426,7 @@ export class PaymentsService {
     return this.dataSource.transaction(async (manager) => {
       // TypeORM returns [rows, affected] for UPDATE ... RETURNING on Postgres.
       const [rows] = await manager.query(
-        `UPDATE "payout_requests" p SET "status"='REJECTED',"rejectionReason"=$3,"approvedByUserId"=$1,"reviewedAt"=now(),"updatedAt"=now()
+        `UPDATE "payout_requests" p SET "status"='REJECTED',"rejectionReason"=$3,"decisionNote"=$3,"approvedByUserId"=$1,"reviewedAt"=now(),"updatedAt"=now()
          FROM "payout_recipients" r
          WHERE p."id"=$2 AND p."status"='PENDING_APPROVAL' AND r."id"=p."recipientId"
          RETURNING p."id", p."creatorEarningId", r."userId"`,
@@ -402,7 +436,7 @@ export class PaymentsService {
       if (rows[0].creatorEarningId) await manager.query(`UPDATE "creator_earnings" SET "status"='EARNED' WHERE "id"=$1`, [rows[0].creatorEarningId]);
       await manager.query(
         `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAYOUT_REJECTED','payout_request',$2,$3)`,
-        [actorUserId, payoutId, JSON.stringify({ reason })],
+        [actorUserId, payoutId, JSON.stringify({ reason, userId: rows[0].userId })],
       );
       await manager.query(
         `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_REJECTED','Payout not approved',$2,'/wallet')`,
@@ -487,6 +521,8 @@ export class PaymentsService {
     } else if (inbox.eventType.startsWith('charge.dispute.')) {
       const data = inbox.payload.data as { transaction?: { reference?: string } } | undefined;
       if (data?.transaction?.reference) await this.freezeDisputedFunds(data.transaction.reference, inbox.eventType);
+    } else if (inbox.eventType.startsWith('customeridentification.')) {
+      await this.aml.applyIdentificationEvent(inbox.eventType, inbox.payload.data as { customer_code?: string; reason?: string } | undefined);
     } else if (inbox.eventType.startsWith('refund.')) {
       const data = inbox.payload.data as { id?: number; status?: string; transaction?: { reference?: string } } | undefined;
       if (data?.transaction?.reference) {
@@ -728,11 +764,12 @@ export class PaymentsService {
   }
 
   /**
-   * Runners don't need approval for paid challenges or payouts. The only block is the freeze put on an
-   * account after a payment dispute (paidCompetitionEligible=false), which support lifts.
+   * Paid challenges, funding and payouts need KYC Level 2 (when switched on in the AML settings). The
+   * freeze put on an account after a payment dispute (paidCompetitionEligible=false) also blocks them.
    */
   private async assertPaidEligibility(userId: string, manager: import('typeorm').EntityManager = this.dataSource.manager) {
     if (await this.isPaidBlocked(userId, manager)) throw new ForbiddenException('Paid features are paused on this account after a payment dispute. Contact support.');
+    await this.aml.assertVerified(userId, manager);
   }
 
   private async isPaidBlocked(userId: string, manager: import('typeorm').EntityManager = this.dataSource.manager) {

@@ -273,9 +273,9 @@ export class AdminService {
     return { verified };
   }
 
-  async approvePayout(actorUserId: string, payoutId: string, code: string) {
+  async approvePayout(actorUserId: string, payoutId: string, code: string, note?: string) {
     await this.adminAuth.assertConfirmCode(actorUserId, code);
-    return this.paymentsService.approvePayout(actorUserId, payoutId);
+    return this.paymentsService.approvePayout(actorUserId, payoutId, note);
   }
 
   async rejectPayout(actorUserId: string, payoutId: string, reason: string) {
