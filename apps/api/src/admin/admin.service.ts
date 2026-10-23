@@ -13,6 +13,7 @@ import { ApprovePaidTableDto, CreatePaidTableDto } from './paid-table.dto';
 import { reminderConfig } from '../tables/reminder-config';
 import { PaymentsService } from '../payments/payments.service';
 import { scoringColumns } from '../tables/scoring-columns';
+import { inviteClubToPaid } from '../tables/club-competitions';
 import { RANK_ORDER } from '../tables/scoring-engine';
 import { calculatePrizeBreakdown, cashPrizeEligible } from '../payments/financial-policy';
 import { allocateFundedPrizes, allocatePrizes, assertPrizeSplit } from '../tables/prize-split';
@@ -252,6 +253,7 @@ export class AdminService {
       if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('Competition is not pending approval');
       table.status = 'OPEN_FOR_ENTRY';
       await manager.save(table);
+      if (table.communityId) await inviteClubToPaid(manager, table.id);
       await manager.query(`INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAID_CHALLENGE_APPROVED','Your competition is open',$2,$3)`, [table.creatorId, `${table.title} is approved. Runners can now join with code ${table.code}.`, `/competitions/${table.code}`]);
       await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAID_TABLE_APPROVED','competition_table',$2,$3)`, [actorUserId, tableId, JSON.stringify(input)]);
       return table;

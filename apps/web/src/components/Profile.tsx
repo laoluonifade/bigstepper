@@ -13,7 +13,7 @@ import { Avatar, cx, EmptyState, ErrorNotice, Skeleton } from './ui';
  * Shrinks a photo to at most 800px before upload (phone photos are 3–12 MB). Falls back to the
  * original file when the browser can't decode it (e.g. HEIC on desktop Chrome) — the API accepts both.
  */
-async function prepare(file: File): Promise<Blob> {
+export async function prepare(file: File): Promise<Blob> {
   try {
     const bitmap = await createImageBitmap(file);
     const scale = Math.min(1, 800 / Math.max(bitmap.width, bitmap.height));

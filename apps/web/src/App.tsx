@@ -81,8 +81,17 @@ const activity = createRoute({
 });
 const leagues = createRoute({ getParentRoute: () => root, path: '/leagues', component: protectedPage(() => import('./pages/Social'), 'LeaguesPage') });
 const league = createRoute({ getParentRoute: () => root, path: '/leagues/$id', component: protectedPage(() => import('./pages/Social'), 'LeagueDetailPage') });
-const clubs = createRoute({ getParentRoute: () => root, path: '/clubs', component: protectedPage(() => import('./pages/Social'), 'ClubsPage') });
-const club = createRoute({ getParentRoute: () => root, path: '/clubs/$id', component: protectedPage(() => import('./pages/Social'), 'ClubDetailPage') });
+const clubs = createRoute({ getParentRoute: () => root, path: '/clubs', component: protectedPage(() => import('./pages/Clubs'), 'ClubsPage') });
+// Public, so an invite link shows the club before anyone signs up.
+const club = createRoute({
+  getParentRoute: () => root,
+  path: '/clubs/$id',
+  validateSearch: (search: Record<string, unknown>): { invite?: string; join?: boolean } => ({
+    ...(typeof search.invite === 'string' && search.invite ? { invite: search.invite } : {}),
+    ...(search.join === true || search.join === 'true' || search.join === 1 || search.join === '1' ? { join: true } : {}),
+  }),
+  component: page(() => import('./pages/Clubs'), 'ClubDetailPage'),
+});
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(() => import('./pages/You'), 'RewardsPage') });
 const wallet = createRoute({ getParentRoute: () => root, path: '/wallet', component: protectedPage(() => import('./pages/You'), 'WalletPage') });
 const creator = createRoute({ getParentRoute: () => root, path: '/creator', component: protectedPage(() => import('./pages/You'), 'CreatorPage') });

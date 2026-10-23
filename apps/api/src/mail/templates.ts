@@ -60,6 +60,16 @@ export function challengeInviteEmail(to: { address: string; name?: string }, tit
   };
 }
 
+export function clubInviteEmail(to: { address: string; name?: string }, club: string, inviter: string, url: string): MailMessage {
+  const intro = `${inviter} invited you to join ${club} on Jump. See what the club is about, then join in one tap. Club competitions add you automatically.`;
+  return {
+    to,
+    subject: `Join ${club} on Jump`,
+    html: layout('You’re invited to a club', intro, 'See the club', url, 'If you weren’t expecting this invitation, you can ignore it.'),
+    text: `${intro}\n\nSee the club: ${url}`,
+  };
+}
+
 export function challengeReminderEmail(to: { address: string; name?: string }, title: string, url: string): MailMessage {
   const intro = `Your daily reminder for ${title}: record a walk or run today to keep moving up the board. Only verified activities during the competition count.`;
   return {

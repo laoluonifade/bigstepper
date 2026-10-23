@@ -14,8 +14,8 @@ export interface ScoredActivity {
   elapsedSeconds: number;
   /** Null when the source had no elevation (Jump recordings don't yet). */
   elevation: number | null;
-  /** Rules v1 only: the time stored on the credit for older fastest-time races. */
-  legacyCompletionSeconds: number | null;
+  /** Fastest-time races: the activity's best stretch of the race distance (see best-effort.ts), else null. */
+  completionSeconds: number | null;
 }
 
 export interface ScoringRules {
@@ -48,9 +48,6 @@ export interface EntrantScore {
  * then whoever reached a first-to target earliest, then score, then whoever got there first.
  */
 export const RANK_ORDER = `r."qualified" DESC, r."targetReachedAt" ASC NULLS LAST, r."rankScore" DESC NULLS LAST, r."scoredAt" ASC NULLS LAST, r."joinedAt" ASC, r."userId" ASC`;
-
-/** Fixed-distance races count efforts from the distance up to this much longer, scaled to the distance. */
-const COMPARABLE_OVERRUN = 1.1;
 
 export function scoreEntrants(rules: ScoringRules, registrationIds: string[], activities: ScoredActivity[]): Map<string, EntrantScore> {
   const byEntrant = new Map<string, ScoredActivity[]>(registrationIds.map((id) => [id, []]));
@@ -128,20 +125,13 @@ function scoreOne(rules: ScoringRules, activities: ScoredActivity[]): EntrantSco
       return result(total, reached ?? last, { targetReachedAt: reached });
     }
     case 'fastest': {
-      if (rules.rulesVersion < 2) {
-        const times = activities.filter((activity) => activity.legacyCompletionSeconds !== null);
-        if (!times.length) return result(null, null);
-        return result(Math.min(...times.map((activity) => activity.legacyCompletionSeconds!)), null);
-      }
-      const target = rules.targetDistanceMetres ?? 0;
+      // The quickest best-effort time any qualifying activity set over the race distance.
       let best: { seconds: number; at: Date } | null = null;
       for (const activity of activities) {
-        if (target <= 0 || activity.distance < target || activity.distance > target * COMPARABLE_OVERRUN) continue;
-        // Elapsed time, scaled to exactly the race distance so a slightly long effort isn't penalised.
-        const seconds = activity.elapsedSeconds * target / activity.distance;
-        if (!best || seconds < best.seconds) best = { seconds, at: activity.finishedAt };
+        if (activity.completionSeconds === null || activity.completionSeconds <= 0) continue;
+        if (!best || activity.completionSeconds < best.seconds) best = { seconds: activity.completionSeconds, at: activity.finishedAt };
       }
-      return result(best ? Math.round(best.seconds) : null, best?.at ?? null);
+      return result(best?.seconds ?? null, best?.at ?? null);
     }
     case 'longest': {
       let best: { value: number; at: Date } | null = null;

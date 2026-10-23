@@ -306,24 +306,45 @@ export interface CreatorEarning {
   createdAt: string;
 }
 
+/** owner: created it. admin: a manager the owner appointed. member: everyone else. */
+export type ClubRole = 'owner' | 'admin' | 'member';
+
 export interface Club {
   id: string;
   name: string;
   slug: string;
   ownerUserId: string;
   createdAt: string;
+  description?: string | null;
+  logoUrl?: string | null;
+  accentColor?: string;
+  location?: string | null;
+  website?: string | null;
+  instagram?: string | null;
+  /** open: anyone can join from the page. invite: only with the invite link. */
+  privacy?: 'open' | 'invite';
   memberCount?: number;
+  liveCompetitions?: number;
+  faces?: Array<{ displayName: string; avatarUrl: string | null }>;
+  owner?: { displayName: string; username: string | null } | null;
+  /** Your role here, or null when you're not a member (or not signed in). */
+  myRole?: ClubRole | null;
+  /** Whether the ?invite= code in the link is this club's. */
+  inviteValid?: boolean;
+  /** Owners and managers only. */
+  inviteCode?: string;
 }
 
 export interface ClubMember {
   id: string;
-  clubId: string;
+  clubId?: string;
   userId: string;
-  role: 'owner' | 'admin' | 'member';
+  role: ClubRole;
   joinedAt: string;
   username: string | null;
   displayName: string | null;
   avatarUrl?: string | null;
+  countryCode?: string | null;
 }
 
 export interface ClubStanding {

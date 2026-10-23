@@ -41,6 +41,8 @@ export interface TrackMeasure {
   /** Distance skipped because it was too fast to be on foot. */
   implausibleMetres: number;
   reasons: Set<string>;
+  /** [time ms, metres so far] each time counted distance grew: the run's distance against the clock. */
+  profile: Array<[number, number]>;
 }
 
 interface Smoothed {
@@ -101,6 +103,7 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
   let implausible = 0;
   let fastInARow = 0;
   let anchor = track[0];
+  const profile: Array<[number, number]> = track.length ? [[track[0].at, 0]] : [];
   for (let index = 1; index < track.length; index += 1) {
     const point = track[index];
     const seconds = (point.at - anchor.at) / 1000;
@@ -125,6 +128,7 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
     if (seconds > GAP_SECONDS) reasons.add('GPS_GAP');
     else moving += seconds;
     distance += metres;
+    profile.push([point.at, distance]);
     anchor = point;
   }
 
@@ -140,5 +144,29 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
     usableCount: usable.length,
     implausibleMetres: Math.round(implausible),
     reasons,
+    profile,
   };
+}
+
+/**
+ * The fastest stretch of exactly `metres` anywhere in one activity, in seconds on the clock (pauses
+ * inside the stretch count), like a watch's "best effort". Null when the activity never covered it.
+ * The start of the stretch is interpolated between fixes so a 10K inside a 14 km run is timed fairly.
+ */
+export function bestEffortSeconds(profile: Array<[number, number]>, metres: number): number | null {
+  if (metres <= 0 || profile.length < 2 || profile.at(-1)![1] < metres) return null;
+  let best = Infinity;
+  let start = 0;
+  for (let end = 1; end < profile.length; end += 1) {
+    const [endAt, endMetres] = profile[end];
+    const from = endMetres - metres;
+    if (from < 0) continue;
+    while (start + 1 < end && profile[start + 1][1] <= from) start += 1;
+    const [aAt, aMetres] = profile[start];
+    const [bAt, bMetres] = profile[start + 1];
+    const share = bMetres > aMetres ? (from - aMetres) / (bMetres - aMetres) : 0;
+    const startAt = aAt + (bAt - aAt) * Math.min(1, Math.max(0, share));
+    best = Math.min(best, (endAt - startAt) / 1000);
+  }
+  return Number.isFinite(best) ? Math.round(best) : null;
 }

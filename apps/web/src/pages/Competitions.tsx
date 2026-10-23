@@ -309,6 +309,11 @@ export function NewCompetitionPage() {
   const [emailText, setEmailText] = useState('');
   const [phoneText, setPhoneText] = useState('');
 
+  // Room for the whole club, with space for people who join later.
+  useEffect(() => {
+    if (club.data && !capacity) setCapacity(String(Math.min(10000, Math.max(20, club.data.memberCount * 2))));
+  }, [club.data, capacity]);
+
   const startIso = fromLocalInput(startsAt);
   const endless = openEnded && mode === 'free';
   const scoringIso = endless ? null : fromLocalInput(scoringClosesAt);
@@ -453,7 +458,13 @@ export function NewCompetitionPage() {
               <span className={cx('mt-1 text-[11.5px] leading-snug', mode === value ? 'text-paper/70' : 'text-ink-2')}>{body}</span>
             </label>)}
           </div>}
-          {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>This competition will be linked to your club. You can invite all {club.data.memberCount} members below.</Notice>}
+          {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>
+            {mode === 'paid'
+              ? `All ${club.data.memberCount} members are invited once Jump approves it; they choose whether to pay to enter.`
+              : inviteClubMembers
+                ? `All ${club.data.memberCount} members are entered automatically, and anyone who joins the club later is added while it’s open.`
+                : 'Linked to your club. Members aren’t entered automatically.'}
+          </Notice>}
           {mode === 'paid' && !creator.data && (
             <Notice tone="warn" title="Creator account required" action={<Link to="/creator" className="btn-quiet btn-sm">Become a creator</Link>}>
               Paid competitions earn creators 5% and must be reviewed before opening.
@@ -636,7 +647,7 @@ export function NewCompetitionPage() {
           </section> : <Notice tone="neutral" title="Invite after launch">Save this draft first. You can invite runners after funding or approval opens entry.</Notice>}
           {invitesOpen && <Modal title="Invite runners" onClose={() => setInvitesOpen(false)}>
             <div className="space-y-4">
-              {club.data && <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Invite everyone in {club.data.name}</label>}
+              {club.data && <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Enter everyone in {club.data.name}</label>}
               <Field label="Email addresses" optional hint="Separate with commas or new lines.">
                 {(props) => <textarea {...props} autoFocus className="field min-h-20" value={emailText} onChange={(event) => setEmailText(event.target.value)} placeholder="runner@example.com" />}
               </Field>

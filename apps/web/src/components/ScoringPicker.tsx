@@ -136,7 +136,7 @@ export function ScoringPicker({ draft, onChange, unit, prizes, error }: {
     {(metric.target || daily) && <div className="grid gap-5 sm:grid-cols-2">
       {metric.target && <Field
         label={{ distance: metric.aggregate === 'fastest' ? `Race distance (${distanceUnit})` : metric.aggregate === 'firstTo' ? `Target distance (${distanceUnit})` : `Count ${activity.sessions} of at least (${distanceUnit})`, steps: 'Step target', time: 'Target time (hours)', sessions: `Number of ${activity.sessions}` }[metric.target]}
-        hint={metric.aggregate === 'fastest' ? `Efforts up to 10% longer count, scaled to exactly this distance.` : metric.aggregate === 'firstTo' ? 'Added up across the competition. First to reach it wins.' : undefined}
+        hint={metric.aggregate === 'fastest' ? 'Each person’s fastest stretch of this distance, inside any one activity.' : metric.aggregate === 'firstTo' ? 'Added up across the competition. First to reach it wins.' : undefined}
       >
         {(props) => <input {...props} className="field num" type="number" inputMode="decimal" min="0" step={metric.target === 'distance' ? '0.1' : '1'} value={draft.target} onChange={(event) => set({ target: event.target.value })} required />}
       </Field>}

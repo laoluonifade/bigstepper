@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { creditActivities } from './competition-credits';
+import { enrolClubMembers } from './club-competitions';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typeorm';
@@ -268,6 +269,7 @@ export class TablesService {
     if (format === 'head_to_head' && input.capacity !== 2) throw new BadRequestException('Head-to-head is for exactly two people');
     await this.assertCommunityManager(creatorId, input.communityId);
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
+    if (input.inviteClubMembers && input.communityId) await this.assertClubFits(input.communityId, input.format === 'head_to_head' ? 2 : input.capacity);
     const prizeSplitBps = this.prizeSplit(input.prizeSplitBps, input.capacity);
     if (input.guaranteedPrizeKobo !== undefined && (!Number.isSafeInteger(input.guaranteedPrizeKobo) || input.guaranteedPrizeKobo < 1_000_000)) {
       throw new BadRequestException('Fixed contributions must be at least ₦10,000');
@@ -374,13 +376,16 @@ export class TablesService {
         if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) {
           throw new ConflictException('This competition is not open for entry');
         }
+        // Private: the host, anyone invited, and (for a club competition) the club's members.
         if (table.visibility === 'private' && table.creatorId !== userId) {
-          const [invited] = await manager.query(
+          const [allowed] = await manager.query(
             `SELECT 1 FROM "challenge_invitations" i JOIN "users" u ON u."id"=$2
-             WHERE i."tableId"=$1 AND i."status"<>'DECLINED' AND (i."invitedUserId"=u."id" OR (u."emailVerified" AND lower(i."email")=lower(u."email")))`,
-            [tableId, userId],
+             WHERE i."tableId"=$1 AND i."status"<>'DECLINED' AND (i."invitedUserId"=u."id" OR (u."emailVerified" AND lower(i."email")=lower(u."email")))
+             UNION ALL
+             SELECT 1 FROM "club_memberships" m WHERE m."clubId"=$3 AND m."userId"=$2`,
+            [tableId, userId, table.communityId],
           );
-          if (!invited) throw new ForbiddenException('This is a private competition. Ask the host to invite you.');
+          if (!allowed) throw new ForbiddenException('This is a private competition. Ask the host to invite you.');
         }
         if (table.capacity) {
           const count = await manager.count(TableRegistration, { where: { tableId } });
@@ -518,7 +523,10 @@ export class TablesService {
   }
 
   private async insertInvitations(manager: EntityManager, table: CompetitionTable, input: Invites, emails: string[], phones: string[]) {
-    if (input.inviteClubMembers && input.communityId) {
+    // A free club competition takes the whole club in at once; paid ones (opened later) only invite.
+    if (input.inviteClubMembers && input.communityId && table.type !== 'paid') {
+      await enrolClubMembers(manager, { tableId: table.id });
+    } else if (input.inviteClubMembers && input.communityId) {
       await manager.query(
         `INSERT INTO "challenge_invitations" ("tableId","invitedUserId")
          SELECT $1,m."userId" FROM "club_memberships" m WHERE m."clubId"=$2 AND m."userId"<>$3
@@ -533,7 +541,7 @@ export class TablesService {
       `INSERT INTO "challenge_invitations" ("tableId","phone") SELECT $1,unnest($2::varchar[]) ON CONFLICT DO NOTHING`,
       [table.id, phones],
     );
-    if (input.inviteClubMembers || emails.length) await manager.query(
+    if ((input.inviteClubMembers && table.type === 'paid') || emails.length) await manager.query(
       `INSERT INTO "notifications" ("userId","type","title","body","link")
        SELECT DISTINCT targets."userId",'CHALLENGE_INVITE','You’re invited to a competition',$2,$4
        FROM (
@@ -652,6 +660,12 @@ export class TablesService {
       }
       throw error;
     }
+  }
+
+  /** Everyone in the club gets a place, so the competition has to hold them all. */
+  private async assertClubFits(clubId: string, capacity: number) {
+    const [{ members }] = await this.dataSource.query(`SELECT count(*)::integer AS "members" FROM "club_memberships" WHERE "clubId" = $1`, [clubId]) as Array<{ members: number }>;
+    if (members > capacity) throw new BadRequestException(`The club has ${members} members. Set the maximum to at least ${members} so everyone gets a place.`);
   }
 
   private async assertCommunityManager(userId: string, communityId?: string) {

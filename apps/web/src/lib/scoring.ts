@@ -172,9 +172,7 @@ export function rulesLines(table: Scored, unit: Unit): string[] {
 
   lines.push(`${winsLabel(table, unit)}. ${option?.summary ?? 'The best verified score wins.'}`);
   if (metric.aggregate === 'fastest' && table.targetDistanceMetres) {
-    lines.push(engine
-      ? `Efforts from ${target} to ${formatDistance(Math.round(table.targetDistanceMetres * 1.1), unit)} count, timed on elapsed time and scaled to exactly ${target}.`
-      : `Any effort of at least ${target} counts, timed on moving time.`);
+    lines.push(`Your fastest ${target} inside any one ${ACTIVITY_RULES[table.challengeType]?.sessions.replace(/s$/, '') ?? 'activity'} counts, timed from its GPS track on the clock (pauses included). A longer ${table.challengeType === 'CYCLING' ? 'ride' : 'run'} counts its best ${target} stretch.`);
   }
   if (metric.aggregate === 'firstTo' && target) lines.push(`Whoever reaches ${target} first wins. If nobody does, the closest wins.`);
   if (metric.display === 'pace' || metric.display === 'speed' || metric.measure === 'time' && metric.aggregate !== 'fastest') lines.push('Time is moving time, so stops and pauses don’t count against you.');

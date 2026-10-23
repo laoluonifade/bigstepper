@@ -1,6 +1,7 @@
 import { EntityManager } from 'typeorm';
 import { ChallengeType, dailyMeasure, ScoringMethod } from './competition-rules';
 import { daysBetween, ScoredActivity, scoreEntrants } from './scoring-engine';
+import { timeEfforts } from './best-effort';
 
 /**
  * Puts verified activities on competition boards and re-totals them. One rule everywhere: a verified
@@ -22,7 +23,7 @@ export async function creditActivities(manager: EntityManager, scope: { activity
        LEAST(CASE WHEN t."rulesVersion" = 1 AND t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
              COALESCE(t."distanceCapMetres", 2147483647)),
        CASE WHEN t."rulesVersion" >= 2 AND a."stepsSource" IS DISTINCT FROM 'sensor' THEN 0 ELSE a."validatedSteps" END,
-       CASE WHEN t."scoringMethod" IN ('FASTEST_FIXED_DISTANCE','FASTEST_TIME') AND a."validatedDistanceMetres">=t."targetDistanceMetres" THEN a."movingSeconds" ELSE NULL END
+       NULL
      FROM "activities" a
      JOIN "table_registrations" r ON r."userId" = a."userId"
      JOIN "competition_tables" t ON t."id" = r."tableId"
@@ -38,9 +39,11 @@ export async function creditActivities(manager: EntityManager, scope: { activity
          SELECT 1 FROM "table_activity_credits" c2 JOIN "activities" a2 ON a2."id" = c2."activityId"
          WHERE c2."registrationId" = r."id" AND a2."id" <> a."id" AND a2."startedAt" < a."finishedAt" AND a2."finishedAt" > a."startedAt"))
      ON CONFLICT ("tableId", "activityId") DO NOTHING
-     RETURNING "tableId"`,
+     RETURNING "id", "tableId", "activityId"`,
     params,
-  ) as Array<{ tableId: string }>;
+  ) as Array<{ id: string; tableId: string; activityId: string }>;
+  // Fastest-time races: the best stretch of the race distance within each activity.
+  await timeEfforts(manager, credited);
   const tableIds = [...new Set(credited.map((row) => row.tableId))];
   if (tableIds.length) await retotal(manager, tableIds);
   return tableIds;
@@ -118,7 +121,7 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
       `SELECT c."registrationId", a."id" AS "activityId", a."startedAt", a."finishedAt",
               to_char(a."startedAt" AT TIME ZONE $2, 'YYYY-MM-DD') AS "day",
               c."creditedDistanceMetres" AS "distance", c."creditedSteps" AS "steps", a."movingSeconds", a."elapsedSeconds",
-              a."elevationGainMetres" AS "elevation", c."completionTimeSeconds" AS "legacyCompletionSeconds"
+              a."elevationGainMetres" AS "elevation", c."completionTimeSeconds" AS "completionSeconds"
        FROM "table_activity_credits" c JOIN "activities" a ON a."id" = c."activityId"
        WHERE c."tableId" = $1`,
       [tableId, table.timeZone],

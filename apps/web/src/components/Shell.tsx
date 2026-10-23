@@ -85,7 +85,7 @@ function PublicShell() {
 }
 
 /** Pages a runner can use before joining their first competition: the ways into one, and account basics. */
-const ONBOARDING_PATHS = ['/welcome', '/competitions', '/settings', '/verify-email', '/strava'];
+const ONBOARDING_PATHS = ['/welcome', '/competitions', '/clubs', '/settings', '/verify-email', '/strava'];
 
 /** New runners go to the welcome page until they're in at least one competition (joined or hosting). */
 function OnboardingGate() {

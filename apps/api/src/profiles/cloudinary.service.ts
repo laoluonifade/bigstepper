@@ -32,6 +32,17 @@ export class CloudinaryService implements OnModuleInit {
     return result.secure_url.replace('/image/upload/', `/image/upload/${AVATAR_TRANSFORM}/`);
   }
 
+  /** A club's logo: one per club, overwritten in place, square like an avatar. */
+  async uploadClubLogo(clubId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
+    const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/clubs/${clubId}/logo`, overwrite: 'true', invalidate: 'true' }, file);
+    // Square without face-cropping: logos are usually marks or wordmarks.
+    return result.secure_url.replace('/image/upload/', '/image/upload/c_pad,b_white,w_320,h_320,q_auto,f_auto/');
+  }
+
+  async removeClubLogo(clubId: string) {
+    await this.call('destroy', { public_id: `jump/clubs/${clubId}/logo`, invalidate: 'true' });
+  }
+
   /** A photo on a Rant post, capped at 1600px wide for the feed. */
   async uploadPostImage(userId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
     const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/posts/${userId}/${randomUUID()}` }, file);

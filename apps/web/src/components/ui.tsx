@@ -3,7 +3,7 @@ import { ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { isApiError } from '../lib/api';
 import { toast } from '../lib/toast';
 import { VERIFICATION_LABEL } from '../lib/copy';
-import { initials } from '../lib/format';
+import { defaultAvatarUrl } from '../lib/avatars';
 import type { VerificationStatus } from '../lib/types';
 import { AlertIcon, ArrowLeftIcon, CheckIcon, CopyIcon, InfoIcon } from './icons';
 
@@ -319,41 +319,6 @@ export function Meter({ value, max, tone = 'track', label }: { value: number; ma
   );
 }
 
-/** Bright pairs from the Jump palette: background and the shape on it. Text is always ink. */
-const AVATAR_PALETTES: Array<[string, string]> = [
-  ['#FF5A1F', '#FFD3BF'], ['#E4FF3A', '#8FD14F'], ['#8B7CF6', '#C9C1FF'], ['#5EE0C1', '#C2F5E8'],
-  ['#FF8FB1', '#FFD0DE'], ['#FFC53D', '#FFE8A8'], ['#6FB7FF', '#C7E3FF'],
-];
-
-function hashName(value: string) {
-  let hash = 0;
-  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return hash;
-}
-
-/**
- * The picture for someone without a photo: a colour, a shape and their initial, all picked from their
- * name so they always get the same one. Reads on light and dark backgrounds alike.
- */
-function DefaultAvatar({ name }: { name: string | null | undefined }) {
-  const hash = hashName((name ?? '').trim().toLowerCase() || '?');
-  const [base, shape] = AVATAR_PALETTES[hash % AVATAR_PALETTES.length];
-  const variant = (hash >>> 3) % 3;
-  const turn = ((hash >>> 5) % 8) * 45;
-  return <svg viewBox="0 0 40 40" className="absolute inset-0 h-full w-full" aria-hidden="true">
-    <rect width="40" height="40" fill={base} />
-    <g transform={`rotate(${turn} 20 20)`} fill={shape}>
-      {variant === 0 && <circle cx="31" cy="31" r="16" />}
-      {/* Running-track lanes. */}
-      {variant === 1 && <><rect x="-10" y="24" width="60" height="5" /><rect x="-10" y="32" width="60" height="5" /></>}
-      {variant === 2 && <path d="M40 0v40H8z" />}
-    </g>
-    <text x="20" y="21" dominantBaseline="central" textAnchor="middle" fill="#121212" fontSize="15" fontWeight="800" fontFamily="inherit">
-      {initials(name).slice(0, 2)}
-    </text>
-  </svg>;
-}
-
 export function Avatar({
   name,
   src,
@@ -361,7 +326,7 @@ export function Avatar({
   className,
 }: {
   name: string | null | undefined;
-  /** Profile photo; a generated picture shows while it loads or if there isn't one. */
+  /** Profile photo; a generated picture (see lib/avatars) shows while it loads or if there isn't one. */
   src?: string | null;
   size?: number;
   className?: string;
@@ -378,7 +343,7 @@ export function Avatar({
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <DefaultAvatar name={name} />
+      <img src={defaultAvatarUrl(name)} alt="" className="absolute inset-0 h-full w-full" draggable={false} />
       {showPhoto && (
         <img
           src={src!}

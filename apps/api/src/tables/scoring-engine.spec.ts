@@ -12,7 +12,7 @@ function activity(registrationId: string, day: string, hour: number, fields: Par
   return {
     registrationId, activityId: `a${(sequence += 1).toString().padStart(4, '0')}`, startedAt,
     finishedAt: new Date(startedAt.getTime() + (fields.elapsedSeconds ?? moving) * 1000), day,
-    distance: 5000, steps: 6000, movingSeconds: moving, elapsedSeconds: moving, elevation: null, legacyCompletionSeconds: null,
+    distance: 5000, steps: 6000, movingSeconds: moving, elapsedSeconds: moving, elevation: null, completionSeconds: null,
     ...fields,
   };
 }
@@ -40,14 +40,15 @@ describe('scoring engine', () => {
     expect(scores.get('amy')!.targetReachedAt).toEqual(new Date('2026-10-03T07:30:00Z'));
   });
 
-  it('times fixed distances on elapsed time, scaled, and ignores efforts that are not comparable', () => {
-    const scores = score({ method: 'FASTEST_FIXED_DISTANCE', targetDistanceMetres: 5000 }, [
-      activity('amy', '2026-10-01', 7, { distance: 5200, elapsedSeconds: 1560, movingSeconds: 1500 }),
-      activity('amy', '2026-10-02', 7, { distance: 10_000, elapsedSeconds: 2400 }), // a 10K isn't a 5K
-      activity('ben', '2026-10-02', 7, { distance: 4900, elapsedSeconds: 1200 }), // too short
+  it('ranks fixed-distance races on each activity’s best effort over the distance', () => {
+    const scores = score({ method: 'FASTEST_FIXED_DISTANCE', targetDistanceMetres: 10_000 }, [
+      // A 14 km run whose fastest 10 km took 52:00: that's the time, not the whole run's.
+      activity('amy', '2026-10-01', 7, { distance: 14_020, movingSeconds: 4832, completionSeconds: 3120 }),
+      activity('amy', '2026-10-02', 7, { distance: 10_100, completionSeconds: 3300 }),
+      activity('ben', '2026-10-02', 7, { distance: 9_800, completionSeconds: null }), // never covered 10 km
     ]);
-    expect(scores.get('amy')!.score).toBe(1500);
-    expect(scores.get('amy')!.rankScore).toBe(-1500);
+    expect(scores.get('amy')!.score).toBe(3120);
+    expect(scores.get('amy')!.rankScore).toBe(-3120);
     expect(scores.get('ben')!.score).toBeNull();
   });
 
@@ -126,7 +127,7 @@ describe('scoring engine', () => {
 
   it('keeps rules v1 competitions scored exactly as before', () => {
     const legacy = score({ method: 'FASTEST_FIXED_DISTANCE', rulesVersion: 1, targetDistanceMetres: 5000 }, [
-      activity('amy', '2026-10-01', 7, { distance: 10_000, legacyCompletionSeconds: 1400 }),
+      activity('amy', '2026-10-01', 7, { distance: 10_000, completionSeconds: 1400 }),
     ]);
     expect(legacy.get('amy')).toEqual({ score: 1400, rankScore: -1400, targetReachedAt: null, scoredAt: null, qualified: true });
     const both = [activity('ben', '2026-10-01', 7), activity('ben', '2026-10-01', 7)];

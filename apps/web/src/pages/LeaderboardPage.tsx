@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { SectionHead } from '../components/CompeteHome';
 import { CompeteSubNav } from './Competitions';
-import { ChevronRightIcon } from '../components/icons';
+import { ChevronRightIcon, ShareIcon } from '../components/icons';
+import { Modal } from '../components/Modal';
+import { drawBoardImage, loadAvatars } from '../lib/boardImage';
 import { Avatar, cx, ErrorNotice, Skeleton } from '../components/ui';
 import { api } from '../lib/api';
 import { formatDistance } from '../lib/format';
@@ -121,7 +123,10 @@ export function LeaderboardPage() {
   return <div className="mx-auto max-w-2xl animate-rise">
     <CompeteSubNav />
     <header className="mb-4">
-      <h1 className="text-[26px] font-extrabold tracking-tight">Leaderboard</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-[26px] font-extrabold tracking-tight">Leaderboard</h1>
+        {Boolean(data?.rows.length) && <ShareBoardButton activity={activity} period={period} initialScope={scope} country={country} unit={unit} />}
+      </div>
       <p className="mt-0.5 text-[13px] text-ink-3">
         Verified distance{activity === 'foot' ? ' from runs and walks' : ''}{global && countries > 1 ? ` · runners from ${countries} countries` : ''}
       </p>
@@ -169,4 +174,97 @@ export function LeaderboardPage() {
         <BoardList board={data} unit={unit} showFlag={global} from={3} />
       </div>}
   </div>;
+}
+
+/**
+ * Export the board as a picture: Global or your country, for the activity and period on screen.
+ * Shares straight to apps where the browser can, otherwise saves the PNG.
+ */
+function ShareBoardButton({ activity, period, initialScope, country, unit }: {
+  activity: BoardActivity; period: BoardPeriod; initialScope: 'global' | 'country'; country: string | null; unit: Unit;
+}) {
+  const [open, setOpen] = useState(false);
+  const [scope, setScope] = useState(initialScope);
+  const board = useLeaderboard(activity, period, scope, 50);
+  const [preview, setPreview] = useState<string | null>(null);
+  const blob = useRef<Blob | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  useEffect(() => { if (open) setScope(initialScope); }, [open, initialScope]);
+
+  const scopeLabel = scope === 'global' ? '🌍 Global' : country ? `${flag(country)} ${countryName(country)}` : 'My country';
+  const filter = `${ACTIVITY_TABS.find((tab) => tab.value === activity)?.label} · ${PERIODS.find((option) => option.value === period)?.label}`;
+  const filename = `jump-leaderboard-${scope === 'global' ? 'global' : (country ?? 'country').toLowerCase()}-${activity}-${period}.png`;
+
+  useEffect(() => {
+    if (!open || !board.data) return;
+    let cancelled = false;
+    setPreview(null);
+    const data = { scope: scopeLabel, filter, rows: board.data.rows, me: board.data.me, unit, showFlags: scope === 'global' };
+    const everyone = [...board.data.rows.slice(0, 10), ...(board.data.me ? [board.data.me] : [])];
+    const render = async (photos: boolean): Promise<Blob | null> => {
+      const canvas = document.createElement('canvas');
+      drawBoardImage(canvas, data, await loadAvatars(everyone, photos));
+      try {
+        return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      } catch {
+        // A photo host without CORS taints the canvas: draw everyone's default picture instead.
+        return photos ? render(false) : null;
+      }
+    };
+    void render(true).then((made) => {
+      if (cancelled || !made) return;
+      blob.current = made;
+      setPreview((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(made); });
+    });
+    return () => { cancelled = true; };
+  }, [open, board.data, scope, scopeLabel, filter, unit]);
+
+  function save() {
+    if (!preview) return;
+    const link = document.createElement('a');
+    link.href = preview;
+    link.download = filename;
+    link.click();
+  }
+
+  async function share() {
+    if (!blob.current) return;
+    const file = new File([blob.current], filename, { type: 'image/png' });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Jump leaderboard', text: `${scopeLabel} · ${filter} on Jump. ${window.location.origin}/leaderboard` });
+        setStatus(null);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) setStatus('Sharing didn’t work here. Save the image instead.');
+      }
+    } else {
+      save();
+      setStatus('Saved. Post it from your photos.');
+    }
+  }
+
+  return <>
+    <button type="button" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border-[1.5px] border-ink bg-card px-3.5 text-[13px] font-bold hover:bg-ink hover:text-paper" onClick={() => { setStatus(null); setOpen(true); }}>
+      <ShareIcon size={14} /> Share image
+    </button>
+    {open && <Modal title="Share the leaderboard" onClose={() => setOpen(false)}>
+      <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Which board">
+        {([['global', '🌍', 'Global'], ['country', country ? flag(country) : '🏳️', country ? countryName(country) : 'My country']] as const).map(([value, icon, label]) =>
+          <button key={value} type="button" role="tab" aria-selected={scope === value} disabled={value === 'country' && !country} onClick={() => setScope(value)}
+            className={cx('flex h-10 items-center justify-center gap-2 rounded-xl border-[1.5px] border-ink text-[13px] font-bold disabled:opacity-40', scope === value ? 'bg-ink text-paper' : 'bg-card text-ink-2')}>
+            <span className="text-[16px] leading-none">{icon}</span><span className="truncate">{label}</span>
+          </button>)}
+      </div>
+      <div className="mt-4 overflow-hidden rounded-xl border-[1.5px] border-ink bg-ink" style={{ aspectRatio: '1080 / 1350' }}>
+        {preview ? <img src={preview} alt={`${scopeLabel} leaderboard, ${filter}`} className="h-full w-full" />
+          : board.data && !board.data.rows.length ? <p className="flex h-full items-center justify-center px-6 text-center text-[13px] text-paper/70">Nobody’s on this board yet.</p>
+            : <Skeleton className="h-full w-full rounded-none opacity-20" />}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button type="button" className="btn-secondary" disabled={!preview} onClick={save}>Save</button>
+        <button type="button" className="btn-primary" disabled={!preview} onClick={() => void share()}><ShareIcon size={16} /> Share</button>
+      </div>
+      {status && <p className="mt-3 text-center text-[13px] text-ink-2">{status}</p>}
+    </Modal>}
+  </>;
 }

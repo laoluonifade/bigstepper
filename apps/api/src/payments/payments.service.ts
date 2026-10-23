@@ -1,3 +1,4 @@
+import { enrolClubMembers } from '../tables/club-competitions';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { creditActivities } from '../tables/competition-credits';
 import { ConfigService } from '@nestjs/config';
@@ -597,6 +598,8 @@ export class PaymentsService {
       if (legacyFixed) table.status = 'OPEN_FOR_ENTRY';
       table.fundedAt ??= new Date();
       await manager.save(table);
+      // A club's funded competition takes the club in once it opens.
+      if (legacyFixed && table.communityId) await enrolClubMembers(manager, { tableId: table.id });
       const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified funded competition prize') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
       if (journal[0]) await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2 ELSE -$2 END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','sponsor_prize_liability')`, [journal[0].id, locked.amountKobo]);
       return false;

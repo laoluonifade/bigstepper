@@ -1,6 +1,6 @@
 /**
  * Small, per-account browser storage for things the API has no list endpoint for yet
- * (tables you joined, clubs you created) plus purely personal preferences.
+ * (tables you joined) plus purely personal preferences.
  * Everything here is a convenience cache — the API stays authoritative.
  */
 import { useCallback, useEffect, useState } from 'react';
@@ -55,15 +55,8 @@ export interface SavedTable {
   title: string;
 }
 
-export interface SavedClub {
-  id: string;
-  name: string;
-  slug: string;
-}
-
 export const storageKeys = {
   tables: (userId: string) => `jump_tables:${userId}`,
-  clubs: (userId: string) => `jump_clubs:${userId}`,
   /** Legacy: the goal now lives on the profile; read once to move it there. */
   weeklyGoal: (userId: string) => `jump_goal:${userId}`,
   activityKind: (userId: string) => `jump_kind:${userId}`,
@@ -82,12 +75,6 @@ export function forgetTable(userId: string, tableId: string) {
     key,
     read<SavedTable[]>(key, []).filter((item) => item.id !== tableId),
   );
-}
-
-export function rememberClub(userId: string, club: SavedClub) {
-  const key = storageKeys.clubs(userId);
-  const existing = read<SavedClub[]>(key, []).filter((item) => item.id !== club.id);
-  write(key, [club, ...existing].slice(0, 20));
 }
 
 export function setFlag(key: string, value: boolean) {
