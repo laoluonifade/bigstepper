@@ -32,7 +32,6 @@ import {
   formatDate,
   formatDateTime,
   formatDistance,
-  formatDuration,
   formatMoney,
   formatNairaInput,
   fromLocalInput,
@@ -42,9 +41,12 @@ import {
   toMetres,
 } from '../lib/format';
 import { rememberTable } from '../lib/local';
+import { draftFor, ScoringPicker, scoringPayload, type ScoringDraft } from '../components/ScoringPicker';
+import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/shared/competition-rules';
+import { activityLabel, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '../lib/scoring';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
 import { keys, useCreator, useDiscover, useFinalResult, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
-import type { ChallengeType, CheckoutResponse, CompetitionTable, ScoringMethod, Unit } from '../lib/types';
+import type { ChallengeType, CheckoutResponse, CompetitionTable, Unit } from '../lib/types';
 
 export const COMPETE_NAV = [
   { to: '/competitions', label: 'Competitions' },
@@ -59,43 +61,28 @@ export function CompeteSubNav() {
 
 type TypeFilter = 'all' | 'free' | 'sponsored' | 'paid';
 
-function scoringLabel(table: Pick<CompetitionTable, 'scoringMethod' | 'targetDistanceMetres'>, unit: Unit) {
-  switch (table.scoringMethod) {
-    case 'MOST_STEPS':
-      return 'Most verified steps';
-    case 'FASTEST_FIXED_DISTANCE':
-    case 'FASTEST_TIME':
-      return table.targetDistanceMetres ? `Fastest over ${formatDistance(table.targetDistanceMetres, unit)}` : 'Fastest completion';
-    default:
-      return 'Farthest verified distance';
-  }
+/** Whatever the board isn't ranked on: km for a steps race, steps for a distance one, both otherwise. */
+function otherMetrics(row: { creditedDistanceMetres: number; creditedSteps: number }, table: Pick<CompetitionTable, 'challengeType' | 'scoringMethod'>, unit: Unit) {
+  const display = metricOf(table.scoringMethod).display;
+  const km = display !== 'distance' && row.creditedDistanceMetres > 0 ? formatDistance(row.creditedDistanceMetres, unit) : null;
+  const steps = display !== 'steps' && table.challengeType !== 'CYCLING' && row.creditedSteps > 0 ? `${row.creditedSteps.toLocaleString('en-GB')} steps` : null;
+  return [km, steps].filter(Boolean).join(' · ') || null;
 }
 
-function scoreValue(row: { creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }, method: ScoringMethod) {
-  if (method === 'MOST_STEPS') return row.creditedSteps;
-  if (method === 'FASTEST_FIXED_DISTANCE' || method === 'FASTEST_TIME') return row.completionTimeSeconds;
-  return row.creditedDistanceMetres;
+function scoreText(row: { score: number | null }, table: CompetitionTable, unit: Unit) {
+  if (!hasScored(table.scoringMethod, row.score)) return metricOf(table.scoringMethod).aggregate === 'fastest' ? 'Not finished' : 'No score yet';
+  return formatScore(table, row.score, unit) ?? '';
 }
 
-/** Whatever the board isn't ranked on: km for a steps race, steps for a distance one, both for a time trial. */
-function otherMetrics(row: { creditedDistanceMetres: number; creditedSteps: number }, method: ScoringMethod, unit: Unit) {
-  const km = row.creditedDistanceMetres > 0 ? formatDistance(row.creditedDistanceMetres, unit) : null;
-  const steps = row.creditedSteps > 0 ? `${row.creditedSteps.toLocaleString('en-GB')} steps` : null;
-  const parts = method === 'MOST_STEPS' ? [km] : method === 'FARTHEST_DISTANCE' ? [steps] : [km, steps];
-  return parts.filter(Boolean).join(' · ') || null;
-}
-
-function scoreText(row: { creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }, table: CompetitionTable, unit: Unit) {
-  if (table.scoringMethod === 'MOST_STEPS') return `${row.creditedSteps.toLocaleString('en-GB')} steps`;
-  if (table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') {
-    return row.completionTimeSeconds === null ? 'Not finished' : formatDuration(row.completionTimeSeconds);
-  }
-  return formatDistance(row.creditedDistanceMetres, unit);
+/** Settled boards from before scores were stored: the old per-method totals. */
+function legacyScore(row: { creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }, table: CompetitionTable) {
+  const display = metricOf(table.scoringMethod).display;
+  return display === 'steps' ? row.creditedSteps : display === 'duration' ? row.completionTimeSeconds : row.creditedDistanceMetres;
 }
 
 const ACTIVITY_CHIPS: Array<{ value: 'all' | ChallengeType; label: string }> = [
   { value: 'all', label: 'All' }, { value: 'RUN', label: 'Run' }, { value: 'WALK', label: 'Walk' }, { value: 'CYCLING', label: 'Ride' },
-  { value: 'DISTANCE', label: 'Distance' }, { value: 'STEP', label: 'Steps' }, { value: 'TIMED', label: 'Timed' },
+  { value: 'DISTANCE', label: 'Run + walk' }, { value: 'STEP', label: 'Steps' }, { value: 'TIMED', label: 'Timed' },
 ];
 const VIEW_CHIPS: Array<{ value: DiscoverView; label: string; signedIn?: boolean; guestOnly?: boolean }> = [
   { value: 'for-you', label: 'For you', signedIn: true }, { value: 'trending', label: 'Trending' }, { value: 'starting', label: 'Upcoming' },
@@ -275,6 +262,7 @@ function DraftsSheet({ drafts, onClose }: { drafts: DraftTable[]; onClose: () =>
 }
 
 const DURATIONS = [
+  { label: '24 hours', days: 1 },
   { label: '3 days', days: 3 },
   { label: '1 week', days: 7 },
   { label: '2 weeks', days: 14 },
@@ -294,9 +282,11 @@ export function NewCompetitionPage() {
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState(preset?.title ?? '');
   const [description, setDescription] = useState('');
-  const [challengeType, setChallengeType] = useState<ChallengeType>(preset?.challengeType ?? 'RUN');
-  const [scoringMethod, setScoringMethod] = useState<ScoringMethod>(preset?.scoringMethod ?? 'FARTHEST_DISTANCE');
-  const [targetDistance, setTargetDistance] = useState(preset?.targetKm ? String(preset.targetKm) : '');
+  const [scoring, setScoring] = useState<ScoringDraft>(() => {
+    const draft = draftFor(preset?.challengeType ?? 'RUN', preset?.scoringMethod ?? 'FARTHEST_DISTANCE');
+    return preset?.targetKm ? { ...draft, target: String(preset.targetKm) } : draft;
+  });
+  const challengeType = scoring.challengeType;
   const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date()));
   const [scoringClosesAt, setScoringClosesAt] = useState(() => toLocalInput(new Date(Date.now() + (preset?.days ?? 7) * 86_400_000)));
   const [remindDaily, setRemindDaily] = useState(false);
@@ -314,7 +304,7 @@ export function NewCompetitionPage() {
   const [winnerCount, setWinnerCount] = useState('1');
   const [shares, setShares] = useState(['100']);
   const [inviteClubMembers, setInviteClubMembers] = useState(Boolean(clubId));
-  const [isPrivate, setIsPrivate] = useState(Boolean(preset));
+  const [format, setFormat] = useState<CompetitionFormat>(preset ? (preset.capacity === 2 ? 'head_to_head' : 'invite') : 'open');
   const [invitesOpen, setInvitesOpen] = useState(false);
   const [emailText, setEmailText] = useState('');
   const [phoneText, setPhoneText] = useState('');
@@ -323,14 +313,14 @@ export function NewCompetitionPage() {
   const endless = openEnded && mode === 'free';
   const scoringIso = endless ? null : fromLocalInput(scoringClosesAt);
   const capMetres = cap ? toMetres(Number(cap), unit) : undefined;
-  const capacityNumber = capacity ? Number(capacity) : undefined;
-  const targetDistanceMetres = targetDistance ? toMetres(Number(targetDistance), unit) : undefined;
+  const headToHead = format === 'head_to_head' && mode !== 'paid';
+  const capacityNumber = headToHead ? 2 : capacity ? Number(capacity) : undefined;
   const entryFeeKobo = nairaInputToKobo(entryFee);
   const fundingStyle = fundingOption === 'MULTI_WINNERS' ? 'OPEN' : 'FIXED';
   const fundingDestination = fundingOption === 'FIXED_CHARITY' ? 'CHARITY' : 'WINNERS';
   const draftOnCreate = mode === 'paid' || (mode === 'sponsored' && fundingStyle === 'FIXED');
   const guaranteedPrizeKobo = mode === 'paid' ? (capacityNumber ?? 0) * entryFeeKobo : mode === 'sponsored' && fundingStyle === 'FIXED' ? nairaInputToKobo(fixedPrize) : 0;
-  const needsTarget = scoringMethod === 'FASTEST_FIXED_DISTANCE' || scoringMethod === 'FASTEST_TIME';
+  const scoringFields = scoringPayload(scoring, unit, mode !== 'free');
   const inviteEmails = emailText.split(/[\s,;]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
   const invitePhones = phoneText.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
   const inviteSummary = [
@@ -348,9 +338,9 @@ export function NewCompetitionPage() {
   const errors = {
     title: title.trim().length > 0 && title.trim().length < 3 ? 'At least 3 characters.' : undefined,
     scoring: startIso && scoringIso && new Date(scoringIso) <= new Date(startIso) ? 'Must be after the start.' : undefined,
-    capacity: capacityNumber === undefined || capacityNumber < 2 || capacityNumber > 10000 || !Number.isInteger(capacityNumber) ? 'Enter a maximum between 2 and 10,000 runners.' : undefined,
+    capacity: format === 'head_to_head' && mode !== 'paid' ? undefined : capacityNumber === undefined || capacityNumber < 2 || capacityNumber > 10000 || !Number.isInteger(capacityNumber) ? 'Enter a maximum between 2 and 10,000 runners.' : undefined,
     cap: capMetres !== undefined && (capMetres < 1000 || capMetres > 500000) ? `Between ${formatDistance(1000, unit)} and ${formatDistance(500000, unit)}.` : undefined,
-    target: needsTarget && (!targetDistanceMetres || targetDistanceMetres < 100 || targetDistanceMetres > 500000) ? `Enter a target between ${formatDistance(100, unit)} and ${formatDistance(500000, unit)}.` : undefined,
+    target: scoringFields.problem ? `${scoringFields.problem}.` : undefined,
     paid: mode === 'paid' && (creator.data?.status !== 'ACTIVE' || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || guaranteedPrizeKobo > 1_000_000_000 || !Number.isSafeInteger(guaranteedPrizeKobo)) ? 'Use an active creator account, an entry fee of at least ₦1, and a full-capacity pot no greater than ₦10,000,000.' : undefined,
     funding: mode === 'sponsored' && fundingStyle === 'FIXED' && (!Number.isSafeInteger(guaranteedPrizeKobo) || guaranteedPrizeKobo < 1_000_000 || guaranteedPrizeKobo > 1_000_000_000) ? 'Enter a fixed contribution from ₦10,000 to ₦10,000,000.' : mode === 'sponsored' && fundingDestination === 'CHARITY' && (fundingStyle !== 'FIXED' || charityName.trim().length < 2) ? 'Charity funding needs a fixed amount and charity name.' : undefined,
     prize: prizeError || (mode === 'paid' && guaranteedPrizeKobo < 100) ? 'Choose prize shares that total 100% and fit the maximum runner count.' : undefined,
@@ -365,20 +355,19 @@ export function NewCompetitionPage() {
       post<CompetitionTable>(mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
         title: title.trim(),
         ...(description.trim() ? { description: description.trim() } : {}),
-        challengeType,
-        scoringMethod,
-        ...(targetDistanceMetres ? { targetDistanceMetres } : {}),
+        ...scoringFields.fields,
+        timeZone: reminderTimeZone,
         ...(startIso ? { startsAt: startIso } : {}),
         ...(endless ? { openEnded: true } : scoringIso ? { scoringClosesAt: scoringIso } : {}),
         ...(remindDaily ? { reminderTime, reminderTimeZone } : {}),
-        capacity: capacityNumber,
+        capacity: headToHead ? 2 : capacityNumber,
         ...(mode !== 'paid' && capMetres ? { distanceCapMetres: capMetres } : {}),
         ...(hasPrize ? { prizeSplitBps } : {}),
         ...(mode === 'sponsored' ? { fundedFree: true, ...(fundingStyle === 'FIXED' ? { guaranteedPrizeKobo } : {}), fundingDestination, ...(fundingDestination === 'CHARITY' ? { charityName: charityName.trim() } : {}) } : {}),
         ...(mode === 'paid' ? { entryFeeKobo } : {}),
         ...(club.data ? { communityId: club.data.id, ...(!draftOnCreate && inviteClubMembers ? { inviteClubMembers: true } : {}) } : {}),
         ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
-        ...(mode !== 'paid' && isPrivate ? { visibility: 'private' } : {}),
+        ...(mode !== 'paid' ? { format, visibility: format === 'open' ? 'public' : 'private' } : {}),
         ...(!draftOnCreate && invitePhones.length ? { invitePhones } : {}),
       }),
     async onSuccess(table) {
@@ -418,8 +407,9 @@ export function NewCompetitionPage() {
     capacity: capacityNumber ?? null,
     distanceCapMetres: capMetres ?? null,
     challengeType,
-    scoringMethod,
-    targetDistanceMetres: targetDistanceMetres ?? null,
+    scoringMethod: scoring.scoringMethod,
+    targetDistanceMetres: null,
+    ...scoringFields.fields,
     reminderTime: remindDaily ? reminderTime : null,
     reminderTimeZone: remindDaily ? reminderTimeZone : null,
     communityId: club.data?.id ?? null,
@@ -451,7 +441,14 @@ export function NewCompetitionPage() {
               'flex cursor-pointer flex-col rounded-md border-[1.5px] border-ink p-3 transition-all',
               mode === value ? 'bg-ink text-paper shadow-none' : 'bg-card shadow-hard-sm hover:bg-track-wash',
             )}>
-              <input type="radio" name="competition-mode" className="sr-only" checked={mode === value} onChange={() => setMode(value)} />
+              <input type="radio" name="competition-mode" className="sr-only" checked={mode === value} onChange={() => {
+                setMode(value);
+                // Cash needs a way of winning that's hard to game; fall back to the activity's first one that is.
+                if (value !== 'free' && !METRICS[scoring.scoringMethod].prizes) {
+                  const safe = ACTIVITY_RULES[challengeType].options.find((option) => METRICS[option.method].prizes);
+                  if (safe) setScoring(draftFor(challengeType, safe.method, scoring));
+                }
+              }} />
               <span className="wide text-[13px] font-extrabold uppercase">{title}</span>
               <span className={cx('mt-1 text-[11.5px] leading-snug', mode === value ? 'text-paper/70' : 'text-ink-2')}>{body}</span>
             </label>)}
@@ -497,45 +494,16 @@ export function NewCompetitionPage() {
             )}
           </Field>
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Activity">
-              {(props) => (
-                <select
-                  {...props}
-                  className="field"
-                  value={challengeType}
-                  onChange={(event) => {
-                    const next = event.target.value as ChallengeType;
-                    setChallengeType(next);
-                    if (next === 'CYCLING') setMode('free');
-                    setScoringMethod(next === 'WALK' || next === 'STEP' ? 'MOST_STEPS' : next === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
-                  }}
-                >
-                  <option value="WALK">Walk</option>
-                  <option value="RUN">Run</option>
-                  <option value="CYCLING">Cycling · GPS distance</option>
-                  <option value="DISTANCE">Distance · walk or run</option>
-                  <option value="STEP">Steps</option>
-                  <option value="TIMED">Timed activity</option>
-                </select>
-              )}
-            </Field>
-            <Field label="Winner is">
-              {(props) => (
-                <select {...props} className="field" value={scoringMethod} onChange={(event) => setScoringMethod(event.target.value as ScoringMethod)}>
-                  {(challengeType === 'WALK' || challengeType === 'STEP') && <option value="MOST_STEPS">Most verified steps</option>}
-                  {(challengeType === 'RUN' || challengeType === 'DISTANCE' || challengeType === 'CYCLING') && <option value="FARTHEST_DISTANCE">Farthest distance</option>}
-                  {challengeType === 'RUN' && <option value="FASTEST_FIXED_DISTANCE">Fastest fixed distance</option>}
-                  {challengeType === 'TIMED' && <option value="FASTEST_TIME">Fastest completion</option>}
-                </select>
-              )}
-            </Field>
-          </div>
-          {needsTarget && (
-            <Field label={`Target distance (${unit})`} error={errors.target} hint="The distance every participant must complete.">
-              {(props) => <input {...props} className="field num" type="number" min="0.1" step="0.1" value={targetDistance} onChange={(event) => setTargetDistance(event.target.value)} required />}
-            </Field>
-          )}
+          <ScoringPicker
+            draft={scoring}
+            unit={unit}
+            prizes={mode !== 'free'}
+            error={errors.target}
+            onChange={(next) => {
+              if (next.challengeType === 'CYCLING') setMode('free');
+              setScoring(next);
+            }}
+          />
 
           <fieldset>
             <legend className="label">Length</legend>
@@ -598,11 +566,11 @@ export function NewCompetitionPage() {
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Max runners" error={errors.capacity} hint="Required for every competition. Choose 2 to 10,000.">
+            {headToHead ? <div className="self-end text-[13px] text-ink-2">Head-to-head: just you and one other.</div> : <Field label="Max runners" error={errors.capacity} hint="Required for every competition. Choose 2 to 10,000.">
               {(props) => (
                 <input {...props} type="number" inputMode="numeric" min={2} max={10000} required className="field num" value={capacity} onChange={(event) => setCapacity(event.target.value)} />
               )}
-            </Field>
+            </Field>}
             {mode !== 'paid' ? <Field label={`Distance cap per activity (${unit})`} optional error={errors.cap} hint="Stops one monster activity from deciding everything.">
               {(props) => (
                 <input {...props} type="number" inputMode="decimal" step="0.1" min={0} className="field num" value={cap} onChange={(event) => setCap(event.target.value)} />
@@ -648,18 +616,15 @@ export function NewCompetitionPage() {
           )}
 
           {mode !== 'paid' && <section className="panel space-y-3 p-5">
-            <SectionTitle>Who can join</SectionTitle>
-            <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Who can join">
-              {([
-                [false, 'Public', 'Listed on Compete. Any runner can join.'],
-                [true, 'Private', 'Hidden from Compete. Only runners you invite can join.'],
-              ] as const).map(([value, title, body]) => <label key={title} className={cx('cursor-pointer rounded-md border-[1.5px] p-3.5 transition-colors', isPrivate === value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink-3')}>
-                <input type="radio" name="competition-visibility" className="sr-only" checked={isPrivate === value} onChange={() => setIsPrivate(value)} />
-                <span className="wide block text-[13px] font-extrabold uppercase">{title}</span>
-                <span className={cx('mt-1 block text-[12px] leading-snug', isPrivate === value ? 'text-paper/70' : 'text-ink-2')}>{body}</span>
+            <SectionTitle>Who competes</SectionTitle>
+            <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Who competes">
+              {(Object.keys(FORMATS) as CompetitionFormat[]).map((value) => <label key={value} className={cx('cursor-pointer rounded-md border-[1.5px] p-3.5 transition-colors', format === value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink-3')}>
+                <input type="radio" name="competition-format" className="sr-only" checked={format === value} onChange={() => setFormat(value)} />
+                <span className="wide block text-[13px] font-extrabold uppercase">{FORMATS[value].label}</span>
+                <span className={cx('mt-1 block text-[12px] leading-snug', format === value ? 'text-paper/70' : 'text-ink-2')}>{FORMATS[value].summary}</span>
               </label>)}
             </div>
-            {isPrivate && <p className="text-[12px] text-ink-3">Invite by email below, or by username from the competition page after you create it.</p>}
+            {format !== 'open' && <p className="text-[12px] text-ink-3">{format === 'head_to_head' ? 'Invite your opponent below, or by username once it’s created.' : 'Invite by email below, or by username from the competition page after you create it.'}</p>}
           </section>}
 
           {!draftOnCreate ? <section className="panel flex items-center justify-between gap-3 p-4">
@@ -733,8 +698,7 @@ export function CompetitionDetailPage() {
 
   const rows: LeaderboardRow[] = useMemo(() => {
     const live = new Map(standings.data?.map((row) => [row.userId, row]));
-    const method = table.data?.scoringMethod ?? 'FARTHEST_DISTANCE';
-    if (result.data) {
+    if (result.data && table.data) {
       return result.data.standings.map((row) => ({
         rank: row.rank,
         userId: row.userId,
@@ -742,9 +706,9 @@ export function CompetitionDetailPage() {
         avatarUrl: live.get(row.userId)?.avatarUrl,
         username: live.get(row.userId)?.username,
         metres: row.creditedDistanceMetres,
-        score: scoreValue(row, method),
+        score: row.score ?? legacyScore(row, table.data!),
         host: row.userId === table.data?.creatorId,
-        detail: otherMetrics(row, method, unit),
+        detail: otherMetrics(row, table.data!, unit),
       }));
     }
     return (standings.data ?? []).map((row) => ({
@@ -754,11 +718,11 @@ export function CompetitionDetailPage() {
       avatarUrl: row.avatarUrl,
       username: row.username,
       metres: row.creditedDistanceMetres,
-      score: scoreValue(row, method),
+      score: row.score,
       host: row.userId === table.data?.creatorId,
-      detail: otherMetrics(row, method, unit),
+      detail: [otherMetrics(row, table.data!, unit), row.qualified === false ? 'Not yet qualified' : null].filter(Boolean).join(' · ') || null,
     }));
-  }, [result.data, standings.data, table.data?.creatorId, table.data?.scoringMethod, unit, user]);
+  }, [result.data, standings.data, table.data, unit, user]);
 
   if (table.isLoading) return <Loading />;
   if (table.error || !table.data) {
@@ -840,13 +804,13 @@ export function CompetitionDetailPage() {
                 currentUserId={user?.id}
                 unit={unit}
                 limit={showAll ? 200 : 10}
-                metricLabel={t.scoringMethod === 'MOST_STEPS' ? 'Steps' : t.scoringMethod === 'FARTHEST_DISTANCE' ? 'Distance' : 'Time'}
-                formatScore={t.scoringMethod === 'FARTHEST_DISTANCE' ? undefined : (row) => (
-                  <span className="score num text-[20px]">
-                    {t.scoringMethod === 'MOST_STEPS' ? Number(row.score ?? 0).toLocaleString('en-GB') : row.score === null ? '-' : formatDuration(Number(row.score))}
+                metricLabel={scoreHeader(t)}
+                formatScore={metricOf(t.scoringMethod).display === 'distance' ? undefined : (row) => (
+                  <span className="score num whitespace-nowrap text-[20px]">
+                    {hasScored(t.scoringMethod, row.score) ? formatScore(t, row.score, unit, { short: true }) : '-'}
                   </span>
                 )}
-                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified {t.challengeType === 'CYCLING' ? 'ride' : 'walk or run'} puts you on top.</EmptyState>}
+                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified {({ RUN: 'run', WALK: 'walk', CYCLING: 'ride' } as Record<string, string>)[t.challengeType] ?? 'walk or run'} puts you on top.</EmptyState>}
               />
             )}
             {rows.length > 10 && (
@@ -880,7 +844,7 @@ function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: U
       </svg>
       <div className="relative flex flex-wrap items-center gap-1.5">
         <TypeTag table={table} />
-        <span className="tag bg-paper text-ink">{table.challengeType === 'STEP' ? 'STEPS' : table.challengeType}</span>
+        <span className="tag bg-paper text-ink">{activityLabel(table.challengeType)}</span>
         <PhaseTag table={table} now={now} />
       </div>
       <div className="relative mt-10 flex items-end justify-between gap-4 sm:mt-14">
@@ -912,11 +876,11 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
     },
     {
       title: cycling ? 'Cycle with Jump' : `${counts === 'walk and run' ? 'Walk or run' : counts === 'run' ? 'Run' : 'Walk'} with Jump`,
-      body: cycling ? 'Choose Cycle when you start. Every GPS-verified ride after you join adds distance to your total.' : `Hit Run in the app whenever you head out. Every verified ${counts} after you join adds to your total.`,
+      body: cycling ? 'Choose Cycle when you start. Every GPS-verified ride in the competition window counts.' : `Hit Run in the app whenever you head out, or sync from Strava. Every verified ${counts} in the competition window counts.`,
     },
     {
       title: 'Climb the board',
-      body: `${scoringLabel(table, unit)}.${ends ? ` It ends ${ends}.` : ''} ${prize}`,
+      body: `${winsLabel(table, unit)}.${ends ? ` It ends ${ends}.` : ''} ${prize}`,
     },
   ];
   return (
@@ -999,24 +963,10 @@ function ShareBox({ table, url }: { table: CompetitionTable; url: string }) {
 }
 
 function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
-  const activity = table.challengeType === 'DISTANCE' || table.challengeType === 'STEP' || table.challengeType === 'TIMED'
-    ? 'Eligible walks and runs count.'
-    : `Only verified ${table.challengeType.toLowerCase()} activities count.`;
-  const scoring = table.scoringMethod === 'MOST_STEPS'
-    ? 'The highest total verified step count wins.'
-    : table.scoringMethod === 'FARTHEST_DISTANCE'
-      ? 'The highest total verified distance wins.'
-      : `The fastest valid completion${table.targetDistanceMetres ? ` of ${formatDistance(table.targetDistanceMetres, unit)}` : ''} wins.`;
   const items = [
-    scoring,
-    `${activity} Flagged activities count only after a reviewer approves them.`,
+    ...rulesLines(table, unit),
     ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance, and there are no cash prizes.'] : []),
-    'An activity counts if it starts after you join and finishes before scoring closes.',
     ...(table.reminderTime ? [`Joined runners may receive a daily email reminder at ${table.reminderTime.slice(0, 5)} (${table.reminderTimeZone}). No reminder is sent after they record an activity that day.`] : []),
-    ...(table.scoringMethod === 'FARTHEST_DISTANCE'
-      ? [table.distanceCapMetres ? `Each activity counts up to ${formatDistance(table.distanceCapMetres, unit)}.` : 'No per-activity distance cap.']
-      : []),
-    'Ties go to whoever joined first.',
     ...(table.type === 'paid' && table.minimumEntrants > 1 ? [`Needs at least ${table.minimumEntrants} entrants to go ahead.`] : []),
     ...(table.type !== 'free' && table.fundingDestination !== 'CHARITY' ? [`Prizes go to the top ${table.prizeSplitBps?.length ?? 1} eligible ${table.prizeSplitBps?.length === 1 ? 'runner' : 'runners'}. If fewer finish, their listed shares are proportionally redistributed. A very small funded pool may pay fewer places.`] : []),
     ...(['paid', 'sponsored'].includes(table.type) && table.fundingDestination !== 'CHARITY' ? ['The host is on the board but cannot receive a cash prize from their own competition.'] : []),

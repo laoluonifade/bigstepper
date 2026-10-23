@@ -16,6 +16,7 @@ import { storageKeys, useStored } from '../lib/local';
 import { useUser } from '../lib/auth';
 import { KindFilter } from './Dashboard';
 import { keys, useActivities, useProfile, useUnit } from '../lib/queries';
+import { metricOf } from '../lib/scoring';
 import type { Activity } from '../lib/types';
 
 type Filter = 'all' | 'verified' | 'attention';
@@ -283,11 +284,12 @@ function ActivityCredits({ activityId, unit }: { activityId: string; unit: 'km' 
     <h2 className="wide text-[16px] font-extrabold uppercase">Competition credits</h2>
     <ErrorNotice error={credits.error} onRetry={() => void credits.refetch()} className="mt-3" />
     {credits.isLoading ? <p className="mt-2 text-[13px] text-ink-2">Checking joined competitions…</p> : !credits.data?.length ? (
-      <p className="mt-2 text-[13px] text-ink-2">No competition credited this activity. You must join before starting, and the activity must match its type and scoring dates.</p>
+      <p className="mt-2 text-[13px] text-ink-2">No competition credited this activity. It counts in competitions you’ve joined when it’s the right kind of activity and falls inside their dates.</p>
     ) : <ul className="mt-3 divide-y divide-line">{credits.data.map((credit) => {
-      const score = credit.scoringMethod === 'MOST_STEPS' ? `${credit.creditedSteps.toLocaleString('en-GB')} steps`
-        : credit.scoringMethod === 'FARTHEST_DISTANCE' ? formatDistance(credit.creditedDistanceMetres, unit)
-          : credit.completionTimeSeconds ? formatDuration(credit.completionTimeSeconds) : 'Target not completed';
+      // What this one activity added: its time for a race against the clock, else distance and steps.
+      const score = metricOf(credit.scoringMethod).aggregate === 'fastest' && credit.completionTimeSeconds
+        ? formatDuration(credit.completionTimeSeconds)
+        : [formatDistance(credit.creditedDistanceMetres, unit), credit.creditedSteps ? `${credit.creditedSteps.toLocaleString('en-GB')} steps` : null].filter(Boolean).join(' · ');
       return <li key={credit.code} className="flex items-center justify-between gap-3 py-2 text-[13px]">
         <Link to="/competitions/$code" params={{ code: credit.code }} className="min-w-0 truncate font-bold underline-offset-2 hover:underline">{credit.title}</Link>
         <span className="num shrink-0 text-ink-2">{score}</span>

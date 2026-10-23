@@ -150,6 +150,20 @@ export interface CompetitionTable {
   challengeType: ChallengeType;
   scoringMethod: ScoringMethod;
   targetDistanceMetres: number | null;
+  targetSteps?: number | null;
+  targetSeconds?: number | null;
+  targetSessions?: number | null;
+  /** Daily bar or minimum daily average, in metres, steps or seconds (see dailyMeasure in competition-rules). */
+  dailyTarget?: number | null;
+  minSessions?: number | null;
+  minActivityMetres?: number | null;
+  minActivitySeconds?: number | null;
+  eligibleActivities?: ActivityType[] | null;
+  format?: CompetitionFormat;
+  /** Days and streaks are counted on this zone's calendar. */
+  timeZone?: string;
+  /** 1: scored the way competitions were before the rules engine. 2: the engine's rules. */
+  rulesVersion?: number;
   reminderTime: string | null;
   reminderTimeZone: string | null;
   communityId: string | null;
@@ -176,6 +190,12 @@ export interface StandingRow {
   creditedDistanceMetres: number;
   creditedSteps: number;
   completionTimeSeconds: number | null;
+  /** The ranked score in the metric's own unit (see METRICS[scoringMethod].display); null until there is one. */
+  score: number | null;
+  /** Reached the target, for first-to formats. */
+  targetReachedAt?: string | null;
+  /** Met the minimum activity requirement; unqualified entrants rank after everyone who did. */
+  qualified?: boolean;
 }
 
 export interface FinalResult {
@@ -190,6 +210,7 @@ export interface FinalResult {
     creditedDistanceMetres: number;
     creditedSteps: number;
     completionTimeSeconds: number | null;
+    score?: number | null;
     joinedAt: string;
     rank: number;
   }>;
@@ -239,8 +260,8 @@ export interface PayoutRecipient {
   availableForPayoutAt: string;
 }
 
-export type ChallengeType = 'WALK' | 'RUN' | 'DISTANCE' | 'STEP' | 'TIMED' | 'CYCLING';
-export type ScoringMethod = 'MOST_STEPS' | 'FARTHEST_DISTANCE' | 'FASTEST_FIXED_DISTANCE' | 'FASTEST_TIME';
+import type { ActivityType, ChallengeType, CompetitionFormat, ScoringMethod } from './competition-rules';
+export type { ChallengeType, ScoringMethod } from './competition-rules';
 
 export interface Wallet {
   id: string;

@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../users/user.entity';
 import { ChallengeType, ScoringMethod } from './challenge-types';
+import { ActivityType, CompetitionFormat } from './competition-rules';
 
 @Entity('competition_tables')
 export class CompetitionTable {
@@ -48,6 +49,44 @@ export class CompetitionTable {
 
   @Column({ type: 'integer', nullable: true })
   targetDistanceMetres: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  targetSteps: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  targetSeconds: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  targetSessions: number | null;
+
+  /** The daily bar (streaks, target days) or minimum daily average, in metres, steps or seconds. */
+  @Column({ type: 'integer', nullable: true })
+  dailyTarget: number | null;
+
+  /** Fewer qualifying sessions than this and an entrant ranks after everyone who met it. */
+  @Column({ type: 'integer', nullable: true })
+  minSessions: number | null;
+
+  /** Activities shorter than these don't qualify at all. */
+  @Column({ type: 'integer', nullable: true })
+  minActivityMetres: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  minActivitySeconds: number | null;
+
+  @Column({ type: 'jsonb' })
+  eligibleActivities: ActivityType[];
+
+  @Column({ type: 'varchar', length: 16, default: 'open' })
+  format: CompetitionFormat;
+
+  /** Days and streaks follow this zone's calendar. */
+  @Column({ type: 'varchar', length: 64, default: 'Africa/Lagos' })
+  timeZone: string;
+
+  /** 1: scored as before the rules engine (kept for competitions created then). 2: the engine's rules. */
+  @Column({ type: 'integer', default: 2 })
+  rulesVersion: number;
 
   @Column({ type: 'time', nullable: true })
   reminderTime: string | null;

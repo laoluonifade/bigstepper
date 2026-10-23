@@ -447,7 +447,7 @@ export function ClubDetailPage() {
                 const name = member.displayName ?? (member.username ? `@${member.username}` : isMe ? 'You' : 'Runner');
                 return (
                   <li key={member.id} className={cx('flex items-center gap-3 px-2 py-3', isMe && 'bg-volt')}>
-                    <Avatar name={name} src={member.avatarUrl} highlight={isMe} size={34} />
+                    <Avatar name={name} src={member.avatarUrl} size={34} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-semibold">
                         {name}

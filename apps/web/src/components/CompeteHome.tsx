@@ -2,18 +2,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { api, post } from '../lib/api';
-import { formatCountdown, formatDistance, formatDuration, ordinal } from '../lib/format';
+import { formatCountdown, ordinal } from '../lib/format';
 import { useUser } from '../lib/auth';
 import { keys, useDiscover, useStandings } from '../lib/queries';
+import { formatGap, formatScore, hasScored, towardLeader } from '../lib/scoring';
 import { TEMPLATES } from '../lib/templates';
 import { toast } from '../lib/toast';
-import type { ChallengeType, CompetitionTable, StandingRow, Unit } from '../lib/types';
+import type { ChallengeType, CompetitionTable, ScoringMethod, StandingRow, Unit } from '../lib/types';
 import { ChallengeMark, CompetitionPreviewCard, phaseLine, prizeLabel } from './competition';
 import { ChevronRightIcon, PlusIcon, SearchIcon, UsersIcon } from './icons';
-import { cx, ErrorNotice, Skeleton } from './ui';
+import { Avatar, cx, ErrorNotice, Skeleton } from './ui';
 
 export type MyCompetition = {
-  id: string; code: string; title: string; type: string; challengeType: ChallengeType; scoringMethod: string; targetDistanceMetres: number | null;
+  id: string; code: string; title: string; type: string; challengeType: ChallengeType; scoringMethod: ScoringMethod; targetDistanceMetres: number | null;
   status: string; startsAt: string | null; scoringClosesAt: string | null; visibility: string; hosting: boolean; joined: boolean;
   entrants: number; myRank: number | null; myScore: number | null; leaderScore: number | null;
 };
@@ -66,31 +67,17 @@ export function CompetitionSearch() {
   </div>;
 }
 
-function formatScore(method: string, value: number | null, unit: Unit) {
-  if (value === null || value === undefined) return null;
-  if (method === 'MOST_STEPS') return `${Number(value).toLocaleString('en-GB')} steps`;
-  if (method === 'FARTHEST_DISTANCE') return formatDistance(Number(value), unit);
-  return formatDuration(Number(value));
-}
+const scoreOf = (table: Pick<MyCompetition, 'challengeType' | 'scoringMethod'>, value: number | null, unit: Unit) => formatScore(table, value, unit);
 
 /** Where you stand, in a few words: leading, behind by how much, or not started. */
 function standingLine(table: MyCompetition, unit: Unit) {
-  const fastest = table.scoringMethod !== 'MOST_STEPS' && table.scoringMethod !== 'FARTHEST_DISTANCE';
   const mine = table.myScore === null ? null : Number(table.myScore);
   const leader = table.leaderScore === null ? null : Number(table.leaderScore);
   if (!table.joined) return 'Hosting';
-  if (!mine) return 'No score yet';
+  if (!hasScored(table.scoringMethod, mine)) return 'No score yet';
   if (table.myRank === 1) return table.entrants > 1 ? 'Leading' : 'On top';
   if (leader === null) return '';
-  return `${formatScore(table.scoringMethod, fastest ? mine - leader : leader - mine, unit)} behind`;
-}
-
-function towardLeader(table: MyCompetition) {
-  const mine = Number(table.myScore ?? 0);
-  const leader = Number(table.leaderScore ?? 0);
-  if (!mine || !leader) return 0;
-  const fastest = table.scoringMethod !== 'MOST_STEPS' && table.scoringMethod !== 'FARTHEST_DISTANCE';
-  return Math.min(1, fastest ? leader / mine : mine / leader);
+  return `${formatGap(table, mine!, leader, unit)} behind`;
 }
 
 /** Your live competitions: two at most, each one line of where you stand. */
@@ -124,7 +111,7 @@ export function MyCompetitions({ unit, now }: { unit: Unit; now: number }) {
               </div>
               : <span className="shrink-0 text-[12px] font-semibold text-ink-3">{standingLine(table, unit)}</span>}
           </div>
-          {table.joined && <div className="ml-12 mt-2 h-1 overflow-hidden rounded-full bg-ink/[0.07]"><div className={cx('h-full rounded-full', leading ? 'bg-ok' : 'bg-ink')} style={{ width: `${Math.max(3, towardLeader(table) * 100)}%` }} /></div>}
+          {table.joined && <div className="ml-12 mt-2 h-1 overflow-hidden rounded-full bg-ink/[0.07]"><div className={cx('h-full rounded-full', leading ? 'bg-ok' : 'bg-ink')} style={{ width: `${Math.max(3, towardLeader(table.scoringMethod, table.myScore === null ? null : Number(table.myScore), table.leaderScore === null ? null : Number(table.leaderScore)) * 100)}%` }} /></div>}
         </Link>;
       })}
     </div>
@@ -222,19 +209,12 @@ export function RecommendedJoin({ unit, now, limit = 2, onDone, title = 'Picked 
   </section>;
 }
 
-function laneScore(method: string, row: StandingRow) {
-  if (method === 'MOST_STEPS') return row.creditedSteps;
-  if (method === 'FARTHEST_DISTANCE') return row.creditedDistanceMetres;
-  return row.completionTimeSeconds;
-}
+const laneScore = (row: StandingRow) => (row.score === null || row.score === undefined ? null : Number(row.score));
 
-/** 0–1 along the track: share of the leader's total, or for fastest-time races, leader's time / yours. */
+/** 0–1 along the track: how close to the leader, whichever way the score runs. */
 function lanePosition(method: string, row: StandingRow, leader: StandingRow | undefined) {
-  const mine = laneScore(method, row);
-  const best = leader ? laneScore(method, leader) : null;
-  if (!mine || !best) return 0;
-  const fastest = method !== 'MOST_STEPS' && method !== 'FARTHEST_DISTANCE';
-  return Math.min(1, fastest ? best / mine : mine / best);
+  if (!hasScored(method, row.score) || !leader) return 0;
+  return towardLeader(method, laneScore(row), laneScore(leader));
 }
 
 const firstName = (name: string) => name.split(' ')[0];
@@ -250,7 +230,7 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   const trending = useDiscover('trending');
   const live = (mine.data ?? []).filter((table) => table.joined && ['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(table.status) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now));
   const hot = trending.data?.pages[0]?.items[0];
-  const race = live[0] ?? (hot && { id: hot.id, code: hot.code, title: hot.title, scoringMethod: hot.scoringMethod, scoringClosesAt: hot.scoringClosesAt, startsAt: hot.startsAt, entrants: hot.entrantCount ?? 0, type: hot.type });
+  const race = live[0] ?? (hot && { id: hot.id, code: hot.code, title: hot.title, challengeType: hot.challengeType, scoringMethod: hot.scoringMethod, scoringClosesAt: hot.scoringClosesAt, startsAt: hot.startsAt, entrants: hot.entrantCount ?? 0, type: hot.type });
   const joined = Boolean(live[0]);
   const standings = useStandings(race?.id, 60_000);
   const [shown, setShown] = useState(false);
@@ -272,18 +252,17 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   const lanes = [...rows.slice(0, 4), ...(me && me.rank > 4 ? [me] : [])];
   const method = race.scoringMethod;
   const ends = race.startsAt && new Date(race.startsAt).getTime() > now ? `starts in ${formatCountdown(race.startsAt, now)}` : race.scoringClosesAt ? `${formatCountdown(race.scoringClosesAt, now)} to go` : 'no end date';
-  const fastest = method !== 'MOST_STEPS' && method !== 'FARTHEST_DISTANCE';
-  const myScore = me ? laneScore(method, me) : null;
-  const runnerUp = rows[1] ? laneScore(method, rows[1]) : null;
-  const gapToLeader = myScore && leader ? formatScore(method, fastest ? myScore - (laneScore(method, leader) ?? 0) : (laneScore(method, leader) ?? 0) - myScore, unit) : null;
-  // The ring: how close you are to the leader (full when you lead). Empty until you've scored.
-  const progress = !joined || !me || !myScore ? 0 : me.rank === 1 ? 1 : lanePosition(method, me, leader);
+  const myScore = me && hasScored(method, me.score) ? laneScore(me) : null;
+  const runnerUp = rows[1] && hasScored(method, rows[1].score) ? laneScore(rows[1]) : null;
+  const leaderScore = leader ? laneScore(leader) : null;
+  const gapToLeader = myScore !== null && leaderScore !== null ? formatGap(race, myScore, leaderScore, unit) : null;
+  const progress = !joined || !me || myScore === null ? 0 : me.rank === 1 ? 1 : lanePosition(method, me, leader);
   const RADIUS = 50;
   const circumference = 2 * Math.PI * RADIUS;
   const line = !joined
     ? <><b className="font-semibold text-paper">{race.entrants} {race.entrants === 1 ? 'runner' : 'runners'}</b> in, {ends}. Join and your next run counts.</>
-    : !myScore ? <>Your first run puts you on the board, {ends}.</>
-      : me?.rank === 1 ? (runnerUp ? <>Leading by <b className="font-semibold text-paper">{formatScore(method, fastest ? runnerUp - myScore : myScore - runnerUp, unit)}</b>, {ends}. Keep the gap.</> : <>Out in front, {ends}. Invite rivals to chase you.</>)
+    : myScore === null ? <>Your first run puts you on the board, {ends}.</>
+      : me?.rank === 1 ? (runnerUp !== null ? <>Leading by <b className="font-semibold text-paper">{formatGap(race, runnerUp, myScore, unit)}</b>, {ends}. Keep the gap.</> : <>Out in front, {ends}. Invite rivals to chase you.</>)
         : <><b className="font-semibold text-paper">{gapToLeader}</b> behind {firstName(leader.displayName)} with {ends}.</>;
 
   return <section className="overflow-hidden rounded-3xl bg-[#121212] p-5 text-paper">
@@ -318,12 +297,10 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
             <span className="relative h-7">
               <span className="absolute inset-x-0 top-1/2 h-px bg-paper/10" aria-hidden="true" />
               <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 transition-[left] duration-[1400ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]" style={{ left: `${shown ? 4 + position * 92 : 4}%` }}>
-                <span className={cx('flex h-6 w-6 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold', isMe ? 'bg-volt text-ink shadow-[0_0_10px_rgba(228,255,58,0.55)]' : 'bg-[#2A2A2E] text-paper/80')}>
-                  {row.avatarUrl ? <img src={row.avatarUrl} alt="" className="h-full w-full object-cover" /> : row.displayName.charAt(0).toUpperCase()}
-                </span>
+                <Avatar name={row.displayName} src={row.avatarUrl} size={24} className={cx('rounded-full', isMe && 'ring-2 ring-volt shadow-[0_0_10px_rgba(228,255,58,0.55)]')} />
               </span>
             </span>
-            <span className={cx('num truncate text-right text-[12px]', isMe ? 'font-bold text-volt' : 'text-paper/60')}>{laneScore(method, row) ? formatScore(method, laneScore(method, row), unit) : '–'}</span>
+            <span className={cx('num truncate text-right text-[12px]', isMe ? 'font-bold text-volt' : 'text-paper/60')}>{hasScored(method, row.score) ? scoreOf(race, laneScore(row), unit) : '–'}</span>
           </li>;
         })}
       </ol>

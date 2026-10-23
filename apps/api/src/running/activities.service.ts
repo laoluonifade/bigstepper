@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { refreshLeagueDistance } from '../leagues/league-credits';
+import { uncreditActivity } from '../tables/competition-credits';
 import { GpsSample } from './gps-sample.entity';
 import { RunningSession } from './running-session.entity';
 import { MAX_USABLE_ACCURACY_METRES, smoothTrack } from './track';
@@ -67,25 +68,7 @@ export class ActivitiesService {
       if (locked[0]) {
         throw new ConflictException(`This activity counts toward “${locked[0].title}”, which is paid or has finished, so it can’t be deleted.`);
       }
-      const credited = (await manager.query(
-        `DELETE FROM "table_activity_credits" WHERE "activityId" = $1 RETURNING "registrationId"`,
-        [activityId],
-      )) as Array<{ registrationId: string }>;
-      const registrationIds = [...new Set(credited.map((row) => row.registrationId))];
-      if (registrationIds.length) {
-        await manager.query(
-          `UPDATE "table_registrations" r
-           SET "creditedDistanceMetres" = totals.distance, "creditedSteps" = totals.steps, "completionTimeSeconds" = totals.best_time
-           FROM (
-             SELECT r2."id", COALESCE(SUM(c."creditedDistanceMetres"), 0)::integer distance,
-                    COALESCE(SUM(c."creditedSteps"), 0)::integer steps, MIN(c."completionTimeSeconds")::integer best_time
-             FROM "table_registrations" r2 LEFT JOIN "table_activity_credits" c ON c."registrationId" = r2."id"
-             WHERE r2."id" = ANY($1::uuid[]) GROUP BY r2."id"
-           ) totals
-           WHERE r."id" = totals."id"`,
-          [registrationIds],
-        );
-      }
+      await uncreditActivity(manager, activityId);
       // Removing the session removes the activity, its GPS fixes and any review request with it.
       await manager.delete(RunningSession, { id: activity.runningSessionId });
       if (activity.activityType !== 'cycle') await refreshLeagueDistance(manager, userId);

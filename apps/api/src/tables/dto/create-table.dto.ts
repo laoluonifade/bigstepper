@@ -1,7 +1,8 @@
 import { ArrayMaxSize, IsBoolean, ArrayMinSize, IsArray, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../challenge-types';
+import { ScoringFieldsDto } from './scoring-fields.dto';
 
-export class CreateTableDto {
+export class CreateTableDto extends ScoringFieldsDto {
   @IsString()
   @MinLength(3)
   @MaxLength(120)
@@ -23,7 +24,7 @@ export class CreateTableDto {
   @IsOptional() @IsIn(SCORING_METHODS)
   scoringMethod?: ScoringMethod;
 
-  @IsOptional() @IsInt() @Min(100) @Max(500000)
+  @IsOptional() @IsInt() @Min(100) @Max(1_000_000)
   targetDistanceMetres?: number;
 
   @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)

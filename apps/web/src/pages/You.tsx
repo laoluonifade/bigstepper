@@ -1,4 +1,5 @@
 import { StravaConnection } from './Strava';
+import { LEGAL_LINKS } from '../legal/links';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
@@ -140,6 +141,9 @@ export function ProfileSettingsPage() {
         <button type="button" className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-bold text-bad transition-colors hover:bg-bad-wash" onClick={() => void logout()}>
           <LogoutIcon size={16} /> Log out
         </button>
+        <nav aria-label="Legal" className="flex flex-wrap justify-center gap-x-4 gap-y-1 pb-2 text-[12px] text-ink-3">
+          {LEGAL_LINKS.map((link) => <Link key={link.to} to={link.to} className="hover:text-ink">{link.label}</Link>)}
+        </nav>
       </div>
 
       {sheet === 'profile' && <EditProfileSheet profile={me} onClose={() => setSheet(null)} />}
@@ -283,7 +287,7 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
   </label>;
 }
 
-type PlatformStats = { users: number; newToday: number; newWeek: number; newMonth: number; verified: number; activeWeek: number; strava: number; liveCompetitions: number };
+type PlatformStats = { users: number; newToday: number; activeToday: number; movedToday: number; newWeek: number; newMonth: number; verified: number; activeWeek: number; strava: number; liveCompetitions: number };
 
 /** Admins only: how big Jump is. Staff without admin rights just get their tools. */
 function PlatformSection() {
@@ -292,11 +296,24 @@ function PlatformSection() {
   const number = (value: number) => value.toLocaleString('en-GB');
   return <SettingsGroup title={data ? 'Admin' : 'Staff tools'}>
     {data && <div className="px-4 py-4">
-      <p className="text-[13px] text-ink-3">People on Jump</p>
-      <p className="score num mt-1 text-[48px] leading-none"><CountUp value={data.users} format={(n) => number(Math.round(n))} /></p>
-      <p className="num mt-2 text-[13px] text-ink-2">
-        <span className="font-semibold text-ink">+{number(data.newToday)}</span> today · <span className="font-semibold text-ink">+{number(data.newWeek)}</span> this week · <span className="font-semibold text-ink">+{number(data.newMonth)}</span> this month
-      </p>
+      {/* The headline opens the full list; the today tiles open it filtered. */}
+      <Link to="/admin/people" className="group -mx-2 block rounded-xl px-2 py-1 transition-colors hover:bg-ink/[0.03]">
+        <p className="flex items-center justify-between text-[13px] text-ink-3">People on Jump <ChevronRightIcon size={16} className="transition-transform group-hover:translate-x-0.5" /></p>
+        <p className="score num mt-1 text-[48px] leading-none"><CountUp value={data.users} format={(n) => number(Math.round(n))} /></p>
+        <p className="num mt-2 text-[13px] text-ink-2">
+          <span className="font-semibold text-ink">+{number(data.newToday)}</span> today · <span className="font-semibold text-ink">+{number(data.newWeek)}</span> this week · <span className="font-semibold text-ink">+{number(data.newMonth)}</span> this month
+        </p>
+      </Link>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {([
+          ['active-today', 'Active today', data.activeToday, 'opened Jump'],
+          ['moved-today', 'Recorded today', data.movedToday, 'logged an activity'],
+        ] as const).map(([view, label, value, hint]) => <Link key={view} to="/admin/people" search={{ view }} className="rounded-xl border-[1.5px] border-ink bg-paper px-3 py-2.5 transition-colors hover:bg-ink/[0.03]">
+          <p className="flex items-center justify-between text-[12px] font-semibold">{label}<ChevronRightIcon size={14} className="text-ink-3" /></p>
+          <p className="num text-[24px] font-extrabold leading-tight">{number(value)}</p>
+          <p className="text-[11px] text-ink-3">{hint}</p>
+        </Link>)}
+      </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4">
         {[
           ['Active this week', data.activeWeek],
@@ -847,7 +864,7 @@ export function RunnerPage() {
         </div>
       )}
       <ProfileHero
-        avatar={<Avatar name={data.displayName} src={data.avatarUrl} highlight size={84} className="rounded-lg" />}
+        avatar={<Avatar name={data.displayName} src={data.avatarUrl} size={84} className="rounded-lg" />}
         displayName={data.displayName}
         username={data.username}
         meta={

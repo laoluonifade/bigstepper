@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { refreshLeagueDistance } from '../leagues/league-credits';
-import { creditActivities } from '../tables/competition-credits';
+import { creditActivities, rescore, uncreditActivity } from '../tables/competition-credits';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { CompetitionTable } from '../tables/competition-table.entity';
@@ -12,7 +12,8 @@ import { ResolveReviewDto } from './resolve-review.dto';
 import { ApprovePaidTableDto, CreatePaidTableDto } from './paid-table.dto';
 import { reminderConfig } from '../tables/reminder-config';
 import { PaymentsService } from '../payments/payments.service';
-import { assertScoringConfiguration } from '../tables/challenge-types';
+import { scoringColumns } from '../tables/scoring-columns';
+import { RANK_ORDER } from '../tables/scoring-engine';
 import { calculatePrizeBreakdown, cashPrizeEligible } from '../payments/financial-policy';
 import { allocateFundedPrizes, allocatePrizes, assertPrizeSplit } from '../tables/prize-split';
 import { paidPrizePot } from '../tables/paid-prize';
@@ -28,18 +29,54 @@ export class AdminService {
   ) {}
 
   async stats() {
+    // "Today" is the Lagos calendar day, not the last 24 hours.
     const [row] = await this.dataSource.query(
-      `SELECT
+      `WITH today AS (SELECT (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS start)
+       SELECT
          (SELECT count(*) FROM "users")::integer AS "users",
-         (SELECT count(*) FROM "users" WHERE "createdAt" > now() - interval '1 day')::integer AS "newToday",
+         (SELECT count(*) FROM "users", today WHERE "createdAt" >= today.start)::integer AS "newToday",
          (SELECT count(*) FROM "users" WHERE "createdAt" > now() - interval '7 days')::integer AS "newWeek",
          (SELECT count(*) FROM "users" WHERE "createdAt" > now() - interval '30 days')::integer AS "newMonth",
+         (SELECT count(*) FROM "users", today WHERE "lastSeenAt" >= today.start)::integer AS "activeToday",
+         (SELECT count(DISTINCT "userId") FROM "activities", today WHERE "startedAt" >= today.start)::integer AS "movedToday",
          (SELECT count(*) FROM "users" WHERE "emailVerified")::integer AS "verified",
          (SELECT count(DISTINCT "userId") FROM "activities" WHERE "startedAt" > now() - interval '7 days')::integer AS "activeWeek",
          (SELECT count(*) FROM "strava_accounts" WHERE "userId" IS NOT NULL)::integer AS "strava",
          (SELECT count(*) FROM "competition_tables" WHERE "status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED'))::integer AS "liveCompetitions"`,
     ) as Array<Record<string, number>>;
     return row;
+  }
+
+  /**
+   * Everyone on Jump for the admin list, newest activity first. Views match the stats: active today
+   * (used Jump), moved today (recorded an activity), new today, or everyone; q searches name, username, email.
+   */
+  async people(input: { view?: string; q?: string; offset?: number }) {
+    const view = ['active-today', 'moved-today', 'new-today'].includes(input.view ?? '') ? input.view : 'all';
+    const term = input.q?.trim().toLowerCase().slice(0, 80) ?? '';
+    const offset = Math.max(0, Math.min(Number(input.offset) || 0, 100_000));
+    const rows = await this.dataSource.query(
+      `WITH today AS (SELECT (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS start),
+       people AS (
+         SELECT u."id", COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl", p."countryCode",
+                u."email", u."emailVerified", u."role", u."createdAt", u."lastSeenAt",
+                (SELECT max(a."startedAt") FROM "activities" a WHERE a."userId" = u."id") AS "lastActivityAt",
+                (SELECT count(*) FROM "activities" a WHERE a."userId" = u."id" AND a."verificationStatus" = 'VERIFIED')::integer AS "activities",
+                EXISTS (SELECT 1 FROM "strava_accounts" s WHERE s."userId" = u."id") AS "strava"
+         FROM "users" u LEFT JOIN "profiles" p ON p."userId" = u."id"
+       )
+       SELECT people.*, count(*) OVER ()::integer AS "total" FROM people, today
+       WHERE ($1 = 'all'
+              OR ($1 = 'active-today' AND people."lastSeenAt" >= today.start)
+              OR ($1 = 'moved-today' AND people."lastActivityAt" >= today.start)
+              OR ($1 = 'new-today' AND people."createdAt" >= today.start))
+         AND ($2 = '' OR lower(people."displayName") LIKE '%' || $2 || '%' OR lower(COALESCE(people."username", '')) LIKE '%' || $2 || '%'
+              OR lower(people."email") LIKE '%' || $2 || '%')
+       ORDER BY people."lastSeenAt" DESC NULLS LAST, people."createdAt" DESC
+       LIMIT 50 OFFSET $3`,
+      [view, term.replace(/[%_\\]/g, ''), offset],
+    ) as Array<Record<string, unknown> & { total: number }>;
+    return { total: rows[0]?.total ?? 0, people: rows.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'total'))) };
   }
 
   async approvePayout(actorUserId: string, payoutId: string, password: string) {
@@ -153,15 +190,8 @@ export class AdminService {
       if (input.decision === 'APPROVED') {
         await creditActivities(manager, { activityId: review.activityId });
       } else {
-        await manager.query(`DELETE FROM "table_activity_credits" WHERE "activityId" = $1`, [review.activityId]);
+        await uncreditActivity(manager, review.activityId);
       }
-      await manager.query(
-        `UPDATE "table_registrations" r SET "creditedDistanceMetres" = totals.distance,"creditedSteps"=totals.steps,"completionTimeSeconds"=totals.best_time
-         FROM (SELECT r2."id", COALESCE(SUM(c."creditedDistanceMetres"), 0)::integer distance,
-                      COALESCE(SUM(c."creditedSteps"), 0)::integer steps,MIN(c."completionTimeSeconds")::integer best_time
-           FROM "table_registrations" r2 LEFT JOIN "table_activity_credits" c ON c."registrationId" = r2."id" GROUP BY r2."id") totals
-         WHERE r."id" = totals."id"`,
-      );
       await manager.query(
         `INSERT INTO "admin_audit_events" ("actorUserId", "action", "targetType", "targetId", "metadata") VALUES ($1,$2,'activity_review',$3,$4)`,
         [actorUserId, `REVIEW_${input.decision}`, reviewId, JSON.stringify({ note: input.note })],
@@ -172,11 +202,8 @@ export class AdminService {
   }
 
   async createPaidDraft(actorUserId: string, input: CreatePaidTableDto) {
-    try {
-      assertScoringConfiguration(input.challengeType, input.scoringMethod, input.targetDistanceMetres);
-    } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid competition scoring');
-    }
+    if (input.challengeType === 'CYCLING') throw new BadRequestException('Cycling competitions cannot have cash prizes yet');
+    const scoring = scoringColumns(input, true);
     let guaranteedPrizeKobo: number;
     try { guaranteedPrizeKobo = paidPrizePot(input.capacity, input.entryFeeKobo); }
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Invalid paid prize pot'); }
@@ -198,8 +225,7 @@ export class AdminService {
         type: 'paid', status: 'PENDING_APPROVAL', entryFeeKobo: input.entryFeeKobo,
         guaranteedPrizeKobo, minimumEntrants: (input.minimumEntrants ?? 2),
         capacity: input.capacity, startsAt, entryClosesAt, scoringClosesAt, distanceCapMetres: null,
-        challengeType: input.challengeType, scoringMethod: input.scoringMethod,
-        targetDistanceMetres: input.targetDistanceMetres ?? null, communityId: input.communityId ?? null,
+        ...scoring, format: input.capacity === 2 ? 'head_to_head' : 'open', communityId: input.communityId ?? null,
         ...reminderConfig(input.reminderTime, input.reminderTimeZone),
         platformFeeBps: creator ? 3500 : 3000, creatorCommissionBps: creator ? 500 : 0,
         prizeSplitBps,
@@ -266,17 +292,17 @@ export class AdminService {
       ) as Array<{ count: number }>;
       if (Number(pending[0].count) > 0) throw new ConflictException('Activities are still pending review');
 
-      const metric = table.scoringMethod === 'MOST_STEPS' ? 'r."creditedSteps" DESC' : table.scoringMethod === 'FARTHEST_DISTANCE' ? 'r."creditedDistanceMetres" DESC' : 'r."completionTimeSeconds" ASC NULLS LAST';
+      // Final scores from the same engine as the live board, recomputed now so nothing is stale.
+      await rescore(manager, [tableId]);
       const standings = (await manager.query(
-        `SELECT r."userId", r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds", r."joinedAt",
-                row_number() OVER (ORDER BY ${metric}, r."joinedAt" ASC, r."userId" ASC)::integer rank
+        `SELECT r."userId", r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds", r."score", r."targetReachedAt", r."qualified", r."joinedAt",
+                row_number() OVER (ORDER BY ${RANK_ORDER})::integer rank
          FROM "table_registrations" r WHERE r."tableId" = $1
-         ORDER BY ${metric}, r."joinedAt" ASC, r."userId" ASC`,
+         ORDER BY ${RANK_ORDER}`,
         [tableId],
-      )) as Array<{ userId: string; creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null; joinedAt: Date; rank: number }>;
-      const eligible = standings.filter((row) =>
-        cashPrizeEligible(table, row.userId, fundingUserIds) &&
-        (!['FASTEST_FIXED_DISTANCE', 'FASTEST_TIME'].includes(table.scoringMethod) || row.completionTimeSeconds !== null));
+      )) as Array<{ userId: string; creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null; score: number | null; qualified: boolean; joinedAt: Date; rank: number }>;
+      // A winner needs a real score and to have met the minimums (a fastest-time race needs a finish).
+      const eligible = standings.filter((row) => cashPrizeEligible(table, row.userId, fundingUserIds) && row.qualified && row.score !== null);
       const winner = eligible[0];
       if (table.type === 'paid' && standings.filter((row) => row.userId !== table.creatorId).length < table.minimumEntrants) {
         throw new ConflictException('Minimum entrants were not met; cancel and refund the competition');
@@ -286,7 +312,7 @@ export class AdminService {
       const version = Number(existing[0].version) + 1;
       const snapshots = (await manager.query(
         `INSERT INTO "table_leaderboard_snapshots" ("tableId","version","algorithmVersion","standings") VALUES ($1,$2,$3,$4) RETURNING "id"`,
-        [tableId, version, `jump-${table.scoringMethod.toLowerCase()}-v1`, JSON.stringify(standings)],
+        [tableId, version, `jump-${table.scoringMethod.toLowerCase()}-v${table.rulesVersion}`, JSON.stringify(standings)],
       )) as Array<{ id: string }>;
       const settlements = (await manager.query(
         `INSERT INTO "table_settlements" ("tableId","version","snapshotId","winnerUserId","settledByUserId") VALUES ($1,$2,$3,$4,$5) RETURNING *`,

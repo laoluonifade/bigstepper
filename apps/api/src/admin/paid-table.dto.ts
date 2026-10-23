@@ -1,14 +1,15 @@
 import { OmitType } from '@nestjs/swagger';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../tables/challenge-types';
+import { ScoringFieldsDto } from '../tables/dto/scoring-fields.dto';
 
-export class CreatePaidTableDto {
+export class CreatePaidTableDto extends ScoringFieldsDto {
   @IsUUID() creatorId: string;
   @IsString() @MinLength(3) title: string;
   @IsOptional() @IsString() @MaxLength(280) description?: string;
   @IsIn(CHALLENGE_TYPES) challengeType: ChallengeType;
   @IsIn(SCORING_METHODS) scoringMethod: ScoringMethod;
-  @IsOptional() @IsInt() @Min(100) @Max(500000) targetDistanceMetres?: number;
+  @IsOptional() @IsInt() @Min(100) @Max(1_000_000) targetDistanceMetres?: number;
   @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) reminderTime?: string;
   @IsOptional() @IsString() @MaxLength(64) reminderTimeZone?: string;
   @IsOptional() @IsUUID() communityId?: string;

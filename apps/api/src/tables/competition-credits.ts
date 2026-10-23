@@ -1,13 +1,16 @@
 import { EntityManager } from 'typeorm';
+import { ChallengeType, dailyMeasure, ScoringMethod } from './competition-rules';
+import { daysBetween, ScoredActivity, scoreEntrants } from './scoring-engine';
 
 /**
  * Puts verified activities on competition boards and re-totals them. One rule everywhere: a verified
- * walk, run or ride counts if it happened inside the competition's dates and fits its activity type,
- * whenever the runner joined. So an activity recorded (or synced from Strava) before joining still counts
- * once they're in, and a late Strava upload counts the moment it's verified.
+ * walk, run or ride counts if it happened inside the competition's dates and is a kind the competition
+ * counts, whenever the runner joined. So an activity recorded (or synced from Strava) before joining still
+ * counts once they're in, and a late Strava upload counts the moment it's verified.
  *
- * Both distance and steps are recorded on every credit so any board can show km and steps; ranking only
- * reads the column that matches the scoring method.
+ * Both distance and steps are recorded on every credit so any board can show km and steps; the scoring
+ * engine decides what ranks. Competitions on the engine's rules (v2) count GPS distance and measured steps
+ * only, skip activities under the creator's minimums, and never credit two overlapping activities.
  */
 export async function creditActivities(manager: EntityManager, scope: { activityId: string } | { tableId: string; userId: string }) {
   const [filter, params] = 'activityId' in scope
@@ -16,9 +19,9 @@ export async function creditActivities(manager: EntityManager, scope: { activity
   const credited = await manager.query(
     `INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
      SELECT t."id", r."id", a."id",
-       LEAST(CASE WHEN t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
+       LEAST(CASE WHEN t."rulesVersion" = 1 AND t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
              COALESCE(t."distanceCapMetres", 2147483647)),
-       a."validatedSteps",
+       CASE WHEN t."rulesVersion" >= 2 AND a."stepsSource" IS DISTINCT FROM 'sensor' THEN 0 ELSE a."validatedSteps" END,
        CASE WHEN t."scoringMethod" IN ('FASTEST_FIXED_DISTANCE','FASTEST_TIME') AND a."validatedDistanceMetres">=t."targetDistanceMetres" THEN a."movingSeconds" ELSE NULL END
      FROM "activities" a
      JOIN "table_registrations" r ON r."userId" = a."userId"
@@ -26,11 +29,14 @@ export async function creditActivities(manager: EntityManager, scope: { activity
      WHERE ${filter}
        AND a."verificationStatus" = 'VERIFIED'
        AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')
-       AND ((a."activityType"='cycle' AND t."challengeType"='CYCLING') OR
-            (a."activityType" IN ('walk','run') AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR
-             (t."challengeType"='WALK' AND a."activityType"='walk') OR (t."challengeType"='RUN' AND a."activityType"='run'))))
+       AND t."eligibleActivities" ? a."activityType"
        AND a."startedAt" >= COALESCE(t."startsAt", '-infinity'::timestamptz)
        AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
+       AND a."validatedDistanceMetres" >= COALESCE(t."minActivityMetres", 0)
+       AND a."movingSeconds" >= COALESCE(t."minActivitySeconds", 0)
+       AND (t."rulesVersion" = 1 OR NOT EXISTS (
+         SELECT 1 FROM "table_activity_credits" c2 JOIN "activities" a2 ON a2."id" = c2."activityId"
+         WHERE c2."registrationId" = r."id" AND a2."id" <> a."id" AND a2."startedAt" < a."finishedAt" AND a2."finishedAt" > a."startedAt"))
      ON CONFLICT ("tableId", "activityId") DO NOTHING
      RETURNING "tableId"`,
     params,
@@ -40,19 +46,103 @@ export async function creditActivities(manager: EntityManager, scope: { activity
   return tableIds;
 }
 
-/** Recomputes each entrant's totals on these competitions from their credits. */
+/**
+ * Takes an activity off competition boards and re-totals them. With liveOnly, finished competitions keep
+ * the result they were settled on.
+ */
+export async function uncreditActivity(manager: EntityManager, activityId: string, { liveOnly = false } = {}) {
+  const removed = await manager.query(
+    `DELETE FROM "table_activity_credits" c USING "competition_tables" t
+     WHERE c."activityId" = $1 AND t."id" = c."tableId"
+       ${liveOnly ? `AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')` : ''}
+     RETURNING c."tableId"`,
+    [activityId],
+  ) as [Array<{ tableId: string }>, number] | Array<{ tableId: string }>;
+  // A DELETE … RETURNING comes back from the driver as [rows, count].
+  const rows = (Array.isArray(removed[0]) ? removed[0] : removed) as Array<{ tableId: string }>;
+  const tableIds = [...new Set(rows.map((row) => row.tableId))];
+  if (tableIds.length) await retotal(manager, tableIds);
+  return tableIds;
+}
+
+/** Recomputes each entrant's totals and score on these competitions from their credits. */
 export async function retotal(manager: EntityManager, tableIds: string[]) {
   await manager.query(
     `UPDATE "table_registrations" r
-     SET "creditedDistanceMetres" = totals.distance, "creditedSteps" = totals.steps, "completionTimeSeconds" = totals.best_time
-     FROM (
+     SET "creditedDistanceMetres" = COALESCE(totals.distance, 0), "creditedSteps" = COALESCE(totals.steps, 0), "completionTimeSeconds" = totals.best_time
+     FROM "table_registrations" own
+     LEFT JOIN (
        SELECT c."registrationId", SUM(c."creditedDistanceMetres")::integer AS distance,
               SUM(c."creditedSteps")::integer AS steps, MIN(c."completionTimeSeconds")::integer AS best_time
        FROM "table_activity_credits" c
        WHERE c."tableId" = ANY($1::uuid[])
        GROUP BY c."registrationId"
-     ) totals
-     WHERE r."id" = totals."registrationId"`,
+     ) totals ON totals."registrationId" = own."id"
+     WHERE r."id" = own."id" AND own."tableId" = ANY($1::uuid[])`,
     [tableIds],
   );
+  await rescore(manager, tableIds);
+}
+
+interface TableRules {
+  id: string;
+  challengeType: ChallengeType;
+  scoringMethod: ScoringMethod;
+  rulesVersion: number;
+  targetDistanceMetres: number | null;
+  targetSteps: number | null;
+  targetSeconds: number | null;
+  targetSessions: number | null;
+  dailyTarget: number | null;
+  minSessions: number | null;
+  timeZone: string;
+  startDay: string;
+  endDay: string;
+}
+
+/** Runs the scoring engine over each competition's credited activities and stores every entrant's score. */
+export async function rescore(manager: EntityManager, tableIds: string[]) {
+  for (const tableId of tableIds) {
+    const [table] = await manager.query(
+      `SELECT "id", "challengeType", "scoringMethod", "rulesVersion", "targetDistanceMetres", "targetSteps", "targetSeconds",
+              "targetSessions", "dailyTarget", "minSessions", "timeZone",
+              to_char((COALESCE("startsAt", "createdAt") AT TIME ZONE "timeZone")::date, 'YYYY-MM-DD') AS "startDay",
+              to_char((LEAST(now(), COALESCE("scoringClosesAt", 'infinity'::timestamptz)) AT TIME ZONE "timeZone")::date, 'YYYY-MM-DD') AS "endDay"
+       FROM "competition_tables" WHERE "id" = $1`,
+      [tableId],
+    ) as TableRules[];
+    if (!table) continue;
+    const registrations = await manager.query(`SELECT "id" FROM "table_registrations" WHERE "tableId" = $1`, [tableId]) as Array<{ id: string }>;
+    if (!registrations.length) continue;
+    const rows = await manager.query(
+      `SELECT c."registrationId", a."id" AS "activityId", a."startedAt", a."finishedAt",
+              to_char(a."startedAt" AT TIME ZONE $2, 'YYYY-MM-DD') AS "day",
+              c."creditedDistanceMetres" AS "distance", c."creditedSteps" AS "steps", a."movingSeconds", a."elapsedSeconds",
+              a."elevationGainMetres" AS "elevation", c."completionTimeSeconds" AS "legacyCompletionSeconds"
+       FROM "table_activity_credits" c JOIN "activities" a ON a."id" = c."activityId"
+       WHERE c."tableId" = $1`,
+      [tableId, table.timeZone],
+    ) as ScoredActivity[];
+    const scores = scoreEntrants({
+      method: table.scoringMethod,
+      rulesVersion: table.rulesVersion,
+      targetDistanceMetres: table.targetDistanceMetres,
+      targetSteps: table.targetSteps,
+      targetSeconds: table.targetSeconds,
+      targetSessions: table.targetSessions,
+      dailyTarget: table.dailyTarget,
+      dailyMeasure: dailyMeasure(table.challengeType, table.scoringMethod),
+      minSessions: table.minSessions,
+      windowDays: daysBetween(table.startDay, table.endDay),
+    }, registrations.map((row) => row.id), rows);
+    const values = [...scores].map(([id, entrant]) => ({ id, ...entrant }));
+    await manager.query(
+      `UPDATE "table_registrations" r
+       SET "score" = v."score", "rankScore" = v."rankScore", "targetReachedAt" = v."targetReachedAt", "scoredAt" = v."scoredAt", "qualified" = v."qualified"
+       FROM jsonb_to_recordset($1::jsonb) AS v("id" uuid, "score" double precision, "rankScore" double precision,
+                                               "targetReachedAt" timestamptz, "scoredAt" timestamptz, "qualified" boolean)
+       WHERE r."id" = v."id"`,
+      [JSON.stringify(values)],
+    );
+  }
 }

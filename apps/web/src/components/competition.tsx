@@ -4,11 +4,12 @@ import { type ReactNode, useId, useState } from 'react';
 import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
-import { formatCountdown, formatDateTime, formatDistance, formatDuration, formatMoney } from '../lib/format';
+import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '../lib/format';
+import { activityLabel, formatScore, headline, metricOf, towardLeader, winsLabel } from '../lib/scoring';
 import type { ChallengeType, CompetitionTable, Unit } from '../lib/types';
 import { ArrowRightIcon, ChevronRightIcon, LockIcon, UsersIcon } from './icons';
 import { METALS } from './Milestones';
-import { cx } from './ui';
+import { Avatar, cx } from './ui';
 
 export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' | 'scoring-closed' | 'final';
 
@@ -140,14 +141,7 @@ export function challengeHeadline(table: CompetitionTable, unit: Unit): { big: s
     if (table.fundingDestination === 'CHARITY') return { big: formatMoney(amount).replace(/\.00$/, ''), small: `for ${table.charityName ?? 'charity'} · held for verification` };
     return { big: formatMoney(amount).replace(/\.00$/, ''), small: table.prizeSplitBps?.length > 1 ? `across top ${table.prizeSplitBps.length}` : 'to the winner' };
   }
-  if (table.type === 'sponsored') return { big: 'Funded', small: 'free entry · fund the prize' };
-  if ((table.scoringMethod === 'FASTEST_FIXED_DISTANCE' || table.scoringMethod === 'FASTEST_TIME') && table.targetDistanceMetres) {
-    const value = unit === 'km' ? table.targetDistanceMetres / 1000 : table.targetDistanceMetres / 1609.344;
-    const label = Number.isInteger(Math.round(value * 10) / 10) ? String(Math.round(value)) : value.toFixed(1);
-    return { big: `${label}${unit === 'km' ? 'K' : ' MI'}`, small: `fastest ${table.challengeType === 'WALK' ? 'walk' : 'time'} wins` };
-  }
-  if (table.scoringMethod === 'MOST_STEPS') return { big: 'Steps', small: 'most steps wins' };
-  return { big: 'Farthest', small: `most ${unit} wins` };
+  return headline(table, unit);
 }
 
 /** How far through its window a challenge is, 0–1, or null when it has no end. */
@@ -171,7 +165,7 @@ export function prizeLabel(table: CompetitionTable, unit: Unit) {
 export function CompetitionRow({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
   const hero = challengeHeadline(table, unit);
   const prize = prizeLabel(table, unit);
-  const wins = hero.big.startsWith('₦') ? hero.small.replace(/^to the winner$/, 'Winner takes it') : `${hero.big} · ${hero.small}`;
+  const wins = `${activityLabel(table.challengeType)} · ${winsLabel(table, unit)}${hero.big.startsWith('₦') ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
   return <Link to="/competitions/$code" params={{ code: table.code }} className="group flex items-center gap-3 px-3.5 py-3 transition-colors hover:bg-ink/[0.025]">
     <ChallengeMark type={table.challengeType} code={table.code} size={40} />
     <div className="min-w-0 flex-1">
@@ -179,7 +173,7 @@ export function CompetitionRow({ table, unit, now }: { table: CompetitionTable; 
         <span className="truncate">{table.title}</span>
         {table.visibility === 'private' && <LockIcon size={12} className="shrink-0 text-ink-3" />}
       </p>
-      <p className="mt-0.5 truncate text-[12px] text-ink-2">{wins.charAt(0).toUpperCase() + wins.slice(1)}</p>
+      <p className="mt-0.5 truncate text-[12px] text-ink-2">{wins}</p>
       <p className="num mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-ink-3">
         <span className="inline-flex items-center gap-0.5"><UsersIcon size={12} />{table.entrantCount ?? 0}{table.capacity ? `/${table.capacity}` : ''}</span>
         <span aria-hidden="true">·</span>
@@ -194,15 +188,11 @@ export function CompetitionRow({ table, unit, now }: { table: CompetitionTable; 
 }
 
 function boardScore(table: CompetitionTable, score: number, unit: Unit) {
-  if (table.scoringMethod === 'MOST_STEPS') return score.toLocaleString('en-GB');
-  if (table.scoringMethod === 'FARTHEST_DISTANCE') return formatDistance(score, unit);
-  return formatDuration(score);
+  return formatScore(table, score, unit, { short: metricOf(table.scoringMethod).display === 'steps' }) ?? '';
 }
 
 function Face({ face, size = 28, ring }: { face: { displayName: string; avatarUrl: string | null }; size?: number; ring?: string }) {
-  return <span className={cx('flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink/10 text-[11px] font-bold ring-2', ring ?? 'ring-card')} style={{ width: size, height: size }}>
-    {face.avatarUrl ? <img src={face.avatarUrl} alt="" className="h-full w-full object-cover" /> : face.displayName.charAt(0).toUpperCase()}
-  </span>;
+  return <Avatar name={face.displayName} src={face.avatarUrl} size={size} className={cx('rounded-full ring-2', ring ?? 'ring-card')} />;
 }
 
 /**
@@ -215,7 +205,8 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
   const [joined, setJoined] = useState(false);
   const hero = challengeHeadline(table, unit);
   const cash = hero.big.startsWith('₦');
-  const rules = cash ? hero.small.replace(/^to the winner$/, 'winner takes it') : hero.small;
+  // Activity first, so you know what to go and do: "Walk · First to 50 km".
+  const rules = `${activityLabel(table.challengeType)} · ${winsLabel(table, unit)}${cash ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
   const leaders = table.leaders ?? [];
   const faces = table.faces ?? [];
   const leader = leaders[0];
@@ -246,7 +237,7 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
           <span className="truncate">{table.title}</span>
           {table.visibility === 'private' && <LockIcon size={13} className="shrink-0 text-ink-3" />}
         </p>
-        <p className="mt-0.5 truncate text-[13px] text-ink-3">{cash ? rules.charAt(0).toUpperCase() + rules.slice(1) : `${hero.big} · ${rules}`}</p>
+        <p className="mt-0.5 truncate text-[13px] text-ink-3">{rules}</p>
       </div>
       <p className="shrink-0 pt-0.5 text-right">
         {cash ? <span className="num text-[17px] font-extrabold tracking-tight">{hero.big}</span>
@@ -260,7 +251,7 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
       <span className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-ink/[0.07]" aria-hidden="true" />
       <span className="absolute bottom-1.5 right-[6%] top-1.5 border-l-[1.5px] border-dashed border-ink/25" aria-hidden="true" />
       {leaders.length
-        ? [...leaders].reverse().map((runner) => <span key={runner.rank} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: `${6 + (leader ? Math.min(1, runner.score / leader.score) : 0) * 88}%` }} title={`${runner.displayName} · ${boardScore(table, runner.score, unit)}`}>
+        ? [...leaders].reverse().map((runner) => <span key={runner.rank} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: `${6 + (leader ? towardLeader(table.scoringMethod, runner.score, leader.score) : 0) * 88}%` }} title={`${runner.displayName} · ${boardScore(table, runner.score, unit)}`}>
           <Face face={runner} size={26} ring={myRank === runner.rank ? 'ring-volt' : 'ring-card'} />
         </span>)
         : <span className="absolute left-0 top-1/2 flex -translate-y-1/2 -space-x-2">{faces.slice(0, 4).map((face, index) => <Face key={index} face={face} size={24} />)}</span>}
@@ -328,7 +319,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
         <div className="relative z-10 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <TypeTag table={table} />
-            <span className="tag bg-paper text-ink">{table.challengeType === 'STEP' ? 'STEPS' : table.challengeType}</span>
+            <span className="tag bg-paper text-ink">{activityLabel(table.challengeType)}</span>
           </div>
           <PhaseTag table={table} now={now} />
         </div>

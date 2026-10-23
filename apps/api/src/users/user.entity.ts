@@ -20,6 +20,10 @@ export class User {
   @Column({ default: 'runner' })
   role: 'runner' | 'admin' | 'compliance';
 
+  /** Last signed-in request, kept to the nearest five minutes. */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastSeenAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

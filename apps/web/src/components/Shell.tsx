@@ -1,4 +1,5 @@
 import { StravaSyncBar } from '../pages/Strava';
+import { LEGAL_LINKS } from '../legal/links';
 import { Link, Outlet, useLocation, type LinkProps } from '@tanstack/react-router';
 import { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
@@ -70,6 +71,15 @@ function PublicShell() {
           <Outlet />
         </div>
       </main>
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 text-[13px] text-ink-3 sm:flex-row sm:items-center sm:justify-between">
+          <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-1.5">
+            {LEGAL_LINKS.map((link) => <Link key={link.to} to={link.to} className="font-medium text-ink-2 hover:text-ink">{link.label}</Link>)}
+            <a href="mailto:start@startajump.com" className="font-medium text-ink-2 hover:text-ink">Contact</a>
+          </nav>
+          <p>© {new Date().getFullYear()} Voyatech Limited</p>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -1,26 +1,11 @@
-export const CHALLENGE_TYPES = ['WALK', 'RUN', 'DISTANCE', 'STEP', 'TIMED', 'CYCLING'] as const;
-export type ChallengeType = (typeof CHALLENGE_TYPES)[number];
+import { ACTIVITY_RULES, ChallengeType, METRICS, ScoringMethod, ScoringSettings, scoringProblem } from './competition-rules';
 
-export const SCORING_METHODS = ['MOST_STEPS', 'FARTHEST_DISTANCE', 'FASTEST_FIXED_DISTANCE', 'FASTEST_TIME'] as const;
-export type ScoringMethod = (typeof SCORING_METHODS)[number];
+export type { ChallengeType, ScoringMethod };
+export const CHALLENGE_TYPES = Object.keys(ACTIVITY_RULES) as ChallengeType[];
+export const SCORING_METHODS = Object.keys(METRICS) as ScoringMethod[];
 
-export function assertScoringConfiguration(
-  challengeType: ChallengeType,
-  scoringMethod: ScoringMethod,
-  targetDistanceMetres?: number,
-): void {
-  const allowed: Record<ChallengeType, ScoringMethod[]> = {
-    WALK: ['MOST_STEPS'],
-    RUN: ['FARTHEST_DISTANCE', 'FASTEST_FIXED_DISTANCE'],
-    DISTANCE: ['FARTHEST_DISTANCE'],
-    STEP: ['MOST_STEPS'],
-    TIMED: ['FASTEST_TIME'],
-    CYCLING: ['FARTHEST_DISTANCE'],
-  };
-  if (!allowed[challengeType].includes(scoringMethod)) {
-    throw new Error(`${scoringMethod} is not valid for a ${challengeType} competition`);
-  }
-  if (['FASTEST_FIXED_DISTANCE', 'FASTEST_TIME'].includes(scoringMethod) && !targetDistanceMetres) {
-    throw new Error('A target distance is required for fastest-time competitions');
-  }
+/** Throws with a runner-readable reason when a competition's scoring settings can't be used. */
+export function assertScoringConfiguration(settings: ScoringSettings): void {
+  const problem = scoringProblem(settings);
+  if (problem) throw new Error(problem);
 }

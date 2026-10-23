@@ -47,6 +47,12 @@ export class AdminController {
     return this.adminService.stats();
   }
 
+  @Get('people')
+  @UseGuards(AdminOnlyGuard)
+  people(@Query('view') view?: string, @Query('q') q?: string, @Query('offset') offset?: string) {
+    return this.adminService.people({ view, q, offset: Number(offset) || 0 });
+  }
+
   @Get('tables/paid-drafts')
   @UseGuards(AdminOnlyGuard)
   paidDrafts(@Query('view') view?: string) {

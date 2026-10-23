@@ -59,6 +59,9 @@ const stravaSignup = createRoute({ getParentRoute: () => authLayout, path: '/str
 const stravaCallback = createRoute({ getParentRoute: () => root, path: '/auth/strava', component: StravaCallbackPage });
 const reset = createRoute({ getParentRoute: () => authLayout, path: '/reset-password', validateSearch: tokenSearch, component: page(() => import('./pages/auth'), 'ResetPasswordPage') });
 
+const terms = createRoute({ getParentRoute: () => root, path: '/terms', component: page(() => import('./pages/Legal'), 'TermsPage') });
+const privacy = createRoute({ getParentRoute: () => root, path: '/privacy', component: page(() => import('./pages/Legal'), 'PrivacyPage') });
+const safety = createRoute({ getParentRoute: () => root, path: '/safety', component: page(() => import('./pages/Legal'), 'SafetyPage') });
 const leaderboard = createRoute({ getParentRoute: () => root, path: '/leaderboard', component: protectedPage(() => import('./pages/LeaderboardPage'), 'LeaderboardPage') });
 const welcome = createRoute({ getParentRoute: () => root, path: '/welcome', component: protectedPage(() => import('./pages/Welcome'), 'WelcomePage') });
 const dashboard = createRoute({ getParentRoute: () => root, path: '/dashboard', component: guarded(DashboardPage) });
@@ -86,6 +89,13 @@ const creator = createRoute({ getParentRoute: () => root, path: '/creator', comp
 const notifications = createRoute({ getParentRoute: () => root, path: '/notifications', component: protectedPage(() => import('./pages/You'), 'NotificationsPage') });
 const profile = createRoute({ getParentRoute: () => root, path: '/settings/profile', component: protectedPage(() => import('./pages/You'), 'ProfileSettingsPage') });
 const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: protectedPage(() => import('./pages/Payments'), 'PaymentReturnPage') });
+const adminPeople = createRoute({
+  getParentRoute: () => root,
+  path: '/admin/people',
+  validateSearch: (search: Record<string, unknown>): { view?: 'active-today' | 'moved-today' | 'new-today' } =>
+    search.view === 'active-today' || search.view === 'moved-today' || search.view === 'new-today' ? { view: search.view } : {},
+  component: protectedPage(() => import('./pages/AdminPeople'), 'AdminPeoplePage'),
+});
 const adminCreators = createRoute({ getParentRoute: () => root, path: '/admin/creators', component: protectedPage(() => import('./pages/AdminCreators'), 'AdminCreatorsPage') });
 const adminChallenges = createRoute({ getParentRoute: () => root, path: '/admin/challenges', component: protectedPage(() => import('./pages/AdminChallenges'), 'AdminChallengesPage') });
 const adminPayouts = createRoute({ getParentRoute: () => root, path: '/admin/payouts', component: protectedPage(() => import('./pages/AdminPayouts'), 'AdminPayoutsPage') });
@@ -99,12 +109,12 @@ function tokenSearch(search: Record<string, unknown>): { token?: string } {
 }
 
 const routeTree = root.addChildren([
-  home, competitions, competition, runners, runner,
+  home, competitions, competition, runners, runner, terms, privacy, safety,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, welcome, leaderboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
-  adminPayouts, adminCreators, adminChallenges,
+  adminPayouts, adminCreators, adminChallenges, adminPeople,
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });

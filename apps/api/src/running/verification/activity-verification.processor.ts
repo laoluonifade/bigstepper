@@ -80,6 +80,8 @@ export class ActivityVerificationProcessor extends WorkerHost {
           verificationStatus: status,
           validatedDistanceMetres: Math.round(validatedDistance),
           validatedSteps,
+          // Strava imports say at import whether steps came from cadence; Jump's come from the motion sensor.
+          stepsSource: activity.stepsSource ?? (validatedSteps > 0 ? 'sensor' : null),
           stepDistanceMetres: stepDistance,
           movingSeconds,
           gpsConfidence: confidence,

@@ -6,7 +6,9 @@ import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typ
 import { CompetitionTable } from './competition-table.entity';
 import { CreateTableDto } from './dto/create-table.dto';
 import { TableRegistration } from './table-registration.entity';
-import { assertScoringConfiguration } from './challenge-types';
+import { ACTIVITY_RULES, METRICS, ScoringMethod } from './competition-rules';
+import { scoringColumns } from './scoring-columns';
+import { RANK_ORDER } from './scoring-engine';
 import { CreateCreatorPaidChallengeDto } from '../admin/paid-table.dto';
 import { allocatePrizes, assertPrizeSplit } from './prize-split';
 import { paidPrizePot } from './paid-prize';
@@ -80,9 +82,7 @@ export class TablesService {
     // The activity this runner does most decides which competition types suit them.
     const habits = `(SELECT a."activityType" FROM "activities" a WHERE a."userId" = ${me} AND a."verificationStatus" <> 'REJECTED'
                      GROUP BY a."activityType" ORDER BY count(*) DESC LIMIT 1)`;
-    const fits = `CASE ${habits} WHEN 'run' THEN t."challengeType" IN ('RUN','DISTANCE','TIMED')
-                                  WHEN 'walk' THEN t."challengeType" IN ('WALK','STEP','DISTANCE')
-                                  WHEN 'cycle' THEN t."challengeType" = 'CYCLING' ELSE false END`;
+    const fits = `COALESCE(t."eligibleActivities" ? ${habits}, false)`;
     const joinedByMe = `EXISTS (SELECT 1 FROM "table_registrations" mine WHERE mine."tableId" = t."id" AND mine."userId" = ${me})`;
     // Yours and still running: shown on For you even when private, full or closed to new entries.
     const mineLive = `((t."creatorId" = ${me} OR ${joinedByMe}) AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
@@ -130,26 +130,22 @@ export class TablesService {
       `SELECT * FROM (
          SELECT r."tableId", r."joinedAt", r."userId",
                 COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl",
-                CASE WHEN t."scoringMethod"='MOST_STEPS' THEN r."creditedSteps"
-                     WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN r."creditedDistanceMetres"
-                     ELSE r."completionTimeSeconds" END AS "score",
-                row_number() OVER (PARTITION BY r."tableId" ORDER BY
-                  CASE WHEN t."scoringMethod"='MOST_STEPS' THEN -r."creditedSteps"
-                       WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN -r."creditedDistanceMetres"
-                       ELSE COALESCE(r."completionTimeSeconds", 2147483647) END,
-                  r."joinedAt", r."userId")::integer AS "rank"
+                r."score", t."scoringMethod",
+                row_number() OVER (PARTITION BY r."tableId" ORDER BY ${RANK_ORDER})::integer AS "rank"
          FROM "table_registrations" r
          JOIN "competition_tables" t ON t."id" = r."tableId"
          JOIN "users" u ON u."id" = r."userId" LEFT JOIN "profiles" p ON p."userId" = r."userId"
          WHERE r."tableId" = ANY($1::uuid[])
        ) ranked WHERE ranked."rank" <= 5 OR ranked."userId" = $2`,
       [tableIds, viewerId],
-    )) as Array<{ tableId: string; userId: string; rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number | null }>;
+    )) as Array<{ tableId: string; userId: string; rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number | null; scoringMethod: ScoringMethod }>;
     for (const row of rows) {
       const entry = out.get(row.tableId) ?? { leaders: [], faces: [], myRank: null };
       if (viewerId && row.userId === viewerId) entry.myRank = row.rank;
       if (row.rank > 5) { out.set(row.tableId, entry); continue; }
-      if (row.score && row.rank <= 3) entry.leaders.push({ rank: row.rank, displayName: row.displayName, username: row.username, avatarUrl: row.avatarUrl, score: Number(row.score) });
+      // Lower-is-better scores (times, variation) count from zero; totals only once there's something.
+      const scored = row.score !== null && (METRICS[row.scoringMethod]?.better === 'lower' || Number(row.score) > 0);
+      if (scored && row.rank <= 3) entry.leaders.push({ rank: row.rank, displayName: row.displayName, username: row.username, avatarUrl: row.avatarUrl, score: Number(row.score) });
       entry.faces.push({ displayName: row.displayName, avatarUrl: row.avatarUrl });
       out.set(row.tableId, entry);
     }
@@ -219,14 +215,8 @@ export class TablesService {
        ),
        ranked AS (
          SELECT r."tableId", r."userId",
-                CASE WHEN t."scoringMethod"='MOST_STEPS' THEN r."creditedSteps"
-                     WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN r."creditedDistanceMetres"
-                     ELSE r."completionTimeSeconds" END AS "score",
-                row_number() OVER (PARTITION BY r."tableId" ORDER BY
-                  CASE WHEN t."scoringMethod"='MOST_STEPS' THEN -r."creditedSteps"
-                       WHEN t."scoringMethod"='FARTHEST_DISTANCE' THEN -r."creditedDistanceMetres"
-                       ELSE COALESCE(r."completionTimeSeconds", 2147483647) END,
-                  r."joinedAt", r."userId")::integer AS "rank",
+                r."score", t."scoringMethod",
+                row_number() OVER (PARTITION BY r."tableId" ORDER BY ${RANK_ORDER})::integer AS "rank",
                 count(*) OVER (PARTITION BY r."tableId")::integer AS "entrants"
          FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
          WHERE r."tableId" IN (SELECT "id" FROM mine)
@@ -234,6 +224,7 @@ export class TablesService {
        SELECT t."id", t."code", t."title", t."type", t."challengeType", t."scoringMethod", t."targetDistanceMetres",
               t."status", t."startsAt", t."scoringClosesAt", t."visibility", t."guaranteedPrizeKobo"::float8 AS "guaranteedPrizeKobo", t."createdAt", m."hosting", m."joined",
               COALESCE((SELECT max(x."entrants") FROM ranked x WHERE x."tableId" = t."id"), 0) AS "entrants",
+              t."targetSteps", t."targetSeconds", t."targetSessions", t."dailyTarget",
               me."rank" AS "myRank", me."score" AS "myScore",
               (SELECT x."score" FROM ranked x WHERE x."tableId" = t."id" AND x."rank" = 1) AS "leaderScore"
        FROM mine m JOIN "competition_tables" t ON t."id" = m."id"
@@ -246,6 +237,7 @@ export class TablesService {
     );
     return rows as Array<{
       id: string; code: string; title: string; type: string; challengeType: string; scoringMethod: string; targetDistanceMetres: number | null;
+      targetSteps: number | null; targetSeconds: number | null; targetSessions: number | null; dailyTarget: number | null;
       status: string; startsAt: string | null; scoringClosesAt: string | null; visibility: string; guaranteedPrizeKobo: number | null; createdAt: string;
       hosting: boolean; joined: boolean;
       entrants: number; myRank: number | null; myScore: number | null; leaderScore: number | null;
@@ -260,10 +252,9 @@ export class TablesService {
        WHERE r."userId"=$1 AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
          AND COALESCE(t."startsAt", '-infinity'::timestamptz) <= now()
          AND COALESCE(t."scoringClosesAt", 'infinity'::timestamptz) > now()
-         AND (( $2='CYCLE' AND t."challengeType"='CYCLING') OR
-              ( $2 IN ('WALK','RUN') AND (t."challengeType" IN ('DISTANCE','STEP','TIMED') OR t."challengeType"=$2)))
+         AND t."eligibleActivities" ? $2
        ORDER BY t."scoringClosesAt" ASC LIMIT 50`,
-      [userId, activity.toUpperCase()],
+      [userId, activity],
     );
   }
 
@@ -271,8 +262,10 @@ export class TablesService {
     const sponsored = Boolean(input.fundedFree || input.guaranteedPrizeKobo);
     const challengeType = input.challengeType ?? 'RUN';
     if (challengeType === 'CYCLING' && sponsored) throw new BadRequestException('Cycling competitions are free only until bicycle verification is stronger');
-    const scoringMethod = input.scoringMethod ?? (challengeType === 'WALK' || challengeType === 'STEP' ? 'MOST_STEPS' : challengeType === 'TIMED' ? 'FASTEST_TIME' : 'FARTHEST_DISTANCE');
-    this.validateScoring(challengeType, scoringMethod, input.targetDistanceMetres);
+    const scoring = scoringColumns({ ...input, challengeType, scoringMethod: input.scoringMethod ?? ACTIVITY_RULES[challengeType].options[0].method }, sponsored);
+    // Head-to-head is two people; invite-only is a private board.
+    const format = input.format ?? (input.visibility === 'private' ? 'invite' : 'open');
+    if (format === 'head_to_head' && input.capacity !== 2) throw new BadRequestException('Head-to-head is for exactly two people');
     await this.assertCommunityManager(creatorId, input.communityId);
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
     const prizeSplitBps = this.prizeSplit(input.prizeSplitBps, input.capacity);
@@ -309,9 +302,8 @@ export class TablesService {
       scoringClosesAt,
       capacity: input.capacity,
       distanceCapMetres: input.distanceCapMetres ?? null,
-      challengeType,
-      scoringMethod,
-      targetDistanceMetres: input.targetDistanceMetres ?? null,
+      ...scoring,
+      format,
       ...reminderConfig(input.reminderTime, input.reminderTimeZone),
       communityId: input.communityId ?? null,
       platformFeeBps: sponsored ? 1500 : 3000,
@@ -320,14 +312,14 @@ export class TablesService {
       fundingDestination: input.fundingDestination ?? 'WINNERS',
       charityName: input.fundingDestination === 'CHARITY' ? input.charityName!.trim() : null,
       prizeSplitBps,
-      visibility: input.visibility ?? 'public',
+      visibility: format === 'open' ? 'public' : 'private',
     });
     return this.saveWithInvites(table, input);
   }
 
   async createPaidDraft(creatorId: string, input: CreateCreatorPaidChallengeDto) {
     if (input.challengeType === 'CYCLING') throw new BadRequestException('Cycling competitions cannot have cash prizes yet');
-    this.validateScoring(input.challengeType, input.scoringMethod, input.targetDistanceMetres);
+    const scoring = scoringColumns(input, true);
     await this.assertCommunityManager(creatorId, input.communityId);
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
     let guaranteedPrizeKobo: number;
@@ -361,9 +353,8 @@ export class TablesService {
       entryClosesAt,
       scoringClosesAt,
       distanceCapMetres: null,
-      challengeType: input.challengeType,
-      scoringMethod: input.scoringMethod,
-      targetDistanceMetres: input.targetDistanceMetres ?? null,
+      ...scoring,
+      format: input.capacity === 2 ? 'head_to_head' : 'open',
       ...reminderConfig(input.reminderTime, input.reminderTimeZone),
       communityId: input.communityId ?? null,
       platformFeeBps: 3500,
@@ -460,13 +451,12 @@ export class TablesService {
   async standings(tableId: string) {
     const table = await this.tables.findOne({ where: { id: tableId } });
     if (!table) throw new NotFoundException('Competition not found');
-    const metric = table.scoringMethod === 'MOST_STEPS' ? 'r."creditedSteps" DESC' : table.scoringMethod === 'FARTHEST_DISTANCE' ? 'r."creditedDistanceMetres" DESC' : 'r."completionTimeSeconds" ASC NULLS LAST';
     return this.dataSource.query(
-      `SELECT row_number() OVER (ORDER BY ${metric},r."joinedAt" ASC,r."userId" ASC)::integer rank,
+      `SELECT row_number() OVER (ORDER BY ${RANK_ORDER})::integer rank,
               r."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
-              r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds"
+              r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds",r."score",r."targetReachedAt",r."qualified"
        FROM "table_registrations" r JOIN "users" u ON u."id"=r."userId" LEFT JOIN "profiles" p ON p."userId"=r."userId" WHERE r."tableId"=$1
-       ORDER BY ${metric},r."joinedAt" ASC,r."userId" ASC LIMIT 500`,
+       ORDER BY ${RANK_ORDER} LIMIT 500`,
       [tableId],
     );
   }
@@ -491,14 +481,6 @@ export class TablesService {
     )) as Array<Record<string, unknown>>;
     if (!rows[0]) throw new NotFoundException('Final result is not available');
     return rows[0];
-  }
-
-  private validateScoring(challengeType: Parameters<typeof assertScoringConfiguration>[0], scoringMethod: Parameters<typeof assertScoringConfiguration>[1], target?: number) {
-    try {
-      assertScoringConfiguration(challengeType, scoringMethod, target);
-    } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid competition scoring');
-    }
   }
 
   private prizeSplit(split: number[] | undefined, capacity: number | null) {
@@ -681,3 +663,4 @@ export class TablesService {
     if (!allowed.length) throw new ForbiddenException('Community owner or admin access required');
   }
 }
+

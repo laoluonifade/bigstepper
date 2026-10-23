@@ -10,8 +10,10 @@ import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 import { Activity } from '../running/activity.entity';
 import { GpsSample } from '../running/gps-sample.entity';
 import { RunningSession } from '../running/running-session.entity';
+import { refreshLeagueDistance } from '../leagues/league-credits';
+import { uncreditActivity } from '../tables/competition-credits';
 import { StravaAccount } from './strava-account.entity';
-import { stravaStepTotals } from './strava-steps';
+import { hasCadence, stravaStepTotals } from './strava-steps';
 
 const STRAVA = 'https://www.strava.com';
 /** Strava wants the token refreshed when it has less than an hour left. */
@@ -49,6 +51,7 @@ interface StravaActivity {
   elapsed_time: number;
   moving_time: number;
   distance: number;
+  total_elevation_gain?: number;
   start_latlng: [number, number] | [];
 }
 
@@ -203,6 +206,52 @@ export class StravaService implements OnApplicationBootstrap {
       const summary = await this.request<StravaActivity>(account, `/activities/${event.object_id}`);
       await this.importActivity(account, account.userId, summary);
     }
+    if (event.object_type === 'activity' && event.aspect_type === 'delete') await this.forgetActivity(account.userId, event.object_id);
+    if (event.object_type === 'activity' && event.aspect_type === 'update' && event.updates?.type) {
+      const summary = await this.request<StravaActivity>(account, `/activities/${event.object_id}`);
+      await this.retype(account.userId, summary);
+    }
+  }
+
+  /**
+   * Deleted on Strava, so gone from Jump too: off every live board, and removed. Finished competitions keep
+   * the result they were settled on (their snapshot holds it), so their totals aren't recomputed.
+   */
+  private async forgetActivity(userId: string, stravaId: number) {
+    await this.dataSource.transaction(async (manager) => {
+      const activity = await manager.findOne(Activity, { where: { externalId: `strava:${stravaId}`, userId }, lock: { mode: 'pessimistic_write' } });
+      if (!activity) return;
+      await uncreditActivity(manager, activity.id, { liveOnly: true });
+      await manager.query(`DELETE FROM "table_activity_credits" WHERE "activityId" = $1`, [activity.id]);
+      await manager.delete(RunningSession, { id: activity.runningSessionId });
+      if (activity.activityType !== 'cycle') await refreshLeagueDistance(manager, userId);
+    });
+  }
+
+  /**
+   * The athlete changed the sport on Strava. A sport Jump can't verify is treated as deleted; a different
+   * one comes off the boards and is verified again as what it now is (a run relabelled a ride must pass
+   * the cycling checks before it counts anywhere).
+   */
+  private async retype(userId: string, summary: StravaActivity) {
+    const activityType = SPORT_TYPES[summary.sport_type];
+    if (!activityType || summary.manual || summary.trainer) return this.forgetActivity(userId, summary.id);
+    const activity = await this.dataSource.transaction(async (manager) => {
+      const existing = await manager.findOne(Activity, { where: { externalId: `strava:${summary.id}`, userId }, lock: { mode: 'pessimistic_write' } });
+      if (!existing || existing.activityType === activityType) return null;
+      await uncreditActivity(manager, existing.id, { liveOnly: true });
+      await manager.update(Activity, { id: existing.id }, { activityType, verificationStatus: 'PENDING_VERIFICATION' });
+      await manager.update(RunningSession, { id: existing.runningSessionId }, { activityType, status: 'PENDING_VERIFICATION' });
+      // Out of league distance until it's verified again.
+      await refreshLeagueDistance(manager, userId);
+      return existing;
+    });
+    if (!activity) return;
+    await this.verificationQueue.add(
+      'verify-activity',
+      { activityId: activity.id },
+      { jobId: `activity-${activity.id}-${activityType}`, attempts: 5, backoff: { type: 'exponential', delay: 1_000 } },
+    );
   }
 
   /**
@@ -307,6 +356,8 @@ export class StravaService implements OnApplicationBootstrap {
           externalId,
           recordedDistanceMetres: Math.round(summary.distance),
           recordedSteps: stepTotals?.at(-1) ?? 0,
+          stepsSource: stepTotals ? (hasCadence(offsets, streams.cadence?.data) ? 'sensor' : 'estimate') : null,
+          elevationGainMetres: typeof summary.total_elevation_gain === 'number' ? Math.round(summary.total_elevation_gain) : null,
           verificationStatus: 'PENDING_VERIFICATION',
           elapsedSeconds: summary.elapsed_time,
           movingSeconds: summary.moving_time,

@@ -22,7 +22,7 @@ export function stravaStepTotals(
   distance?: number[],
 ): number[] | null {
   if (activityType === 'cycle' || offsets.length === 0) return null;
-  const useCadence = cadence?.length === offsets.length && cadence.some((value) => value > 0);
+  const useCadence = hasCadence(offsets, cadence);
   // Strava reports running cadence per foot (about 80–95); some devices do the same for walks (50–60).
   const perFoot = useCadence && median(cadence!.filter((value) => value > 0)) < (activityType === 'run' ? 120 : 80);
   const cumulative = distance?.length === offsets.length ? distance : null;
@@ -44,6 +44,11 @@ export function stravaStepTotals(
     totals.push(Math.round(steps));
   }
   return totals;
+}
+
+/** Whether the watch or phone recorded cadence for the whole track: real, measured steps. */
+export function hasCadence(offsets: number[], cadence?: number[]): cadence is number[] {
+  return cadence?.length === offsets.length && cadence.some((value) => value > 0);
 }
 
 function median(values: number[]) {

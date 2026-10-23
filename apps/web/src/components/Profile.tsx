@@ -58,7 +58,7 @@ export function AvatarEditor({ profile, size = 84 }: { profile: Profile; size?: 
   return (
     <div className="flex flex-col items-start">
       <div className="relative">
-        <Avatar name={profile.displayName} src={profile.avatarUrl} highlight size={size} className={cx('rounded-lg', busy && 'opacity-60')} />
+        <Avatar name={profile.displayName} src={profile.avatarUrl} size={size} className={cx('rounded-lg', busy && 'opacity-60')} />
         {busy && <span className="absolute inset-0 animate-shimmer rounded-lg" aria-hidden="true" />}
         <button
           type="button"

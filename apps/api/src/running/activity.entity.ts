@@ -47,6 +47,14 @@ export class Activity {
   @Column({ type: 'integer', default: 0 })
   elapsedSeconds: number;
 
+  /** Metres climbed; null when the source didn't record elevation (Jump recordings don't yet). */
+  @Column({ type: 'integer', nullable: true })
+  elevationGainMetres: number | null;
+
+  /** Steps measured by a motion sensor or cadence ('sensor'), or estimated from distance ('estimate'). */
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  stepsSource: 'sensor' | 'estimate' | null;
+
   @Column({ type: 'integer', default: 0 })
   movingSeconds: number;
 

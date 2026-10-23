@@ -6,6 +6,8 @@ import { DataSource } from 'typeorm';
 import { CHALLENGE_REMINDERS_QUEUE } from '../jobs/jobs.module';
 import { MailService } from '../mail/mail.service';
 import { challengeReminderEmail } from '../mail/templates';
+import { rescore } from './competition-credits';
+import { METRICS } from './competition-rules';
 
 interface ReminderRecipient {
   id: string;
@@ -29,9 +31,11 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
 
   async onModuleInit() {
     await this.queue.upsertJobScheduler('daily-challenge-reminders', { every: 60_000 }, { name: 'send-due-reminders' });
+    await this.queue.upsertJobScheduler('calendar-rescore', { every: 15 * 60_000 }, { name: 'rescore-calendar' });
   }
 
   async process(job: Job): Promise<void> {
+    if (job.name === 'rescore-calendar') return this.rescoreCalendar();
     if (job.name !== 'send-due-reminders' || !this.mail.configured) return;
     const recipients = (await this.dataSource.query(
       `WITH due AS (
@@ -87,4 +91,23 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
       `UPDATE "challenge_reminder_deliveries" SET "sentAt"=now() WHERE "id"=ANY($1::uuid[])`, [sent],
     );
   }
+
+  /**
+   * Averages and consistency are measured over every day so far, so they move as days pass even with no
+   * new activity. Re-score those live competitions, plus any that closed in the last day for a final pass.
+   */
+  private async rescoreCalendar() {
+    const tables = (await this.dataSource.query(
+      `SELECT "id" FROM "competition_tables"
+       WHERE "rulesVersion" >= 2 AND "scoringMethod" = ANY($1::text[])
+         AND "status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
+         AND COALESCE("startsAt", "createdAt") <= now()
+         AND ("scoringClosesAt" IS NULL OR "scoringClosesAt" > now() - INTERVAL '1 day')`,
+      [CALENDAR_METHODS],
+    )) as Array<{ id: string }>;
+    if (tables.length) await rescore(this.dataSource.manager, tables.map((table) => table.id));
+  }
 }
+
+const CALENDAR_METHODS = (Object.keys(METRICS) as Array<keyof typeof METRICS>)
+  .filter((method) => ['dailyAverage', 'dailyVariation', 'weeklyVariation'].includes(METRICS[method].aggregate));

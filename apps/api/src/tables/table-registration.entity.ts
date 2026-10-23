@@ -31,6 +31,22 @@ export class TableRegistration {
   @Column({ type: 'integer', nullable: true })
   completionTimeSeconds: number | null;
 
+  /** Set by the scoring engine: the score in the metric's unit, and a bigger-is-better copy to rank by. */
+  @Column({ type: 'double precision', nullable: true })
+  score: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  rankScore: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  targetReachedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  scoredAt: Date | null;
+
+  @Column({ default: true })
+  qualified: boolean;
+
   @Column({ type: 'uuid', nullable: true, unique: true })
   paymentIntentId: string | null;
 
