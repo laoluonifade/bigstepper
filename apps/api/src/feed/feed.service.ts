@@ -34,6 +34,7 @@ export class FeedService {
     return this.dataSource.query(
       `SELECT f."id", f."body", f."imageUrl", f."createdAt", f."userId", f."activityId",
               p."username", p."displayName", p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
               a."activityType", a."startedAt", a."validatedSteps",
               GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") "distanceMetres",
               a."movingSeconds",
@@ -59,6 +60,7 @@ export class FeedService {
     const [post] = await this.dataSource.query(
       `SELECT f."id",f."body",f."imageUrl",f."createdAt",f."userId",f."activityId",
               p."username",p."displayName",p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
               a."activityType",a."startedAt",a."validatedSteps",
               GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres") "distanceMetres",a."movingSeconds",
               (SELECT COUNT(*)::integer FROM "feed_post_reactions" r WHERE r."postId"=f."id") "reactionCount",
@@ -113,7 +115,8 @@ export class FeedService {
   async comments(viewerId: string, postId: string) {
     await this.assertVisible(postId);
     return this.dataSource.query(
-      `SELECT c."id",c."postId",c."userId",c."body",c."createdAt",p."username",p."displayName",p."avatarUrl"
+      `SELECT c."id",c."postId",c."userId",c."body",c."createdAt",p."username",p."displayName",p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
        FROM (SELECT * FROM "feed_comments" WHERE "postId"=$1 ORDER BY "createdAt" DESC,"id" DESC LIMIT 100) c
        JOIN "profiles" p ON p."userId"=c."userId"
        ORDER BY c."createdAt" ASC,c."id" ASC`, [postId],

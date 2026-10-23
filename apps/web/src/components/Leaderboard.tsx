@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { ReactNode, useId } from 'react';
 import { formatDistanceNumber, ordinal } from '../lib/format';
 import type { Unit } from '../lib/types';
+import type { AvatarStyle } from '../lib/types';
 import { Avatar, cx } from './ui';
 
 export interface LeaderboardRow {
@@ -9,6 +10,7 @@ export interface LeaderboardRow {
   userId: string;
   name: string;
   avatarUrl?: string | null;
+  avatarStyle?: AvatarStyle;
   /** Links the name to their profile when known. */
   username?: string | null;
   metres: number;
@@ -137,7 +139,7 @@ function Row({ row, isMe, unit, formatScore }: { row: LeaderboardRow; isMe: bool
       </td>
       <td className="min-w-0 py-2.5 pr-2 align-middle">
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar name={row.name} src={row.avatarUrl} size={30} />
+          <Avatar name={row.name} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={30} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold">
               {row.username ? (

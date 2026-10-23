@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class StravaCodeDto {
   @IsString()
@@ -21,6 +21,10 @@ export class StravaSignupDto {
 
   @Matches(/^[A-Z]{2}$/, { message: 'Choose your country of residence' })
   countryCode: string;
+
+  @IsOptional()
+  @IsIn(['male', 'female', 'non_binary', 'prefer_not_to_say'])
+  gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
 
   @IsOptional()
   @Matches(/^\+[1-9]\d{7,14}$/, { message: 'Enter your WhatsApp number with its country code' })

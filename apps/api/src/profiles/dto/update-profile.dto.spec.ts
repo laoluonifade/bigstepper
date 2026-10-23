@@ -12,3 +12,13 @@ describe('private body weight setting', () => {
     expect(validateSync(input).some((error) => error.property === 'weightKg')).toBe(true);
   });
 });
+
+describe('avatar gender setting', () => {
+  it.each(['male', 'female', 'non_binary', 'prefer_not_to_say', null])('allows %s', (gender) => {
+    expect(validateSync(Object.assign(new UpdateProfileDto(), { gender }))).toHaveLength(0);
+  });
+
+  it('rejects an unknown choice', () => {
+    expect(validateSync(Object.assign(new UpdateProfileDto(), { gender: 'unknown' })).some((error) => error.property === 'gender')).toBe(true);
+  });
+});

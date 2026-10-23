@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 
 export class LoginDto {
   @IsEmail()
@@ -12,6 +12,10 @@ export class LoginDto {
 export class RegisterDto extends LoginDto {
   @Matches(/^[A-Z]{2}$/, { message: 'Choose your country of residence' })
   countryCode: string;
+
+  @IsOptional()
+  @IsIn(['male', 'female', 'non_binary', 'prefer_not_to_say'])
+  gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
 
   @IsOptional()
   @IsString()

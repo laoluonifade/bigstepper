@@ -31,7 +31,8 @@ export class LeaderboardService {
        ),
        ranked AS (SELECT t.*, rank() OVER (ORDER BY t."metres" DESC)::integer AS "rank" FROM totals t)
        SELECT r."rank", r."userId", r."metres", r."activities",
-              COALESCE(p."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl", p."countryCode"
+              COALESCE(p."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl", p."countryCode",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
        FROM ranked r LEFT JOIN "profiles" p ON p."userId" = r."userId"
        WHERE r."rank" <= $3 OR r."userId" = $2
        ORDER BY r."rank", p."username"`,

@@ -27,8 +27,8 @@ export class AuthService {
     private readonly mail: MailService,
   ) {}
 
-  async register(email: string, password: string, countryCode: string, displayName?: string, whatsappNumber?: string) {
-    return this.createAccount({ email, passwordHash: await bcrypt.hash(password, 10), countryCode, displayName, whatsappNumber });
+  async register(email: string, password: string, countryCode: string, displayName?: string, whatsappNumber?: string, gender?: Profile['gender']) {
+    return this.createAccount({ email, passwordHash: await bcrypt.hash(password, 10), countryCode, displayName, whatsappNumber, gender });
   }
 
   /**
@@ -42,6 +42,7 @@ export class AuthService {
     countryCode: string;
     displayName?: string;
     whatsappNumber?: string;
+    gender?: Profile['gender'];
     afterCreate?: (manager: EntityManager, user: User) => Promise<void>;
   }) {
     const normalizedEmail = input.email.trim().toLowerCase();
@@ -65,6 +66,7 @@ export class AuthService {
             username: `${baseUsername}_${randomBytes(3).toString('hex')}`,
             displayName: user.displayName || baseUsername,
             countryCode: input.countryCode,
+            gender: input.gender ?? null,
             whatsappNumber: input.whatsappNumber ?? null,
           }),
         );

@@ -33,7 +33,7 @@ export function RunnersPage() {
       <ErrorNotice error={runners.error} onRetry={() => void runners.refetch()} className="mt-4" />
       {term.length < 2 ? null : runners.isLoading ? <div className="space-y-3 py-4"><Skeleton className="h-16" /><Skeleton className="h-16" /></div> : !runners.data?.length ? <p className="py-12 text-center text-[14px] text-ink-3">No runners found.</p> : <ul className="divide-y divide-line">
         {runners.data.map((runner) => <li key={runner.username}><Link to="/runners/$username" params={{ username: runner.username }} search={{}} className="flex min-w-0 items-center gap-3 py-3.5 hover:bg-card" aria-label={`View ${runner.displayName}'s profile`}>
-          <Avatar name={runner.displayName} src={runner.avatarUrl} size={44} className="rounded-full" />
+          <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={44} className="rounded-full" />
           <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-bold">{runner.displayName}</span><span className="block truncate text-[13px] text-ink-2">@{runner.username}{runner.bio ? ` · ${runner.bio}` : ''}</span></span>
         </Link></li>)}
       </ul>}

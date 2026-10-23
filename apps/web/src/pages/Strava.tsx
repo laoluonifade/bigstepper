@@ -6,36 +6,29 @@ import { cx, ErrorNotice, Field, Loading, Redirect } from '../components/ui';
 import { api, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
+import { GenderSelect } from '../components/GenderSelect';
 import { formatRelative } from '../lib/format';
 import { keys } from '../lib/queries';
-import { startStravaAuth, STRAVA_SIGNUP_KEY, takePendingStravaAuth, useStravaConfigured, type StravaIntent } from '../lib/strava';
-import type { AuthResponse, StravaLoginResponse, StravaStatus } from '../lib/types';
+import { STRAVA_SIGNUP_KEY, takePendingStravaAuth, type StravaIntent } from '../lib/strava';
+import type { AuthResponse, Gender, StravaLoginResponse, StravaStatus } from '../lib/types';
 
 /** Strava's brand orange, required on "Connect with Strava" buttons. */
 const STRAVA_ORANGE = 'bg-[#FC5200] text-white hover:bg-[#E34A00]';
+const STRAVA_REVIEW_MESSAGE = 'Not available at the moment. We’re working to increase our limits, and our request is under review by Strava.';
 
-export function StravaButton({ intent, redirect, label, className }: { intent: StravaIntent; redirect?: string; label?: string; className?: string }) {
-  const [error, setError] = useState<unknown>(null);
-  const [pending, setPending] = useState(false);
+export function StravaButton({ label, className }: { intent: StravaIntent; redirect?: string; label?: string; className?: string }) {
   return (
     <>
       <button
         type="button"
-        className={cx('btn w-full', STRAVA_ORANGE, className)}
-        disabled={pending}
-        onClick={() => {
-          setPending(true);
-          setError(null);
-          startStravaAuth(intent, redirect).catch((reason: unknown) => {
-            setError(reason);
-            setPending(false);
-          });
-        }}
+        className={cx('btn w-full cursor-not-allowed opacity-60', STRAVA_ORANGE, className)}
+        disabled
+        title={STRAVA_REVIEW_MESSAGE}
       >
         <StravaMark />
-        {pending ? 'Opening Strava…' : label ?? 'Continue with Strava'}
+        {label ?? 'Continue with Strava'}
       </button>
-      <ErrorNotice error={error} className="mt-3" />
+      <p className="mt-2 text-center text-[12px] leading-relaxed text-ink-3">{STRAVA_REVIEW_MESSAGE}</p>
     </>
   );
 }
@@ -117,9 +110,10 @@ export function StravaSignupPage() {
     }
   });
   const [country, setCountry] = useState('NG');
+  const [gender, setGender] = useState<Gender | ''>('');
   const [whatsapp, setWhatsapp] = useState('');
   const signup = useMutation({
-    mutationFn: (values: { email: string; countryCode: string; whatsappNumber?: string }) =>
+    mutationFn: (values: { email: string; countryCode: string; whatsappNumber?: string; gender?: Gender }) =>
       post<AuthResponse>('/strava/signup', { ...values, signupToken: pending!.signupToken }),
     onSuccess(response) {
       sessionStorage.removeItem(STRAVA_SIGNUP_KEY);
@@ -136,7 +130,7 @@ export function StravaSignupPage() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    signup.mutate({ email: String(form.get('email')).trim(), countryCode: country, ...(whatsapp ? { whatsappNumber: whatsapp } : {}) });
+    signup.mutate({ email: String(form.get('email')).trim(), countryCode: country, ...(gender ? { gender } : {}), ...(whatsapp ? { whatsappNumber: whatsapp } : {}) });
   }
 
   return (
@@ -157,6 +151,9 @@ export function StravaSignupPage() {
         </Field>
         <Field label="Country of residence">
           {(props) => <CountryPicker id={props.id} value={country} onChange={setCountry} required />}
+        </Field>
+        <Field label="Gender" optional hint="Only used to choose your default avatar. You can change this later.">
+          {(props) => <GenderSelect id={props.id} value={gender} onChange={setGender} />}
         </Field>
         <Field label="WhatsApp number" optional hint="Private. Only Jump uses it, to reach you about prizes and your account.">
           {(props) => <PhoneField id={props.id} value={whatsapp} onChange={setWhatsapp} defaultCountry={country} />}
@@ -245,11 +242,8 @@ export function StravaConnection() {
     onSuccess: (next) => queryClient.setQueryData(['strava'], next),
   });
 
-  const configured = useStravaConfigured();
   if (status.isPending) return null;
   const data = status.data;
-  // Any signed-in runner can connect once the server has Strava set up; sign-in with Strava is separate.
-  if (!configured && !data?.connected) return null;
 
   return (
     <div className="mt-4 flex items-center gap-3 border-t border-line pt-4">
@@ -258,9 +252,9 @@ export function StravaConnection() {
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-bold">Strava</p>
-        <p className="truncate text-[12px] text-ink-2">
+        <p className="text-[12px] text-ink-2">
           {!data?.connected
-            ? 'Import your walks, runs and rides automatically'
+            ? STRAVA_REVIEW_MESSAGE
             : data.syncing
               ? 'Syncing…'
               : !data.canReadActivities
@@ -283,23 +277,14 @@ export function StravaConnection() {
 }
 
 function ConnectButton() {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState(false);
   return (
     <button
       type="button"
-      className={cx('btn btn-sm shrink-0', STRAVA_ORANGE)}
-      disabled={pending}
-      title={error ? 'Strava isn’t available right now' : undefined}
-      onClick={() => {
-        setPending(true);
-        startStravaAuth('connect').catch(() => {
-          setError(true);
-          setPending(false);
-        });
-      }}
+      className={cx('btn btn-sm shrink-0 cursor-not-allowed opacity-60', STRAVA_ORANGE)}
+      disabled
+      title={STRAVA_REVIEW_MESSAGE}
     >
-      {pending ? 'Opening…' : error ? 'Try again' : 'Connect'}
+      Connect
     </button>
   );
 }

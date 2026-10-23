@@ -297,7 +297,7 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
             <span className="relative h-7">
               <span className="absolute inset-x-0 top-1/2 h-px bg-paper/10" aria-hidden="true" />
               <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 transition-[left] duration-[1400ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]" style={{ left: `${shown ? 4 + position * 92 : 4}%` }}>
-                <Avatar name={row.displayName} src={row.avatarUrl} size={24} className={cx('rounded-full', isMe && 'ring-2 ring-volt shadow-[0_0_10px_rgba(228,255,58,0.55)]')} />
+                <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={24} className={cx('rounded-full', isMe && 'ring-2 ring-volt shadow-[0_0_10px_rgba(228,255,58,0.55)]')} />
               </span>
             </span>
             <span className={cx('num truncate text-right text-[12px]', isMe ? 'font-bold text-volt' : 'text-paper/60')}>{hasScored(method, row.score) ? scoreOf(race, laneScore(row), unit) : '–'}</span>

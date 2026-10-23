@@ -322,12 +322,14 @@ export function Meter({ value, max, tone = 'track', label }: { value: number; ma
 export function Avatar({
   name,
   src,
+  avatarStyle,
   size = 36,
   className,
 }: {
   name: string | null | undefined;
   /** Profile photo; a generated picture (see lib/avatars) shows while it loads or if there isn't one. */
   src?: string | null;
+  avatarStyle?: import('../lib/types').AvatarStyle;
   size?: number;
   className?: string;
 }) {
@@ -343,7 +345,7 @@ export function Avatar({
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <img src={defaultAvatarUrl(name)} alt="" className="absolute inset-0 h-full w-full" draggable={false} />
+      <img src={defaultAvatarUrl(name, avatarStyle)} alt="" className="absolute inset-0 h-full w-full" draggable={false} />
       {showPhoto && (
         <img
           src={src!}

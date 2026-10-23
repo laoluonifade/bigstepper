@@ -1,4 +1,6 @@
 export type Unit = 'km' | 'mi';
+export type Gender = 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
+export type AvatarStyle = 'masculine' | 'feminine' | 'neutral';
 
 export interface User {
   id: string;
@@ -21,6 +23,8 @@ export interface Profile {
   displayName: string;
   preferredUnit: Unit;
   countryCode: string;
+  /** Private; only returned for your own profile. */
+  gender: Gender | null;
   avatarUrl: string | null;
   bio: string | null;
   /** null until the runner picks one. */
@@ -53,6 +57,7 @@ export interface Connection {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  avatarStyle?: AvatarStyle;
   bio: string | null;
   followedByMe: boolean;
   isMe: boolean;
@@ -62,6 +67,8 @@ export interface PublicProfile {
   username: string;
   displayName: string;
   countryCode: string;
+  /** Public avatar appearance, without disclosing gender. */
+  avatarStyle?: AvatarStyle;
   avatarUrl: string | null;
   bio: string | null;
   memberSince: string;
@@ -170,11 +177,11 @@ export interface CompetitionTable {
   platformFeeBps: number;
   creatorCommissionBps: number;
   creatorId: string;
-  creator?: { id: string; displayName: string | null; username?: string | null; avatarUrl?: string | null } | null;
+  creator?: { id: string; displayName: string | null; username?: string | null; avatarUrl?: string | null; avatarStyle?: AvatarStyle } | null;
   /** Runners who have joined (list and detail responses). */
   /** Discovery cards only: the top three who have scored, and a few faces of who's in. */
-  leaders?: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number }>;
-  faces?: Array<{ displayName: string; avatarUrl: string | null }>;
+  leaders?: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle?: AvatarStyle; score: number }>;
+  faces?: Array<{ displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }>;
   /** Discovery cards only: your rank here when you've joined, else null. */
   myRank?: number | null;
   entrantCount?: number;
@@ -187,6 +194,7 @@ export interface StandingRow {
   displayName: string;
   username?: string | null;
   avatarUrl?: string | null;
+  avatarStyle?: AvatarStyle;
   creditedDistanceMetres: number;
   creditedSteps: number;
   completionTimeSeconds: number | null;
@@ -325,7 +333,7 @@ export interface Club {
   privacy?: 'open' | 'invite';
   memberCount?: number;
   liveCompetitions?: number;
-  faces?: Array<{ displayName: string; avatarUrl: string | null }>;
+  faces?: Array<{ displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }>;
   owner?: { displayName: string; username: string | null } | null;
   /** Your role here, or null when you're not a member (or not signed in). */
   myRole?: ClubRole | null;
@@ -344,6 +352,7 @@ export interface ClubMember {
   username: string | null;
   displayName: string | null;
   avatarUrl?: string | null;
+  avatarStyle?: AvatarStyle;
   countryCode?: string | null;
 }
 
@@ -353,12 +362,14 @@ export interface ClubStanding {
   username: string | null;
   displayName: string;
   avatarUrl: string | null;
+  avatarStyle?: AvatarStyle;
   monthMetres: number;
 }
 
 export interface RunnerSearchResult {
   username: string;
   displayName: string;
+  avatarStyle?: AvatarStyle;
   avatarUrl: string | null;
   bio: string | null;
   isMe: boolean;
@@ -392,6 +403,7 @@ export interface LeagueMembership {
   displayName?: string | null;
   username?: string | null;
   avatarUrl?: string | null;
+  avatarStyle?: AvatarStyle;
 }
 
 export interface LeagueRules {

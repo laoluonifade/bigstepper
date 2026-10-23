@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 
 const STATE_KEY = 'jump_strava_state';
@@ -40,19 +39,4 @@ export function takePendingStravaAuth(state: string | null): PendingAuth | null 
   } catch {
     return null;
   }
-}
-
-function useStravaConfig() {
-  return useQuery({ queryKey: ['strava-config'], queryFn: () => api<{ clientId: string | null; public: boolean }>('/strava/config'), staleTime: 5 * 60_000 });
-}
-
-/** Whether "Continue with Strava" shows on log-in and sign-up (hidden until Strava approves the app). */
-export function useStravaPublic() {
-  const config = useStravaConfig();
-  return Boolean(config.data?.clientId && config.data.public);
-}
-
-/** Whether signed-in runners can connect Strava from settings: whenever the server has Strava set up. */
-export function useStravaConfigured() {
-  return Boolean(useStravaConfig().data?.clientId);
 }

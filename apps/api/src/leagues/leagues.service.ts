@@ -49,6 +49,7 @@ export class LeaguesService {
       displayName: byUser.get(row.userId)?.displayName ?? null,
       username: byUser.get(row.userId)?.username ?? null,
       avatarUrl: byUser.get(row.userId)?.avatarUrl ?? null,
+      avatarStyle: byUser.get(row.userId)?.gender === 'male' ? 'masculine' : byUser.get(row.userId)?.gender === 'female' ? 'feminine' : 'neutral',
     }));
   }
 }

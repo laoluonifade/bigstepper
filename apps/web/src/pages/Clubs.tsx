@@ -36,7 +36,7 @@ function clubHandle(value: string) {
 export function ClubLogo({ club, size = 44, className }: { club: Pick<Club, 'name' | 'logoUrl'>; size?: number; className?: string }) {
   return club.logoUrl
     ? <img src={club.logoUrl} alt="" width={size} height={size} className={cx('shrink-0 rounded-xl bg-white object-cover', className)} style={{ width: size, height: size }} />
-    : <Avatar name={club.name} size={size} className={cx('rounded-xl', className)} />;
+    : <span aria-hidden="true" className={cx('wide inline-flex shrink-0 items-center justify-center rounded-xl bg-ink font-black text-volt', className)} style={{ width: size, height: size, fontSize: Math.max(15, size * 0.38) }}>{club.name.trim().slice(0, 2).toUpperCase() || 'J'}</span>;
 }
 
 const isManager = (role: ClubRole | null | undefined) => role === 'owner' || role === 'admin';
@@ -157,10 +157,7 @@ function PrivacyChoice({ value, onChange }: { value: 'open' | 'invite'; onChange
 
 type ClubTab = 'competitions' | 'leaderboard' | 'members' | 'invite';
 
-/**
- * The club's page, and the landing page for invite links: who they are first, then Join. Signed-out
- * visitors sign up and come straight back here, where they're joined automatically.
- */
+/** Club landing page. A valid invite joins signed-in runners, including after sign-up or login. */
 export function ClubDetailPage() {
   const { id } = useParams({ strict: false }) as { id: string };
   const search = useSearch({ strict: false }) as { invite?: string; join?: boolean };
@@ -175,6 +172,7 @@ export function ClubDetailPage() {
   const [editing, setEditing] = useState(false);
   const role = club.data?.myRole ?? null;
   const canJoin = Boolean(club.data && !role && (club.data.privacy !== 'invite' || club.data.inviteValid));
+  const autoJoin = Boolean(user && canJoin && (search.join || (search.invite && club.data?.inviteValid)));
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['club'] }).then(() => queryClient.invalidateQueries({ queryKey: ['clubs'] }));
 
   const join = useMutation({
@@ -182,6 +180,7 @@ export function ClubDetailPage() {
     async onSuccess(result) {
       await Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: ['tables'] })]);
       toast({ tone: 'ok', title: `Welcome to ${club.data?.name ?? 'the club'}`, message: result.competitions ? `You’re in ${result.competitions === 1 ? 'its live competition' : `its ${result.competitions} live competitions`} too.` : 'Club competitions will count you in automatically.' });
+      if (search.invite || search.join) void navigate({ to: '/clubs/$id', params: { id: club.data?.slug ?? id }, search: {}, replace: true });
     },
   });
   const leave = useMutation({
@@ -189,14 +188,23 @@ export function ClubDetailPage() {
     async onSuccess() { await refresh(); toast({ tone: 'ok', message: `You left ${club.data?.name ?? 'the club'}.` }); },
   });
 
-  // Back from signing up (or logging in) with ?join=1: finish joining, once.
-  const autoJoined = useRef(false);
+  // A shared invite is enough to join, whether the runner was already signed in or just finished auth.
+  // Keep the invite in the URL until the API confirms membership, so a refresh can safely retry.
+  const autoJoinAttempted = useRef<string | null>(null);
+  const joinClub = join.mutate;
   useEffect(() => {
-    if (!search.join || !user || !club.data || autoJoined.current) return;
-    autoJoined.current = true;
-    if (canJoin) join.mutate();
-    void navigate({ to: '/clubs/$id', params: { id }, search: search.invite ? { invite: search.invite } : {}, replace: true });
-  }, [search.join, search.invite, user, club.data, canJoin, join, navigate, id]);
+    if (!autoJoin || !user || !club.data) return;
+    const target = `${user.id}:${club.data.id}:${search.invite ?? ''}`;
+    if (autoJoinAttempted.current === target) return;
+    autoJoinAttempted.current = target;
+    joinClub();
+  }, [autoJoin, user, club.data, search.invite, joinClub]);
+  useEffect(() => {
+    const target = `${user?.id}:${club.data?.id}:${search.invite ?? ''}`;
+    if (role && (search.invite || search.join) && autoJoinAttempted.current !== target) {
+      void navigate({ to: '/clubs/$id', params: { id: club.data?.slug ?? id }, search: {}, replace: true });
+    }
+  }, [role, search.invite, search.join, club.data?.id, club.data?.slug, user?.id, id, navigate]);
 
   if (club.isLoading) return <Loading />;
   if (club.error || !club.data) {
@@ -226,7 +234,7 @@ export function ClubDetailPage() {
         <p className="text-center text-[12px] text-ink-3 sm:text-right">On Jump already? <Link to="/login" search={{ redirect: back }} className="font-semibold text-ink underline">Log in</Link></p>
       </div>
         : !member ? (canJoin
-          ? <button type="button" className="btn-primary min-h-11 px-6" disabled={join.isPending} onClick={() => join.mutate()}>{join.isPending ? 'Joining…' : 'Join club'}</button>
+          ? <button type="button" className="btn-primary min-h-11 px-6" disabled={join.isPending || (autoJoin && !join.isError)} onClick={() => join.mutate()}>{join.isPending || (autoJoin && !join.isError) ? 'Joining…' : 'Join club'}</button>
           : <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-3 py-2 text-[13px] font-semibold text-ink-2"><LockIcon size={13} /> Invite-only. Ask a manager for the link.</span>)
           : <div className="flex flex-wrap gap-2">
             {isManager(role) && <button type="button" className="btn-secondary btn-sm" onClick={() => setEditing(true)}><EditIcon size={14} /> Edit club</button>}
@@ -294,7 +302,7 @@ function ClubHero({ club, children }: { club: Club; children: ReactNode }) {
         {club.instagram && <a href={`https://instagram.com/${club.instagram}`} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-3 py-1.5 text-[13px] font-semibold hover:bg-ink/10">Instagram · @{club.instagram}</a>}
       </div>}
       <div className="mt-5 flex items-center gap-3 border-t border-line pt-4">
-        <span className="flex -space-x-2">{(club.faces ?? []).slice(0, 5).map((face, index) => <Avatar key={index} name={face.displayName} src={face.avatarUrl} size={28} className="rounded-full ring-2 ring-card" />)}</span>
+        <span className="flex -space-x-2">{(club.faces ?? []).slice(0, 5).map((face, index) => <Avatar key={index} name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={28} className="rounded-full ring-2 ring-card" />)}</span>
         <p className="num text-[13px] text-ink-2">
           <span className="font-bold text-ink">{club.memberCount ?? 0}</span> {club.memberCount === 1 ? 'member' : 'members'}
           {Boolean(club.liveCompetitions) && <> · <span className="font-bold text-ink">{club.liveCompetitions}</span> live {club.liveCompetitions === 1 ? 'competition' : 'competitions'}</>}
@@ -328,7 +336,7 @@ function ClubLeaderboard({ id }: { id: string }) {
   if (board.isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   if (board.error) return <ErrorNotice error={board.error} onRetry={() => void board.refetch()} />;
   return <Leaderboard
-    rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, metres: row.monthMetres }))}
+    rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, metres: row.monthMetres }))}
     currentUserId={user?.id}
     unit={unit}
     caption="Verified walking and running distance this month."
@@ -338,6 +346,7 @@ function ClubLeaderboard({ id }: { id: string }) {
 
 function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const members = useQuery({ queryKey: keys.clubMembers(club.slug), queryFn: () => api<ClubMember[]>(`/clubs/${club.slug}/members`) });
   const done = () => Promise.all([queryClient.invalidateQueries({ queryKey: keys.clubMembers(club.slug) }), queryClient.invalidateQueries({ queryKey: ['club'] })]);
@@ -354,11 +363,12 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
   return <>
     <ErrorNotice error={setRole.error ?? remove.error} className="mb-3" />
     {role === 'owner' && <p className="mb-3 text-[13px] text-ink-2">Managers can edit the club, invite and add people, and host club competitions.</p>}
-    <ul className="divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card">
+    <ul className="divide-y divide-line rounded-2xl border-[1.5px] border-ink bg-card">
       {members.data?.map((member) => {
         const isMe = member.userId === user?.id;
         const name = member.displayName ?? (member.username ? `@${member.username}` : 'Runner');
         const actions = [
+          ...(member.username ? [{ label: 'View profile', run: () => void navigate({ to: '/runners/$username', params: { username: member.username! }, search: {} }) }] : []),
           ...(role === 'owner' && member.role === 'member' ? [{ label: 'Make manager', run: () => setRole.mutate({ userId: member.userId, next: 'admin' }) }] : []),
           ...(role === 'owner' && member.role === 'admin' ? [{ label: 'Remove as manager', run: () => setRole.mutate({ userId: member.userId, next: 'member' }) }] : []),
           ...(!isMe && member.role !== 'owner' && (role === 'owner' || (role === 'admin' && member.role === 'member'))
@@ -366,7 +376,7 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
         ];
         return <li key={member.id} className="flex items-center gap-3 px-4 py-3">
           <span className="relative shrink-0">
-            <Avatar name={name} src={member.avatarUrl} size={38} className="rounded-full" />
+            <Avatar name={name} src={member.avatarUrl} avatarStyle={member.avatarStyle} size={38} className="rounded-full" />
             {member.countryCode && <span className="absolute -bottom-0.5 -right-1 text-[12px] leading-none">{flag(member.countryCode)}</span>}
           </span>
           <div className="min-w-0 flex-1">
@@ -398,7 +408,7 @@ function RowMenu({ label, actions }: { label: string; actions: Array<{ label: st
   }, [open]);
   return <div ref={root} className="relative shrink-0">
     <button type="button" className="flex h-8 w-8 items-center justify-center rounded-full text-[18px] font-bold leading-none text-ink-2 hover:bg-ink/[0.06]" aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>⋯</button>
-    {open && <div role="menu" className="absolute right-0 z-30 mt-1 w-48 animate-pop overflow-hidden rounded-md border-[1.5px] border-ink bg-card py-1 shadow-hard">
+    {open && <div role="menu" className="absolute bottom-full right-0 z-30 mb-1 w-48 animate-pop overflow-hidden rounded-md border-[1.5px] border-ink bg-card py-1 shadow-hard">
       {actions.map((action) => <button key={action.label} type="button" role="menuitem" className={cx('block w-full px-3 py-2 text-left text-[14px] font-semibold hover:bg-ink/[0.05]', action.danger && 'text-bad')} onClick={() => { setOpen(false); action.run(); }}>{action.label}</button>)}
     </div>}
   </div>;
@@ -438,7 +448,7 @@ function InvitePanel({ club }: { club: Club }) {
   return <div className="grid gap-5 lg:grid-cols-2">
     <section className="rounded-2xl border-[1.5px] border-ink bg-card p-5">
       <p className="text-[15px] font-bold">Invite link</p>
-      <p className="mt-0.5 text-[13px] text-ink-2">People see the club first, then join. New to Jump? They sign up and land back here, joined.</p>
+      <p className="mt-0.5 text-[13px] text-ink-2">People who open this link join automatically after signing in or creating an account.</p>
       <p className="mt-3 truncate rounded-lg bg-ink/[0.05] px-3 py-2 font-mono text-[12px] text-ink-2">{link}</p>
       <div className="mt-3 grid grid-cols-3 gap-2">
         <CopyButton value={link} label="Copy" />

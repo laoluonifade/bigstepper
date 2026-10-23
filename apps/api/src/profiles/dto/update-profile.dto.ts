@@ -21,6 +21,11 @@ export class UpdateProfileDto {
   @Matches(/^[A-Z]{2}$/)
   countryCode?: string;
 
+  /** null clears the preference. */
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsIn(['male', 'female', 'non_binary', 'prefer_not_to_say'])
+  gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say' | null;
+
   /** null clears it. */
   @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()

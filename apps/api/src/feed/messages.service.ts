@@ -21,9 +21,11 @@ export class MessagesService {
 
   private async recipient(username: string) {
     const [runner] = await this.dataSource.query(
-      `SELECT "userId","username","displayName","avatarUrl" FROM "profiles" WHERE lower("username")=lower($1)`,
+      `SELECT "userId","username","displayName","avatarUrl",
+              CASE WHEN "gender"='male' THEN 'masculine' WHEN "gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
+       FROM "profiles" WHERE lower("username")=lower($1)`,
       [username],
-    ) as Array<{ userId: string; username: string; displayName: string; avatarUrl: string | null }>;
+    ) as Array<{ userId: string; username: string; displayName: string; avatarUrl: string | null; avatarStyle: string }>;
     if (!runner) throw new NotFoundException('Runner not found');
     return runner;
   }
@@ -44,6 +46,7 @@ export class MessagesService {
          WHERE "recipientId"=$1 AND "readAt" IS NULL GROUP BY "senderId"
        )
        SELECT l."body",l."kind",l."createdAt",l."senderId",p."username",p."displayName",p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
               COALESCE(u."count",0) "unreadCount"
        FROM latest l JOIN "profiles" p ON p."userId"=l.peer
        LEFT JOIN unread u ON u."senderId"=l.peer

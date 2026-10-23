@@ -2,10 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { forwardRef, KeyboardEvent, RefObject, TextareaHTMLAttributes, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import type { AvatarStyle } from '../lib/types';
 import { useProfile } from '../lib/queries';
 import { Avatar, cx } from './ui';
 
-type Person = { username: string; displayName: string; avatarUrl: string | null; isMe?: boolean };
+type Person = { username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; isMe?: boolean };
 
 /** Same rule as the API: @ at a word start, 2–30 of a–z, 0–9 or _. */
 const MENTION = /(^|[^a-z0-9_@])@([a-z0-9_]{2,30})\b/gi;
@@ -121,7 +122,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function M
     )}>
       {people.map((person, index) => <li key={person.username} role="option" aria-selected={index === highlight}>
         <button type="button" className={cx('flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left', index === highlight ? 'bg-ink/[0.06]' : 'hover:bg-ink/[0.04]')} onMouseDown={(event) => event.preventDefault()} onClick={() => insert(person)}>
-          <Avatar name={person.displayName} src={person.avatarUrl} size={32} className="shrink-0 rounded-full" />
+          <Avatar name={person.displayName} src={person.avatarUrl} avatarStyle={person.avatarStyle} size={32} className="shrink-0 rounded-full" />
           <span className="min-w-0 leading-tight"><span className="block truncate text-[14px] font-semibold">{person.displayName}</span><span className="block truncate text-[12px] text-ink-3">@{person.username}</span></span>
         </button>
       </li>)}

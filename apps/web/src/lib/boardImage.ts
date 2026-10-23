@@ -1,13 +1,14 @@
 import { defaultAvatarUrl } from './avatars';
 import { flag } from './countries';
 import { formatDistance } from './format';
-import type { Unit } from './types';
+import type { AvatarStyle, Unit } from './types';
 
 export interface BoardImageRow {
   rank: number;
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  avatarStyle?: AvatarStyle;
   countryCode: string | null;
   metres: number;
   isMe: boolean;
@@ -50,7 +51,7 @@ export async function loadAvatars(rows: BoardImageRow[], photos = true) {
   const images = new Map<string, HTMLImageElement>();
   await Promise.all(rows.map(async (row) => {
     const photo = photos && row.avatarUrl ? await loadImage(row.avatarUrl, true) : null;
-    const image = photo ?? await loadImage(defaultAvatarUrl(row.displayName), false);
+    const image = photo ?? await loadImage(defaultAvatarUrl(row.displayName, row.avatarStyle), false);
     if (image) images.set(row.userId, image);
   }));
   return images;

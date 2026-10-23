@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ReactNode, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { avatarStyleForGender } from '../lib/avatars';
 import { useAuth } from '../lib/auth';
 import { formatDistanceNumber, formatDuration } from '../lib/format';
 import { keys } from '../lib/queries';
@@ -58,7 +59,7 @@ export function AvatarEditor({ profile, size = 84 }: { profile: Profile; size?: 
   return (
     <div className="flex flex-col items-start">
       <div className="relative">
-        <Avatar name={profile.displayName} src={profile.avatarUrl} size={size} className={cx('rounded-lg', busy && 'opacity-60')} />
+        <Avatar name={profile.displayName} src={profile.avatarUrl} avatarStyle={avatarStyleForGender(profile.gender)} size={size} className={cx('rounded-lg', busy && 'opacity-60')} />
         {busy && <span className="absolute inset-0 animate-shimmer rounded-lg" aria-hidden="true" />}
         <button
           type="button"
@@ -379,7 +380,7 @@ export function ConnectionList({ username, direction }: { username: string; dire
       {rows.map((row) => (
         <li key={row.username} className="flex items-center gap-3 px-1 py-3 sm:px-3">
           <Link to="/runners/$username" params={{ username: row.username }} search={{}} className="flex min-w-0 flex-1 items-center gap-3">
-            <Avatar name={row.displayName} src={row.avatarUrl} size={44} />
+            <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={44} />
             <span className="min-w-0">
               <span className="block truncate text-[15px] font-bold">{row.displayName}</span>
               <span className="block truncate text-[12px] text-ink-2">

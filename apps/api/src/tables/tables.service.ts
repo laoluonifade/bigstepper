@@ -125,12 +125,13 @@ export class TablesService {
    * a few faces of who's in, for boards nobody has scored on yet.
    */
   private async podiums(tableIds: string[], viewerId: string | null = null) {
-    const out = new Map<string, { leaders: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number }>; faces: Array<{ displayName: string; avatarUrl: string | null }>; myRank: number | null }>();
+    const out = new Map<string, { leaders: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle: string; score: number }>; faces: Array<{ displayName: string; avatarUrl: string | null; avatarStyle: string }>; myRank: number | null }>();
     if (!tableIds.length) return out;
     const rows = (await this.dataSource.query(
       `SELECT * FROM (
          SELECT r."tableId", r."joinedAt", r."userId",
                 COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl",
+                CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
                 r."score", t."scoringMethod",
                 row_number() OVER (PARTITION BY r."tableId" ORDER BY ${RANK_ORDER})::integer AS "rank"
          FROM "table_registrations" r
@@ -139,15 +140,15 @@ export class TablesService {
          WHERE r."tableId" = ANY($1::uuid[])
        ) ranked WHERE ranked."rank" <= 5 OR ranked."userId" = $2`,
       [tableIds, viewerId],
-    )) as Array<{ tableId: string; userId: string; rank: number; displayName: string; username: string | null; avatarUrl: string | null; score: number | null; scoringMethod: ScoringMethod }>;
+    )) as Array<{ tableId: string; userId: string; rank: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle: string; score: number | null; scoringMethod: ScoringMethod }>;
     for (const row of rows) {
       const entry = out.get(row.tableId) ?? { leaders: [], faces: [], myRank: null };
       if (viewerId && row.userId === viewerId) entry.myRank = row.rank;
       if (row.rank > 5) { out.set(row.tableId, entry); continue; }
       // Lower-is-better scores (times, variation) count from zero; totals only once there's something.
       const scored = row.score !== null && (METRICS[row.scoringMethod]?.better === 'lower' || Number(row.score) > 0);
-      if (scored && row.rank <= 3) entry.leaders.push({ rank: row.rank, displayName: row.displayName, username: row.username, avatarUrl: row.avatarUrl, score: Number(row.score) });
-      entry.faces.push({ displayName: row.displayName, avatarUrl: row.avatarUrl });
+      if (scored && row.rank <= 3) entry.leaders.push({ rank: row.rank, displayName: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, score: Number(row.score) });
+      entry.faces.push({ displayName: row.displayName, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle });
       out.set(row.tableId, entry);
     }
     return out;
@@ -459,6 +460,7 @@ export class TablesService {
     return this.dataSource.query(
       `SELECT row_number() OVER (ORDER BY ${RANK_ORDER})::integer rank,
               r."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
               r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds",r."score",r."targetReachedAt",r."qualified"
        FROM "table_registrations" r JOIN "users" u ON u."id"=r."userId" LEFT JOIN "profiles" p ON p."userId"=r."userId" WHERE r."tableId"=$1
        ORDER BY ${RANK_ORDER} LIMIT 500`,
@@ -473,8 +475,10 @@ export class TablesService {
     });
     if (!table) throw new NotFoundException('Competition not found');
     const [presented] = await this.present([table]);
-    const [host] = (await this.dataSource.query(`SELECT "username", "avatarUrl" FROM "profiles" WHERE "userId" = $1`, [table.creatorId])) as Array<{ username: string; avatarUrl: string | null }>;
-    return { ...presented, creator: presented.creator ? { ...presented.creator, username: host?.username ?? null, avatarUrl: host?.avatarUrl ?? null } : null };
+    const [host] = (await this.dataSource.query(`SELECT "username", "avatarUrl",
+      CASE WHEN "gender"='male' THEN 'masculine' WHEN "gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
+      FROM "profiles" WHERE "userId" = $1`, [table.creatorId])) as Array<{ username: string; avatarUrl: string | null; avatarStyle: string }>;
+    return { ...presented, creator: presented.creator ? { ...presented.creator, username: host?.username ?? null, avatarUrl: host?.avatarUrl ?? null, avatarStyle: host?.avatarStyle ?? 'neutral' } : null };
   }
 
   async result(tableId: string) {

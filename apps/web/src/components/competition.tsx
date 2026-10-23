@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
 import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '../lib/format';
 import { activityLabel, formatScore, headline, metricOf, towardLeader, winsLabel } from '../lib/scoring';
-import type { ChallengeType, CompetitionTable, Unit } from '../lib/types';
+import type { AvatarStyle, ChallengeType, CompetitionTable, Unit } from '../lib/types';
 import { ArrowRightIcon, ChevronRightIcon, LockIcon, UsersIcon } from './icons';
 import { METALS } from './Milestones';
 import { Avatar, cx } from './ui';
@@ -191,8 +191,8 @@ function boardScore(table: CompetitionTable, score: number, unit: Unit) {
   return formatScore(table, score, unit, { short: metricOf(table.scoringMethod).display === 'steps' }) ?? '';
 }
 
-function Face({ face, size = 28, ring }: { face: { displayName: string; avatarUrl: string | null }; size?: number; ring?: string }) {
-  return <Avatar name={face.displayName} src={face.avatarUrl} size={size} className={cx('rounded-full ring-2', ring ?? 'ring-card')} />;
+function Face({ face, size = 28, ring }: { face: { displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }; size?: number; ring?: string }) {
+  return <Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={size} className={cx('rounded-full ring-2', ring ?? 'ring-card')} />;
 }
 
 /**

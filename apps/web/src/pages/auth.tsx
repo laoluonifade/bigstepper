@@ -7,10 +7,10 @@ import { cx, ErrorNotice, Field, Loading, Notice, Redirect } from '../components
 import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { setFlag, storageKeys } from '../lib/local';
-import type { AuthResponse } from '../lib/types';
+import type { AuthResponse, Gender } from '../lib/types';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
+import { GenderSelect } from '../components/GenderSelect';
 import { StravaButton } from './Strava';
-import { useStravaPublic } from '../lib/strava';
 
 const DEV_VERIFY_KEY = 'jump_dev_verify_token';
 
@@ -103,7 +103,6 @@ function safeRedirect(target: string | undefined) {
 
 export function LoginPage() {
   const auth = useAuth();
-  const stravaPublic = useStravaPublic();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { redirect?: string };
   const login = useMutation({
@@ -142,7 +141,7 @@ export function LoginPage() {
           {login.isPending ? 'Logging in…' : 'Log in'}
         </button>
       </form>
-      {stravaPublic && <><OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} /></>}
+      <OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} />
       <div className="mt-6 flex flex-wrap justify-between gap-3 text-[14px]">
         <Link to="/forgot-password" className="link">
           Forgot password?
@@ -160,14 +159,14 @@ export function LoginPage() {
 
 export function RegisterPage() {
   const auth = useAuth();
-  const stravaPublic = useStravaPublic();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { redirect?: string };
   const [password, setPassword] = useState('');
   const [country, setCountry] = useState('NG');
+  const [gender, setGender] = useState<Gender | ''>('');
   const [whatsapp, setWhatsapp] = useState('');
   const register = useMutation({
-    mutationFn: (values: { email: string; password: string; countryCode: string; displayName?: string; whatsappNumber?: string }) => post<AuthResponse>('/auth/register', values),
+    mutationFn: (values: { email: string; password: string; countryCode: string; displayName?: string; whatsappNumber?: string; gender?: Gender }) => post<AuthResponse>('/auth/register', values),
     onSuccess(response) {
       flushSync(() => auth.authenticate(response));
       setFlag(storageKeys.verifyPrompt(response.user.id), true);
@@ -189,6 +188,7 @@ export function RegisterPage() {
       email: String(form.get('email')).trim(),
       password: String(form.get('password')),
       countryCode: country,
+      ...(gender ? { gender } : {}),
       ...(displayName ? { displayName } : {}),
       ...(whatsapp ? { whatsappNumber: whatsapp } : {}),
     });
@@ -208,6 +208,9 @@ export function RegisterPage() {
         </Field>
         <Field label="Country of residence">
           {(props) => <CountryPicker id={props.id} value={country} onChange={setCountry} required />}
+        </Field>
+        <Field label="Gender" optional hint="Only used to choose your default avatar. You can change this later.">
+          {(props) => <GenderSelect id={props.id} value={gender} onChange={setGender} />}
         </Field>
         <Field label="WhatsApp number" optional hint="Private. Only Jump uses it, to reach you about prizes and your account.">
           {(props) => <PhoneField id={props.id} value={whatsapp} onChange={setWhatsapp} defaultCountry={country} />}
@@ -232,7 +235,7 @@ export function RegisterPage() {
           {register.isPending ? 'Creating account…' : 'Create account'}
         </button>
       </form>
-      {stravaPublic && <><OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} label="Sign up with Strava" /></>}
+      <OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} label="Sign up with Strava" />
       <p className="mt-6 text-[14px] text-ink-2">
         Already running with us?{' '}
         <Link to="/login" className="link text-ink">

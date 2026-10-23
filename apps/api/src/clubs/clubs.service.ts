@@ -118,7 +118,8 @@ export class ClubsService {
       [club.id],
     ) as Array<{ memberCount: number; liveCompetitions: number }>;
     const faces = await this.dataSource.query(
-      `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl"
+      `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
        FROM "club_memberships" m JOIN "users" u ON u."id" = m."userId" LEFT JOIN "profiles" p ON p."userId" = m."userId"
        WHERE m."clubId" = $1 ORDER BY (p."avatarUrl" IS NULL), m."joinedAt" LIMIT 6`,
       [club.id],
@@ -184,6 +185,7 @@ export class ClubsService {
     if (club.privacy === 'invite' && !(await this.roleOf(club.id, viewerId))) throw new ForbiddenException('Join this club to see its members');
     return this.dataSource.query(
       `SELECT m."id", m."userId", m."role", m."joinedAt", p."username", p."avatarUrl", p."countryCode",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
               COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName"
        FROM "club_memberships" m JOIN "users" u ON u."id" = m."userId" LEFT JOIN "profiles" p ON p."userId" = m."userId"
        WHERE m."clubId" = $1
@@ -199,12 +201,13 @@ export class ClubsService {
     return this.dataSource.query(
       `SELECT row_number() OVER (ORDER BY COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0) DESC,m."joinedAt" ASC)::integer "rank",
               m."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
               COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0)::integer "monthMetres"
        FROM "club_memberships" m JOIN "users" u ON u."id"=m."userId"
        LEFT JOIN "profiles" p ON p."userId"=m."userId"
        LEFT JOIN "activities" a ON a."userId"=m."userId" AND a."verificationStatus"='VERIFIED' AND a."activityType" IN ('run','walk')
          AND a."startedAt">=date_trunc('month',now()) AND a."startedAt"<date_trunc('month',now())+interval '1 month'
-       WHERE m."clubId"=$1 GROUP BY m."userId",m."joinedAt",p."displayName",u."displayName",p."username",p."avatarUrl"
+       WHERE m."clubId"=$1 GROUP BY m."userId",m."joinedAt",p."displayName",u."displayName",p."username",p."avatarUrl",p."gender"
        ORDER BY "monthMetres" DESC,m."joinedAt" ASC LIMIT 500`, [club.id],
     );
   }

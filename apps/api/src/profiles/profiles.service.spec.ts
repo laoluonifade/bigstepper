@@ -19,7 +19,7 @@ describe('ProfilesService public profile', () => {
   });
 
   it('shows verified totals and recent activities to anyone, without private fields', async () => {
-    findOne.mockResolvedValue({ userId: 'runner', username: 'runner', weightKg: 72.5 });
+    findOne.mockResolvedValue({ userId: 'runner', username: 'runner', weightKg: 72.5, gender: 'female' });
     query.mockResolvedValueOnce([{ followers: 0, following: 0, followedByMe: false, followsMe: false }]).mockResolvedValueOnce([totals]).mockResolvedValueOnce([{ activityType: 'run', metres: 3000 }]);
 
     const profile = await service.getPublic('runner', 'visitor');
@@ -27,6 +27,8 @@ describe('ProfilesService public profile', () => {
     expect(profile.stats).toMatchObject({ totalMetres: 4200, runMetres: 3000, walkMetres: 1200 });
     expect(profile.runsVisible).toBe(true);
     expect(profile).not.toHaveProperty('weightKg');
+    expect(profile).not.toHaveProperty('gender');
+    expect(profile).toHaveProperty('avatarStyle', 'feminine');
     expect(profile).toHaveProperty('recent', [{ activityType: 'run', metres: 3000 }]);
     expect(query).toHaveBeenCalledTimes(3);
   });

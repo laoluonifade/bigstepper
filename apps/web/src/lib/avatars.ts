@@ -1,3 +1,5 @@
+import type { AvatarStyle, Gender } from './types';
+
 /**
  * Pictures for people without a photo, drawn from their name so everyone keeps the same one. As SVG
  * data URLs, so the app and exported images (canvas) draw exactly the same picture.
@@ -5,6 +7,10 @@
  * AVATAR_STYLE picks the look: 'cartoon' (a little runner) or 'initials' (colour, shape and initial).
  */
 export const AVATAR_STYLE: 'cartoon' | 'initials' = 'cartoon';
+
+export function avatarStyleForGender(gender: Gender | null | undefined): AvatarStyle {
+  return gender === 'male' ? 'masculine' : gender === 'female' ? 'feminine' : 'neutral';
+}
 
 const INK = '#121212';
 const BACKGROUNDS = ['#FF5A1F', '#E4FF3A', '#8B7CF6', '#5EE0C1', '#FF8FB1', '#FFC53D', '#6FB7FF'];
@@ -37,13 +43,15 @@ function escape(text: string) {
   return text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
-function cartoon(name: string) {
+function cartoon(name: string, avatarStyle: AvatarStyle) {
   const pick = picker(hash(name.toLowerCase()));
   const bg = pick(BACKGROUNDS);
   const skin = pick(SKIN);
   const hair = pick(HAIR.filter((colour) => colour !== bg));
   const shirt = pick(SHIRTS.filter((colour) => colour !== bg));
-  const style = pick(['short', 'afro', 'bun', 'cap', 'band', 'long', 'buzz'] as const);
+  const style = avatarStyle === 'feminine'
+    ? pick(['short', 'afro', 'bun', 'long', 'cap', 'band'] as const)
+    : pick(['short', 'afro', 'cap', 'band', 'buzz'] as const);
   const eyes = pick(['dots', 'happy', 'wink', 'dots'] as const);
   const mouth = pick(['smile', 'grin', 'smile', 'o'] as const);
   const stroke = `stroke="${INK}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"`;
@@ -86,7 +94,6 @@ function cartoon(name: string) {
     + `<circle cx="20" cy="18" r="9" fill="${skin}" ${stroke}/>`
     + front
     + eyeMarks
-    + `<circle cx="14.6" cy="21.4" r="1.3" fill="#FF8FB1" opacity="0.55"/><circle cx="25.4" cy="21.4" r="1.3" fill="#FF8FB1" opacity="0.55"/>`
     + mouthMark
     + `</svg>`;
 }
@@ -110,14 +117,15 @@ function initialsTile(name: string) {
 const cache = new Map<string, string>();
 
 /** A data URL for someone's default picture. */
-export function defaultAvatarUrl(name: string | null | undefined) {
+export function defaultAvatarUrl(name: string | null | undefined, avatarStyle: AvatarStyle = 'neutral') {
   const key = (name ?? '').trim() || '?';
-  let url = cache.get(key);
+  const cacheKey = `${avatarStyle}:${key}`;
+  let url = cache.get(cacheKey);
   if (!url) {
-    const svg = AVATAR_STYLE === 'cartoon' ? cartoon(key) : initialsTile(key);
+    const svg = AVATAR_STYLE === 'cartoon' ? cartoon(key, avatarStyle) : initialsTile(key);
     url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     if (cache.size > 2000) cache.clear();
-    cache.set(key, url);
+    cache.set(cacheKey, url);
   }
   return url;
 }

@@ -13,7 +13,7 @@ export class AuthController {
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() body: RegisterDto) {
-    return this.authService.register(body.email, body.password, body.countryCode, body.displayName, body.whatsappNumber);
+    return this.authService.register(body.email, body.password, body.countryCode, body.displayName, body.whatsappNumber, body.gender);
   }
 
   @Post('login')

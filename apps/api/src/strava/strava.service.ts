@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 import { AuthService } from '../auth/auth.service';
+import { Profile } from '../profiles/profile.entity';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 import { Activity } from '../running/activity.entity';
 import { GpsSample } from '../running/gps-sample.entity';
@@ -99,7 +100,7 @@ export class StravaService implements OnApplicationBootstrap {
     };
   }
 
-  async completeSignup(signupToken: string, email: string, countryCode: string, whatsappNumber?: string) {
+  async completeSignup(signupToken: string, email: string, countryCode: string, whatsappNumber?: string, gender?: Profile['gender']) {
     let accountId: string;
     try {
       const payload = await this.jwt.verifyAsync<{ sub: string; purpose: string }>(signupToken);
@@ -115,6 +116,7 @@ export class StravaService implements OnApplicationBootstrap {
     const response = await this.auth.createAccount({
       email,
       countryCode,
+      gender,
       whatsappNumber,
       displayName: account.athleteName ?? undefined,
       afterCreate: async (manager, user) => {

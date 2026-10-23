@@ -25,6 +25,10 @@ export class Profile {
   @Column({ length: 2, default: 'NG' })
   countryCode: string;
 
+  /** Private preference used to choose a default avatar; never shown on public profiles. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  gender: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say' | null;
+
   /** Cloudinary delivery URL (already face-cropped to a square). */
   @Column({ type: 'varchar', length: 500, nullable: true })
   avatarUrl: string | null;

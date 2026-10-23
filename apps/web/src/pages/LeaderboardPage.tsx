@@ -12,10 +12,11 @@ import { formatDistance } from '../lib/format';
 import { useProfile, useUnit } from '../lib/queries';
 import { countryName, flag } from '../lib/countries';
 import type { Unit } from '../lib/types';
+import type { AvatarStyle } from '../lib/types';
 
 type BoardActivity = 'foot' | 'run' | 'walk' | 'cycle';
 type BoardPeriod = 'week' | 'month' | 'all';
-type BoardRow = { rank: number; userId: string; metres: number; activities: number; displayName: string; username: string | null; avatarUrl: string | null; countryCode: string | null; isMe: boolean };
+type BoardRow = { rank: number; userId: string; metres: number; activities: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle?: AvatarStyle; countryCode: string | null; isMe: boolean };
 type Board = { rows: BoardRow[]; me: BoardRow | null };
 
 export function useLeaderboard(activity: BoardActivity, period: BoardPeriod, scope: 'global' | 'country', limit: number) {
@@ -29,7 +30,7 @@ export function useLeaderboard(activity: BoardActivity, period: BoardPeriod, sco
 /** An avatar with the runner's flag pinned to the corner, so a global board reads as a map of who's out there. */
 function Runner({ row, size, showFlag, ring }: { row: BoardRow; size: number; showFlag: boolean; ring?: string }) {
   return <span className="relative inline-flex shrink-0">
-    <Avatar name={row.displayName} src={row.avatarUrl} size={size} className={cx('rounded-full', ring)} />
+    <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={size} className={cx('rounded-full', ring)} />
     {showFlag && row.countryCode && <span className="absolute -bottom-0.5 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-card text-[12px] leading-none shadow-[0_0_0_1.5px_var(--tw-shadow-color)] shadow-line" title={countryName(row.countryCode)}>{flag(row.countryCode)}</span>}
   </span>;
 }

@@ -9,9 +9,10 @@ import { MentionText, MentionTextarea } from '../components/Mentions';
 import { RantTabs } from '../components/RantTabs';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton } from '../components/ui';
 import { api, post } from '../lib/api';
+import { avatarStyleForGender } from '../lib/avatars';
 import { useUser } from '../lib/auth';
 import { activityName, formatDistance, formatDuration } from '../lib/format';
-import type { Unit } from '../lib/types';
+import type { AvatarStyle, Unit } from '../lib/types';
 import { useActivities, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
 import { reactionEmoji as symbolFor, REACTIONS, type Reaction } from '../lib/reactions';
 
@@ -24,6 +25,7 @@ type FeedPost = {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  avatarStyle?: AvatarStyle;
   activityType: 'walk' | 'run' | 'cycle' | null;
   startedAt: string | null;
   validatedSteps: number | null;
@@ -36,7 +38,7 @@ type FeedPost = {
   imageUrl?: string | null;
 };
 
-type FeedComment = { id: string; postId: string; userId: string; body: string; createdAt: string; username: string; displayName: string; avatarUrl: string | null; pending?: boolean };
+type FeedComment = { id: string; postId: string; userId: string; body: string; createdAt: string; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; pending?: boolean };
 
 /** Applies a change to a post wherever it's cached: the feed pages and its own page. */
 function updatePost(queryClient: QueryClient, id: string, change: (post: FeedPost) => FeedPost) {
@@ -160,7 +162,7 @@ function Composer({ unit }: { unit: Unit }) {
   }
 
   return <form onSubmit={publish} className="flex gap-3 border-b border-line px-4 pb-3 pt-4">
-    <Avatar name={profile.data?.displayName ?? user.displayName ?? 'You'} src={profile.data?.avatarUrl} size={40} className="shrink-0 rounded-full" />
+    <Avatar name={profile.data?.displayName ?? user.displayName ?? 'You'} src={profile.data?.avatarUrl} avatarStyle={avatarStyleForGender(profile.data?.gender)} size={40} className="shrink-0 rounded-full" />
     <div className="min-w-0 flex-1">
       <label htmlFor="feed-body" className="sr-only">Post to Rant</label>
       <MentionTextarea
@@ -207,7 +209,7 @@ function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCance
 }) {
   return <article className="relative flex gap-3 px-4 py-3.5 transition-colors hover:bg-ink/[0.02]">
     <Link to="/runners/$username" params={{ username: item.username }} search={{}} aria-label={`View ${item.displayName}'s profile`} className="relative z-[1] h-fit shrink-0 self-start rounded-full">
-      <Avatar name={item.displayName} src={item.avatarUrl} size={42} className="rounded-full" />
+      <Avatar name={item.displayName} src={item.avatarUrl} avatarStyle={item.avatarStyle} size={42} className="rounded-full" />
     </Link>
     <div className="min-w-0 flex-1">
       <p className="flex min-w-0 items-baseline gap-1 text-[14px] leading-tight">
@@ -353,7 +355,7 @@ export function FeedPostPage() {
     <div className="-mx-4 sm:mx-0">
       <article className="px-4 pt-4">
         <div className="flex items-center gap-3">
-          <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="shrink-0"><Avatar name={item.displayName} src={item.avatarUrl} size={48} className="rounded-full" /></Link>
+          <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="shrink-0"><Avatar name={item.displayName} src={item.avatarUrl} avatarStyle={item.avatarStyle} size={48} className="rounded-full" /></Link>
           <div className="min-w-0 flex-1 leading-tight">
             <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="block truncate text-[16px] font-bold hover:underline">{item.displayName}</Link>
             <span className="block truncate text-[14px] text-ink-3">@{item.username}</span>
@@ -439,7 +441,7 @@ function Comments({ post: item, viewerId, replyField }: { post: FeedPost; viewer
     <ErrorNotice error={comment.error || comments.error || removeComment.error} className="m-4" />
     {comments.isLoading ? <div className="p-4"><Skeleton className="h-14" /></div> : !list.length ? <p className="px-4 py-12 text-center text-[14px] text-ink-3">No comments yet. Be the first.</p> : <div className="divide-y divide-line">
       {list.map((entry) => <div key={entry.id} className={cx('flex min-w-0 gap-3 px-4 py-3.5', entry.pending && 'opacity-60')}>
-        <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="h-fit shrink-0 self-start rounded-full"><Avatar name={entry.displayName} src={entry.avatarUrl} size={38} className="rounded-full" /></Link>
+        <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="h-fit shrink-0 self-start rounded-full"><Avatar name={entry.displayName} src={entry.avatarUrl} avatarStyle={entry.avatarStyle} size={38} className="rounded-full" /></Link>
         <div className="min-w-0 flex-1">
           <p className="flex min-w-0 items-baseline gap-1.5 text-[14px] leading-tight">
             <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="truncate font-bold hover:underline">{entry.displayName}</Link>
@@ -452,7 +454,7 @@ function Comments({ post: item, viewerId, replyField }: { post: FeedPost; viewer
     </div>}
     {/* Pinned above the mobile tab bar, like a chat composer. */}
     <form onSubmit={submit} className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10 flex items-end gap-2 border-t border-line bg-paper/95 px-4 py-2.5 backdrop-blur md:bottom-0">
-      <Avatar name={profile.data?.displayName ?? 'You'} src={profile.data?.avatarUrl} size={34} className="mb-0.5 shrink-0 rounded-full" />
+      <Avatar name={profile.data?.displayName ?? 'You'} src={profile.data?.avatarUrl} avatarStyle={avatarStyleForGender(profile.data?.gender)} size={34} className="mb-0.5 shrink-0 rounded-full" />
       <div className="flex min-w-0 flex-1 items-end rounded-3xl border border-line bg-card pl-4 pr-1 focus-within:border-ink">
         <MentionTextarea
           ref={replyField}

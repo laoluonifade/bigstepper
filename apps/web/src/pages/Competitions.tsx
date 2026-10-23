@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../components/Modal';
 import { templateById } from '../lib/templates';
-import { useStravaPublic } from '../lib/strava';
 import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
@@ -715,6 +714,7 @@ export function CompetitionDetailPage() {
         userId: row.userId,
         name: live.get(row.userId)?.displayName ?? (row.userId === user?.id ? user.displayName ?? 'You' : 'Runner'),
         avatarUrl: live.get(row.userId)?.avatarUrl,
+        avatarStyle: live.get(row.userId)?.avatarStyle,
         username: live.get(row.userId)?.username,
         metres: row.creditedDistanceMetres,
         score: row.score ?? legacyScore(row, table.data!),
@@ -727,6 +727,7 @@ export function CompetitionDetailPage() {
       userId: row.userId,
       name: row.displayName,
       avatarUrl: row.avatarUrl,
+      avatarStyle: row.avatarStyle,
       username: row.username,
       metres: row.creditedDistanceMetres,
       score: row.score,
@@ -780,7 +781,7 @@ export function CompetitionDetailPage() {
           {t.visibility === 'private' && <p className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-ink px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-paper"><LockIcon size={12} /> Private · invite only</p>}
           <h1 className={cx('display break-words text-[34px] leading-[0.95] sm:text-[44px]', t.visibility === 'private' ? 'mt-3' : 'mt-5')}>{t.title}</h1>
           <div className="mt-4 flex items-center gap-3">
-            <Avatar name={hostName} src={t.creator?.avatarUrl} size={40} className="rounded-full" />
+            <Avatar name={hostName} src={t.creator?.avatarUrl} avatarStyle={t.creator?.avatarStyle} size={40} className="rounded-full" />
             <p className="min-w-0 text-[14px] leading-snug">
               {t.creator?.username ? (
                 <Link to="/runners/$username" params={{ username: t.creator.username }} search={{}} className="font-bold hover:underline">{hostName}</Link>
@@ -1052,7 +1053,6 @@ function EntryPanel({
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const stravaPublic = useStravaPublic();
   const wallet = useWallet();
   const payments = useSavedPayments();
   const pendingPayment = payments.find((payment) => payment.tableId === table.id && OPEN_PAYMENT_STATUSES.includes(payment.lastStatus));
@@ -1204,10 +1204,10 @@ function EntryPanel({
           <Notice tone="neutral">This competition is full.</Notice>
         ) : !user ? (
           <div className="space-y-2">
-            {stravaPublic && <StravaButton intent="login" redirect={`/competitions/${table.code}?join=1`} label="Join with Strava" />}
-            <Link to="/register" search={{ redirect: `/competitions/${table.code}?join=1` }} className={cx('w-full', stravaPublic ? 'btn-secondary' : 'btn-primary')}>
+            <Link to="/register" search={{ redirect: `/competitions/${table.code}?join=1` }} className="btn-primary w-full">
               Sign up to join
             </Link>
+            <StravaButton intent="login" redirect={`/competitions/${table.code}?join=1`} label="Join with Strava" />
             <p className="text-center text-[13px] text-ink-2">Have an account? <Link to="/login" search={{ redirect: `/competitions/${table.code}?join=1` }} className="font-bold underline">Log in</Link></p>
           </div>
         ) : isPaid && pendingEntryPayment ? (
@@ -1327,7 +1327,7 @@ function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; count: num
       {shown.length > 0 && (
         <span className="flex shrink-0 -space-x-2">
           {shown.map((face) => (
-            <Avatar key={face.userId} name={face.name} src={face.avatarUrl} size={30} className="rounded-full ring-2 ring-card" />
+            <Avatar key={face.userId} name={face.name} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={30} className="rounded-full ring-2 ring-card" />
           ))}
         </span>
       )}

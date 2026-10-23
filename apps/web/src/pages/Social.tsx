@@ -189,6 +189,7 @@ export function LeagueDetailPage() {
           userId: row.userId,
           name: row.displayName ?? (row.username ? `@${row.username}` : row.userId === user?.id ? 'You' : 'Runner'),
           avatarUrl: row.avatarUrl,
+          avatarStyle: row.avatarStyle,
           username: row.username,
           metres: row.creditedDistanceMetres,
         })),

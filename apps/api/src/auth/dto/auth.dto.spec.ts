@@ -15,4 +15,9 @@ describe('RegisterDto residency', () => {
   it('accepts an ISO country code', async () => {
     expect(await validate(registration('GH'))).toHaveLength(0);
   });
+
+  it('accepts a gender choice but rejects unknown values', async () => {
+    expect(await validate(Object.assign(registration('NG'), { gender: 'male' }))).toHaveLength(0);
+    expect((await validate(Object.assign(registration('NG'), { gender: 'unknown' }))).some((error) => error.property === 'gender')).toBe(true);
+  });
 });

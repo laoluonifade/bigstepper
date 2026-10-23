@@ -23,7 +23,7 @@ export class StravaController {
   @Post('signup')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   signup(@Body() body: StravaSignupDto) {
-    return this.strava.completeSignup(body.signupToken, body.email, body.countryCode, body.whatsappNumber);
+    return this.strava.completeSignup(body.signupToken, body.email, body.countryCode, body.whatsappNumber, body.gender);
   }
 
   @Get()

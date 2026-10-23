@@ -30,11 +30,12 @@ import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
 import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useStaffAccess, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
 import { savePayment } from '../lib/payments';
-import type { CheckoutResponse, CreatorProfile, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
+import type { CheckoutResponse, CreatorProfile, Gender, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
 import { COUNTRIES } from '../lib/countries';
 import { Modal } from '../components/Modal';
 import { toast } from '../lib/toast';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
+import { GenderSelect } from '../components/GenderSelect';
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
@@ -169,7 +170,7 @@ function useSaveProfile(onSaved?: () => void) {
     onSuccess(updated) {
       queryClient.setQueryData(keys.profile, updated);
       // Your name and handle also appear on leaderboards and member lists.
-      void queryClient.invalidateQueries({ predicate: (query) => ['standings', 'result', 'leagues', 'club', 'runner'].includes(String(query.queryKey[0])) });
+      void queryClient.invalidateQueries({ predicate: (query) => ['standings', 'result', 'leagues', 'club', 'runner', 'tables', 'leaderboard', 'feed', 'feed-post', 'feed-comments', 'messages'].includes(String(query.queryKey[0])) });
       toast({ tone: 'ok', message: 'Saved' });
       onSaved?.();
     },
@@ -192,14 +193,21 @@ function EditProfileSheet({ profile, onClose }: { profile: Profile; onClose: () 
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [username, setUsername] = useState(profile.username);
   const [bio, setBio] = useState(profile.bio ?? '');
+  const [countryCode, setCountryCode] = useState(profile.countryCode);
+  const [gender, setGender] = useState<Gender | ''>(profile.gender ?? '');
+  const [whatsappNumber, setWhatsappNumber] = useState(profile.whatsappNumber ?? '');
+  const [weight, setWeight] = useState(profile.weightKg === null || profile.weightKg === undefined ? '' : String(profile.weightKg));
   const save = useSaveProfile(onClose);
   const usernameError = !/^[a-z0-9_]{2,30}$/.test(username) ? '2–30 characters: lowercase letters, numbers and underscores.' : undefined;
   const nameError = !displayName.trim() ? 'Your name can’t be empty.' : undefined;
-  const changes = changedFields(profile, { displayName: displayName.trim(), username, bio: bio.trim() || null });
+  const weightKg = weight === '' ? null : Number(weight);
+  const weightError = weightKg !== null && (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 300 || !Number.isInteger(weightKg * 10))
+    ? 'Enter a weight from 20 to 300 kg, to one decimal place.' : undefined;
+  const changes = changedFields(profile, { displayName: displayName.trim(), username, bio: bio.trim() || null, countryCode, gender: gender || null, whatsappNumber: whatsappNumber || null, weightKg });
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (usernameError || nameError || !Object.keys(changes).length) return;
+    if (usernameError || nameError || weightError || !Object.keys(changes).length) return;
     save.mutate(changes);
   }
 
@@ -217,21 +225,34 @@ function EditProfileSheet({ profile, onClose }: { profile: Profile; onClose: () 
       <Field label="Bio" hint={`${bio.length}/160`}>
         {(props) => <textarea {...props} className="field min-h-[88px] resize-y py-3" maxLength={160} rows={3} placeholder="Chasing a sub-25 5K. Lagos Road Runners." value={bio} onChange={(event) => setBio(event.target.value)} />}
       </Field>
+      <Field label="Country of residence">
+        {(props) => <CountryPicker id={props.id} value={countryCode} onChange={setCountryCode} />}
+      </Field>
+      <Field label="Gender" optional hint="Private. Used to choose your default avatar if you haven’t uploaded a photo.">
+        {(props) => <GenderSelect id={props.id} value={gender} onChange={setGender} />}
+      </Field>
+      <Field label="WhatsApp number" optional hint="Only Jump uses it, to reach you about prizes and your account.">
+        {(props) => <PhoneField id={props.id} value={whatsappNumber} defaultCountry={countryCode} onChange={setWhatsappNumber} />}
+      </Field>
+      <Field label="Body weight · kg" optional error={weightError} hint="Used only to estimate calories on your activities.">
+        {(props) => <input {...props} className="field num" type="number" inputMode="decimal" min="20" max="300" step="0.1" value={weight} onChange={(event) => setWeight(event.target.value)} />}
+      </Field>
       <ErrorNotice error={save.error} />
-      <SheetActions disabled={Boolean(usernameError || nameError) || !Object.keys(changes).length} pending={save.isPending} onCancel={onClose} />
+      <SheetActions disabled={Boolean(usernameError || nameError || weightError) || !Object.keys(changes).length} pending={save.isPending} onCancel={onClose} />
     </form>
   </Modal>;
 }
 
 function PersonalSheet({ profile, onClose }: { profile: Profile; onClose: () => void }) {
   const [countryCode, setCountryCode] = useState(profile.countryCode);
+  const [gender, setGender] = useState<Gender | ''>(profile.gender ?? '');
   const [whatsappNumber, setWhatsappNumber] = useState(profile.whatsappNumber ?? '');
   const [weight, setWeight] = useState(profile.weightKg === null || profile.weightKg === undefined ? '' : String(profile.weightKg));
   const save = useSaveProfile(onClose);
   const weightKg = weight === '' ? null : Number(weight);
   const weightError = weightKg !== null && (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 300 || !Number.isInteger(weightKg * 10))
     ? 'Enter a weight from 20 to 300 kg, to one decimal place.' : undefined;
-  const changes = changedFields(profile, { countryCode, whatsappNumber: whatsappNumber || null, weightKg });
+  const changes = changedFields(profile, { countryCode, gender: gender || null, whatsappNumber: whatsappNumber || null, weightKg });
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -241,9 +262,12 @@ function PersonalSheet({ profile, onClose }: { profile: Profile; onClose: () => 
 
   return <Modal title="Personal details" onClose={onClose}>
     <form onSubmit={submit} className="space-y-5">
-      <p className="-mt-1 text-[13px] text-ink-3">Private. None of this shows on your public profile.</p>
+      <p className="-mt-1 text-[13px] text-ink-3">These details are private. Gender only changes the style of your default avatar.</p>
       <Field label="Country of residence">
         {(props) => <CountryPicker id={props.id} value={countryCode} onChange={setCountryCode} />}
+      </Field>
+      <Field label="Gender" optional hint="Private. Used to choose your default avatar if you haven’t uploaded a photo.">
+        {(props) => <GenderSelect id={props.id} value={gender} onChange={setGender} />}
       </Field>
       <Field label="WhatsApp number" optional hint="Only Jump uses it, to reach you about prizes and your account.">
         {(props) => <PhoneField id={props.id} value={whatsappNumber} defaultCountry={countryCode} onChange={setWhatsappNumber} />}
@@ -864,7 +888,7 @@ export function RunnerPage() {
         </div>
       )}
       <ProfileHero
-        avatar={<Avatar name={data.displayName} src={data.avatarUrl} size={84} className="rounded-lg" />}
+        avatar={<Avatar name={data.displayName} src={data.avatarUrl} avatarStyle={data.avatarStyle} size={84} className="rounded-lg" />}
         displayName={data.displayName}
         username={data.username}
         meta={
