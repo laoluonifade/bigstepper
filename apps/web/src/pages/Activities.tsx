@@ -190,7 +190,7 @@ export function ActivityDetailPage() {
           <div>
             <p className="wide text-[16px] font-black uppercase">Verified. It counts.</p>
             <p className="text-[13px]">
-              {a.activityType === 'cycle' ? `${formatDistance(shownMetres(a), unit)} can count in your active cycling competitions. It does not count toward the running league.` : `${formatDistance(shownMetres(a), unit)} counts in your active league. Eligible competitions are listed below.`}
+              {a.activityType === 'cycle' ? `${formatDistance(shownMetres(a), unit)} can count in your active Cycling and Distance competitions. It does not count toward the running league.` : `${formatDistance(shownMetres(a), unit)} counts in your active league. Eligible competitions are listed below.`}
             </p>
           </div>
         </div>

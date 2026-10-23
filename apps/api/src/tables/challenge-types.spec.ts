@@ -1,7 +1,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { assertScoringConfiguration } from './challenge-types';
-import { ACTIVITY_RULES, METRICS } from './competition-rules';
+import { ACTIVITY_RULES, eligibleKinds, METRICS } from './competition-rules';
+import { scoringColumns } from './scoring-columns';
 
 describe('challenge scoring configuration', () => {
   it('is the same catalog the web app uses', () => {
@@ -43,6 +44,12 @@ describe('challenge scoring configuration', () => {
   it('only allows the activity kinds an activity includes', () => {
     expect(() => assertScoringConfiguration({ challengeType: 'TIMED', scoringMethod: 'MOST_TIME', eligibleActivities: ['cycle'] })).not.toThrow();
     expect(() => assertScoringConfiguration({ challengeType: 'RUN', scoringMethod: 'MOST_TIME', eligibleActivities: ['cycle'] })).toThrow();
+  });
+
+  it('counts runs, walks and rides in new Distance competitions, including prize competitions', () => {
+    expect(eligibleKinds('DISTANCE')).toEqual(['run', 'walk', 'cycle']);
+    expect(scoringColumns({ challengeType: 'DISTANCE', scoringMethod: 'FARTHEST_DISTANCE' }, true).eligibleActivities)
+      .toEqual(['run', 'walk', 'cycle']);
   });
 
   it('lists only methods the engine can score', () => {

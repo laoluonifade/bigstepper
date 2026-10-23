@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -173,6 +173,12 @@ export function StravaSignupPage() {
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
+function refreshStravaProgress(queryClient: QueryClient) {
+  for (const queryKey of [keys.activities, keys.tables, ['standings'], keys.leagues, ['club'], keys.profile]) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
+}
+
 function useStravaStatus(enabled = true) {
   return useQuery({
     queryKey: ['strava'],
@@ -197,7 +203,11 @@ export function StravaSyncBar({ hidden }: { hidden?: boolean }) {
     onSuccess(result) {
       setImported(result.imported);
       void queryClient.invalidateQueries({ queryKey: ['strava'] });
-      if (result.imported) void queryClient.invalidateQueries({ queryKey: keys.activities });
+      refreshStravaProgress(queryClient);
+      if (result.imported) {
+        // Import queues verification; refresh once more after those jobs have had time to credit boards.
+        window.setTimeout(() => refreshStravaProgress(queryClient), 15_000);
+      }
     },
   });
   const data = status.data;
@@ -213,7 +223,7 @@ export function StravaSyncBar({ hidden }: { hidden?: boolean }) {
   // A sync that ran on the server (just after connecting) finished: pull in what it imported.
   const wasSyncing = useRef(false);
   useEffect(() => {
-    if (wasSyncing.current && !serverSyncing) void queryClient.invalidateQueries({ queryKey: keys.activities });
+    if (wasSyncing.current && !serverSyncing) refreshStravaProgress(queryClient);
     wasSyncing.current = serverSyncing;
   }, [serverSyncing, queryClient]);
 

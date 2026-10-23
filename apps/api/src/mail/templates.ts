@@ -115,7 +115,7 @@ export function clubInviteEmail(to: { address: string; name?: string }, club: st
 }
 
 export function challengeReminderEmail(to: { address: string; name?: string }, title: string, url: string): MailMessage {
-  const intro = `Your daily reminder for ${title}: record a walk or run today to keep moving up the board. Only verified activities during the competition count.`;
+  const intro = `Your daily reminder for ${title}: record an eligible activity today to keep moving up the board. Only verified activities during the competition count.`;
   return {
     to,
     subject: `Time to move · ${title}`,

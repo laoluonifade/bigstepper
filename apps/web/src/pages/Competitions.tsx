@@ -840,7 +840,7 @@ export function CompetitionDetailPage() {
                     {hasScored(t.scoringMethod, row.score) ? formatScore(t, row.score, unit, { short: true }) : '-'}
                   </span>
                 )}
-                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified {({ RUN: 'run', WALK: 'walk', CYCLING: 'ride' } as Record<string, string>)[t.challengeType] ?? 'walk or run'} puts you on top.</EmptyState>}
+                empty={<EmptyState title="Nobody’s on the board yet">Join now and your first verified {({ RUN: 'run', WALK: 'walk', CYCLING: 'ride', DISTANCE: 'run, walk or ride' } as Record<string, string>)[t.challengeType] ?? 'activity'} puts you on top.</EmptyState>}
               />
             )}
             {rows.length > 10 && (
@@ -892,6 +892,7 @@ function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: U
 /** For people arriving from an invite who have never heard of a Jump challenge. */
 function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
   const cycling = table.challengeType === 'CYCLING';
+  const distance = table.challengeType === 'DISTANCE';
   const counts = table.challengeType === 'RUN' ? 'run' : table.challengeType === 'WALK' ? 'walk' : cycling ? 'ride' : 'walk and run';
   const ends = table.scoringClosesAt ? formatDate(table.scoringClosesAt) : null;
   const prizePot = table.type === 'sponsored' ? (table.fundedPrizeKobo || table.guaranteedPrizeKobo) : table.guaranteedPrizeKobo;
@@ -906,8 +907,8 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
       body: table.type === 'paid' ? 'Pay securely with Paystack. Entry fees build the prize pot.' : 'One tap and you’re on the board. No fee, no catch.',
     },
     {
-      title: cycling ? 'Cycle with Jump' : `${counts === 'walk and run' ? 'Walk or run' : counts === 'run' ? 'Run' : 'Walk'} with Jump`,
-      body: cycling ? 'Choose Cycle when you start. Every GPS-verified ride in the competition window counts.' : `Hit Run in the app whenever you head out, or sync from Strava. Every verified ${counts} in the competition window counts.`,
+      title: distance ? 'Run, walk or cycle with Jump' : cycling ? 'Cycle with Jump' : `${counts === 'walk and run' ? 'Walk or run' : counts === 'run' ? 'Run' : 'Walk'} with Jump`,
+      body: distance ? 'Record a run, walk or ride in Jump, or sync from Strava. Every verified distance in the competition window counts.' : cycling ? 'Choose Cycle when you start. Every GPS-verified ride in the competition window counts.' : `Hit Run in the app whenever you head out, or sync from Strava. Every verified ${counts} in the competition window counts.`,
     },
     {
       title: 'Climb the board',
@@ -918,7 +919,7 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
     <section>
       <SectionTitle>How it works</SectionTitle>
       <p className="mb-5 max-w-xl text-[15px] leading-relaxed text-ink-2">
-        {cycling ? 'Record rides with Jump. GPS-verified cycling distance updates the leaderboard; rides do not score in running leagues or foot-activity competitions. Cycling is free to enter and has no cash prize.' : 'A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.'}
+        {cycling ? 'Record rides with Jump. GPS-verified cycling distance updates the leaderboard; rides do not score in running leagues or foot-activity competitions. Cycling is free to enter and has no cash prize.' : distance ? 'Verified runs, walks and rides all add to your distance. Record them in Jump or sync from Strava, and the leaderboard updates when verification finishes.' : 'A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.'}
       </p>
       <ol className="grid gap-3 sm:grid-cols-3">
         {steps.map((step, index) => (
@@ -1390,7 +1391,7 @@ function Stakes({ table }: { table: CompetitionTable }) {
   return (
     <div>
       <p className="score text-[44px] leading-none">Free</p>
-      <p className="mt-1.5 text-[13px] text-ink-2">to join · {table.challengeType === 'CYCLING' ? 'record a GPS ride' : 'just walk or run'}</p>
+      <p className="mt-1.5 text-[13px] text-ink-2">to join · {table.challengeType === 'CYCLING' ? 'record a GPS ride' : table.challengeType === 'DISTANCE' ? 'run, walk or ride' : 'just walk or run'}</p>
     </div>
   );
 }
