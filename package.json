@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "pnpm --parallel --filter @jump/api --filter @jump/web dev",
+    "dev": "pnpm --parallel --filter @jump/api --filter @jump/web --filter @jump/admin dev",
+    "dev:admin": "pnpm --filter @jump/admin dev",
     "dev:web": "pnpm --filter @jump/web dev",
     "dev:api": "pnpm --filter @jump/api dev",
     "build": "pnpm -r run build",

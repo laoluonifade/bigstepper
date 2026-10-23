@@ -3,7 +3,7 @@ import { ReactNode, useId } from 'react';
 import { formatDistanceNumber, ordinal } from '../lib/format';
 import type { Unit } from '../lib/types';
 import type { AvatarStyle } from '../lib/types';
-import { Avatar, cx } from './ui';
+import { Avatar, cx, VerifiedTick } from './ui';
 
 export interface LeaderboardRow {
   rank: number;
@@ -16,6 +16,8 @@ export interface LeaderboardRow {
   metres: number;
   score?: number | null;
   host?: boolean;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   /** A quieter second line under the name, e.g. the km behind a steps score. */
   detail?: string | null;
 }
@@ -149,6 +151,7 @@ function Row({ row, isMe, unit, formatScore }: { row: LeaderboardRow; isMe: bool
               ) : (
                 row.name
               )}
+              {row.verified && <VerifiedTick className="ml-1" />}
               {isMe && <span className="tag ml-2 h-5 border-ink bg-ink px-1.5 text-[9.5px] text-volt">You</span>}
               {row.host && <span className="tag ml-2 h-5 border-line bg-paper px-1.5 text-[9.5px]">Host</span>}
             </p>

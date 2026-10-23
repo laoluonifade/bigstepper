@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SponsorsModule } from '../sponsors/sponsors.module';
 import { BullModule } from '@nestjs/bullmq';
 import { CHALLENGE_REMINDERS_QUEUE } from '../jobs/jobs.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -9,7 +10,7 @@ import { TablesService } from './tables.service';
 import { ChallengeRemindersProcessor } from './challenge-reminders.processor';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CompetitionTable, TableRegistration]), BullModule.registerQueue({ name: CHALLENGE_REMINDERS_QUEUE })],
+  imports: [TypeOrmModule.forFeature([CompetitionTable, TableRegistration]), BullModule.registerQueue({ name: CHALLENGE_REMINDERS_QUEUE }), SponsorsModule],
   controllers: [TablesController],
   providers: [TablesService, ChallengeRemindersProcessor],
 })

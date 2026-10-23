@@ -5,6 +5,7 @@ export const ACTIVITY_VERIFICATION_QUEUE = 'activity-verification';
 export const LEAGUE_SEASONS_QUEUE = 'league-seasons';
 export const CHALLENGE_REMINDERS_QUEUE = 'challenge-reminders';
 export const EMAIL_UPDATES_QUEUE = 'email-updates';
+export const PRODUCT_PRIZES_QUEUE = 'product-prizes';
 
 @Module({
   imports: [BullModule.registerQueue({ name: ACTIVITY_VERIFICATION_QUEUE })],

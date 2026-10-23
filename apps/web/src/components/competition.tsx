@@ -93,7 +93,8 @@ export function phaseLine(table: CompetitionTable, now = Date.now()): string {
     case 'entry-closed':
       return table.scoringClosesAt ? `Entry closed · ends in ${formatCountdown(table.scoringClosesAt, now)}` : 'Entry closed';
     case 'scoring-closed':
-      return 'Scoring closed · result pending';
+      // Free competitions are done when they close; prize ones wait for Jump to settle the result.
+      return table.type === 'free' ? 'Ended' : 'Scoring closed · result pending';
     case 'final':
       return 'Final result';
   }
@@ -121,7 +122,7 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
       )}
     >
       {live && <span className="h-1.5 w-1.5 animate-blink rounded-full bg-current" aria-hidden="true" />}
-      {phase === 'upcoming' ? 'Upcoming' : phase === 'open' ? 'Open' : phase === 'entry-closed' ? 'Entry closed' : phase === 'scoring-closed' ? 'Closed' : phase === 'final' ? 'Final' : 'Pending'}
+      {phase === 'upcoming' ? 'Upcoming' : phase === 'open' ? 'Open' : phase === 'entry-closed' ? 'Entry closed' : phase === 'scoring-closed' ? (table.type === 'free' ? 'Ended' : 'Closed') : phase === 'final' ? 'Final' : 'Pending'}
     </span>
   );
 }

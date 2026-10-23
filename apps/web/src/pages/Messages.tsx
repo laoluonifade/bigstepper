@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import { CSSProperties, FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon } from '../components/icons';
+import { CSSProperties, FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon } from '../components/icons';
 import { ActivityBadge, ActivityPicker } from '../components/ActivityPicker';
+import { ClubLogo } from '../components/ClubLogo';
 import { EmojiPicker } from '../components/EmojiPicker';
 import { ReactionBar } from '../components/ReactionBar';
-import { Avatar, cx, EmptyState, ErrorNotice, Skeleton } from '../components/ui';
+import { Avatar, cx, EmptyState, ErrorNotice, Skeleton, VerifiedTick } from '../components/ui';
 import { RantTabs } from '../components/RantTabs';
 import { api, patch, post } from '../lib/api';
 import { useUser } from '../lib/auth';
@@ -17,11 +18,20 @@ import { toast } from '../lib/toast';
 import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecording } from '../lib/voice';
 import type { Activity, AvatarStyle, CheckoutResponse, Unit } from '../lib/types';
 
-type InboxRow = { username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; senderId: string; unreadCount: number };
+type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; senderId: string; unreadCount: number };
+type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; unreadCount: number };
+type InboxRow = DirectRow | ClubRow;
+/** Whoever wrote a message: the other person in a DM, any member in a club chat. */
+type Person = { displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; username?: string | null };
 type MessageReaction = Reaction;
 type SharedActivity = { id: string; activityType: 'walk' | 'run' | 'cycle'; startedAt: string; verificationStatus: string; distanceMetres: number; movingSeconds: number; steps: number };
-type Message = { id: string; senderId: string; recipientId: string; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null; reactions: Array<{ userId: string; reaction: MessageReaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null; tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean };
-type Conversation = { runner: { username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }; canMessage: boolean; messages: Message[] };
+type Message = { id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null; reactions: Array<{ userId: string; reaction: MessageReaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null; tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean };
+type Thread = { canMessage: boolean; messages: Message[] };
+type Conversation = Thread & { runner: Person & { username: string } };
+type ClubConversation = Thread & {
+  club: { id: string; slug: string; name: string; logoUrl: string | null; accentColor: string; verified: boolean; memberCount: number; faces: Person[]; chatLocked: boolean; myRole: 'owner' | 'admin' | 'member' };
+  people: Array<Person & { userId: string }>;
+};
 type SendDraft = { text: string; reply: Message | null; activityId?: string; voice?: VoiceRecording & { localUrl: string } };
 type SentMessage = Pick<Message, 'id' | 'senderId' | 'recipientId' | 'body' | 'createdAt' | 'replyToId'>;
 
@@ -33,19 +43,78 @@ export function MessagesPage() {
     <div className="-mx-4 mb-4 sm:mx-0"><RantTabs active="dms" unread={unread} /></div>
     <ErrorNotice error={inbox.error} onRetry={() => void inbox.refetch()} />
     {inbox.isLoading ? <Skeleton className="h-32" /> : !inbox.data?.length ? <EmptyState mark={<FeedIcon size={30} />} title="No messages yet" action={<Link to="/runners" className="btn-secondary">Find runners</Link>}>Open a runner’s profile and tap Message to say hello.</EmptyState> : <ul className="-mx-4 divide-y divide-line border-b border-line sm:mx-0">
-      {inbox.data.map((row) => <li key={row.username}><Link to="/messages/$username" params={{ username: row.username }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
+      {inbox.data.map((row) => <li key={row.type === 'club' ? `club:${row.clubSlug}` : row.username}>{row.type === 'club' ? <ClubInboxRow row={row} /> : <Link to="/messages/$username" params={{ username: row.username }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
         <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={48} className="shrink-0 rounded-full" />
         <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.displayName}</span> <span className="text-[13px] text-ink-3">@{row.username}</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
-          <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{row.kind === 'voice' ? '🎤 Voice note' : row.body || 'Shared an activity'}</span>{row.unreadCount > 0 && <span className="num min-w-[20px] shrink-0 rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${row.unreadCount} unread messages`}>{row.unreadCount > 9 ? '9+' : row.unreadCount}</span>}</span>
+          <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.displayName}</span>{row.verified && <VerifiedTick className="ml-1" />} <span className="text-[13px] text-ink-3">@{row.username}</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
+          <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{row.kind === 'voice' ? '🎤 Voice note' : row.body || 'Shared an activity'}</span><UnreadBadge count={row.unreadCount} /></span>
         </span>
-      </Link></li>)}
+      </Link>}</li>)}
     </ul>}
   </div>;
 }
 
 export function ConversationPage() {
   const { username } = useParams({ strict: false }) as { username: string };
+  return <ChatThread<Conversation>
+    queryKey={['messages', username]}
+    path={`/messages/${encodeURIComponent(username)}`}
+    back={{ to: '/messages' }}
+    senderOf={(data) => data.runner}
+    header={(data) => <>
+      <Avatar name={data.runner.displayName} src={data.runner.avatarUrl} avatarStyle={data.runner.avatarStyle} size={42} className="rounded-full" />
+      <div className="min-w-0"><h1 className="wide truncate text-[16px] font-black uppercase md:text-[18px]">{data.runner.displayName}{data.runner.verified && <VerifiedTick size={16} className="ml-1.5" />}</h1><Link to="/runners/$username" params={{ username }} search={{}} className="block truncate text-[12px] text-ink-2 hover:underline md:text-[13px]">@{username}</Link></div>
+    </>}
+    empty={(data) => <>
+      <Avatar name={data.runner.displayName} src={data.runner.avatarUrl} avatarStyle={data.runner.avatarStyle} size={72} className="rounded-full" />
+      <p className="mt-3 font-bold">{data.runner.displayName}</p>
+      <p className="text-[14px] text-ink-3">Say hello 👋</p>
+    </>}
+  />;
+}
+
+/** A club's group chat. Members only; the API turns everyone else away. */
+export function ClubChatPage() {
+  const { id } = useParams({ strict: false }) as { id: string };
+  return <ChatThread<ClubConversation>
+    group
+    queryKey={['club-chat', id]}
+    path={`/clubs/${encodeURIComponent(id)}/chat`}
+    back={{ to: '/clubs/$id', id }}
+    senderOf={(data, senderId) => data.people.find((person) => person.userId === senderId) ?? { displayName: 'Former member', avatarUrl: null }}
+    header={(data) => <>
+      <ClubLogo club={data.club} size={42} />
+      <div className="min-w-0 flex-1">
+        <h1 className="wide truncate text-[16px] font-black uppercase md:text-[18px]">{data.club.name}{data.club.verified && <VerifiedTick size={16} className="ml-1.5" />}</h1>
+        <Link to="/clubs/$id" params={{ id: data.club.slug }} search={{}} className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-2 hover:underline md:text-[13px]">
+          <span className="flex -space-x-1.5">{data.club.faces.slice(0, 4).map((face, index) => <Avatar key={index} name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={20} className="rounded-full ring-2 ring-card" />)}</span>
+          <span className="truncate"><b className="font-bold text-ink">{data.club.memberCount}</b> {data.club.memberCount === 1 ? 'member' : 'members'}{data.club.chatLocked && ' · only managers can send'}</span>
+        </Link>
+      </div>
+
+    </>}
+    empty={(data) => <>
+      <span className="flex h-16 w-16 items-center justify-center rounded-2xl text-[30px]" style={{ background: data.club.accentColor }} aria-hidden="true">👋</span>
+      <p className="mt-3 font-bold">Start the {data.club.name} chat</p>
+      <p className="text-[14px] text-ink-3">Every member sees it. Plan runs, cheer each other on.</p>
+    </>}
+  />;
+}
+
+/**
+ * A conversation: a DM with one runner, or a club's group chat. Both are the same messages underneath,
+ * so replies, reactions, edits, voice notes and shared activities work the same in each.
+ */
+function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, senderOf, group = false }: {
+  queryKey: readonly unknown[];
+  /** GET loads it, POST sends, POST /read marks it read. */
+  path: string;
+  header: (data: T) => ReactNode;
+  empty: (data: T) => ReactNode;
+  back: { to: '/messages' } | { to: '/clubs/$id'; id: string };
+  senderOf: (data: T, senderId: string) => Person;
+  group?: boolean;
+}) {
   const user = useUser();
   const queryClient = useQueryClient();
   const [body, setBody] = useState('');
@@ -81,9 +150,9 @@ export function ConversationPage() {
     window.addEventListener('resize', update);
     return () => { visual.removeEventListener('resize', update); visual.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
   }, []);
-  const conversation = useQuery({ queryKey: ['messages', username], queryFn: () => api<Conversation>(`/messages/${encodeURIComponent(username)}`), refetchInterval: 15_000 });
+  const conversation = useQuery({ queryKey, queryFn: () => api<T>(path), refetchInterval: group ? 10_000 : 15_000 });
   const read = useMutation({
-    mutationFn: () => post(`/messages/${encodeURIComponent(username)}/read`),
+    mutationFn: () => post(`${path}/read`),
     onSuccess() { void queryClient.invalidateQueries({ queryKey: keys.messagesUnread }); void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] }); },
   });
   const newestIncomingId = [...(conversation.data?.messages ?? [])].reverse().find((message) => message.senderId !== user.id)?.id;
@@ -98,10 +167,9 @@ export function ConversationPage() {
         const { url } = await api<{ url: string }>('/messages/voice', { method: 'POST', body: form });
         audio = { audioUrl: url, audioSeconds: voice.seconds };
       }
-      return post<SentMessage>(`/messages/${encodeURIComponent(username)}`, { body: text, ...(reply ? { replyToId: reply.id } : {}), ...(activityId ? { activityId } : {}), ...(audio ?? {}) });
+      return post<SentMessage>(path, { body: text, ...(reply ? { replyToId: reply.id } : {}), ...(activityId ? { activityId } : {}), ...(audio ?? {}) });
     },
     async onMutate({ text, reply, activityId, voice }) {
-      const queryKey = ['messages', username];
       await queryClient.cancelQueries({ queryKey });
       const pendingId = `pending-${crypto.randomUUID()}`;
       const pendingMessage: Message = {
@@ -113,24 +181,24 @@ export function ConversationPage() {
         audioUrl: voice?.localUrl ?? null, audioSeconds: voice?.seconds ?? null,
       };
       followLatest.current = true;
-      queryClient.setQueryData<Conversation>(queryKey, (current) => current && { ...current, messages: [...current.messages, pendingMessage] });
+      queryClient.setQueryData<T>(queryKey, (current) => current && { ...current, messages: [...current.messages, pendingMessage] });
       setBody('');
       setReplyTo(null);
       setShowEmoji(false);
       return { pendingId, text, reply };
     },
     onSuccess(saved, _draft, context) {
-      queryClient.setQueryData<Conversation>(['messages', username], (current) => current && {
+      queryClient.setQueryData<T>(queryKey, (current) => current && {
         ...current,
         messages: current.messages.flatMap((message) => message.id === context?.pendingId
           ? current.messages.some((item) => item.id === saved.id) ? [] : [{ ...message, ...saved, pending: false }]
           : [message]),
       });
-      void queryClient.invalidateQueries({ queryKey: ['messages', username] });
+      void queryClient.invalidateQueries({ queryKey });
       void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] });
     },
     onError(_error, _draft, context) {
-      queryClient.setQueryData<Conversation>(['messages', username], (current) => current && {
+      queryClient.setQueryData<T>(queryKey, (current) => current && {
         ...current,
         messages: current.messages.filter((message) => message.id !== context?.pendingId),
       });
@@ -141,13 +209,13 @@ export function ConversationPage() {
   const edit = useMutation({
     mutationFn: ({ id, text }: { id: string; text: string }) => patch<Pick<Message, 'id' | 'body' | 'editedAt'>>(`/messages/${id}`, { body: text }),
     onSuccess(updated) {
-      queryClient.setQueryData<Conversation>(['messages', username], (current) => current && {
+      queryClient.setQueryData<T>(queryKey, (current) => current && {
         ...current,
         messages: current.messages.map((item) => item.id === updated.id ? { ...item, ...updated } : item.replyToId === updated.id ? { ...item, replyToBody: updated.body } : item),
       });
       stopEditing();
       void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] });
-      void queryClient.invalidateQueries({ queryKey: ['messages', username] });
+      void queryClient.invalidateQueries({ queryKey });
     },
   });
   useLayoutEffect(() => {
@@ -159,7 +227,7 @@ export function ConversationPage() {
   useEffect(() => {
     const thread = threadRef.current;
     if (thread && followLatest.current) thread.scrollTop = thread.scrollHeight;
-  }, [username, conversation.data?.messages.length, viewport?.height]);
+  }, [path, conversation.data?.messages.length, viewport?.height]);
   function startEditing(message: Message) {
     if (!editing) stashedDraft.current = { body, replyTo };
     setEditing(message);
@@ -185,21 +253,20 @@ export function ConversationPage() {
   }
   function submit(event: FormEvent) { event.preventDefault(); sendOrSave(); }
   return <div className="fixed inset-x-0 z-40 mx-auto flex h-[var(--chat-height)] min-w-0 max-w-[600px] flex-col overflow-hidden bg-paper md:static md:h-auto md:overflow-visible md:bg-transparent" style={{ '--chat-height': viewport ? `${viewport.height}px` : '100dvh', top: viewport?.top ?? 0 } as CSSProperties}>
-    <Link to="/messages" className="mb-4 hidden items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink md:inline-flex"><ArrowLeftIcon size={16} /> Messages</Link>
+    {back.to === '/messages'
+      ? <Link to="/messages" className="mb-4 hidden items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink md:inline-flex"><ArrowLeftIcon size={16} /> Messages</Link>
+      : <Link to="/clubs/$id" params={{ id: back.id }} search={{}} className="mb-4 hidden items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink md:inline-flex"><ArrowLeftIcon size={16} /> Club</Link>}
     <ErrorNotice error={conversation.error} onRetry={() => void conversation.refetch()} />
     <ErrorNotice error={read.error} />
     {conversation.isLoading ? <Skeleton className="h-64" /> : conversation.data && <>
       <header className="flex shrink-0 items-center gap-3 border-b border-line bg-card px-3 py-2.5 md:mb-3 md:rounded-2xl md:border md:px-4 md:py-3">
-        <Link to="/messages" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-paper md:hidden" aria-label="Back to messages"><ArrowLeftIcon size={20} /></Link>
-        <Avatar name={conversation.data.runner.displayName} src={conversation.data.runner.avatarUrl} avatarStyle={conversation.data.runner.avatarStyle} size={42} className="rounded-full" />
-        <div className="min-w-0"><h1 className="wide truncate text-[16px] font-black uppercase md:text-[18px]">{conversation.data.runner.displayName}</h1><Link to="/runners/$username" params={{ username }} search={{}} className="block truncate text-[12px] text-ink-2 hover:underline md:text-[13px]">@{username}</Link></div>
+        {back.to === '/messages'
+          ? <Link to="/messages" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-paper md:hidden" aria-label="Back to messages"><ArrowLeftIcon size={20} /></Link>
+          : <Link to="/clubs/$id" params={{ id: back.id }} search={{}} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-paper md:hidden" aria-label="Back to the club"><ArrowLeftIcon size={20} /></Link>}
+        {header(conversation.data)}
       </header>
       <div ref={threadRef} onScroll={(event) => { const target = event.currentTarget; followLatest.current = target.scrollHeight - target.scrollTop - target.clientHeight < 80; }} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-3 pb-5 sm:p-4 md:max-h-[65vh] md:min-h-[45vh] md:flex-none md:rounded-2xl md:border md:border-line md:bg-paper" aria-label="Conversation">
-        {!conversation.data.messages.length && <div className="flex flex-col items-center py-12 text-center">
-          <Avatar name={conversation.data.runner.displayName} src={conversation.data.runner.avatarUrl} avatarStyle={conversation.data.runner.avatarStyle} size={72} className="rounded-full" />
-          <p className="mt-3 font-bold">{conversation.data.runner.displayName}</p>
-          <p className="text-[14px] text-ink-3">Say hello 👋</p>
-        </div>}
+        {!conversation.data.messages.length && <div className="flex flex-col items-center py-12 text-center">{empty(conversation.data)}</div>}
         {conversation.data.messages.map((message, index, all) => {
           const previous = all[index - 1];
           const next = all[index + 1];
@@ -209,15 +276,17 @@ export function ConversationPage() {
           const joinsNext = Boolean(next) && next.senderId === message.senderId && dayLabel(next.createdAt) === dayLabel(message.createdAt) && gapMinutes(message, next) < 5;
           return <div key={message.id} className={newDay ? 'pt-2' : joinsPrevious ? 'pt-0.5' : 'pt-3'}>
             {newDay && <p className="mb-3 text-center"><span className="rounded-full bg-ink/[0.06] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2">{dayLabel(message.createdAt)}</span></p>}
-            <MessageBubble unit={unit} message={message} viewerId={user.id} username={username} runner={conversation.data!.runner} firstInGroup={!joinsPrevious} lastInGroup={!joinsNext} beingEdited={editing?.id === message.id} onEdit={() => startEditing(message)} onReply={() => { if (editing) stopEditing(); setReplyTo(message); composerRef.current?.focus(); }} />
+            <MessageBubble unit={unit} message={message} viewerId={user.id} queryKey={queryKey} sender={senderOf(conversation.data!, message.senderId)} nameOf={(id) => senderOf(conversation.data!, id).displayName} showName={group && !joinsPrevious && message.senderId !== user.id} firstInGroup={!joinsPrevious} lastInGroup={!joinsNext} beingEdited={editing?.id === message.id} onEdit={() => startEditing(message)} onReply={() => { if (editing) stopEditing(); setReplyTo(message); composerRef.current?.focus(); }} />
           </div>;
         })}
       </div>
-      <form onSubmit={submit} className={`shrink-0 border-t border-line bg-card px-3 pt-2 md:mt-3 md:rounded-2xl md:border md:p-3 ${viewport?.keyboardOpen ? 'pb-2' : 'pb-[max(env(safe-area-inset-bottom),0.5rem)]'}`}>
+      {conversation.data.canMessage === false ? <p className="flex shrink-0 items-center justify-center gap-2 border-t border-line bg-card px-4 py-4 pb-[max(env(safe-area-inset-bottom),1rem)] text-center text-[13px] text-ink-2 md:mt-3 md:rounded-2xl md:border">
+        <LockIcon size={14} /> Only the owner and managers can send messages here.
+      </p> : <form onSubmit={submit} className={`shrink-0 border-t border-line bg-card px-3 pt-2 md:mt-3 md:rounded-2xl md:border md:p-3 ${viewport?.keyboardOpen ? 'pb-2' : 'pb-[max(env(safe-area-inset-bottom),0.5rem)]'}`}>
         <ErrorNotice error={send.error} className="mb-2" />
         <ErrorNotice error={edit.error} className="mb-2" />
         {editing && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border-l-4 border-volt bg-paper px-3 py-2 text-[12px]"><span className="min-w-0 truncate"><strong>Editing message</strong><span className="ml-2 text-ink-2">{editing.body}</span></span><button type="button" className="font-bold" onClick={stopEditing} aria-label="Cancel editing">×</button></div>}
-        {replyTo && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border-l-4 border-track bg-paper px-3 py-2 text-[12px]"><span className="min-w-0 truncate"><strong>Replying to {replyTo.senderId === user.id ? 'yourself' : conversation.data.runner.displayName}</strong><span className="ml-2 text-ink-2">{replyTo.body}</span></span><button type="button" className="font-bold" onClick={() => setReplyTo(null)} aria-label="Cancel reply">×</button></div>}
+        {replyTo && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border-l-4 border-track bg-paper px-3 py-2 text-[12px]"><span className="min-w-0 truncate"><strong>Replying to {replyTo.senderId === user.id ? 'yourself' : senderOf(conversation.data, replyTo.senderId).displayName}</strong><span className="ml-2 text-ink-2">{replyTo.body}</span></span><button type="button" className="font-bold" onClick={() => setReplyTo(null)} aria-label="Cancel reply">×</button></div>}
         {voice.recording ? <div className="flex min-w-0 items-center gap-2">
           <button type="button" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-2 hover:bg-bad-wash hover:text-bad" onClick={() => void voice.stop(false)} aria-label="Discard voice note"><TrashIcon size={19} /></button>
           <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-3xl border border-bad/40 bg-bad-wash/60 px-4" role="status" aria-live="polite">
@@ -231,7 +300,7 @@ export function ConversationPage() {
           <div className="flex min-w-0 flex-1 items-end rounded-3xl border border-line bg-paper pl-1 pr-1 focus-within:border-ink">
             <button ref={emojiAnchor} type="button" className="flex h-10 w-9 shrink-0 items-center justify-center rounded-full text-[20px] text-ink-2 hover:text-ink" onClick={() => setShowEmoji((open) => !open)} aria-label="Choose emoji" aria-expanded={showEmoji}>☺</button>
             {!editing && <button ref={activityAnchor} type="button" className="flex h-10 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 hover:text-ink" onClick={() => setPickingActivity((open) => !open)} aria-label="Share an activity" aria-expanded={pickingActivity}><ActivityIcon size={19} /></button>}
-            <textarea ref={composerRef} rows={1} className="max-h-[168px] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 text-[15px] leading-snug outline-none placeholder:text-ink-3" aria-label={editing ? 'Edit message' : 'Write a private message'} maxLength={1000} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape' && editing) { event.preventDefault(); stopEditing(); } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); sendOrSave(); } }} placeholder="Message…" />
+            <textarea ref={composerRef} rows={1} className="max-h-[168px] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 text-[15px] leading-snug outline-none placeholder:text-ink-3" aria-label={editing ? 'Edit message' : group ? 'Write to the club' : 'Write a private message'} maxLength={1000} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape' && editing) { event.preventDefault(); stopEditing(); } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); sendOrSave(); } }} placeholder="Message…" />
           </div>
           {editing
             ? <button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-paper transition disabled:bg-ink/15 disabled:text-ink-3" aria-label={edit.isPending ? 'Saving edit' : 'Save edit'} title="Save edit" disabled={!body.trim() || edit.isPending}><CheckIcon size={19} /></button>
@@ -241,13 +310,14 @@ export function ConversationPage() {
         </div>}
         {showEmoji && <EmojiPicker anchor={emojiAnchor} onClose={() => setShowEmoji(false)} onPick={(emoji) => { setBody((value) => value + emoji); composerRef.current?.focus(); }} />}
         {pickingActivity && <ActivityPicker anchor={activityAnchor} unit={unit} activities={(myActivities.data ?? []).filter((activity) => activity.verificationStatus !== 'REJECTED')} onClose={() => setPickingActivity(false)} onPick={(activity) => { setPickingActivity(false); send.mutate({ text: body.trim(), reply: replyTo, activityId: activity.id }); }} />}
-      </form>
+      </form>}
     </>}
   </div>;
 }
 
-function MessageBubble({ unit, message, viewerId, username, runner, firstInGroup, lastInGroup, beingEdited, onEdit, onReply }: {
-  unit: Unit; message: Message; viewerId: string; username: string; runner: Conversation['runner']; firstInGroup: boolean; lastInGroup: boolean; beingEdited: boolean; onEdit: () => void; onReply: () => void;
+function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, showName, firstInGroup, lastInGroup, beingEdited, onEdit, onReply }: {
+  unit: Unit; message: Message; viewerId: string; queryKey: readonly unknown[]; sender: Person; nameOf: (userId: string) => string; showName: boolean;
+  firstInGroup: boolean; lastInGroup: boolean; beingEdited: boolean; onEdit: () => void; onReply: () => void;
 }) {
   const queryClient = useQueryClient();
   const [showReactions, setShowReactions] = useState(false);
@@ -268,11 +338,11 @@ function MessageBubble({ unit, message, viewerId, username, runner, firstInGroup
       setShowReactions(false);
       if (reaction) setBurst((value) => value + 1);
       const reactions = [...message.reactions.filter((item) => item.userId !== viewerId), ...(reaction ? [{ userId: viewerId, reaction }] : [])];
-      queryClient.setQueryData<Conversation>(['messages', username], (current) => current && {
+      queryClient.setQueryData<Thread>(queryKey, (current) => current && {
         ...current, messages: current.messages.map((item) => item.id === message.id ? { ...item, reactions } : item),
       });
     },
-    onSettled() { void queryClient.invalidateQueries({ queryKey: ['messages', username] }); },
+    onSettled() { void queryClient.invalidateQueries({ queryKey }); },
   });
   const counts = REACTIONS.map((choice) => ({ ...choice, count: message.reactions.filter((item) => item.reaction === choice.value).length })).filter((choice) => choice.count);
   const inviteCode = /^Join .+ on Jump: https?:\/\/[^\s]+\/competitions\/([A-F0-9]{8})$/.exec(message.body)?.[1];
@@ -285,13 +355,14 @@ function MessageBubble({ unit, message, viewerId, username, runner, firstInGroup
   const time = new Date(message.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
   return <div className={cx('flex items-end gap-2', mine ? 'justify-end' : 'justify-start')}>
-    {!mine && <span className="w-7 shrink-0">{lastInGroup && <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={28} className="rounded-full" />}</span>}
+    {!mine && <span className="w-7 shrink-0">{lastInGroup && <Avatar name={sender.displayName} src={sender.avatarUrl} avatarStyle={sender.avatarStyle} size={28} className="rounded-full" />}</span>}
     <div className={cx('relative max-w-[80%] select-none sm:max-w-[72%]', message.pending && 'pointer-events-none', counts.length > 0 && 'mb-3')} style={{ transform: `translateX(${dragX}px)`, touchAction: 'pan-y', WebkitTouchCallout: 'none' }}
       onDragStart={(event) => event.preventDefault()}
       onPointerDown={(event) => { suppressClick.current = false; if ((event.target as HTMLElement).closest('a,button,input,select,textarea')) return; pointerStart.current = { x: event.clientX, y: event.clientY }; clearHold(); if (event.pointerType === 'touch') holdTimer.current = window.setTimeout(() => { if (pointerStart.current) { suppressClick.current = true; setShowReactions(true); } }, 450); }}
       onPointerMove={(event) => { if (!pointerStart.current) return; const dx = event.clientX - pointerStart.current.x; const dy = event.clientY - pointerStart.current.y; if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearHold(); if (Math.abs(dx) > Math.abs(dy) && dx > 0) { dragDistance.current = Math.min(dx, 72); setDragX(dragDistance.current); } }}
       onPointerUp={() => { clearHold(); if (dragDistance.current >= 56) { suppressClick.current = true; setShowReactions(false); onReply(); } pointerStart.current = null; dragDistance.current = 0; setDragX(0); }}
       onPointerCancel={() => { clearHold(); pointerStart.current = null; dragDistance.current = 0; setDragX(0); }}>
+      {showName && <p className="mb-1 ml-1 text-[12px] font-bold text-ink-2">{sender.displayName}{sender.verified && <VerifiedTick size={12} className="ml-1" />}</p>}
       <div className={cx('px-3.5 py-2', corners, beingEdited && 'ring-2 ring-volt ring-offset-2 ring-offset-paper', dark ? 'bg-ink text-paper' : mine ? 'border border-ink bg-volt text-ink' : 'border border-line bg-card text-ink')}>
         <div ref={reactionAnchor} role="button" tabIndex={0} aria-label="Message: tap for reactions, double-tap to love, swipe right to reply" aria-expanded={showReactions} className="cursor-pointer outline-offset-4"
           onClick={() => {
@@ -303,7 +374,7 @@ function MessageBubble({ unit, message, viewerId, username, runner, firstInGroup
           }}
           onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setShowReactions((open) => !open); } else if (event.key === 'ArrowRight') { event.preventDefault(); onReply(); } }}
           onContextMenu={(event) => { event.preventDefault(); suppressClick.current = true; setShowReactions(true); }}>
-          {message.replyToBody && <div className={cx('mb-1.5 rounded-xl border-l-[3px] px-2.5 py-1 text-[12px]', dark ? 'border-volt bg-paper/10' : 'border-track bg-paper')}><span className="block font-bold">{message.replyToSenderId === viewerId ? 'You' : runner.displayName}</span><span className="block truncate opacity-75">{message.replyToBody}</span></div>}
+          {message.replyToBody && <div className={cx('mb-1.5 rounded-xl border-l-[3px] px-2.5 py-1 text-[12px]', dark ? 'border-volt bg-paper/10' : 'border-track bg-paper')}><span className="block font-bold">{message.replyToSenderId === viewerId ? 'You' : nameOf(message.replyToSenderId ?? '')}</span><span className="block truncate opacity-75">{message.replyToBody}</span></div>}
           {message.activity && <SharedActivityCard activity={message.activity} unit={unit} dark={dark} mine={mine} />}
           {message.audioUrl && <VoiceNotePlayer id={message.id} src={message.audioUrl} seconds={message.audioSeconds ?? 0} dark={dark} sending={Boolean(message.pending)} />}
           <p className={cx('whitespace-pre-wrap break-words text-[15px] leading-snug', message.activity && message.body && 'mt-1.5')}>
@@ -312,7 +383,7 @@ function MessageBubble({ unit, message, viewerId, username, runner, firstInGroup
             <span className={cx('float-right ml-2 mt-1.5 text-[10.5px] leading-none', dark ? 'text-paper/55' : 'text-ink-3')}>{message.pending ? (message.audioUrl ? null : <><ClockIcon size={11} className="mr-0.5 inline align-[-1px]" />Sending</>) : <>{message.editedAt && 'Edited · '}{time}{mine && !message.pending && <CheckIcon size={11} className="ml-0.5 inline align-[-1px]" />}</>}</span>
           </p>
         </div>
-        {message.invitationId ? <InvitationActions message={message} received={message.recipientId === viewerId} username={username} /> : inviteCode && <Link to="/competitions/$code" params={{ code: inviteCode }} className="mt-2 inline-block text-[12px] font-bold underline">View competition</Link>}
+        {message.invitationId ? <InvitationActions message={message} received={message.recipientId === viewerId} queryKey={queryKey} /> : inviteCode && <Link to="/competitions/$code" params={{ code: inviteCode }} className="mt-2 inline-block text-[12px] font-bold underline">View competition</Link>}
       </div>
       {/* One small pill hanging off the bubble's corner: the emojis used, then the total. Tap to change yours. */}
       {counts.length > 0 && <button type="button" key={burst} className={cx(
@@ -416,7 +487,24 @@ function gapMinutes(earlier: Message, later: Message) {
   return (new Date(later.createdAt).getTime() - new Date(earlier.createdAt).getTime()) / 60_000;
 }
 
-function InvitationActions({ message, received, username }: { message: Message; received: boolean; username: string }) {
+function UnreadBadge({ count }: { count: number }) {
+  return count > 0 ? <span className="num min-w-[20px] shrink-0 rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${count} unread messages`}>{count > 9 ? '9+' : count}</span> : null;
+}
+
+/** A club's chat in the inbox: its logo, who wrote last, and what. */
+function ClubInboxRow({ row }: { row: ClubRow }) {
+  const user = useUser();
+  const preview = row.kind === 'voice' ? '🎤 Voice note' : row.body || 'Shared an activity';
+  return <Link to="/clubs/$id/chat" params={{ id: row.clubSlug }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
+    <ClubLogo club={{ name: row.clubName, logoUrl: row.logoUrl }} size={48} />
+    <span className="min-w-0 flex-1">
+      <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.clubName}</span> <span className="text-[13px] text-ink-3">club</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
+      <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{row.senderId === user.id ? 'You' : row.senderName.split(' ')[0]}: {preview}</span><UnreadBadge count={row.unreadCount} /></span>
+    </span>
+  </Link>;
+}
+
+function InvitationActions({ message, received, queryKey }: { message: Message; received: boolean; queryKey: readonly unknown[] }) {
   const queryClient = useQueryClient();
   const [choosingContribution, setChoosingContribution] = useState(false);
   const [amount, setAmount] = useState('1,000');
@@ -439,7 +527,7 @@ function InvitationActions({ message, received, username }: { message: Message; 
     },
     async onSettled() {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['messages', username] }),
+        queryClient.invalidateQueries({ queryKey }),
         queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] }),
         ...(code ? [queryClient.invalidateQueries({ queryKey: keys.table(code) })] : []),
       ]);

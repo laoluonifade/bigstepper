@@ -5,12 +5,12 @@ import { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { formatDistanceNumber, formatDuration } from '../lib/format';
 import { OPEN_PAYMENT_STATUSES, useSavedPayments } from '../lib/payments';
-import { useNotifications, useProfile, useStaffAccess, useUnit, useUnreadMessages } from '../lib/queries';
+import { useNotifications, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { onboardingSkipped } from '../lib/onboarding';
 import { movingSeconds, RecorderProvider, START_ACTIVITY_EVENT, useRecorder } from '../lib/recorder';
-import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, RunIcon, SearchIcon, SettingsIcon, ShieldIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon } from './icons';
+import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, RunIcon, SearchIcon, SettingsIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon } from './icons';
 import { cx, LiveDot, Redirect, useNow } from './ui';
 import { QuickPanelsProvider, useQuickPanels } from './QuickPanels';
 
@@ -109,11 +109,12 @@ function SignedInShell() {
   const location = useLocation();
   const notifications = useNotifications();
   const unreadMessages = useUnreadMessages().data?.count ?? 0;
-  const { isStaff } = useStaffAccess();
   const recorder = useRecorder();
   const unread = notifications.data?.filter((item) => !item.readAt).length ?? 0;
   const onRunScreen = location.pathname === '/run' || location.pathname.startsWith('/runs/');
-  const onConversation = location.pathname.startsWith('/messages/');
+  // DMs and club chats fill the phone screen: no top bar, tab bar or entrance animation (its transform
+  // would pin the composer to the wrong place).
+  const onConversation = location.pathname.startsWith('/messages/') || /^\/clubs\/[^/]+\/chat\/?$/.test(location.pathname);
   const onSearchScreen = location.pathname === '/runners';
   const fullscreen = onRunScreen && ['recording', 'paused', 'finishing'].includes(recorder.phase);
 
@@ -145,18 +146,6 @@ function SignedInShell() {
         { to: '/settings/profile', label: 'Settings', icon: <SettingsIcon /> },
       ],
     },
-    ...(isStaff
-      ? [
-          {
-            title: 'Staff',
-            items: [
-              { to: '/admin/creators', label: 'Creator approvals', icon: <ShieldIcon /> },
-              { to: '/admin/challenges', label: 'Paid competitions', icon: <ShieldIcon /> },
-              { to: '/admin/payouts', label: 'Payouts', icon: <WalletIcon /> },
-            ] as NavItem[],
-          },
-        ]
-      : []),
   ];
 
   if (fullscreen) return <Outlet />;
@@ -270,7 +259,7 @@ const TAB_PATHS: Record<string, string[]> = {
   Compete: ['/competitions', '/leaderboard', '/clubs'],
   Run: ['/run', '/runs'],
   Rant: ['/feed'],
-  You: ['/settings', '/activities', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments', '/admin'],
+  You: ['/settings', '/activities', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments'],
 };
 
 function useTabActive(label: string) {

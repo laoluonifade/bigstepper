@@ -1,11 +1,12 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
-import { SearchIcon } from '../components/icons';
-import { Avatar, cx, EmptyState, ErrorNotice, PageHeader, Skeleton } from '../components/ui';
-import { api } from '../lib/api';
-import { flag } from '../lib/countries';
-import { formatRelative } from '../lib/format';
+import { AppLink, navigate, useLocation } from '../router';
+import { SearchIcon } from '../icons';
+import { Avatar, cx, EmptyState, ErrorNotice, PageHeader, Skeleton, VerifiedTick } from '../ui';
+import { VerifyToggle } from '../VerifyToggle';
+import { api, appUrl } from '../api';
+import { flag } from '../countries';
+import { formatRelative } from '@jump/shared/format';
 
 export type PeopleView = 'all' | 'active-today' | 'moved-today' | 'new-today';
 
@@ -23,6 +24,7 @@ interface Person {
   lastActivityAt: string | null;
   activities: number;
   strava: boolean;
+  verified: boolean;
 }
 
 type Stats = { users: number; activeToday: number; movedToday: number; newToday: number };
@@ -43,8 +45,8 @@ const EMPTY: Record<PeopleView, string> = {
 
 /** Admins only: everyone on Jump, filtered the same way as the numbers on the admin card. */
 export function AdminPeoplePage() {
-  const { view = 'all' } = useSearch({ strict: false }) as { view?: PeopleView };
-  const navigate = useNavigate();
+  const { search } = useLocation();
+  const view = (['active-today', 'moved-today', 'new-today'].includes(search.get('view') ?? '') ? search.get('view') : 'all') as PeopleView;
   const [term, setTerm] = useState('');
   const [query, setQuery] = useState('');
   // Search as you type, a beat after the last key.
@@ -67,7 +69,7 @@ export function AdminPeoplePage() {
   const total = people.data?.pages[0]?.total ?? 0;
 
   return <div className="mx-auto max-w-2xl">
-    <PageHeader back={{ to: '/settings/profile', label: 'You' }} eyebrow="Admin" title="People on Jump" />
+    <PageHeader eyebrow="People" title="People on Jump" />
 
     <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="tablist" aria-label="Who to show">
       {VIEWS.map((option) => {
@@ -78,7 +80,7 @@ export function AdminPeoplePage() {
           type="button"
           role="tab"
           aria-selected={selected}
-          onClick={() => void navigate({ to: '/admin/people', search: option.value === 'all' ? {} : { view: option.value }, replace: true })}
+          onClick={() => navigate(option.value === 'all' ? '/people' : `/people?view=${option.value}`, { replace: true })}
           className={cx('flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-semibold transition-colors', selected ? 'bg-ink text-paper' : 'bg-ink/[0.06] text-ink-2 hover:text-ink')}
         >
           {option.label}
@@ -120,7 +122,8 @@ function PersonRow({ person }: { person: Person }) {
     </span>
     <div className="min-w-0 flex-1">
       <p className="flex items-center gap-1.5 text-[14px] font-semibold leading-tight">
-        <span className="truncate">{person.displayName}</span>
+        {person.username ? <AppLink href={appUrl(`/runners/${person.username}`)} className="truncate hover:underline">{person.displayName}</AppLink> : <span className="truncate">{person.displayName}</span>}
+        {person.verified && <VerifiedTick />}
         {person.username && <span className="truncate font-normal text-ink-3">@{person.username}</span>}
       </p>
       <p className="mt-0.5 truncate text-[12px] text-ink-2">{details.join(' · ')}</p>
@@ -131,8 +134,7 @@ function PersonRow({ person }: { person: Person }) {
         {person.role !== 'runner' && <span className="shrink-0 rounded bg-ink px-1 text-[10px] font-bold uppercase text-paper">{person.role}</span>}
       </p>
     </div>
+    <VerifyToggle kind="person" id={person.id} verified={person.verified} emailVerified={person.emailVerified} />
   </div>;
-  return person.username
-    ? <Link to="/runners/$username" params={{ username: person.username }} search={{}} className="block transition-colors hover:bg-ink/[0.025]">{body}</Link>
-    : body;
+  return body;
 }

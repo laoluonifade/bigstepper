@@ -2,6 +2,7 @@
 # Deploy the current working tree to the Hetzner box (ssh alias `hetzner`).
 #   API  → https://api.startajump.com  (systemd: startajump-api, 127.0.0.1:6311)
 #   Web  → https://startajump.com      (Caddy serves apps/web/dist)
+#   Admin → https://admin.startajump.com (Caddy serves apps/admin/dist; sign-in by emailed code)
 # Server env lives in /etc/startajump/api.env; Postgres/Redis in /opt/apps/startajump (docker compose).
 set -euo pipefail
 
@@ -19,9 +20,10 @@ echo "→ Installing, building, migrating, restarting"
 ssh "$HOST" "chown -R deploy:deploy $APP_DIR && sudo -u deploy bash -c '
   set -euo pipefail
   cd $APP_DIR
-  pnpm install --frozen-lockfile --filter @jump/api... --filter @jump/web...
+  pnpm install --frozen-lockfile --filter @jump/api... --filter @jump/web... --filter @jump/admin...
   pnpm --filter @jump/api build
   VITE_API_URL=https://api.startajump.com/v1 pnpm --filter @jump/web build
+  VITE_API_URL=https://api.startajump.com/v1 VITE_APP_ORIGIN=https://startajump.com pnpm --filter @jump/admin build
   cd apps/api
   set -a; . /etc/startajump/api.env; set +a
   case \"\$DATABASE_URL\" in *@127.0.0.1:5435/startajump) ;; *) echo \"Refusing to migrate: unexpected DATABASE_URL\"; exit 1;; esac

@@ -8,7 +8,7 @@ import { formatDistanceNumber, formatDuration } from '../lib/format';
 import { keys } from '../lib/queries';
 import type { Connection, Profile, PublicProfile, PublicStats, Unit } from '../lib/types';
 import { CameraIcon, CheckIcon, LinkIcon, PlusIcon, ShareIcon } from './icons';
-import { Avatar, cx, EmptyState, ErrorNotice, Skeleton } from './ui';
+import { Avatar, cx, EmptyState, ErrorNotice, Skeleton, VerifiedTick } from './ui';
 
 /**
  * Shrinks a photo to at most 800px before upload (phone photos are 3–12 MB). Falls back to the
@@ -110,6 +110,7 @@ export interface HeroCounts {
 export function ProfileHero({
   avatar,
   displayName,
+  verified,
   username,
   meta,
   bio,
@@ -119,6 +120,7 @@ export function ProfileHero({
 }: {
   avatar: ReactNode;
   displayName: string;
+  verified?: boolean;
   username: string;
   meta: ReactNode;
   bio?: ReactNode;
@@ -132,7 +134,7 @@ export function ProfileHero({
         <div className="shrink-0 animate-pop">{avatar}</div>
         <ProfileCounts username={username} counts={counts} />
       </div>
-      <h1 className="display mt-3 break-words text-[26px] leading-[0.95] sm:text-[32px]">{displayName}</h1>
+      <h1 className="display mt-3 break-words text-[26px] leading-[0.95] sm:text-[32px]">{displayName}{verified && <VerifiedTick size={22} className="ml-1.5" />}</h1>
       <p className="mt-1.5 text-[13px] text-ink-2">
         <span className="font-semibold text-ink">@{username}</span> · {meta}
       </p>

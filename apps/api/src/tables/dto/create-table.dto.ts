@@ -1,5 +1,8 @@
 import { ArrayMaxSize, IsBoolean, ArrayMinSize, IsArray, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../challenge-types';
+import { Type } from 'class-transformer';
+import { ValidateNested } from 'class-validator';
+import { ProductPrizesDto } from '../../sponsors/dto/sponsor.dto';
 import { ScoringFieldsDto } from './scoring-fields.dto';
 
 export class CreateTableDto extends ScoringFieldsDto {
@@ -47,6 +50,10 @@ export class CreateTableDto extends ScoringFieldsDto {
 
   @IsOptional() @IsIn([true])
   fundedFree?: true;
+
+  /** Products from a sponsor as the prizes, instead of cash. */
+  @IsOptional() @ValidateNested() @Type(() => ProductPrizesDto)
+  productPrizes?: ProductPrizesDto;
 
   @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsInt({ each: true }) @Min(1, { each: true })
   prizeSplitBps?: number[];

@@ -10,7 +10,8 @@
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest --passWithNoTests",
     "migration:run": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:run",
-    "migration:revert": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:revert"
+    "migration:revert": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:revert",
+    "admin:provision": "ts-node -P tsconfig.json src/scripts/provision-admin.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.2.3",
@@ -30,6 +31,7 @@
     "dotenv": "^16.4.5",
     "helmet": "^8",
     "ioredis": "^5.4.1",
+    "nodemailer": "10.2.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.12.0",
@@ -43,6 +45,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.14.10",
+    "@types/nodemailer": "8.0.2",
     "@types/passport-jwt": "^4.0.1",
     "@typescript-eslint/eslint-plugin": "^7.16.0",
     "@typescript-eslint/parser": "^7.16.0",

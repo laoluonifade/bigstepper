@@ -60,6 +60,50 @@ export function challengeInviteEmail(to: { address: string; name?: string }, tit
   };
 }
 
+export function adminCodeEmail(to: { address: string }, code: string, purpose: 'login' | 'confirm'): MailMessage {
+  const intro = purpose === 'login'
+    ? `Your Jump admin sign-in code is ${code}. It works once, for 10 minutes.`
+    : `Your code to confirm this admin action is ${code}. It works once, for 10 minutes.`;
+  return {
+    to,
+    subject: purpose === 'login' ? `${code} is your Jump admin code` : `${code} confirms your Jump admin action`,
+    html: layout(purpose === 'login' ? 'Admin sign-in' : 'Confirm admin action', intro, 'Open Jump admin', 'https://admin.startajump.com', 'If you didn’t ask for this code, someone may be trying to get into the admin console. Tell the team.'),
+    text: `${intro}\n\nIf you didn’t ask for this code, tell the team.`,
+  };
+}
+
+export function prizeWonEmail(to: { address: string; name?: string }, prize: string, competition: string, dueDate: string, url: string): MailMessage {
+  const intro = `You won ${prize} in ${competition} on Jump. Send your delivery details by ${dueDate} so it can reach you. After that date the prize passes to the next eligible finisher.`;
+  return {
+    to,
+    subject: `You won ${prize} · send your delivery details`,
+    html: layout('You won a prize', intro, 'Claim your prize', url, 'We only ask winners for delivery details, and only the team delivering your prize sees them.'),
+    text: `${intro}\n\nClaim your prize: ${url}`,
+  };
+}
+
+export function prizeReminderEmail(to: { address: string; name?: string }, prize: string, dueDate: string, url: string): MailMessage {
+  const intro = `Your prize (${prize}) is waiting. Send your delivery details by ${dueDate}, or it passes to the next eligible finisher.`;
+  return {
+    to,
+    subject: `Reminder: claim your ${prize}`,
+    html: layout('Your prize is waiting', intro, 'Claim your prize', url, 'We only ask winners for delivery details.'),
+    text: `${intro}\n\nClaim your prize: ${url}`,
+  };
+}
+
+export function prizeShippedEmail(to: { address: string; name?: string }, prize: string, status: 'SHIPPED' | 'DELIVERED', note: string | null, url: string): MailMessage {
+  const intro = status === 'SHIPPED'
+    ? `Your ${prize} is on its way.${note ? ` ${note}` : ''}`
+    : `Your ${prize} was marked delivered. Enjoy it, and tag the sponsor when you post.`;
+  return {
+    to,
+    subject: status === 'SHIPPED' ? `Your ${prize} has shipped` : `Your ${prize} was delivered`,
+    html: layout(status === 'SHIPPED' ? 'Your prize is on its way' : 'Prize delivered', intro, 'View your prizes', url, 'Questions about delivery? Reply to start@startajump.com.'),
+    text: `${intro}\n\n${url}`,
+  };
+}
+
 export function clubInviteEmail(to: { address: string; name?: string }, club: string, inviter: string, url: string): MailMessage {
   const intro = `${inviter} invited you to join ${club} on Jump. See what the club is about, then join in one tap. Club competitions add you automatically.`;
   return {

@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { CompetitionRow } from '../components/competition';
-import { ArrowRightIcon, CameraIcon, CheckIcon, EditIcon, LinkIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon } from '../components/icons';
+import { ArrowRightIcon, CameraIcon, CheckIcon, FeedIcon, LinkIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon } from '../components/icons';
 import { Leaderboard } from '../components/Leaderboard';
+import { ClubLogo } from '../components/ClubLogo';
 import { Modal } from '../components/Modal';
+import { useConfirm } from '../components/ConfirmDialog';
 import { prepare } from '../components/Profile';
-import { Avatar, CopyButton, cx, EmptyState, ErrorNotice, Field, Loading, Notice, PageHeader, SectionTitle, Skeleton, useNow } from '../components/ui';
+import { Avatar, CopyButton, cx, EmptyState, ErrorNotice, Field, Loading, Notice, PageHeader, SectionTitle, Skeleton, useNow, VerifiedTick } from '../components/ui';
 import { api, isApiError, patch, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { flag } from '../lib/countries';
@@ -16,7 +18,7 @@ import { toast } from '../lib/toast';
 import type { Club, ClubMember, ClubRole, ClubStanding, CompetitionTable } from '../lib/types';
 import { CompeteSubNav } from './Competitions';
 
-type ClubSummary = Pick<Club, 'id' | 'slug' | 'name' | 'description' | 'logoUrl' | 'accentColor' | 'location' | 'privacy' | 'memberCount'> & { myRole: ClubRole | null };
+type ClubSummary = Pick<Club, 'id' | 'slug' | 'name' | 'description' | 'logoUrl' | 'accentColor' | 'location' | 'privacy' | 'memberCount' | 'verified'> & { myRole: ClubRole | null };
 
 /** Colours a club can wear: the Jump palette. */
 const ACCENTS = ['#FF5A1F', '#E4FF3A', '#8B7CF6', '#5EE0C1', '#FF8FB1', '#FFC53D', '#6FB7FF', '#121212'];
@@ -33,11 +35,7 @@ function clubHandle(value: string) {
   return value.trim().toLowerCase().replace(/^.*\/clubs\//, '').replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '');
 }
 
-export function ClubLogo({ club, size = 44, className }: { club: Pick<Club, 'name' | 'logoUrl'>; size?: number; className?: string }) {
-  return club.logoUrl
-    ? <img src={club.logoUrl} alt="" width={size} height={size} className={cx('shrink-0 rounded-xl bg-white object-cover', className)} style={{ width: size, height: size }} />
-    : <span aria-hidden="true" className={cx('wide inline-flex shrink-0 items-center justify-center rounded-xl bg-ink font-black text-volt', className)} style={{ width: size, height: size, fontSize: Math.max(15, size * 0.38) }}>{club.name.trim().slice(0, 2).toUpperCase() || 'J'}</span>;
-}
+export { ClubLogo };
 
 const isManager = (role: ClubRole | null | undefined) => role === 'owner' || role === 'admin';
 
@@ -97,6 +95,7 @@ function ClubCard({ club }: { club: ClubSummary }) {
     <div className="min-w-0 flex-1">
       <p className="flex items-center gap-1.5 text-[15px] font-bold leading-tight">
         <span className="truncate">{club.name}</span>
+        {club.verified && <VerifiedTick />}
         {club.privacy === 'invite' && <LockIcon size={12} className="shrink-0 text-ink-3" />}
       </p>
       <p className="mt-0.5 truncate text-[12px] text-ink-2">
@@ -160,6 +159,7 @@ type ClubTab = 'competitions' | 'leaderboard' | 'members' | 'invite';
 /** Club landing page. A valid invite joins signed-in runners, including after sign-up or login. */
 export function ClubDetailPage() {
   const { id } = useParams({ strict: false }) as { id: string };
+  const confirm = useConfirm();
   const search = useSearch({ strict: false }) as { invite?: string; join?: boolean };
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -236,10 +236,17 @@ export function ClubDetailPage() {
         : !member ? (canJoin
           ? <button type="button" className="btn-primary min-h-11 px-6" disabled={join.isPending || (autoJoin && !join.isError)} onClick={() => join.mutate()}>{join.isPending || (autoJoin && !join.isError) ? 'Joining…' : 'Join club'}</button>
           : <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-3 py-2 text-[13px] font-semibold text-ink-2"><LockIcon size={13} /> Invite-only. Ask a manager for the link.</span>)
-          : <div className="flex flex-wrap gap-2">
-            {isManager(role) && <button type="button" className="btn-secondary btn-sm" onClick={() => setEditing(true)}><EditIcon size={14} /> Edit club</button>}
-            {isManager(role) && <Link to="/competitions/new" search={{ club: c.id }} className="btn-dark btn-sm"><PlusIcon size={14} /> Host a competition</Link>}
-            {!isManager(role) && <span className="inline-flex items-center gap-1.5 rounded-full border-[1.5px] border-ink px-3 py-1.5 text-[13px] font-bold"><CheckIcon size={14} /> Member</span>}
+          : <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Link to="/clubs/$id/chat" params={{ id: c.slug }} className="btn-dark min-h-11 flex-1 sm:flex-none sm:px-6"><FeedIcon size={16} /> Club chat</Link>
+            <ShareClubButton club={c} />
+            {isManager(role) && <RowMenu
+              label="Club options"
+              buttonClassName="flex h-11 w-11 items-center justify-center rounded border-[1.5px] border-ink bg-card text-[20px] font-bold leading-none shadow-hard-sm hover:bg-paper"
+              actions={[
+                { label: 'Edit club', run: () => setEditing(true) },
+                { label: 'Host a competition', run: () => void navigate({ to: '/competitions/new', search: { club: c.id } }) },
+              ]}
+            />}
           </div>}
     </ClubHero>
     <ErrorNotice error={join.error} className="mt-3" />
@@ -264,10 +271,17 @@ export function ClubDetailPage() {
     </div>
 
     {member && role !== 'owner' && <p className="mt-12 text-center">
-      <button type="button" className="text-[13px] font-semibold text-ink-3 hover:text-bad" disabled={leave.isPending} onClick={() => { if (window.confirm(`Leave ${c.name}?`)) leave.mutate(); }}>Leave club</button>
+      <button type="button" className="text-[13px] font-semibold text-ink-3 hover:text-bad" disabled={leave.isPending} onClick={() => confirm.ask({
+        title: `Leave ${c.name}?`,
+        body: 'You’ll leave the club chat and stop being entered in its competitions. Competitions you’re already in keep you. You can join again later.',
+        confirmLabel: 'Leave club',
+        danger: true,
+        onConfirm: () => leave.mutate(),
+      })}>Leave club</button>
     </p>}
 
     {editing && <EditClubSheet club={c} onClose={() => setEditing(false)} />}
+    {confirm.dialog}
   </div>;
 }
 
@@ -287,13 +301,13 @@ function ClubHero({ club, children }: { club: Club; children: ReactNode }) {
       <ClubLogo club={club} size={84} className="relative z-10 -mt-10 border-[3px] border-card shadow-hard-sm" />
       <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="break-words text-[28px] font-extrabold leading-tight tracking-tight sm:text-[34px]">{club.name}</h1>
+          <h1 className="break-words text-[28px] font-extrabold leading-tight tracking-tight sm:text-[34px]">{club.name}{club.verified && <VerifiedTick size={24} className="ml-1.5" />}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-2">
             {club.location && <><span>{club.location}</span><span aria-hidden="true">·</span></>}
             <span className="inline-flex items-center gap-1">{club.privacy === 'invite' ? <><LockIcon size={12} /> Invite-only</> : 'Open club'}</span>
           </p>
         </div>
-        <div className="shrink-0">{children}</div>
+        <div className="w-full shrink-0 sm:w-auto">{children}</div>
       </div>
       {club.description && <p className={cx('mt-4 max-w-2xl whitespace-pre-line break-words text-[15px] leading-relaxed', !more && long && 'line-clamp-3')}>{club.description}</p>}
       {long && <button type="button" className="mt-1 text-[13px] font-semibold text-ink-2 hover:text-ink" onClick={() => setMore((value) => !value)}>{more ? 'Less' : 'More'}</button>}
@@ -324,9 +338,14 @@ function ClubCompetitions({ club }: { club: Club }) {
       {isManager(club.myRole) ? 'Host one and every member is entered automatically.' : club.privacy === 'invite' && !club.myRole ? 'Join to see what the club is racing.' : 'When the club hosts one, members are entered automatically.'}
     </EmptyState>;
   }
-  return <ul className="divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card">
-    {competitions.data.map((table) => <li key={table.id}><CompetitionRow table={table} unit={unit} now={now} /></li>)}
-  </ul>;
+  return <>
+    {isManager(club.myRole) && <div className="mb-3 flex justify-end">
+      <Link to="/competitions/new" search={{ club: club.id }} className="btn-dark btn-sm"><PlusIcon size={14} /> Host a competition</Link>
+    </div>}
+    <ul className="divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card">
+      {competitions.data.map((table) => <li key={table.id}><CompetitionRow table={table} unit={unit} now={now} /></li>)}
+    </ul>
+  </>;
 }
 
 function ClubLeaderboard({ id }: { id: string }) {
@@ -336,7 +355,7 @@ function ClubLeaderboard({ id }: { id: string }) {
   if (board.isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   if (board.error) return <ErrorNotice error={board.error} onRetry={() => void board.refetch()} />;
   return <Leaderboard
-    rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, metres: row.monthMetres }))}
+    rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, verified: row.verified, metres: row.monthMetres }))}
     currentUserId={user?.id}
     unit={unit}
     caption="Verified walking and running distance this month."
@@ -346,6 +365,7 @@ function ClubLeaderboard({ id }: { id: string }) {
 
 function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const members = useQuery({ queryKey: keys.clubMembers(club.slug), queryFn: () => api<ClubMember[]>(`/clubs/${club.slug}/members`) });
@@ -361,6 +381,7 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
   if (members.isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   if (members.error) return <ErrorNotice error={members.error} onRetry={() => void members.refetch()} />;
   return <>
+    {confirm.dialog}
     <ErrorNotice error={setRole.error ?? remove.error} className="mb-3" />
     {role === 'owner' && <p className="mb-3 text-[13px] text-ink-2">Managers can edit the club, invite and add people, and host club competitions.</p>}
     <ul className="divide-y divide-line rounded-2xl border-[1.5px] border-ink bg-card">
@@ -372,7 +393,13 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
           ...(role === 'owner' && member.role === 'member' ? [{ label: 'Make manager', run: () => setRole.mutate({ userId: member.userId, next: 'admin' }) }] : []),
           ...(role === 'owner' && member.role === 'admin' ? [{ label: 'Remove as manager', run: () => setRole.mutate({ userId: member.userId, next: 'member' }) }] : []),
           ...(!isMe && member.role !== 'owner' && (role === 'owner' || (role === 'admin' && member.role === 'member'))
-            ? [{ label: 'Remove from club', danger: true, run: () => { if (window.confirm(`Remove ${name} from ${club.name}?`)) remove.mutate(member.userId); } }] : []),
+            ? [{ label: 'Remove from club', danger: true, run: () => confirm.ask({
+              title: `Remove ${name}?`,
+              body: `They’ll leave ${club.name} and its chat. They can join again with the invite link.`,
+              confirmLabel: 'Remove',
+              danger: true,
+              onConfirm: () => remove.mutate(member.userId),
+            }) }] : []),
         ];
         return <li key={member.id} className="flex items-center gap-3 px-4 py-3">
           <span className="relative shrink-0">
@@ -382,6 +409,7 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 text-[14px] font-semibold leading-tight">
               {member.username ? <Link to="/runners/$username" params={{ username: member.username }} search={{}} className="truncate hover:underline">{name}</Link> : <span className="truncate">{name}</span>}
+              {member.verified && <VerifiedTick />}
               {isMe && <span className="shrink-0 text-[12px] font-normal text-ink-3">(you)</span>}
             </p>
             <p className="mt-0.5 truncate text-[12px] text-ink-3">{member.username && <>@{member.username} · </>}joined {formatDate(member.joinedAt, { year: 'numeric' })}</p>
@@ -395,7 +423,7 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
 }
 
 /** A small ⋯ menu for one row's actions. Closes on pick, outside tap or Escape. */
-function RowMenu({ label, actions }: { label: string; actions: Array<{ label: string; run: () => void; danger?: boolean }> }) {
+function RowMenu({ label, actions, buttonClassName }: { label: string; actions: Array<{ label: string; run: () => void; danger?: boolean }>; buttonClassName?: string }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -407,16 +435,38 @@ function RowMenu({ label, actions }: { label: string; actions: Array<{ label: st
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
   }, [open]);
   return <div ref={root} className="relative shrink-0">
-    <button type="button" className="flex h-8 w-8 items-center justify-center rounded-full text-[18px] font-bold leading-none text-ink-2 hover:bg-ink/[0.06]" aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>⋯</button>
+    <button type="button" className={buttonClassName ?? 'flex h-8 w-8 items-center justify-center rounded-full text-[18px] font-bold leading-none text-ink-2 hover:bg-ink/[0.06]'} aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>⋯</button>
     {open && <div role="menu" className="absolute bottom-full right-0 z-30 mb-1 w-48 animate-pop overflow-hidden rounded-md border-[1.5px] border-ink bg-card py-1 shadow-hard">
       {actions.map((action) => <button key={action.label} type="button" role="menuitem" className={cx('block w-full px-3 py-2 text-left text-[14px] font-semibold hover:bg-ink/[0.05]', action.danger && 'text-bad')} onClick={() => { setOpen(false); action.run(); }}>{action.label}</button>)}
     </div>}
   </div>;
 }
 
+/** The club's link for any member to pass on: with the invite in it, so invite-only clubs let people in. */
+function clubShareLink(club: Club) {
+  const base = `${window.location.origin}/clubs/${club.slug}`;
+  return club.privacy === 'invite' && club.inviteCode ? `${base}?invite=${club.inviteCode}` : base;
+}
+
+/** Share the club from the phone's share sheet, or copy its link. */
+function ShareClubButton({ club }: { club: Club }) {
+  async function share() {
+    const url = clubShareLink(club);
+    const text = `Join ${club.name} on Jump`;
+    if (navigator.share) {
+      await navigator.share({ title: club.name, text, url }).catch(() => undefined);
+      return;
+    }
+    await navigator.clipboard?.writeText(url);
+    toast({ tone: 'ok', message: 'Club link copied.' });
+  }
+  return <button type="button" className="flex h-11 w-11 shrink-0 items-center justify-center rounded border-[1.5px] border-ink bg-card shadow-hard-sm hover:bg-paper" onClick={() => void share()} aria-label="Share the club" title="Share the club"><ShareIcon size={17} /></button>;
+}
+
 /** Managers: the invite link, email invites, adding someone by username, and resetting the link. */
 function InvitePanel({ club }: { club: Club }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const link = `${window.location.origin}/clubs/${club.slug}?invite=${club.inviteCode ?? ''}`;
   const message = `Join ${club.name} on Jump: ${link}`;
   const [emails, setEmails] = useState('');
@@ -446,6 +496,7 @@ function InvitePanel({ club }: { club: Club }) {
     else await navigator.clipboard?.writeText(link);
   }
   return <div className="grid gap-5 lg:grid-cols-2">
+    {confirm.dialog}
     <section className="rounded-2xl border-[1.5px] border-ink bg-card p-5">
       <p className="text-[15px] font-bold">Invite link</p>
       <p className="mt-0.5 text-[13px] text-ink-2">People who open this link join automatically after signing in or creating an account.</p>
@@ -455,7 +506,12 @@ function InvitePanel({ club }: { club: Club }) {
         <button type="button" className="btn-secondary btn-sm" onClick={() => void share()}><ShareIcon size={14} /> Share</button>
         <a className="btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer noopener">WhatsApp</a>
       </div>
-      <button type="button" className="mt-3 text-[12px] font-semibold text-ink-3 hover:text-ink" disabled={reset.isPending} onClick={() => { if (window.confirm('Make a new invite link? The current one will stop working for invite-only clubs.')) reset.mutate(); }}>Reset link</button>
+      <button type="button" className="mt-3 text-[12px] font-semibold text-ink-3 hover:text-ink" disabled={reset.isPending} onClick={() => confirm.ask({
+        title: 'Make a new invite link?',
+        body: 'The current link stops working for invite-only clubs. Anyone already in the club stays in.',
+        confirmLabel: 'Reset link',
+        onConfirm: () => reset.mutate(),
+      })}>Reset link</button>
     </section>
 
     <section className="space-y-5 rounded-2xl border-[1.5px] border-ink bg-card p-5">
@@ -489,10 +545,11 @@ function EditClubSheet({ club, onClose }: { club: Club; onClose: () => void }) {
   const [website, setWebsite] = useState(club.website ?? '');
   const [instagram, setInstagram] = useState(club.instagram ?? '');
   const [privacy, setPrivacy] = useState<'open' | 'invite'>(club.privacy ?? 'open');
+  const [chatLocked, setChatLocked] = useState(Boolean(club.chatLocked));
   const file = useRef<HTMLInputElement | null>(null);
   const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['club'] }), queryClient.invalidateQueries({ queryKey: ['clubs'] })]);
   const save = useMutation({
-    mutationFn: () => patch<Club>(`/clubs/${club.slug}`, { name: name.trim(), description, accentColor: accent, location, website, instagram, privacy }),
+    mutationFn: () => patch<Club>(`/clubs/${club.slug}`, { name: name.trim(), description, accentColor: accent, location, website, instagram, privacy, chatLocked }),
     async onSuccess() { await refresh(); toast({ tone: 'ok', message: 'Club updated.' }); onClose(); },
   });
   const logo = useMutation({
@@ -546,6 +603,13 @@ function EditClubSheet({ club, onClose }: { club: Club; onClose: () => void }) {
         {(props) => <input {...props} className="field" maxLength={200} value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="yourclub.com" autoCapitalize="none" inputMode="url" />}
       </Field>
       <PrivacyChoice value={privacy} onChange={setPrivacy} />
+      <label className="flex items-start gap-3 rounded-md border-[1.5px] border-line bg-card p-3">
+        <input type="checkbox" className="mt-1" checked={chatLocked} onChange={(event) => setChatLocked(event.target.checked)} />
+        <span>
+          <span className="block text-[14px] font-semibold">Only the owner and managers can send in the club chat</span>
+          <span className="block text-[12px] text-ink-2">Members still read everything. Good for announcements.</span>
+        </span>
+      </label>
       <ErrorNotice error={save.error} />
       <button className="btn-primary w-full" disabled={save.isPending || name.trim().length < 3}>{save.isPending ? 'Saving…' : 'Save changes'}</button>
     </form>

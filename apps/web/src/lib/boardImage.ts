@@ -47,7 +47,7 @@ function loadImage(src: string, cors: boolean) {
  * Everyone's picture, ready to draw: their photo when the host allows it on a canvas, else their default
  * picture. Generated pictures are data URLs, so they never block exporting.
  */
-export async function loadAvatars(rows: BoardImageRow[], photos = true) {
+export async function loadAvatars(rows: Array<Pick<BoardImageRow, 'userId' | 'displayName' | 'avatarUrl' | 'avatarStyle'>>, photos = true) {
   const images = new Map<string, HTMLImageElement>();
   await Promise.all(rows.map(async (row) => {
     const photo = photos && row.avatarUrl ? await loadImage(row.avatarUrl, true) : null;
@@ -57,7 +57,7 @@ export async function loadAvatars(rows: BoardImageRow[], photos = true) {
   return images;
 }
 
-function circleImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement | undefined, x: number, y: number, size: number, ring: string, ringWidth: number) {
+export function circleImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement | undefined, x: number, y: number, size: number, ring: string, ringWidth: number) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);

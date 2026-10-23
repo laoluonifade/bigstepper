@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { useRouter } from '@tanstack/react-router';
 import { api, isApiError, patch } from './api';
 import { useAuth } from './auth';
-import type { Activity, CompetitionTable, CreatorEarning, CreatorProfile, FinalResult, LeagueDivision, LeagueMembership, LeagueRules, LeagueSeason, Notification, Profile, StandingRow, Unit, VerificationReview, Wallet, WalletTransaction } from './types';
+import type { Activity, CompetitionTable, CreatorEarning, CreatorProfile, FinalResult, LeagueDivision, LeagueMembership, LeagueRules, LeagueSeason, Notification, Profile, StandingRow, Unit, Wallet, WalletTransaction } from './types';
 
 export const keys = {
   profile: ['profile', 'me'] as const,
@@ -22,7 +22,6 @@ export const keys = {
   leagueStandings: (seasonId: string) => ['leagues', 'standings', seasonId] as const,
   club: (id: string) => ['club', id] as const,
   clubMembers: (id: string) => ['club', id, 'members'] as const,
-  adminReviews: ['admin', 'reviews'] as const,
   wallet: ['wallet'] as const,
   walletTransactions: ['wallet', 'transactions'] as const,
   creator: ['creator', 'me'] as const,
@@ -47,7 +46,7 @@ export function useTables(sort = 'popular', type = 'all', activity = 'all') {
   return useQuery({ queryKey: [...keys.tables, sort, type, activity], queryFn: () => api<CompetitionTable[]>(`/tables?sort=${sort}&type=${type}&activity=${activity}`) });
 }
 
-export type DiscoverView = 'for-you' | 'trending' | 'starting' | 'friends' | 'newest' | 'created';
+export type DiscoverView = 'for-you' | 'trending' | 'starting' | 'friends' | 'newest' | 'created' | 'archived';
 
 /** The discovery feed, 20 at a time with "load more". */
 export function useDiscover(view: DiscoverView, type = 'all', activity = 'all', enabled = true) {
@@ -130,18 +129,6 @@ export function useLeagueStandings(seasonId: string | undefined) {
  * The session payload does not include the user's role, so staff access is
  * discovered by asking a staff-only endpoint. A 403 simply means "not staff".
  */
-export function useStaffAccess() {
-  const { user } = useAuth();
-  const query = useQuery({
-    queryKey: keys.adminReviews,
-    queryFn: () => api<VerificationReview[]>('/admin/verification/reviews'),
-    enabled: Boolean(user),
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
-  return { isStaff: query.isSuccess, checking: query.isLoading, query };
-}
-
 export function useWallet() {
   const { user } = useAuth();
   return useQuery({ queryKey: keys.wallet, queryFn: () => api<Wallet>('/wallet'), enabled: Boolean(user) });

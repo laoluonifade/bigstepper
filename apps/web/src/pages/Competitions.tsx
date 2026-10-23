@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../components/Modal';
+import { useConfirm } from '../components/ConfirmDialog';
+import { ShareCompetitionSheet } from '../components/ShareCompetition';
 import { templateById } from '../lib/templates';
 import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, EditIcon, LockIcon, PlayIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -23,7 +25,7 @@ import {
   useNow,
 } from '../components/ui';
 import { DateTimePicker } from '../components/DateTimePicker';
-import { api, isApiError, post } from '../lib/api';
+import { api, isApiError, patch, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { joinConflictCopy } from '../lib/copy';
 import {
@@ -45,7 +47,7 @@ import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/
 import { activityLabel, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '../lib/scoring';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
 import { keys, useCreator, useDiscover, useFinalResult, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
-import type { ChallengeType, CheckoutResponse, CompetitionTable, Unit } from '../lib/types';
+import type { ChallengeType, CheckoutResponse, CompetitionTable, StandingRow, Unit } from '../lib/types';
 
 export const COMPETE_NAV = [
   { to: '/competitions', label: 'Competitions' },
@@ -85,7 +87,7 @@ const ACTIVITY_CHIPS: Array<{ value: 'all' | ChallengeType; label: string }> = [
 ];
 const VIEW_CHIPS: Array<{ value: DiscoverView; label: string; signedIn?: boolean; guestOnly?: boolean }> = [
   { value: 'for-you', label: 'For you', signedIn: true }, { value: 'trending', label: 'Trending' }, { value: 'starting', label: 'Upcoming' },
-  { value: 'friends', label: 'Friends', signedIn: true }, { value: 'created', label: 'Hosting', signedIn: true }, { value: 'newest', label: 'Newest', guestOnly: true },
+  { value: 'friends', label: 'Friends', signedIn: true }, { value: 'created', label: 'Hosting', signedIn: true }, { value: 'archived', label: 'Archived', signedIn: true }, { value: 'newest', label: 'Newest', guestOnly: true },
 ];
 const TYPE_CHIPS: Array<{ value: TypeFilter; label: string }> = [
   { value: 'all', label: 'Any entry' }, { value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Cash prize' }, { value: 'paid', label: 'Paid' },
@@ -130,6 +132,17 @@ export function CompetitionsPage() {
         <h1 className="text-[24px] font-extrabold tracking-tight sm:text-[30px]">Competitions</h1>
         {user && <Link to="/competitions/new" className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-transform active:scale-95"><PlusIcon size={15} /> Create</Link>}
       </header>
+
+      {/* Always shown while Strava sync is unreliable for some runners: recording in Jump always counts. */}
+      {user && <Link to="/run" className="mb-4 flex items-center gap-3 rounded-xl border-[1.5px] border-ink bg-volt/60 px-3.5 py-3 transition-colors hover:bg-volt">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-track shadow-hard-sm" aria-hidden="true">
+          <PlayIcon size={16} className="translate-x-[1px]" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-bold leading-snug">Start every run from Jump</span>
+          <span className="block text-[12.5px] leading-snug text-ink-2">Strava sync is down for some runners. Tap the orange ▶ button in the middle each time you head out, so your run counts.</span>
+        </span>
+      </Link>}
 
       <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
       {/* Drafts stay out of the way: one quiet row that opens a sheet to finish or discard them. */}
@@ -187,17 +200,17 @@ export function CompetitionsPage() {
         </div>
       </Modal>}
 
-      <p className="num mb-2.5 mt-4 text-[12px] font-medium text-ink-3">{tables.data ? `${list.length}${tables.hasNextPage ? '+' : ''} ${view === 'starting' ? 'starting soon' : view === 'created' ? 'you’re hosting' : 'open'}${query ? ` matching “${term.trim()}”` : ''}` : ' '}</p>
+      <p className="num mb-2.5 mt-4 text-[12px] font-medium text-ink-3">{tables.data ? `${list.length}${tables.hasNextPage ? '+' : ''} ${view === 'starting' ? 'starting soon' : view === 'created' ? 'you’re hosting' : view === 'archived' ? 'archived' : 'open'}${query ? ` matching “${term.trim()}”` : ''}` : ' '}</p>
       <ErrorNotice error={tables.error} onRetry={() => void tables.refetch()} />
       {tables.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-44 rounded-2xl" />)}</div>
       ) : list.length === 0 ? (
         <EmptyState
           mark="00"
-          title={query ? 'Nothing matches that' : view === 'created' ? 'You haven’t created one yet' : view === 'friends' ? 'Nothing from your people yet' : view === 'for-you' ? 'You’re in everything that fits' : 'No open competitions'}
+          title={query ? 'Nothing matches that' : view === 'archived' ? 'Nothing archived' : view === 'created' ? 'You haven’t created one yet' : view === 'friends' ? 'Nothing from your people yet' : view === 'for-you' ? 'You’re in everything that fits' : 'No open competitions'}
           action={user ? <Link to="/competitions/new" className="btn-primary"><PlusIcon size={16} /> {query ? 'Create it yourself' : 'Start the first one'}</Link> : undefined}
         >
-          {query ? 'Try another name, or start a competition and send the code to your crew.' : 'Create a competition and send the invite code to your crew.'}
+          {query ? 'Try another name, or start a competition and send the code to your crew.' : view === 'archived' ? 'When one of yours is over, archive it from its page to tidy it off your lists.' : 'Create a competition and send the invite code to your crew.'}
         </EmptyState>
       ) : (
         <>
@@ -728,6 +741,7 @@ export function CompetitionDetailPage() {
       name: row.displayName,
       avatarUrl: row.avatarUrl,
       avatarStyle: row.avatarStyle,
+      verified: row.verified,
       username: row.username,
       metres: row.creditedDistanceMetres,
       score: row.score,
@@ -770,6 +784,10 @@ export function CompetitionDetailPage() {
         </Notice>
       )}
 
+      {t.archivedAt && <Notice tone="neutral" className="mb-6" title="Archived">
+        {isHost ? 'Off every list, including yours. Anyone with the link can still see it. Unarchive it below to bring it back.' : 'The host archived this competition. Its final board stays here.'}
+      </Notice>}
+
       {isHost && t.status === 'PENDING_FUNDING' && !search.created && <Notice tone="warn" className="mb-6" title="Funding draft">
         This competition is saved but not live. Only you can fund the fixed amount; entry opens after Jump verifies the Paystack payment.
       </Notice>}
@@ -798,7 +816,7 @@ export function CompetitionDetailPage() {
         {/* The join box: sticky beside the story on desktop, straight after the intro on phones */}
         <aside className="space-y-4 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
           <EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={entrants} faces={rows} now={now} />
-          {t.status === 'OPEN_FOR_ENTRY' && <ShareBox table={t} url={shareUrl} />}
+          {!['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED'].includes(t.status) && <ShareBox table={t} url={shareUrl} rows={standings.data ?? []} viewerId={user?.id} unit={unit} />}
         </aside>
 
         <div className="min-w-0 space-y-10 lg:col-start-1 lg:row-start-2">
@@ -835,6 +853,7 @@ export function CompetitionDetailPage() {
 
 
           <KeyDates table={t} now={now} />
+          {isHost && !['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED'].includes(t.status) && <HostTools table={t} now={now} />}
           <Rules table={t} unit={unit} />
           {isHost && t.status === 'OPEN_FOR_ENTRY' && <InvitationsPanel table={t} />}
         </div>
@@ -914,6 +933,102 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
   );
 }
 
+/**
+ * For the host: edit the details, change dates (free competitions), end it now, and archive it once
+ * it's over. Prize competitions keep the dates they were funded or approved with.
+ */
+function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const [editing, setEditing] = useState(false);
+  const phase = competitionPhase(table, now);
+  const over = phase === 'scoring-closed' || phase === 'final';
+  const free = table.type === 'free';
+  const refresh = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: keys.table(table.code) }),
+    queryClient.invalidateQueries({ queryKey: ['tables'] }),
+    queryClient.invalidateQueries({ queryKey: keys.standings(table.id) }),
+  ]);
+  const endNow = useMutation({
+    mutationFn: () => patch(`/tables/${table.id}`, { endNow: true }),
+    async onSuccess() { await refresh(); toast({ tone: 'ok', message: 'Ended. The board is final for a free competition.' }); },
+  });
+  const archive = useMutation({
+    mutationFn: (archived: boolean) => post(`/tables/${table.id}/archive`, { archived }),
+    async onSuccess(_, archived) { await refresh(); toast({ tone: 'ok', message: archived ? 'Archived. It’s off your lists; the link still works.' : 'Back on your lists.' }); },
+  });
+  return <section className="panel p-5">
+    {confirm.dialog}
+    <p className="eyebrow mb-3">Host tools</p>
+    <div className="flex flex-wrap gap-2">
+      {!over && <button type="button" className="btn-secondary btn-sm" onClick={() => setEditing(true)}><EditIcon size={14} /> Edit details</button>}
+      {!over && free && <button type="button" className="btn-secondary btn-sm" disabled={endNow.isPending} onClick={() => confirm.ask({
+        title: 'End it now?',
+        body: 'Scoring closes immediately and the board as it stands is the final result. This can’t be undone.',
+        confirmLabel: 'End now',
+        danger: true,
+        onConfirm: () => endNow.mutate(),
+      })}>End now</button>}
+      {table.archivedAt
+        ? <button type="button" className="btn-secondary btn-sm" disabled={archive.isPending} onClick={() => archive.mutate(false)}>Unarchive</button>
+        : (over || (table.entrantCount ?? 0) <= 1) && <button type="button" className="btn-secondary btn-sm" disabled={archive.isPending} onClick={() => confirm.ask({
+          title: 'Archive this competition?',
+          body: 'It comes off every list, yours included (find it under Compete → Archived). The page and its final board stay at the same link.',
+          confirmLabel: 'Archive',
+          onConfirm: () => archive.mutate(true),
+        })}>Archive</button>}
+    </div>
+    <p className="mt-3 text-[12px] leading-relaxed text-ink-3">
+      {over ? 'It’s over. Archive it to tidy it off your lists.' : free ? 'You can change the name, description and dates, or end it early.' : 'You can change the name and description. Prize competitions keep their dates.'}
+    </p>
+    <ErrorNotice error={endNow.error ?? archive.error} />
+    {editing && <EditCompetitionSheet table={table} now={now} onClose={() => setEditing(false)} onSaved={refresh} />}
+  </section>;
+}
+
+function EditCompetitionSheet({ table, now, onClose, onSaved }: { table: CompetitionTable; now: number; onClose: () => void; onSaved: () => Promise<unknown> }) {
+  const [title, setTitle] = useState(table.title);
+  const [description, setDescription] = useState(table.description ?? '');
+  const started = !table.startsAt || new Date(table.startsAt).getTime() <= now;
+  const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date(table.startsAt ?? Date.now())));
+  const [endsAt, setEndsAt] = useState(() => toLocalInput(new Date(table.scoringClosesAt ?? Date.now() + 7 * 86_400_000)));
+  const [openEnded, setOpenEnded] = useState(!table.scoringClosesAt);
+  const free = table.type === 'free';
+  const save = useMutation({
+    mutationFn: () => patch(`/tables/${table.id}`, {
+      title: title.trim(),
+      description: description.trim() || null,
+      ...(free && !started ? { startsAt: fromLocalInput(startsAt) } : {}),
+      ...(free ? { scoringClosesAt: openEnded ? null : fromLocalInput(endsAt) } : {}),
+    }),
+    async onSuccess() { await onSaved(); toast({ tone: 'ok', message: 'Saved.' }); onClose(); },
+  });
+  return <Modal title="Edit competition" onClose={onClose}>
+    <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+      <Field label="Name">
+        {(props) => <input {...props} className="field" minLength={3} maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} required />}
+      </Field>
+      <Field label="What’s it about?" optional hint={`${280 - description.length} characters left`}>
+        {(props) => <textarea {...props} className="field min-h-[76px] py-3" maxLength={280} value={description} onChange={(event) => setDescription(event.target.value)} />}
+      </Field>
+      {free && !started && <Field label="Starts">
+        {(props) => <DateTimePicker {...props} value={startsAt} min={toLocalInput(new Date())} onChange={setStartsAt} />}
+      </Field>}
+      {free && <>
+        {!openEnded && <Field label="Ends" hint="Move it later to give everyone more time, or sooner to finish early.">
+          {(props) => <DateTimePicker {...props} value={endsAt} min={toLocalInput(new Date())} onChange={setEndsAt} />}
+        </Field>}
+        <label className="flex items-center gap-2 text-[14px] font-semibold">
+          <input type="checkbox" checked={openEnded} onChange={(event) => setOpenEnded(event.target.checked)} /> No end date
+        </label>
+      </>}
+      {!free && <p className="text-[12px] text-ink-3">Prize competitions keep the dates they were funded or approved with.</p>}
+      <ErrorNotice error={save.error} />
+      <button className="btn-primary w-full" disabled={save.isPending || title.trim().length < 3}>{save.isPending ? 'Saving…' : 'Save changes'}</button>
+    </form>
+  </Modal>;
+}
+
 function KeyDates({ table, now }: { table: CompetitionTable; now: number }) {
   const merged = !table.entryClosesAt || table.entryClosesAt === table.scoringClosesAt;
   const items = [
@@ -942,30 +1057,22 @@ function KeyDates({ table, now }: { table: CompetitionTable; now: number }) {
   );
 }
 
-function ShareBox({ table, url }: { table: CompetitionTable; url: string }) {
-  const [copied, setCopied] = useState(false);
-  const text = `Join my Jump competition "${table.title}": ${url}`;
-  async function share() {
-    if (navigator.share) {
-      await navigator.share({ title: table.title, text }).catch(() => undefined);
-      return;
-    }
-    await navigator.clipboard?.writeText(url);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  }
+/** Post it: a designed card for stories and posts, or a quick link to WhatsApp and X. */
+function ShareBox({ table, url, rows, viewerId, unit }: { table: CompetitionTable; url: string; rows: StandingRow[]; viewerId?: string; unit: Unit }) {
+  const [open, setOpen] = useState(false);
+  const text = `Join my Jump competition "${table.title}"`;
   return (
     <section className="rounded-xl border border-line bg-card p-4">
       <p className="text-[14px] font-bold">Competitions are better with friends</p>
-      <p className="mt-0.5 text-[13px] text-ink-2">Send the link. They can join straight from it.</p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" className="btn-secondary btn-sm" onClick={() => void share()}>
-          <ShareIcon size={14} /> {copied ? 'Link copied' : 'Invite friends'}
-        </button>
-        <a className="btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer noopener">
-          WhatsApp
-        </a>
+      <p className="mt-0.5 text-[13px] text-ink-2">Post the card to your story. Anyone who sees it can join with the code.</p>
+      <button type="button" className="btn-primary mt-3 w-full" onClick={() => setOpen(true)}>
+        <ShareIcon size={16} /> Share card
+      </button>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <a className="btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(`${text}: ${url}`)}`} target="_blank" rel="noreferrer noopener">WhatsApp</a>
+        <a className="btn-secondary btn-sm" href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer noopener">X</a>
       </div>
+      {open && <ShareCompetitionSheet table={table} rows={rows} viewerId={viewerId} unit={unit} onClose={() => setOpen(false)} />}
       <p className="mt-3 flex items-center justify-between text-[12px] text-ink-3">
         <span>Invite code</span>
         <span className="font-mono font-semibold tracking-[0.16em] text-ink">{table.code}</span>

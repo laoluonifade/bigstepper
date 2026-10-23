@@ -10,7 +10,7 @@ import { Reaction, REACTIONS } from './reactions';
 /** Two minutes of compressed audio is well under this. */
 const VOICE_NOTE_MAX_BYTES = 5 * 1024 * 1024;
 
-class SendMessageDto {
+export class SendMessageDto {
   /** May be empty when the message shares an activity. */
   @IsString() @MaxLength(1000)
   body: string;
@@ -90,5 +90,29 @@ export class MessagesController {
   send(@CurrentUser() user: AuthenticatedUser, @Param('username') username: string, @Body() input: SendMessageDto) {
     const { body, ...extras } = input;
     return this.messages.send(user.id, username, body, extras);
+  }
+}
+
+/** A club's group chat: the same messages as a DM, addressed to the club. Members only. */
+@Controller('clubs/:club/chat')
+@UseGuards(JwtAuthGuard)
+export class ClubChatController {
+  constructor(private readonly messages: MessagesService) {}
+
+  @Get()
+  conversation(@CurrentUser() user: AuthenticatedUser, @Param('club') club: string) {
+    return this.messages.clubConversation(user.id, club);
+  }
+
+  @Post('read')
+  markRead(@CurrentUser() user: AuthenticatedUser, @Param('club') club: string) {
+    return this.messages.markClubRead(user.id, club);
+  }
+
+  @Post()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  send(@CurrentUser() user: AuthenticatedUser, @Param('club') club: string, @Body() input: SendMessageDto) {
+    const { body, ...extras } = input;
+    return this.messages.sendToClub(user.id, club, body, extras);
   }
 }

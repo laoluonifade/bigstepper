@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 
 export class CreateClubDto {
   @IsString()
@@ -42,6 +42,10 @@ export class UpdateClubDto {
 
   @IsOptional() @IsIn(['open', 'invite'])
   privacy?: 'open' | 'invite';
+
+  /** Only the owner and managers can send in the club chat. */
+  @IsOptional() @IsBoolean()
+  chatLocked?: boolean;
 }
 
 export class JoinClubDto {

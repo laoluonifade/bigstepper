@@ -5,6 +5,8 @@ export interface AuthenticatedUser {
   email: string;
   sessionId: string;
   role: 'runner' | 'admin' | 'compliance';
+  /** Which app the session belongs to; admin endpoints only take 'admin'. */
+  scope: 'app' | 'admin';
 }
 
 export const CurrentUser = createParamDecorator(

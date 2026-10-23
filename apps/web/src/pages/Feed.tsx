@@ -7,7 +7,7 @@ import { ReactionBar } from '../components/ReactionBar';
 import { ActivityBadge, activityMetres, ActivityPicker } from '../components/ActivityPicker';
 import { MentionText, MentionTextarea } from '../components/Mentions';
 import { RantTabs } from '../components/RantTabs';
-import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton } from '../components/ui';
+import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton, VerifiedTick } from '../components/ui';
 import { api, post } from '../lib/api';
 import { avatarStyleForGender } from '../lib/avatars';
 import { useUser } from '../lib/auth';
@@ -18,6 +18,8 @@ import { reactionEmoji as symbolFor, REACTIONS, type Reaction } from '../lib/rea
 
 type FeedPost = {
   id: string;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   body: string;
   createdAt: string;
   userId: string;
@@ -212,8 +214,9 @@ function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCance
       <Avatar name={item.displayName} src={item.avatarUrl} avatarStyle={item.avatarStyle} size={42} className="rounded-full" />
     </Link>
     <div className="min-w-0 flex-1">
-      <p className="flex min-w-0 items-baseline gap-1 text-[14px] leading-tight">
+      <p className="flex min-w-0 items-center gap-1 text-[14px] leading-tight">
         <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="relative z-[1] truncate font-bold hover:underline">{item.displayName}</Link>
+        {item.verified && <VerifiedTick size={16} className="relative z-[1] shrink-0" />}
         <span className="truncate text-ink-3">@{item.username}</span>
         <span className="text-ink-3" aria-hidden="true">·</span>
         <time dateTime={item.createdAt} className="shrink-0 text-ink-3" title={new Date(item.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>{shortAgo(item.createdAt)}</time>
@@ -357,7 +360,7 @@ export function FeedPostPage() {
         <div className="flex items-center gap-3">
           <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="shrink-0"><Avatar name={item.displayName} src={item.avatarUrl} avatarStyle={item.avatarStyle} size={48} className="rounded-full" /></Link>
           <div className="min-w-0 flex-1 leading-tight">
-            <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="block truncate text-[16px] font-bold hover:underline">{item.displayName}</Link>
+            <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="block truncate text-[16px] font-bold hover:underline">{item.displayName}{item.verified && <VerifiedTick size={16} className="ml-1" />}</Link>
             <span className="block truncate text-[14px] text-ink-3">@{item.username}</span>
           </div>
           {item.userId !== user.id && <Link to="/messages/$username" params={{ username: item.username }} className="h-9 shrink-0 rounded-full border border-line px-4 text-[13px] font-bold leading-9 hover:border-ink">Message</Link>}

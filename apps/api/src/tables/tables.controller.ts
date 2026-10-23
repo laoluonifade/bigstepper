@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { JoinManyDto } from './dto/join-many.dto';
 import { CreateTableDto } from './dto/create-table.dto';
+import { ArchiveTableDto, UpdateTableDto } from './dto/update-table.dto';
 import { TablesService } from './tables.service';
 import { CreateCreatorPaidChallengeDto } from '../admin/paid-table.dto';
 import { InviteRunnerDto } from './dto/invite-runner.dto';
@@ -35,6 +36,18 @@ export class TablesController {
   @UseGuards(JwtAuthGuard)
   leave(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
     return this.tablesService.leave(tableId, user.id);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  update(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string, @Body() body: UpdateTableDto) {
+    return this.tablesService.update(tableId, user.id, body);
+  }
+
+  @Post(':id/archive')
+  @UseGuards(JwtAuthGuard)
+  archive(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string, @Body() body: ArchiveTableDto) {
+    return this.tablesService.archive(tableId, user.id, body.archived);
   }
 
   @Post(':id/discard')

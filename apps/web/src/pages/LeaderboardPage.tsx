@@ -6,7 +6,7 @@ import { CompeteSubNav } from './Competitions';
 import { ChevronRightIcon, ShareIcon } from '../components/icons';
 import { Modal } from '../components/Modal';
 import { drawBoardImage, loadAvatars } from '../lib/boardImage';
-import { Avatar, cx, ErrorNotice, Skeleton } from '../components/ui';
+import { Avatar, cx, ErrorNotice, Skeleton, VerifiedTick } from '../components/ui';
 import { api } from '../lib/api';
 import { formatDistance } from '../lib/format';
 import { useProfile, useUnit } from '../lib/queries';
@@ -16,7 +16,7 @@ import type { AvatarStyle } from '../lib/types';
 
 type BoardActivity = 'foot' | 'run' | 'walk' | 'cycle';
 type BoardPeriod = 'week' | 'month' | 'all';
-type BoardRow = { rank: number; userId: string; metres: number; activities: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle?: AvatarStyle; countryCode: string | null; isMe: boolean };
+type BoardRow = { rank: number; userId: string; metres: number; activities: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle?: AvatarStyle; countryCode: string | null; isMe: boolean; verified?: boolean };
 type Board = { rows: BoardRow[]; me: BoardRow | null };
 
 export function useLeaderboard(activity: BoardActivity, period: BoardPeriod, scope: 'global' | 'country', limit: number) {
@@ -46,7 +46,7 @@ function BoardRowView({ row, unit, leader, showFlag }: { row: BoardRow; unit: Un
     <span className="num w-7 shrink-0 text-[15px] font-bold text-ink-3">{row.rank}</span>
     <Runner row={row} size={36} showFlag={showFlag} />
     <span className="min-w-0 flex-1">
-      <span className="block truncate text-[14px] font-semibold leading-tight">{row.isMe ? 'You' : row.displayName}</span>
+      <span className="block truncate text-[14px] font-semibold leading-tight">{row.isMe ? 'You' : row.displayName}{row.verified && <VerifiedTick className="ml-1" />}</span>
       {/* How far off the top they are, as a thin bar. */}
       <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-ink/[0.07]"><span className="block h-full rounded-full bg-ink/70" style={{ width: `${leader ? Math.max(4, (row.metres / leader) * 100) : 0}%` }} /></span>
     </span>
@@ -78,7 +78,7 @@ function Podium({ rows, unit, showFlag }: { rows: BoardRow[]; unit: Unit; showFl
         const first = row.rank === 1;
         return <RowLink key={row.userId} row={row} className="group flex min-w-0 flex-col items-center text-center">
           <Runner row={row} size={first ? 64 : 48} showFlag={showFlag} ring={cx('ring-2', first ? 'ring-volt' : 'ring-paper/25', row.isMe && 'ring-volt')} />
-          <span className={cx('mt-2 w-full truncate px-1 text-[13px] font-semibold', row.isMe && 'text-volt')}>{row.isMe ? 'You' : row.displayName.split(' ')[0]}</span>
+          <span className={cx('mt-2 w-full truncate px-1 text-[13px] font-semibold', row.isMe && 'text-volt')}>{row.isMe ? 'You' : row.displayName.split(' ')[0]}{row.verified && <VerifiedTick size={13} className="ml-1" />}</span>
           <span className={cx('num text-[15px] font-bold', first ? 'text-volt' : 'text-paper/80')}>{formatDistance(row.metres, unit)}</span>
           <span className={cx('mt-2 flex w-full items-start justify-center rounded-t-xl pt-2', heights[index], first ? 'bg-volt text-ink' : 'bg-paper/10 text-paper/70')}>
             <span className="score num text-[22px] leading-none">{row.rank}</span>

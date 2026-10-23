@@ -26,6 +26,7 @@ import { FeedModule } from './feed/feed.module';
 import { StravaModule } from './strava/strava.module';
 import { GeoModule } from './geo/geo.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
+import { SponsorsModule } from './sponsors/sponsors.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { LeaderboardModule } from './leaderboard/leaderboard.module';
     StravaModule,
     GeoModule,
     LeaderboardModule,
+    SponsorsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

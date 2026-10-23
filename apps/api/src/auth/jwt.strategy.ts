@@ -31,6 +31,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       `UPDATE "users" SET "lastSeenAt" = now() WHERE "id" = $1 AND ("lastSeenAt" IS NULL OR "lastSeenAt" < now() - interval '5 minutes')`,
       [payload.sub],
     ).catch(() => undefined);
-    return { id: payload.sub, email: payload.email, sessionId: payload.jti, role: session.user.role };
+    return { id: payload.sub, email: payload.email, sessionId: payload.jti, role: session.user.role, scope: session.scope ?? 'app' };
   }
 }

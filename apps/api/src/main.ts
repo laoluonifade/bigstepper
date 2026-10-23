@@ -22,7 +22,8 @@ async function bootstrap() {
     }),
   );
   app.enableCors({
-    origin: config.getOrThrow<string>('WEB_ORIGIN'),
+    // The runner app and the admin console; nothing else may call the API from a browser.
+    origin: [config.getOrThrow<string>('WEB_ORIGIN'), config.getOrThrow<string>('ADMIN_ORIGIN')],
     credentials: true,
   });
   app.enableShutdownHooks();

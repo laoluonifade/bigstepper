@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createTransport, type Transporter } from 'nodemailer';
 
 export interface MailMessage {
   to: { address: string; name?: string };
@@ -9,8 +10,12 @@ export interface MailMessage {
 }
 
 /**
- * Transactional email through ZeptoMail (https://www.zoho.com/zeptomail/help/api/email-sending.html).
- * Without an API key, development logs the message instead so links can still be followed locally.
+ * Transactional email through ZeptoMail (https://www.zoho.com/zeptomail/help/api/email-sending.html),
+ * falling back to Zoho Mail SMTP with an app password when ZeptoMail isn't set up or refuses a message
+ * (e.g. its trial's daily limit). With neither, development logs the message so links still work locally.
+ *
+ * SMTP settings: ZOHO_APP_PASS (required), SMTP_USER (defaults to ZEPTOMAIL_FROM_ADDRESS),
+ * SMTP_HOST (default smtp.zoho.com), SMTP_PORT (default 465, SSL).
  */
 @Injectable()
 export class MailService implements OnModuleInit {
@@ -24,17 +29,59 @@ export class MailService implements OnModuleInit {
     }
   }
 
+  private smtp: Transporter | null = null;
+
   private get enabled() {
     return Boolean(this.config.get<string>('ZEPTOMAIL_API_KEY') && this.config.get<string>('ZEPTOMAIL_FROM_ADDRESS'));
   }
 
-  get configured() { return this.enabled; }
+  private get smtpEnabled() {
+    return Boolean(this.config.get<string>('ZOHO_APP_PASS') && this.smtpUser);
+  }
+
+  private get smtpUser() {
+    return this.config.get<string>('SMTP_USER') || this.config.get<string>('ZEPTOMAIL_FROM_ADDRESS') || '';
+  }
+
+  get configured() { return this.enabled || this.smtpEnabled; }
 
   async send(message: MailMessage): Promise<void> {
-    if (!this.enabled) {
-      this.logger.warn(`Email not sent (ZeptoMail not configured) → ${message.to.address}: ${message.subject}\n${message.text}`);
+    if (!this.enabled && !this.smtpEnabled) {
+      this.logger.warn(`Email not sent (no mail provider configured) → ${message.to.address}: ${message.subject}\n${message.text}`);
       return;
     }
+    if (!this.enabled) return this.sendSmtp(message);
+    try {
+      await this.sendZepto(message);
+    } catch (error) {
+      if (!this.smtpEnabled) throw error;
+      this.logger.warn(`ZeptoMail failed, sending through Zoho SMTP instead: ${error instanceof Error ? error.message.slice(0, 200) : String(error)}`);
+      await this.sendSmtp(message);
+    }
+  }
+
+  private async sendSmtp(message: MailMessage) {
+    const port = Number(this.config.get<string>('SMTP_PORT') || 465);
+    this.smtp ??= createTransport({
+      host: this.config.get<string>('SMTP_HOST') || 'smtp.zoho.com',
+      port,
+      secure: port === 465,
+      auth: { user: this.smtpUser, pass: this.config.getOrThrow<string>('ZOHO_APP_PASS') },
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
+    });
+    // Zoho only sends as the signed-in mailbox, so the sender is that address.
+    await this.smtp.sendMail({
+      from: { address: this.smtpUser, name: this.config.get<string>('ZEPTOMAIL_FROM_NAME') || 'Jump' },
+      to: message.to.name ? { address: message.to.address, name: message.to.name } : message.to.address,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+    });
+  }
+
+  private async sendZepto(message: MailMessage) {
     const apiKey = this.config.getOrThrow<string>('ZEPTOMAIL_API_KEY').replace(/^Zoho-enczapikey\s+/i, '');
     const response = await fetch(this.config.getOrThrow<string>('ZEPTOMAIL_API_URL'), {
       method: 'POST',

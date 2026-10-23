@@ -63,6 +63,10 @@ export class Profile {
   @Column({ type: 'timestamptz', nullable: true, select: false })
   digestClaimedAt: Date | null;
 
+  /** Blue tick, set by a Jump admin once the runner's email is verified. */
+  @Column({ type: 'timestamptz', nullable: true })
+  verifiedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

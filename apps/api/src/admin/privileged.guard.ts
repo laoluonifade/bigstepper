@@ -5,7 +5,7 @@ import { AuthenticatedUser } from '../auth/current-user.decorator';
 export class PrivilegedGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<{ user: AuthenticatedUser }>();
-    if (!request.user || !['admin', 'compliance'].includes(request.user.role)) {
+    if (!request.user || !['admin', 'compliance'].includes(request.user.role) || request.user.scope !== 'admin') {
       throw new ForbiddenException('Administrative access required');
     }
     return true;

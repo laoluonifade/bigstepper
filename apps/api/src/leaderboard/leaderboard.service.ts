@@ -32,12 +32,12 @@ export class LeaderboardService {
        ranked AS (SELECT t.*, rank() OVER (ORDER BY t."metres" DESC)::integer AS "rank" FROM totals t)
        SELECT r."rank", r."userId", r."metres", r."activities",
               COALESCE(p."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl", p."countryCode",
-              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified"
        FROM ranked r LEFT JOIN "profiles" p ON p."userId" = r."userId"
        WHERE r."rank" <= $3 OR r."userId" = $2
        ORDER BY r."rank", p."username"`,
       [types, viewerId, size],
-    )) as Array<{ rank: number; userId: string; metres: string; activities: number; displayName: string; username: string | null; avatarUrl: string | null; countryCode: string | null }>;
+    )) as Array<{ rank: number; userId: string; metres: string; activities: number; displayName: string; username: string | null; avatarUrl: string | null; countryCode: string | null; verified: boolean }>;
     const shaped = rows.map((row) => ({ ...row, metres: Number(row.metres), isMe: row.userId === viewerId }));
     return { rows: shaped.filter((row) => row.rank <= size).slice(0, size), me: shaped.find((row) => row.isMe) ?? null };
   }

@@ -132,6 +132,44 @@ export class CompetitionTable {
   @JoinColumn({ name: 'creatorId' })
   creator: User;
 
+  /** Product prizes: the brand or run club putting them up (null for cash or no prizes). */
+  @Column({ type: 'uuid', nullable: true })
+  sponsorId: string | null;
+
+  /** Countries the sponsor delivers to; only residents of these can win the products. */
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  prizeDeliveryCountries: string[];
+
+  /** Who delivers: the sponsor by default, or Jump where agreed. */
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  prizeFulfilment: 'sponsor' | 'jump' | null;
+
+  /** Who pays shipping, so winners never face surprise charges. */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  prizeShipping: 'sponsor' | 'jump' | 'other' | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  prizeShippingNote: string | null;
+
+  @Column({ type: 'varchar', length: 600, nullable: true })
+  prizeEligibilityNote: string | null;
+
+  /** Days a winner has to send delivery details before the prize passes to the next eligible finisher. */
+  @Column({ type: 'integer', default: 14 })
+  prizeClaimDays: number;
+
+  /** When the sponsor committed to the prizes and delivery coverage (before it can open). */
+  @Column({ type: 'timestamptz', nullable: true })
+  sponsorCommittedAt: Date | null;
+
+  /** When winners were decided and their prizes assigned. */
+  @Column({ type: 'timestamptz', nullable: true })
+  prizesFinalizedAt: Date | null;
+
+  /** Tidied away by the host once over: off every list, still at its link. */
+  @Column({ type: 'timestamptz', nullable: true })
+  archivedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

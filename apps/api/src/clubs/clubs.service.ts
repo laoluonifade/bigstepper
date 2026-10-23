@@ -72,7 +72,7 @@ export class ClubsService {
   /** Your clubs (with your role), or open clubs to discover, biggest first. */
   async list(viewerId: string, view: 'mine' | 'discover') {
     return this.dataSource.query(
-      `SELECT c."id", c."slug", c."name", c."description", c."logoUrl", c."accentColor", c."location", c."privacy",
+      `SELECT c."id", c."slug", c."name", c."description", c."logoUrl", c."accentColor", c."location", c."privacy", c."verifiedAt" IS NOT NULL AS "verified",
               (SELECT count(*) FROM "club_memberships" x WHERE x."clubId" = c."id")::integer AS "memberCount",
               me."role" AS "myRole"
        FROM "clubs" c
@@ -105,7 +105,7 @@ export class ClubsService {
   }
 
   /**
-   * The club page, for anyone with the link (members of invite-only clubs see the same). Managers also get
+   * The club page, for anyone with the link (members of invite-only clubs see the same). Members also get
    * the invite code; a visitor learns whether the invite in their link is valid.
    */
   async get(clubRef: string, viewerId?: string | null, invite?: string) {
@@ -119,25 +119,27 @@ export class ClubsService {
     ) as Array<{ memberCount: number; liveCompetitions: number }>;
     const faces = await this.dataSource.query(
       `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
-              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified"
        FROM "club_memberships" m JOIN "users" u ON u."id" = m."userId" LEFT JOIN "profiles" p ON p."userId" = m."userId"
        WHERE m."clubId" = $1 ORDER BY (p."avatarUrl" IS NULL), m."joinedAt" LIMIT 6`,
       [club.id],
     );
     const [owner] = await this.dataSource.query(
-      `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username"
+      `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", p."verifiedAt" IS NOT NULL AS "verified"
        FROM "users" u LEFT JOIN "profiles" p ON p."userId" = u."id" WHERE u."id" = $1`,
       [club.ownerUserId],
     );
-    const { inviteCode: code, ...page } = club;
+    const { inviteCode: code, verifiedAt, ...page } = club;
     return {
       ...page,
+      verified: Boolean(verifiedAt),
       ...counts,
       faces,
       owner: owner ?? null,
       myRole: role,
       inviteValid: Boolean(invite && invite.toUpperCase() === code),
-      ...(role && MANAGERS.includes(role) ? { inviteCode: code } : {}),
+      // Any member can share the club; managers can also reset the link.
+      ...(role ? { inviteCode: code } : {}),
     };
   }
 
@@ -156,6 +158,7 @@ export class ClubsService {
     }
     if (input.accentColor) club.accentColor = input.accentColor.toUpperCase();
     if (input.privacy) club.privacy = input.privacy;
+    if (input.chatLocked !== undefined) club.chatLocked = input.chatLocked;
     await this.clubs.save(club);
     return this.get(club.id, actorId);
   }
@@ -185,7 +188,7 @@ export class ClubsService {
     if (club.privacy === 'invite' && !(await this.roleOf(club.id, viewerId))) throw new ForbiddenException('Join this club to see its members');
     return this.dataSource.query(
       `SELECT m."id", m."userId", m."role", m."joinedAt", p."username", p."avatarUrl", p."countryCode",
-              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName"
        FROM "club_memberships" m JOIN "users" u ON u."id" = m."userId" LEFT JOIN "profiles" p ON p."userId" = m."userId"
        WHERE m."clubId" = $1
@@ -201,13 +204,13 @@ export class ClubsService {
     return this.dataSource.query(
       `SELECT row_number() OVER (ORDER BY COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0) DESC,m."joinedAt" ASC)::integer "rank",
               m."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
-              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0)::integer "monthMetres"
        FROM "club_memberships" m JOIN "users" u ON u."id"=m."userId"
        LEFT JOIN "profiles" p ON p."userId"=m."userId"
        LEFT JOIN "activities" a ON a."userId"=m."userId" AND a."verificationStatus"='VERIFIED' AND a."activityType" IN ('run','walk')
          AND a."startedAt">=date_trunc('month',now()) AND a."startedAt"<date_trunc('month',now())+interval '1 month'
-       WHERE m."clubId"=$1 GROUP BY m."userId",m."joinedAt",p."displayName",u."displayName",p."username",p."avatarUrl",p."gender"
+       WHERE m."clubId"=$1 GROUP BY m."userId",m."joinedAt",p."displayName",u."displayName",p."username",p."avatarUrl",p."gender",p."verifiedAt"
        ORDER BY "monthMetres" DESC,m."joinedAt" ASC LIMIT 500`, [club.id],
     );
   }
@@ -221,7 +224,7 @@ export class ClubsService {
       `SELECT t.*, (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id")::integer AS "entrantCount",
               EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = t."id" AND r."userId" = $2) AS "joined"
        FROM "competition_tables" t
-       WHERE t."communityId" = $1 AND t."status" NOT IN ('CANCELLED','PENDING_FUNDING','PENDING_APPROVAL')
+       WHERE t."communityId" = $1 AND t."status" NOT IN ('CANCELLED','PENDING_FUNDING','PENDING_APPROVAL') AND t."archivedAt" IS NULL
          AND ($3 OR t."visibility" = 'public')
        ORDER BY (t."status" = 'SETTLED' OR (t."scoringClosesAt" IS NOT NULL AND t."scoringClosesAt" <= now())), t."scoringClosesAt" ASC NULLS LAST
        LIMIT 20`,

@@ -43,6 +43,14 @@ export class Club {
   @Column({ type: 'varchar', length: 16, unique: true })
   inviteCode: string;
 
+  /** Only the owner and managers can send in the club chat; members still read. */
+  @Column({ default: false })
+  chatLocked: boolean;
+
+  /** Blue tick, set by a Jump admin. A badge only: unverified clubs work the same. */
+  @Column({ type: 'timestamptz', nullable: true })
+  verifiedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

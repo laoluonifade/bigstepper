@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { AppLink } from '../router';
+import { appUrl } from '../api';
 import { FormEvent, useState } from 'react';
-import { CheckIcon, WalletIcon } from '../components/icons';
-import { Avatar, cx, EmptyState, ErrorNotice, Notice, PageHeader, Segmented, Skeleton } from '../components/ui';
-import { api, isApiError, post } from '../lib/api';
-import { formatDate, formatDateTime, formatMoney, formatRelative } from '../lib/format';
+import { CheckIcon, WalletIcon } from '../icons';
+import { Avatar, cx, EmptyState, ErrorNotice, Notice, PageHeader, Segmented, Skeleton } from '../ui';
+import { api, isApiError, post } from '../api';
+import { formatDate, formatDateTime, formatMoney, formatRelative } from '@jump/shared/format';
 
 interface PayoutRequest {
   id: string;
@@ -102,13 +103,15 @@ export function AdminPayoutsPage() {
 function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'idle' | 'approve' | 'reject'>('idle');
-  const [password, setPassword] = useState('');
+  // Sending money needs a fresh code emailed to the signed-in admin.
+  const [code, setCode] = useState('');
+  const sendCode = useMutation({ mutationFn: () => post('/admin-auth/confirm-code') });
   const [reason, setReason] = useState('');
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
   const approve = useMutation({
-    mutationFn: () => post<{ status: string }>(`/admin/payouts/${item.id}/approve`, { password }),
+    mutationFn: () => post<{ status: string }>(`/admin/payouts/${item.id}/approve`, { code }),
     onSuccess: refresh,
-    onSettled: () => setPassword(''),
+    onSettled: () => setCode(''),
   });
   const reject = useMutation({ mutationFn: () => post(`/admin/payouts/${item.id}/reject`, { reason: reason.trim() }), onSuccess: refresh });
 
@@ -120,7 +123,7 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
 
   function submitApprove(event: FormEvent) {
     event.preventDefault();
-    if (password.length >= 8) approve.mutate();
+    if (code.length === 6) approve.mutate();
   }
   function submitReject(event: FormEvent) {
     event.preventDefault();
@@ -134,9 +137,9 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold">
             {item.username ? (
-              <Link to="/runners/$username" params={{ username: item.username }} search={{}} className="hover:underline hover:underline-offset-4">
+              <AppLink href={appUrl(`/runners/${item.username}`)} className="hover:underline hover:underline-offset-4">
                 {name}
-              </Link>
+              </AppLink>
             ) : (
               name
             )}
@@ -150,9 +153,9 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
               {item.kind === 'PRIZE' ? 'Prize' : 'Creator share'}
             </span>
             {item.challengeCode ? (
-              <Link to="/competitions/$code" params={{ code: item.challengeCode }} className="font-semibold hover:underline hover:underline-offset-4">
+              <AppLink href={appUrl(`/competitions/${item.challengeCode}`)} className="font-semibold hover:underline hover:underline-offset-4">
                 {item.challengeTitle}
-              </Link>
+              </AppLink>
             ) : (
               item.challengeTitle
             )}
@@ -219,17 +222,19 @@ function PayoutCard({ item, bank }: { item: PayoutRequest; bank: string }) {
           <p className="text-[14px]">
             Send <span className="font-bold">{formatMoney(item.amountKobo)}</span> to {item.accountName} now? Paystack starts the transfer immediately and it can’t be pulled back.
           </p>
-          <label className="block">
-            <span className="label">Your password, to confirm</span>
-            <input className="field" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus />
-          </label>
-          {approve.error && (
+          {!sendCode.isSuccess ? <button type="button" className="btn-secondary btn-sm" disabled={sendCode.isPending} onClick={() => sendCode.mutate()}>
+            {sendCode.isPending ? 'Sending…' : 'Email me a confirmation code'}
+          </button> : <label className="block">
+            <span className="label">Code from your email, to confirm</span>
+            <input className="field num max-w-48 text-center text-[20px] tracking-[0.35em]" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} autoFocus />
+          </label>}
+          {(approve.error || sendCode.error) && (
             <p className="text-[13px] font-semibold text-bad">
-              {isApiError(approve.error, 403) && /password/i.test(approve.error.message) ? 'That password isn’t right.' : approve.error.message}
+              {isApiError(approve.error, 403) ? 'That code is wrong or has expired. Email yourself a new one.' : (approve.error ?? sendCode.error)?.message}
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <button className="btn-primary btn-sm" disabled={password.length < 8 || approve.isPending}>
+            <button className="btn-primary btn-sm" disabled={code.length !== 6 || approve.isPending}>
               {approve.isPending ? 'Sending…' : `Send ${formatMoney(item.amountKobo)}`}
             </button>
             <button type="button" className="btn-quiet btn-sm" onClick={() => setMode('idle')} disabled={approve.isPending}>

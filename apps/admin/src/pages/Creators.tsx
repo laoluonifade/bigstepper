@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { AppLink } from '../router';
+import { appUrl } from '../api';
 import { useState } from 'react';
-import { CheckIcon, ShieldIcon } from '../components/icons';
-import { Avatar, cx, EmptyState, ErrorNotice, PageHeader, Segmented, Skeleton } from '../components/ui';
-import { api, patch } from '../lib/api';
-import { formatDate, formatRelative } from '../lib/format';
+import { CheckIcon, ShieldIcon } from '../icons';
+import { Avatar, cx, EmptyState, ErrorNotice, PageHeader, Segmented, Skeleton } from '../ui';
+import { api, patch } from '../api';
+import { formatDate, formatRelative } from '@jump/shared/format';
 
 interface CreatorApplication {
   id: string;
@@ -90,9 +91,9 @@ export function AdminCreatorsPage() {
                     </p>
                     <p className="truncate text-[12px] text-ink-2">
                       {creator.username && (
-                        <Link to="/runners/$username" params={{ username: creator.username }} search={{}} className="font-semibold text-ink hover:underline hover:underline-offset-4">
+                        <AppLink href={appUrl(`/runners/${creator.username}`)} className="font-semibold text-ink hover:underline hover:underline-offset-4">
                           @{creator.username}
-                        </Link>
+                        </AppLink>
                       )}
                       {creator.username && ' · '}
                       {creator.email} · {creator.emailVerified ? 'email verified' : 'email not verified'}

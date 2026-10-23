@@ -75,6 +75,8 @@ export function validateEnvironment(env: Environment) {
     NODE_ENV: nodeEnv,
     PORT: integer(env.PORT, 3000, 'PORT'),
     WEB_ORIGIN: required(env, 'WEB_ORIGIN', 'http://localhost:5177'),
+    /** The admin console (admin.startajump.com), served separately from the runner app. */
+    ADMIN_ORIGIN: env.ADMIN_ORIGIN || (nodeEnv === 'production' ? 'https://admin.startajump.com' : 'http://localhost:5178'),
     DATABASE_URL: connectionUrl(databaseUrl, 'DATABASE_URL', ['postgres:', 'postgresql:']),
     REDIS_URL: connectionUrl(redisUrl, 'REDIS_URL', ['redis:', 'rediss:']),
     JWT_SECRET: jwtSecret,

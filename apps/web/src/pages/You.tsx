@@ -3,7 +3,7 @@ import { LEGAL_LINKS } from '../legal/links';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
-import { BellIcon, CheckIcon, ChevronRightIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, ShieldIcon } from '../components/icons';
+import { BellIcon, CheckIcon, ChevronRightIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon } from '../components/icons';
 import { AvatarEditor, ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '../components/Profile';
 import { BankPicker } from '../components/BankPicker';
 import {
@@ -28,7 +28,7 @@ import { AWARD_STATUS } from '../lib/copy';
 import { activityName, formatDate, formatDistanceNumber, formatDuration, formatMoney, formatNairaInput, formatPace, formatRelative, formatSpeed, nairaInputToKobo, shortId } from '../lib/format';
 import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
-import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useStaffAccess, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
+import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
 import { savePayment } from '../lib/payments';
 import type { CheckoutResponse, CreatorProfile, Gender, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
 import { COUNTRIES } from '../lib/countries';
@@ -55,7 +55,6 @@ export function ProfileSettingsPage() {
   const profile = useProfile();
   const activities = useActivities();
   const unit = useUnit();
-  const { isStaff } = useStaffAccess();
   const stats = useMemo(() => profileStats(activities.data ?? []), [activities.data]);
   // Follower counts come from the public profile.
   const social = useQuery({
@@ -78,6 +77,7 @@ export function ProfileSettingsPage() {
       <ProfileHero
         avatar={<AvatarEditor profile={me} />}
         displayName={me.displayName}
+        verified={Boolean(me.verifiedAt)}
         username={me.username}
         meta={<>{countryName(me.countryCode)} · Joined {formatDate(me.createdAt, { month: 'short', year: 'numeric' })}</>}
         bio={me.bio ?? <button type="button" onClick={() => setSheet('profile')} className="text-ink-3 hover:text-ink">Add a short bio →</button>}
@@ -95,7 +95,6 @@ export function ProfileSettingsPage() {
 
       {/* Settings as short rows; anything with more than one field opens a sheet. */}
       <div className="mx-auto mt-8 max-w-2xl space-y-7">
-        {isStaff && <PlatformSection />}
 
         <SettingsGroup title="Preferences">
           <div className={ROW}>
@@ -309,58 +308,6 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
     <input type="checkbox" className="peer sr-only" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     <span className="relative mt-0.5 h-6 w-10 shrink-0 rounded-full border-[1.5px] border-ink bg-card transition-colors after:absolute after:left-0.5 after:top-1/2 after:h-4 after:w-4 after:-translate-y-1/2 after:rounded-full after:bg-ink after:transition-transform peer-checked:bg-ink peer-checked:after:translate-x-4 peer-checked:after:bg-paper peer-focus-visible:ring-2 peer-focus-visible:ring-track" aria-hidden="true" />
   </label>;
-}
-
-type PlatformStats = { users: number; newToday: number; activeToday: number; movedToday: number; newWeek: number; newMonth: number; verified: number; activeWeek: number; strava: number; liveCompetitions: number };
-
-/** Admins only: how big Jump is. Staff without admin rights just get their tools. */
-function PlatformSection() {
-  const stats = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => api<PlatformStats>('/admin/stats'), retry: false, staleTime: 60_000 });
-  const data = stats.data;
-  const number = (value: number) => value.toLocaleString('en-GB');
-  return <SettingsGroup title={data ? 'Admin' : 'Staff tools'}>
-    {data && <div className="px-4 py-4">
-      {/* The headline opens the full list; the today tiles open it filtered. */}
-      <Link to="/admin/people" className="group -mx-2 block rounded-xl px-2 py-1 transition-colors hover:bg-ink/[0.03]">
-        <p className="flex items-center justify-between text-[13px] text-ink-3">People on Jump <ChevronRightIcon size={16} className="transition-transform group-hover:translate-x-0.5" /></p>
-        <p className="score num mt-1 text-[48px] leading-none"><CountUp value={data.users} format={(n) => number(Math.round(n))} /></p>
-        <p className="num mt-2 text-[13px] text-ink-2">
-          <span className="font-semibold text-ink">+{number(data.newToday)}</span> today · <span className="font-semibold text-ink">+{number(data.newWeek)}</span> this week · <span className="font-semibold text-ink">+{number(data.newMonth)}</span> this month
-        </p>
-      </Link>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {([
-          ['active-today', 'Active today', data.activeToday, 'opened Jump'],
-          ['moved-today', 'Recorded today', data.movedToday, 'logged an activity'],
-        ] as const).map(([view, label, value, hint]) => <Link key={view} to="/admin/people" search={{ view }} className="rounded-xl border-[1.5px] border-ink bg-paper px-3 py-2.5 transition-colors hover:bg-ink/[0.03]">
-          <p className="flex items-center justify-between text-[12px] font-semibold">{label}<ChevronRightIcon size={14} className="text-ink-3" /></p>
-          <p className="num text-[24px] font-extrabold leading-tight">{number(value)}</p>
-          <p className="text-[11px] text-ink-3">{hint}</p>
-        </Link>)}
-      </div>
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4">
-        {[
-          ['Active this week', data.activeWeek],
-          ['Verified emails', data.verified],
-          ['Strava connected', data.strava],
-          ['Live competitions', data.liveCompetitions],
-        ].map(([label, value]) => <div key={label}>
-          <dt className="text-[12px] text-ink-3">{label}</dt>
-          <dd className="num text-[18px] font-bold">{number(value as number)}</dd>
-        </div>)}
-      </dl>
-    </div>}
-    <Link to="/admin/creators" className={ROW}>
-      <ShieldIcon size={16} className="text-ink-3" />
-      <span className="flex-1 text-[14px] font-semibold">Creator approvals</span>
-      <ChevronRightIcon size={16} className="text-ink-3" />
-    </Link>
-    <Link to="/admin/payouts" className={ROW}>
-      <span className="w-4" aria-hidden="true" />
-      <span className="flex-1 text-[14px] font-semibold">Payouts</span>
-      <ChevronRightIcon size={16} className="text-ink-3" />
-    </Link>
-  </SettingsGroup>;
 }
 
 function countryName(code: string) {
@@ -890,6 +837,7 @@ export function RunnerPage() {
       <ProfileHero
         avatar={<Avatar name={data.displayName} src={data.avatarUrl} avatarStyle={data.avatarStyle} size={84} className="rounded-lg" />}
         displayName={data.displayName}
+        verified={data.verified}
         username={data.username}
         meta={
           <>

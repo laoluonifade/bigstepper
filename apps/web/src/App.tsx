@@ -81,6 +81,7 @@ const activity = createRoute({
 });
 const leagues = createRoute({ getParentRoute: () => root, path: '/leagues', component: protectedPage(() => import('./pages/Social'), 'LeaguesPage') });
 const league = createRoute({ getParentRoute: () => root, path: '/leagues/$id', component: protectedPage(() => import('./pages/Social'), 'LeagueDetailPage') });
+const clubChat = createRoute({ getParentRoute: () => root, path: '/clubs/$id/chat', component: protectedPage(() => import('./pages/Messages'), 'ClubChatPage') });
 const clubs = createRoute({ getParentRoute: () => root, path: '/clubs', component: protectedPage(() => import('./pages/Clubs'), 'ClubsPage') });
 // Public, so an invite link shows the club before anyone signs up.
 const club = createRoute({
@@ -98,16 +99,6 @@ const creator = createRoute({ getParentRoute: () => root, path: '/creator', comp
 const notifications = createRoute({ getParentRoute: () => root, path: '/notifications', component: protectedPage(() => import('./pages/You'), 'NotificationsPage') });
 const profile = createRoute({ getParentRoute: () => root, path: '/settings/profile', component: protectedPage(() => import('./pages/You'), 'ProfileSettingsPage') });
 const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: protectedPage(() => import('./pages/Payments'), 'PaymentReturnPage') });
-const adminPeople = createRoute({
-  getParentRoute: () => root,
-  path: '/admin/people',
-  validateSearch: (search: Record<string, unknown>): { view?: 'active-today' | 'moved-today' | 'new-today' } =>
-    search.view === 'active-today' || search.view === 'moved-today' || search.view === 'new-today' ? { view: search.view } : {},
-  component: protectedPage(() => import('./pages/AdminPeople'), 'AdminPeoplePage'),
-});
-const adminCreators = createRoute({ getParentRoute: () => root, path: '/admin/creators', component: protectedPage(() => import('./pages/AdminCreators'), 'AdminCreatorsPage') });
-const adminChallenges = createRoute({ getParentRoute: () => root, path: '/admin/challenges', component: protectedPage(() => import('./pages/AdminChallenges'), 'AdminChallengesPage') });
-const adminPayouts = createRoute({ getParentRoute: () => root, path: '/admin/payouts', component: protectedPage(() => import('./pages/AdminPayouts'), 'AdminPayoutsPage') });
 
 function redirectSearch(search: Record<string, unknown>): { redirect?: string } {
   return typeof search.redirect === 'string' ? { redirect: search.redirect } : {};
@@ -122,8 +113,7 @@ const routeTree = root.addChildren([
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, welcome, leaderboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
-  leagues, league, clubs, club, rewards, wallet, creator, notifications, profile, paymentReturn,
-  adminPayouts, adminCreators, adminChallenges, adminPeople,
+  leagues, league, clubs, club, clubChat, rewards, wallet, creator, notifications, profile, paymentReturn,
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });

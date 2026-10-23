@@ -1,9 +1,10 @@
-import { IsString, Length, MaxLength, MinLength } from 'class-validator';
+import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
+/** Money actions need a fresh emailed code (POST /admin-auth/confirm-code), not a password. */
 export class ConfirmAdminActionDto {
   @IsString()
-  @Length(8, 72)
-  password: string;
+  @Matches(/^\s*\d{6}\s*$/)
+  code: string;
 }
 
 export class RejectPayoutDto {

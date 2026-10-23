@@ -19,6 +19,8 @@ export interface AuthResponse {
 export interface Profile {
   id: string;
   userId: string;
+  /** Set when a Jump admin gave this runner a blue tick. */
+  verifiedAt?: string | null;
   username: string;
   displayName: string;
   preferredUnit: Unit;
@@ -58,6 +60,8 @@ export interface Connection {
   displayName: string;
   avatarUrl: string | null;
   avatarStyle?: AvatarStyle;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   bio: string | null;
   followedByMe: boolean;
   isMe: boolean;
@@ -69,6 +73,8 @@ export interface PublicProfile {
   countryCode: string;
   /** Public avatar appearance, without disclosing gender. */
   avatarStyle?: AvatarStyle;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   avatarUrl: string | null;
   bio: string | null;
   memberSince: string;
@@ -177,14 +183,16 @@ export interface CompetitionTable {
   platformFeeBps: number;
   creatorCommissionBps: number;
   creatorId: string;
-  creator?: { id: string; displayName: string | null; username?: string | null; avatarUrl?: string | null; avatarStyle?: AvatarStyle } | null;
+  creator?: { id: string; displayName: string | null; username?: string | null; avatarUrl?: string | null; avatarStyle?: AvatarStyle; verified?: boolean } | null;
   /** Runners who have joined (list and detail responses). */
   /** Discovery cards only: the top three who have scored, and a few faces of who's in. */
-  leaders?: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle?: AvatarStyle; score: number }>;
+  leaders?: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; score: number }>;
   faces?: Array<{ displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }>;
   /** Discovery cards only: your rank here when you've joined, else null. */
   myRank?: number | null;
   entrantCount?: number;
+  /** Set when the host archived it: off every list, still at its link. */
+  archivedAt?: string | null;
   createdAt: string;
 }
 
@@ -195,6 +203,8 @@ export interface StandingRow {
   username?: string | null;
   avatarUrl?: string | null;
   avatarStyle?: AvatarStyle;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   creditedDistanceMetres: number;
   creditedSteps: number;
   completionTimeSeconds: number | null;
@@ -334,12 +344,16 @@ export interface Club {
   memberCount?: number;
   liveCompetitions?: number;
   faces?: Array<{ displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }>;
-  owner?: { displayName: string; username: string | null } | null;
+  owner?: { displayName: string; username: string | null; verified?: boolean } | null;
+  /** Blue tick from a Jump admin: a badge only, unverified clubs work the same. */
+  verified?: boolean;
+  /** Only the owner and managers can send in the club chat. */
+  chatLocked?: boolean;
   /** Your role here, or null when you're not a member (or not signed in). */
   myRole?: ClubRole | null;
   /** Whether the ?invite= code in the link is this club's. */
   inviteValid?: boolean;
-  /** Owners and managers only. */
+  /** Members only (to share the club); managers can reset it. */
   inviteCode?: string;
 }
 
@@ -353,6 +367,8 @@ export interface ClubMember {
   displayName: string | null;
   avatarUrl?: string | null;
   avatarStyle?: AvatarStyle;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   countryCode?: string | null;
 }
 
@@ -363,6 +379,8 @@ export interface ClubStanding {
   displayName: string;
   avatarUrl: string | null;
   avatarStyle?: AvatarStyle;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   monthMetres: number;
 }
 
@@ -370,6 +388,8 @@ export interface RunnerSearchResult {
   username: string;
   displayName: string;
   avatarStyle?: AvatarStyle;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
   avatarUrl: string | null;
   bio: string | null;
   isMe: boolean;
@@ -404,6 +424,8 @@ export interface LeagueMembership {
   username?: string | null;
   avatarUrl?: string | null;
   avatarStyle?: AvatarStyle;
+  /** Blue tick from a Jump admin. */
+  verified?: boolean;
 }
 
 export interface LeagueRules {

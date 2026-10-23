@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { DataSource } from 'typeorm';
 
@@ -21,16 +21,45 @@ export class MessagesService {
 
   private async recipient(username: string) {
     const [runner] = await this.dataSource.query(
-      `SELECT "userId","username","displayName","avatarUrl",
+      `SELECT "userId","username","displayName","avatarUrl","verifiedAt" IS NOT NULL AS "verified",
               CASE WHEN "gender"='male' THEN 'masculine' WHEN "gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
        FROM "profiles" WHERE lower("username")=lower($1)`,
       [username],
-    ) as Array<{ userId: string; username: string; displayName: string; avatarUrl: string | null; avatarStyle: string }>;
+    ) as Array<{ userId: string; username: string; displayName: string; avatarUrl: string | null; avatarStyle: string; verified: boolean }>;
     if (!runner) throw new NotFoundException('Runner not found');
     return runner;
   }
 
+  /** Direct conversations and your clubs' chats, newest first. */
   async inbox(userId: string) {
+    const [direct, clubs] = await Promise.all([this.directInbox(userId), this.clubInbox(userId)]);
+    return [...direct.map((row: Record<string, unknown>) => ({ type: 'direct', ...row })), ...clubs]
+      .sort((a, b) => new Date(String(b.createdAt)).getTime() - new Date(String(a.createdAt)).getTime())
+      .slice(0, 60);
+  }
+
+  /** Each club you're in that has a chat: its last message and how many you haven't read. */
+  private async clubInbox(userId: string) {
+    return this.dataSource.query(
+      `SELECT 'club' AS "type", c."slug" AS "clubSlug", c."name" AS "clubName", c."logoUrl", c."accentColor",
+              last."body", last."createdAt", last."kind", COALESCE(p."displayName", u."displayName", 'Someone') AS "senderName", last."senderId",
+              (SELECT count(*) FROM "direct_messages" x WHERE x."clubId" = c."id" AND x."senderId" <> $1
+                 AND x."createdAt" > COALESCE(r."readAt", m."joinedAt"))::integer AS "unreadCount"
+       FROM "club_memberships" m
+       JOIN "clubs" c ON c."id" = m."clubId"
+       LEFT JOIN "club_chat_reads" r ON r."clubId" = c."id" AND r."userId" = $1
+       JOIN LATERAL (
+         SELECT d."body", d."createdAt", d."senderId",
+                CASE WHEN d."audioUrl" IS NOT NULL THEN 'voice' WHEN d."activityId" IS NOT NULL THEN 'activity' ELSE 'text' END AS "kind"
+         FROM "direct_messages" d WHERE d."clubId" = c."id" ORDER BY d."createdAt" DESC, d."id" DESC LIMIT 1
+       ) last ON true
+       JOIN "users" u ON u."id" = last."senderId" LEFT JOIN "profiles" p ON p."userId" = last."senderId"
+       WHERE m."userId" = $1`,
+      [userId],
+    ) as Promise<Array<Record<string, unknown>>>;
+  }
+
+  private async directInbox(userId: string) {
     return this.dataSource.query(
       `WITH latest AS (
          SELECT DISTINCT ON (peer) peer,"body","createdAt","senderId","kind"
@@ -38,7 +67,7 @@ export class MessagesService {
            SELECT CASE WHEN "senderId"=$1 THEN "recipientId" ELSE "senderId" END peer,
                   "body","createdAt","senderId","id",
                   CASE WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
-           FROM "direct_messages" WHERE "senderId"=$1 OR "recipientId"=$1
+           FROM "direct_messages" WHERE ("senderId"=$1 OR "recipientId"=$1) AND "clubId" IS NULL
          ) m ORDER BY peer,"createdAt" DESC,"id" DESC
        )
        , unread AS (
@@ -46,7 +75,7 @@ export class MessagesService {
          WHERE "recipientId"=$1 AND "readAt" IS NULL GROUP BY "senderId"
        )
        SELECT l."body",l."kind",l."createdAt",l."senderId",p."username",p."displayName",p."avatarUrl",
-              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               COALESCE(u."count",0) "unreadCount"
        FROM latest l JOIN "profiles" p ON p."userId"=l.peer
        LEFT JOIN unread u ON u."senderId"=l.peer
@@ -56,10 +85,14 @@ export class MessagesService {
 
   async unreadCount(userId: string) {
     const [row] = await this.dataSource.query(
-      `SELECT COUNT(*)::integer "count" FROM "direct_messages" WHERE "recipientId"=$1 AND "readAt" IS NULL`,
+      `SELECT (SELECT COUNT(*) FROM "direct_messages" WHERE "recipientId"=$1 AND "readAt" IS NULL)
+            + (SELECT COUNT(*) FROM "club_memberships" m
+               JOIN "direct_messages" d ON d."clubId" = m."clubId" AND d."senderId" <> $1
+               LEFT JOIN "club_chat_reads" r ON r."clubId" = m."clubId" AND r."userId" = $1
+               WHERE m."userId" = $1 AND d."createdAt" > COALESCE(r."readAt", m."joinedAt")) AS "count"`,
       [userId],
-    ) as Array<{ count: number }>;
-    return { count: row.count };
+    ) as Array<{ count: string | number }>;
+    return { count: Number(row.count) };
   }
 
   async markRead(userId: string, username: string) {
@@ -76,8 +109,19 @@ export class MessagesService {
   async conversation(userId: string, username: string) {
     const runner = await this.recipient(username);
     if (runner.userId === userId) throw new BadRequestException('You cannot message yourself');
+    const messages = await this.thread(
+      `(m."senderId"=$1 AND m."recipientId"=$2) OR (m."senderId"=$2 AND m."recipientId"=$1)`, [userId, runner.userId],
+    );
+    return { runner, canMessage: true, messages };
+  }
+
+  /**
+   * The newest 100 messages matching a condition, oldest first, with replies, shared activities,
+   * competition invitations and reactions. Direct and club conversations share it.
+   */
+  private async thread(where: string, params: unknown[]) {
     const messages = await this.dataSource.query(
-      `SELECT m."id",m."senderId",m."recipientId",m."body",m."createdAt",m."editedAt",m."audioUrl",m."audioSeconds",
+      `SELECT m."id",m."senderId",m."recipientId",m."clubId",m."body",m."createdAt",m."editedAt",m."audioUrl",m."audioSeconds",
               i."id" "invitationId",i."status" "invitationStatus",t."id" "tableId",t."code" "tableCode",
               t."title" "tableTitle",t."type" "tableType",t."status" "tableStatus",
               t."guaranteedPrizeKobo",t."entryFeeKobo",m."replyToId",reply."body" "replyToBody",
@@ -91,9 +135,9 @@ export class MessagesService {
        LEFT JOIN "challenge_invitations" i ON i."id"=m."invitationId"
        LEFT JOIN "competition_tables" t ON t."id"=i."tableId"
        LEFT JOIN "direct_messages" reply ON reply."id"=m."replyToId"
-       WHERE (m."senderId"=$1 AND m."recipientId"=$2) OR (m."senderId"=$2 AND m."recipientId"=$1)
-       ORDER BY m."createdAt" DESC,m."id" DESC LIMIT 100`, [userId, runner.userId],
-    ) as Array<Record<string, unknown> & { id: string }>;
+       WHERE ${where}
+       ORDER BY m."createdAt" DESC,m."id" DESC LIMIT 100`, params,
+    ) as Array<Record<string, unknown> & { id: string; senderId: string }>;
     const reactions = messages.length ? await this.dataSource.query(
       `SELECT "messageId","userId","reaction" FROM "direct_message_reactions" WHERE "messageId"=ANY($1::uuid[])`,
       [messages.map((message) => message.id)],
@@ -104,7 +148,93 @@ export class MessagesService {
       bucket.push({ userId: reaction.userId, reaction: reaction.reaction });
       byMessage.set(reaction.messageId, bucket);
     }
-    return { runner, canMessage: true, messages: messages.reverse().map((message) => ({ ...message, reactions: byMessage.get(message.id) ?? [] })) };
+    return messages.reverse().map((message) => ({ ...message, reactions: byMessage.get(message.id) ?? [] }));
+  }
+
+  /** A club the user belongs to, by handle or id. Only members can read or write its chat. */
+  private async memberClub(userId: string, clubRef: string) {
+    const ref = clubRef.trim().toLowerCase();
+    const [club] = await this.dataSource.query(
+      `SELECT c."id", c."slug", c."name", c."logoUrl", c."accentColor", c."verifiedAt" IS NOT NULL AS "verified", c."chatLocked", m."role" AS "myRole",
+              (SELECT count(*) FROM "club_memberships" x WHERE x."clubId" = c."id")::integer AS "memberCount"
+       FROM "clubs" c JOIN "club_memberships" m ON m."clubId" = c."id" AND m."userId" = $2
+       WHERE c."slug" = $1 OR c."id"::text = $1`,
+      [ref, userId],
+    ) as Array<{ id: string; slug: string; name: string; logoUrl: string | null; accentColor: string; verified: boolean; chatLocked: boolean; myRole: 'owner' | 'admin' | 'member'; memberCount: number }>;
+    if (!club) throw new ForbiddenException('Join this club to see its chat');
+    return club;
+  }
+
+  /** The club's group chat, with everyone who wrote in it so names and pictures can show. */
+  async clubConversation(userId: string, clubRef: string) {
+    const club = await this.memberClub(userId, clubRef);
+    const messages = await this.thread(`m."clubId"=$1`, [club.id]);
+    const people = await this.dataSource.query(
+      `SELECT p."userId", p."username", COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
+              p."verifiedAt" IS NOT NULL AS "verified"
+       FROM "users" u LEFT JOIN "profiles" p ON p."userId" = u."id"
+       WHERE u."id" = ANY($1::uuid[])`,
+      [[...new Set([userId, ...messages.map((message) => message.senderId)])]],
+    );
+    // A few faces for the header, people with photos first.
+    const faces = await this.dataSource.query(
+      `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
+       FROM "club_memberships" m JOIN "users" u ON u."id" = m."userId" LEFT JOIN "profiles" p ON p."userId" = m."userId"
+       WHERE m."clubId" = $1 ORDER BY (p."avatarUrl" IS NULL), m."joinedAt" LIMIT 5`,
+      [club.id],
+    );
+    // A locked chat is read-only for members; the owner and managers can still send.
+    const canMessage = !club.chatLocked || club.myRole !== 'member';
+    return { club: { ...club, faces }, people, canMessage, messages };
+  }
+
+  async markClubRead(userId: string, clubRef: string) {
+    const club = await this.memberClub(userId, clubRef);
+    await this.dataSource.query(
+      `INSERT INTO "club_chat_reads" ("clubId","userId","readAt") VALUES ($1,$2,now())
+       ON CONFLICT ("clubId","userId") DO UPDATE SET "readAt"=now()`,
+      [club.id, userId],
+    );
+    return { read: true };
+  }
+
+  /** Same rules as a direct message; members see it in the chat (no notification per message). */
+  async sendToClub(userId: string, clubRef: string, body: string, extras: SendExtras = {}) {
+    const club = await this.memberClub(userId, clubRef);
+    if (club.chatLocked && club.myRole === 'member') throw new ForbiddenException('Only the owner and managers can send messages here right now');
+    const { replyToId, activityId, audioUrl, audioSeconds } = extras;
+    const trimmed = body.trim();
+    await this.checkExtras(userId, trimmed, extras);
+    if (replyToId) {
+      const reply = await this.dataSource.query(`SELECT 1 FROM "direct_messages" WHERE "id"=$1 AND "clubId"=$2`, [replyToId, club.id]) as unknown[];
+      if (!reply.length) throw new BadRequestException('Choose a message from this chat to reply to');
+    }
+    const [message] = await this.dataSource.query(
+      `INSERT INTO "direct_messages" ("senderId","clubId","body","replyToId","activityId","audioUrl","audioSeconds") VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING "id","senderId","recipientId","clubId","body","replyToId","activityId","audioUrl","audioSeconds","createdAt"`,
+      [userId, club.id, trimmed, replyToId ?? null, activityId ?? null, audioUrl ?? null, audioUrl ? audioSeconds ?? null : null],
+    );
+    // Your own message means you've read up to here.
+    await this.dataSource.query(
+      `INSERT INTO "club_chat_reads" ("clubId","userId","readAt") VALUES ($1,$2,now()) ON CONFLICT ("clubId","userId") DO UPDATE SET "readAt"=now()`,
+      [club.id, userId],
+    );
+    return message;
+  }
+
+  /** Text, a shared activity of your own, or your own voice note. */
+  private async checkExtras(userId: string, trimmed: string, { activityId, audioUrl }: SendExtras) {
+    if (!trimmed && !activityId && !audioUrl) throw new BadRequestException('Write a message');
+    if (audioUrl && !this.cloudinary.isOwnVoiceNote(userId, audioUrl)) throw new BadRequestException('Record the voice note again');
+    if (activityId) {
+      // Runners share their own activities; every activity is public, so anyone in the chat may see it.
+      const owned = await this.dataSource.query(
+        `SELECT 1 FROM "activities" WHERE "id"=$1 AND "userId"=$2 AND "verificationStatus"<>'REJECTED'`, [activityId, userId],
+      ) as unknown[];
+      if (!owned.length) throw new BadRequestException('Choose one of your activities to share');
+    }
   }
 
   async uploadVoiceNote(userId: string, file: { buffer: Buffer; mimetype: string; size: number } | undefined) {
@@ -116,15 +246,7 @@ export class MessagesService {
   async send(userId: string, username: string, body: string, extras: SendExtras = {}) {
     const { replyToId, activityId, audioUrl, audioSeconds } = extras;
     const trimmed = body.trim();
-    if (!trimmed && !activityId && !audioUrl) throw new BadRequestException('Write a message');
-    if (audioUrl && !this.cloudinary.isOwnVoiceNote(userId, audioUrl)) throw new BadRequestException('Record the voice note again');
-    if (activityId) {
-      // Runners share their own activities; every activity is public, so the recipient may see it.
-      const owned = await this.dataSource.query(
-        `SELECT 1 FROM "activities" WHERE "id"=$1 AND "userId"=$2 AND "verificationStatus"<>'REJECTED'`, [activityId, userId],
-      ) as unknown[];
-      if (!owned.length) throw new BadRequestException('Choose one of your activities to share');
-    }
+    await this.checkExtras(userId, trimmed, extras);
     const runner = await this.recipient(username);
     if (runner.userId === userId) throw new BadRequestException('You cannot message yourself');
     if (replyToId) {
@@ -162,7 +284,8 @@ export class MessagesService {
 
   async react(userId: string, messageId: string, reaction: string | null) {
     const allowed = await this.dataSource.query(
-      `SELECT 1 FROM "direct_messages" WHERE "id"=$1 AND ("senderId"=$2 OR "recipientId"=$2)`,
+      `SELECT 1 FROM "direct_messages" m WHERE m."id"=$1 AND (m."senderId"=$2 OR m."recipientId"=$2
+         OR EXISTS (SELECT 1 FROM "club_memberships" c WHERE c."clubId"=m."clubId" AND c."userId"=$2))`,
       [messageId, userId],
     ) as unknown[];
     if (!allowed.length) throw new NotFoundException('Message not found');
@@ -178,7 +301,11 @@ export class MessagesService {
         `INSERT INTO "notifications" ("userId","type","title","body","link")
          SELECT CASE WHEN m."senderId"=$2 THEN m."recipientId" ELSE m."senderId" END,
                 'MESSAGE_REACTION',p."displayName" || ' reacted to your message','Open Messages to see the reaction.','/messages/' || p."username"
-         FROM "direct_messages" m JOIN "profiles" p ON p."userId"=$2 WHERE m."id"=$1`,
+         FROM "direct_messages" m JOIN "profiles" p ON p."userId"=$2 WHERE m."id"=$1 AND m."clubId" IS NULL
+         UNION ALL
+         SELECT m."senderId",'MESSAGE_REACTION',p."displayName" || ' reacted to your message in ' || c."name",'Open the club chat to see it.','/clubs/' || c."slug" || '/chat'
+         FROM "direct_messages" m JOIN "clubs" c ON c."id"=m."clubId" JOIN "profiles" p ON p."userId"=$2
+         WHERE m."id"=$1 AND m."senderId"<>$2`,
         [messageId, userId],
       );
     } else {

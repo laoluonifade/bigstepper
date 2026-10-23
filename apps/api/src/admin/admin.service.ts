@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { refreshLeagueDistance } from '../leagues/league-credits';
 import { creditActivities, rescore, uncreditActivity } from '../tables/competition-credits';
 import { ConfigService } from '@nestjs/config';
@@ -18,8 +18,9 @@ import { RANK_ORDER } from '../tables/scoring-engine';
 import { calculatePrizeBreakdown, cashPrizeEligible } from '../payments/financial-policy';
 import { allocateFundedPrizes, allocatePrizes, assertPrizeSplit } from '../tables/prize-split';
 import { paidPrizePot } from '../tables/paid-prize';
-import { User } from '../users/user.entity';
-import * as bcrypt from 'bcrypt';
+import { AdminAuthService } from './admin-auth.service';
+import { PrizeAwardsService } from '../sponsors/prize-awards.service';
+import { enrolClubMembers } from '../tables/club-competitions';
 
 @Injectable()
 export class AdminService {
@@ -27,7 +28,136 @@ export class AdminService {
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly paymentsService: PaymentsService,
+    private readonly adminAuth: AdminAuthService,
+    private readonly awardsService: PrizeAwardsService,
   ) {}
+
+  /* ───────── Sponsors and product prizes ───────── */
+
+  sponsors(status?: string) {
+    const filter = ['PENDING', 'ACTIVE', 'SUSPENDED'].includes(status ?? '') ? status : null;
+    return this.dataSource.query(
+      `SELECT s.*, (SELECT count(*) FROM "sponsor_members" m WHERE m."sponsorId" = s."id")::integer AS "members",
+              (SELECT count(*) FROM "competition_tables" t WHERE t."sponsorId" = s."id")::integer AS "competitions",
+              (SELECT u."email" FROM "sponsor_members" m JOIN "users" u ON u."id" = m."userId" WHERE m."sponsorId" = s."id" AND m."role" = 'owner' LIMIT 1) AS "ownerEmail"
+       FROM "sponsors" s WHERE ($1::text IS NULL OR s."status" = $1) ORDER BY (s."status" = 'PENDING') DESC, s."createdAt" DESC LIMIT 200`,
+      [filter],
+    );
+  }
+
+  /** Onboard a partner directly (e.g. a brand Jump signed): active straight away, owned by a Jump account. */
+  async createSponsor(actorUserId: string, input: { kind: 'brand' | 'club'; name: string; ownerEmail: string; contactEmail?: string; website?: string; deliveryCountries: string[] }) {
+    const [owner] = await this.dataSource.query(`SELECT "id" FROM "users" WHERE lower("email") = lower($1)`, [input.ownerEmail.trim()]) as Array<{ id: string }>;
+    if (!owner) throw new NotFoundException('No Jump account uses the owner email. Ask them to sign up first.');
+    return this.dataSource.transaction(async (manager) => {
+      const base = input.name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'sponsor';
+      const taken = new Set((await manager.query(`SELECT "slug" FROM "sponsors" WHERE "slug" = $1 OR "slug" LIKE $1 || '-%'`, [base]) as Array<{ slug: string }>).map((row) => row.slug));
+      let slug = base;
+      for (let n = 2; taken.has(slug); n += 1) slug = `${base}-${n}`;
+      const [sponsor] = await manager.query(
+        `INSERT INTO "sponsors" ("kind","name","slug","website","contactEmail","deliveryCountries","status","createdByUserId","reviewedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,'ACTIVE',$7,now()) RETURNING *`,
+        [input.kind, input.name.trim(), slug, input.website?.trim() || null, (input.contactEmail ?? input.ownerEmail).trim().toLowerCase(), JSON.stringify([...new Set(input.deliveryCountries)]), actorUserId],
+      );
+      await manager.query(`INSERT INTO "sponsor_members" ("sponsorId","userId","role") VALUES ($1,$2,'owner')`, [sponsor.id, owner.id]);
+      await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'SPONSOR_UPDATE',$2,'You can now put up product prizes on Jump competitions.','/sponsor')`,
+        [owner.id, `${input.name.trim()} is set up as a Jump sponsor`],
+      );
+      await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId") VALUES ($1,'SPONSOR_CREATED','sponsor',$2)`, [actorUserId, sponsor.id]);
+      return sponsor;
+    });
+  }
+
+  async setSponsorStatus(actorUserId: string, sponsorId: string, status: 'ACTIVE' | 'SUSPENDED') {
+    const [sponsor] = await this.dataSource.query(`UPDATE "sponsors" SET "status" = $2, "reviewedAt" = now(), "updatedAt" = now() WHERE "id" = $1 RETURNING "id","name"`, [sponsorId, status]) as [Array<{ id: string; name: string }>, number];
+    const row = sponsor[0];
+    if (!row) throw new NotFoundException('Sponsor not found');
+    await this.dataSource.query(
+      `INSERT INTO "notifications" ("userId","type","title","body","link") SELECT "userId",'SPONSOR_UPDATE',$2,$3,'/sponsor' FROM "sponsor_members" WHERE "sponsorId" = $1`,
+      [sponsorId, status === 'ACTIVE' ? `${row.name} is approved` : `${row.name} is paused`, status === 'ACTIVE' ? 'You can now put up product prizes on Jump competitions.' : 'Contact Jump to sponsor competitions again.'],
+    );
+    await this.dataSource.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId") VALUES ($1,$2,'sponsor',$3)`, [actorUserId, `SPONSOR_${status}`, sponsorId]);
+    return { status };
+  }
+
+  /** Product-prize competitions: waiting for approval, running, or decided. */
+  sponsorships(view: string) {
+    const where = view === 'pending' ? `t."status" = 'PENDING_APPROVAL'` : view === 'live' ? `t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')` : `t."status" = 'SETTLED'`;
+    return this.dataSource.query(
+      `SELECT t."id", t."code", t."title", t."status", t."startsAt", t."scoringClosesAt", t."prizeDeliveryCountries", t."prizeFulfilment", t."prizeShipping",
+              t."prizeShippingNote", t."prizeEligibilityNote", t."prizeClaimDays", t."sponsorCommittedAt", t."prizesFinalizedAt", t."createdAt",
+              s."name" AS "sponsorName", s."status" AS "sponsorStatus",
+              COALESCE(p."displayName", u."displayName") AS "hostName",
+              (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id")::integer AS "entrants",
+              (SELECT json_agg(json_build_object('position', x."position", 'productName', x."productName", 'quantity', x."quantity",
+                 'estimatedValue', x."estimatedValue", 'currency', x."currency", 'imageUrl', x."imageUrl", 'description', x."description") ORDER BY x."position")
+                 FROM "competition_prizes" x WHERE x."tableId" = t."id") AS "prizes"
+       FROM "competition_tables" t JOIN "sponsors" s ON s."id" = t."sponsorId"
+       JOIN "users" u ON u."id" = t."creatorId" LEFT JOIN "profiles" p ON p."userId" = u."id"
+       WHERE ${where} ORDER BY t."createdAt" DESC LIMIT 100`,
+    );
+  }
+
+  /** Open a product-prize competition once the prizes, coverage and commitment check out. */
+  async reviewSponsorship(actorUserId: string, tableId: string, decision: 'APPROVE' | 'REJECT', reason?: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
+      if (!table?.sponsorId) throw new NotFoundException('Sponsored competition not found');
+      if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('It isn’t waiting for approval');
+      if (decision === 'APPROVE') {
+        const [sponsor] = await manager.query(`SELECT "status" FROM "sponsors" WHERE "id" = $1`, [table.sponsorId]) as Array<{ status: string }>;
+        if (sponsor?.status !== 'ACTIVE') throw new ConflictException('Approve the sponsor first');
+        if (!table.sponsorCommittedAt) throw new ConflictException('The sponsor hasn’t committed to the prizes');
+        if (table.scoringClosesAt && table.scoringClosesAt <= new Date()) throw new ConflictException('Its end date has already passed');
+      } else if (!reason?.trim()) {
+        throw new BadRequestException('Say why, so the sponsor can fix it');
+      }
+      table.status = decision === 'APPROVE' ? 'OPEN_FOR_ENTRY' : 'CANCELLED';
+      await manager.save(table);
+      if (decision === 'APPROVE' && table.communityId) await enrolClubMembers(manager, { tableId });
+      await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body","link")
+         SELECT DISTINCT x."userId",'SPONSOR_UPDATE',$2,$3,$4 FROM (SELECT "userId" FROM "sponsor_members" WHERE "sponsorId" = $1 UNION SELECT $5::uuid) x`,
+        [table.sponsorId, decision === 'APPROVE' ? `${table.title} is live` : `${table.title} wasn’t approved`,
+          decision === 'APPROVE' ? 'Runners can join now. Share the link.' : reason!.trim(), `/competitions/${table.code}`, table.creatorId],
+      );
+      await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,'competition_table',$3,$4)`,
+        [actorUserId, `SPONSORSHIP_${decision}`, tableId, JSON.stringify({ reason: reason ?? null })]);
+      return { status: table.status };
+    });
+  }
+
+  /** Every winner and prize across sponsors, with delivery details (admins see them to resolve issues). */
+  prizeAwards(status?: string) {
+    const filter = ['AWAITING_DETAILS', 'DETAILS_SUBMITTED', 'READY_FOR_DISPATCH', 'SHIPPED', 'DELIVERED', 'FORFEITED', 'ISSUE'].includes(status ?? '') ? status : null;
+    return this.dataSource.query(
+      `SELECT a.*, pr."productName", t."code", t."title", t."prizeFulfilment", s."name" AS "sponsorName",
+              COALESCE(p."displayName", u."displayName") AS "winnerName", u."email" AS "winnerEmail", p."countryCode" AS "winnerCountry"
+       FROM "product_awards" a JOIN "competition_prizes" pr ON pr."id" = a."prizeId" JOIN "competition_tables" t ON t."id" = a."tableId"
+       JOIN "sponsors" s ON s."id" = t."sponsorId" JOIN "users" u ON u."id" = a."userId" LEFT JOIN "profiles" p ON p."userId" = a."userId"
+       WHERE ($1::text IS NULL OR a."status" = $1)
+       ORDER BY CASE a."status" WHEN 'ISSUE' THEN 0 WHEN 'DETAILS_SUBMITTED' THEN 1 WHEN 'AWAITING_DETAILS' THEN 2 ELSE 3 END, a."updatedAt" DESC LIMIT 300`,
+      [filter],
+    );
+  }
+
+  updatePrizeAward(actorUserId: string, awardId: string, status: 'READY_FOR_DISPATCH' | 'SHIPPED' | 'DELIVERED' | 'ISSUE', notes: { trackingNote?: string; issueNote?: string }) {
+    void actorUserId;
+    return this.awardsService.updateStatus(awardId, status, notes, { admin: true });
+  }
+
+  forfeitPrizeAward(_actorUserId: string, awardId: string, reason: string) {
+    return this.awardsService.forfeit(awardId, reason);
+  }
+
+  /** Decide winners now for a closed product-prize competition (instead of waiting for the schedule). */
+  async finalizePrizes(_actorUserId: string, tableId: string) {
+    const table = await this.dataSource.getRepository(CompetitionTable).findOne({ where: { id: tableId } });
+    if (!table?.sponsorId) throw new NotFoundException('Sponsored competition not found');
+    if (!table.scoringClosesAt || table.scoringClosesAt > new Date()) throw new ConflictException('It hasn’t ended yet');
+    return { winners: await this.awardsService.finalize(tableId) };
+  }
 
   async stats() {
     // "Today" is the Lagos calendar day, not the last 24 hours.
@@ -60,6 +190,7 @@ export class AdminService {
       `WITH today AS (SELECT (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS start),
        people AS (
          SELECT u."id", COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl", p."countryCode",
+                p."verifiedAt" IS NOT NULL AS "verified",
                 u."email", u."emailVerified", u."role", u."createdAt", u."lastSeenAt",
                 (SELECT max(a."startedAt") FROM "activities" a WHERE a."userId" = u."id") AS "lastActivityAt",
                 (SELECT count(*) FROM "activities" a WHERE a."userId" = u."id" AND a."verificationStatus" = 'VERIFIED')::integer AS "activities",
@@ -80,8 +211,70 @@ export class AdminService {
     return { total: rows[0]?.total ?? 0, people: rows.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'total'))) };
   }
 
-  async approvePayout(actorUserId: string, payoutId: string, password: string) {
-    await this.assertAdminPassword(actorUserId, password);
+  /** Blue tick for a person. Only after they've verified their email; the tick is a badge, nothing more. */
+  async verifyPerson(actorUserId: string, ref: string, verified: boolean) {
+    const byId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
+    const [person] = await this.dataSource.query(
+      `SELECT u."id", u."emailVerified" FROM "users" u JOIN "profiles" p ON p."userId" = u."id"
+       WHERE ${byId ? 'u."id" = $1::uuid' : 'lower(p."username") = lower($1)'}`,
+      [ref.replace(/^@/, '')],
+    ) as Array<{ id: string; emailVerified: boolean }>;
+    if (!person) throw new NotFoundException('Person not found');
+    const userId = person.id;
+    if (verified && !person.emailVerified) throw new ConflictException('They need to verify their email before they can get a blue tick');
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(`UPDATE "profiles" SET "verifiedAt" = ${verified ? 'COALESCE("verifiedAt", now())' : 'NULL'} WHERE "userId" = $1`, [userId]);
+      await manager.query(
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId") VALUES ($1,$2,'user',$3)`,
+        [actorUserId, verified ? 'PERSON_VERIFIED' : 'PERSON_UNVERIFIED', userId],
+      );
+      if (verified) await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'VERIFIED','You’re verified','Jump gave you a blue tick. It shows next to your name across the app.','/settings/profile')`,
+        [userId],
+      );
+    });
+    return { verified };
+  }
+
+  /** Every club for the console, biggest first; q searches name and handle, verified narrows to ticked ones. */
+  async clubs(input: { q?: string; verified?: boolean; offset?: number }) {
+    const term = input.q?.trim().toLowerCase().replace(/[%_\\]/g, '').slice(0, 80) ?? '';
+    const rows = await this.dataSource.query(
+      `SELECT c."id", c."slug", c."name", c."logoUrl", c."accentColor", c."location", c."privacy", c."createdAt",
+              c."verifiedAt" IS NOT NULL AS "verified",
+              (SELECT count(*) FROM "club_memberships" m WHERE m."clubId" = c."id")::integer AS "memberCount",
+              COALESCE(p."displayName", u."displayName", 'Runner') AS "ownerName", u."email" AS "ownerEmail",
+              count(*) OVER ()::integer AS "total"
+       FROM "clubs" c JOIN "users" u ON u."id" = c."ownerUserId" LEFT JOIN "profiles" p ON p."userId" = u."id"
+       WHERE ($1 = '' OR lower(c."name") LIKE '%' || $1 || '%' OR c."slug" LIKE '%' || $1 || '%')
+         AND (NOT $2 OR c."verifiedAt" IS NOT NULL)
+       ORDER BY "memberCount" DESC, c."createdAt" DESC
+       LIMIT 50 OFFSET $3`,
+      [term, Boolean(input.verified), Math.max(0, Math.min(input.offset ?? 0, 100_000))],
+    ) as Array<Record<string, unknown> & { total: number }>;
+    return { total: rows[0]?.total ?? 0, clubs: rows.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'total'))) };
+  }
+
+  /** Blue tick for a club. Clubs work the same without it; it marks the ones Jump has checked. */
+  async verifyClub(actorUserId: string, clubId: string, verified: boolean) {
+    const [club] = await this.dataSource.query(`SELECT "id", "slug", "name", "ownerUserId" FROM "clubs" WHERE "id" = $1`, [clubId]) as Array<{ id: string; slug: string; name: string; ownerUserId: string }>;
+    if (!club) throw new NotFoundException('Club not found');
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(`UPDATE "clubs" SET "verifiedAt" = ${verified ? 'COALESCE("verifiedAt", now())' : 'NULL'} WHERE "id" = $1`, [clubId]);
+      await manager.query(
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId") VALUES ($1,$2,'club',$3)`,
+        [actorUserId, verified ? 'CLUB_VERIFIED' : 'CLUB_UNVERIFIED', clubId],
+      );
+      if (verified) await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'VERIFIED',$2,'Jump gave your club a blue tick. It shows on the club page and in club lists.',$3)`,
+        [club.ownerUserId, `${club.name} is verified`, `/clubs/${club.slug}`],
+      );
+    });
+    return { verified };
+  }
+
+  async approvePayout(actorUserId: string, payoutId: string, code: string) {
+    await this.adminAuth.assertConfirmCode(actorUserId, code);
     return this.paymentsService.approvePayout(actorUserId, payoutId);
   }
 
@@ -111,8 +304,8 @@ export class AdminService {
     );
   }
 
-  async reconcilePayments(actorUserId: string, password: string) {
-    await this.assertAdminPassword(actorUserId, password);
+  async reconcilePayments(actorUserId: string, code: string) {
+    await this.adminAuth.assertConfirmCode(actorUserId, code);
     return this.paymentsService.reconcile();
   }
 
@@ -167,7 +360,7 @@ export class AdminService {
   pendingReviews() {
     return this.dataSource.getRepository(ActivityVerificationReview).find({
       where: { status: 'PENDING' },
-      relations: { activity: true },
+      relations: { activity: true, requestedBy: true },
       order: { createdAt: 'ASC' },
       take: 200,
     });
@@ -375,14 +568,4 @@ export class AdminService {
     });
   }
 
-  private async assertAdminPassword(userId: string, password: string) {
-    const user = await this.dataSource.getRepository(User)
-      .createQueryBuilder('user')
-      .addSelect('user.passwordHash')
-      .where('user.id = :userId AND user.role = :role', { userId, role: 'admin' })
-      .getOne();
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      throw new ForbiddenException('Administrator password confirmation failed');
-    }
-  }
 }

@@ -4,10 +4,14 @@ import { AdminService } from './admin.service';
 import { PrivilegedGuard } from './privileged.guard';
 import { PaymentsModule } from '../payments/payments.module';
 import { AdminOnlyGuard } from './admin-only.guard';
+import { AuthModule } from '../auth/auth.module';
+import { SponsorsModule } from '../sponsors/sponsors.module';
+import { AdminAuthController } from './admin-auth.controller';
+import { AdminAuthService } from './admin-auth.service';
 
 @Module({
-  imports: [PaymentsModule],
-  controllers: [AdminController],
-  providers: [AdminService, PrivilegedGuard, AdminOnlyGuard],
+  imports: [PaymentsModule, AuthModule, SponsorsModule],
+  controllers: [AdminController, AdminAuthController],
+  providers: [AdminService, AdminAuthService, PrivilegedGuard, AdminOnlyGuard],
 })
 export class AdminModule {}

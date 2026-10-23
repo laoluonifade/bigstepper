@@ -88,7 +88,7 @@ export class ProfilesService {
     const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
     return this.dataSource.query(
       `SELECT p."username",p."displayName",p."avatarUrl",p."bio",
-              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               (p."userId"=$3) "isMe",
               EXISTS (SELECT 1 FROM "follows" f WHERE f."followerId"=$3 AND f."followingId"=p."userId") "followedByMe"
        FROM "profiles" p WHERE p."username" ILIKE $1 ESCAPE '\\' OR p."displayName" ILIKE $1 ESCAPE '\\'
@@ -117,6 +117,7 @@ export class ProfilesService {
       countryCode: profile.countryCode,
       avatarUrl: profile.avatarUrl,
       avatarStyle: profile.gender === 'male' ? 'masculine' : profile.gender === 'female' ? 'feminine' : 'neutral',
+      verified: Boolean(profile.verifiedAt),
       bio: profile.bio,
       memberSince: profile.createdAt,
       // Every runner's activities are public: competitions are only fair when anyone can check the runs.
@@ -188,7 +189,7 @@ export class ProfilesService {
     const [mine, theirs] = direction === 'followers' ? ['followingId', 'followerId'] : ['followerId', 'followingId'];
     return this.dataSource.query(
       `SELECT p."username", p."displayName", p."avatarUrl", p."bio",
-              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               EXISTS (SELECT 1 FROM "follows" v WHERE v."followerId" = $2 AND v."followingId" = f."${theirs}") "followedByMe",
               COALESCE(f."${theirs}" = $2, false) "isMe"
        FROM "follows" f JOIN "profiles" p ON p."userId" = f."${theirs}"
