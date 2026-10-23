@@ -104,6 +104,7 @@ function ReadyScreen() {
   }, []);
   const gpsError = recorder.gpsError;
   useEffect(() => { if (gpsError) toast({ tone: 'warn', title: 'No location yet', message: gpsError }); }, [gpsError]);
+  const placeName = usePlaceName(preview.position);
 
   if (recorder.phase === 'blocked') {
     return (
@@ -121,7 +122,6 @@ function ReadyScreen() {
   }
 
   const accuracy = preview.position?.accuracy ?? null;
-  const placeName = usePlaceName(preview.position);
   const strength = signalStrength(accuracy);
   const gpsLabel = preview.state === 'ready' ? (strength >= 3 ? 'GPS ready' : strength === 2 ? 'GPS fair' : 'GPS weak')
     : preview.state === 'locating' ? 'Finding you…' : preview.state === 'denied' ? 'Location blocked' : preview.state === 'unsupported' ? 'No GPS on this device' : 'Show my location';
