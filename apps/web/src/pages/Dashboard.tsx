@@ -13,7 +13,7 @@ import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Segm
 import { patch } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, ordinal, toMetres } from '../lib/format';
-import { setFlag, storageKeys, useStored } from '../lib/local';
+import { storageKeys, useStored } from '../lib/local';
 import { ActivityKind, computeMilestones, computeStreaks, countsForStreak, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
 import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
@@ -33,7 +33,6 @@ export function DashboardPage() {
   const activities = useActivities();
   const recorder = useRecorder();
   const now = useNow(60_000);
-  const [showVerify] = useStored<boolean>(storageKeys.verifyPrompt(user.id), false);
 
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const all = useMemo(() => activities.data ?? [], [activities.data]);
@@ -61,7 +60,7 @@ export function DashboardPage() {
         </Link>
       </header>
 
-      {showVerify && !user.emailVerified && <VerifyPrompt userId={user.id} email={user.email} />}
+      {!user.emailVerified && <VerifyPrompt email={user.email} />}
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} className="mb-6" />
 
       {/* Competition first: the race, your other races, the leaderboard, then your own training. */}
@@ -191,7 +190,7 @@ export function DashboardPage() {
   );
 }
 
-function VerifyPrompt({ userId, email }: { userId: string; email: string }) {
+function VerifyPrompt({ email }: { email: string }) {
   const devToken = getDevVerifyToken();
   const resend = useResendVerification();
   return (
@@ -209,13 +208,10 @@ function VerifyPrompt({ userId, email }: { userId: string; email: string }) {
           <button type="button" className="btn-secondary btn-sm" disabled={resend.isPending || resend.isSuccess} onClick={() => resend.mutate()}>
             {resend.isPending ? 'Sending…' : resend.isSuccess ? 'Sent' : 'Resend email'}
           </button>
-          <button type="button" className="btn-quiet btn-sm" onClick={() => setFlag(storageKeys.verifyPrompt(userId), false)}>
-            Dismiss
-          </button>
         </div>
       }
     >
-      We sent a link to {email}. You’ll need a verified email to enter paid competitions. Free competitions work without it.
+      Confirm that you own {email} using the verification link. You’ll need a verified email to enter paid competitions. Free competitions work without it.
       {resend.error && <span className="mt-1 block text-bad">{resend.error.message}</span>}
     </Notice>
   );
