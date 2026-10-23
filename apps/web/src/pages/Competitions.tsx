@@ -4,6 +4,9 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../components/Modal';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ShareCompetitionSheet } from '../components/ShareCompetition';
+import { CountriesField, EMPTY_PRIZES, PRIZE_KIND, PrizeEditor, prizeProblem, prizesPayload, PrizeTerms, type PrizeDraft } from '../components/ClubPrizes';
+import { Sheet, SheetRow } from '../components/Sheet';
+import { OpponentPicker, opponentLabel, type Opponent } from '../components/OpponentPicker';
 import { templateById } from '../lib/templates';
 import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
@@ -42,12 +45,13 @@ import {
   toMetres,
 } from '../lib/format';
 import { rememberTable } from '../lib/local';
+import { countryName } from '../lib/countries';
 import { draftFor, ScoringPicker, scoringPayload, type ScoringDraft } from '../components/ScoringPicker';
 import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/shared/competition-rules';
 import { activityLabel, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '../lib/scoring';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
 import { keys, useCreator, useDiscover, useFinalResult, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
-import type { ChallengeType, CheckoutResponse, CompetitionTable, StandingRow, Unit } from '../lib/types';
+import type { ChallengeType, CheckoutResponse, Club, CompetitionTable, StandingRow, Unit } from '../lib/types';
 
 export const COMPETE_NAV = [
   { to: '/competitions', label: 'Competitions' },
@@ -85,9 +89,11 @@ const ACTIVITY_CHIPS: Array<{ value: 'all' | ChallengeType; label: string }> = [
   { value: 'all', label: 'All' }, { value: 'RUN', label: 'Run' }, { value: 'WALK', label: 'Walk' }, { value: 'CYCLING', label: 'Ride' },
   { value: 'DISTANCE', label: 'Run + walk' }, { value: 'STEP', label: 'Steps' }, { value: 'TIMED', label: 'Timed' },
 ];
-const VIEW_CHIPS: Array<{ value: DiscoverView; label: string; signedIn?: boolean; guestOnly?: boolean }> = [
+/** How to browse. "Mine" covers what you host and what you archived, picked underneath. */
+type BrowseTab = 'for-you' | 'trending' | 'starting' | 'friends' | 'mine' | 'newest';
+const BROWSE: Array<{ value: BrowseTab; label: string; signedIn?: boolean; guestOnly?: boolean }> = [
   { value: 'for-you', label: 'For you', signedIn: true }, { value: 'trending', label: 'Trending' }, { value: 'starting', label: 'Upcoming' },
-  { value: 'friends', label: 'Friends', signedIn: true }, { value: 'created', label: 'Hosting', signedIn: true }, { value: 'archived', label: 'Archived', signedIn: true }, { value: 'newest', label: 'Newest', guestOnly: true },
+  { value: 'friends', label: 'Friends', signedIn: true }, { value: 'mine', label: 'Mine', signedIn: true }, { value: 'newest', label: 'Newest', guestOnly: true },
 ];
 const TYPE_CHIPS: Array<{ value: TypeFilter; label: string }> = [
   { value: 'all', label: 'Any entry' }, { value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Cash prize' }, { value: 'paid', label: 'Paid' },
@@ -118,7 +124,8 @@ export function CompetitionsPage() {
   const looksLikeCode = /^[0-9A-F]{8}$/i.test(term.trim());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const activeFilters = (activity !== 'all' ? 1 : 0) + (filter !== 'all' ? 1 : 0);
-  const views = VIEW_CHIPS.filter((option) => (user ? !option.guestOnly : !option.signedIn));
+  const tabs = BROWSE.filter((option) => (user ? !option.guestOnly : !option.signedIn));
+  const tab: BrowseTab = view === 'created' || view === 'archived' ? 'mine' : view;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -134,14 +141,12 @@ export function CompetitionsPage() {
       </header>
 
       {/* Always shown while Strava sync is unreliable for some runners: recording in Jump always counts. */}
-      {user && <Link to="/run" className="mb-4 flex items-center gap-3 rounded-xl border-[1.5px] border-ink bg-volt/60 px-3.5 py-3 transition-colors hover:bg-volt">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-track shadow-hard-sm" aria-hidden="true">
-          <PlayIcon size={16} className="translate-x-[1px]" />
+      {user && <Link to="/run" className="mb-4 flex items-center gap-2.5 rounded-lg border-[1.5px] border-ink bg-volt/60 py-2 pl-2 pr-3 transition-colors hover:bg-volt">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-[1.5px] border-ink bg-track" aria-hidden="true">
+          <PlayIcon size={12} className="translate-x-[1px]" />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[14px] font-bold leading-snug">Start every run from Jump</span>
-          <span className="block text-[12.5px] leading-snug text-ink-2">Strava sync is down for some runners. Tap the orange ▶ button in the middle each time you head out, so your run counts.</span>
-        </span>
+        <span className="min-w-0 flex-1 text-[13px] leading-snug"><b>Record your runs in Jump</b> while Strava connections are limited.</span>
+        <ArrowRightIcon size={14} className="shrink-0" />
       </Link>}
 
       <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
@@ -168,17 +173,18 @@ export function CompetitionsPage() {
         </button>
       </form>
 
-      {/* How to browse, as quiet text tabs; filters live in the sheet. */}
-      {/* Fits a phone; on narrower screens it scrolls, and the fade on the right shows there's more. */}
-      <div className="relative -mx-4 mt-4">
-        <div className="no-scrollbar flex gap-4 overflow-x-auto border-b border-line px-4" role="tablist" aria-label="Browse">
-          {views.map((option) => <button key={option.value} type="button" role="tab" aria-selected={view === option.value} onClick={(event) => { setView(option.value); event.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); }} className={cx('relative shrink-0 whitespace-nowrap pb-2.5 text-[14px] font-semibold transition-colors', view === option.value ? 'text-ink' : 'text-ink-3 hover:text-ink')}>
-            {option.label}
-            {view === option.value && <span className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-ink" aria-hidden="true" />}
-          </button>)}
-        </div>
-        <span className="pointer-events-none absolute bottom-px right-0 top-0 w-8 bg-gradient-to-l from-paper to-transparent" aria-hidden="true" />
+      {/* How to browse: one segmented control that always fits a phone; filters live in the sheet. */}
+      <div className="mt-4 grid rounded-xl bg-ink/[0.06] p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} role="tablist" aria-label="Browse">
+        {tabs.map((option) => <button key={option.value} type="button" role="tab" aria-selected={tab === option.value}
+          onClick={() => setView(option.value === 'mine' ? 'created' : option.value)}
+          className={cx('h-9 truncate rounded-lg px-1 text-[13px] font-semibold transition-colors sm:text-[14px]', tab === option.value ? 'bg-card text-ink shadow-[0_0_0_1.5px_#121212]' : 'text-ink-2 hover:text-ink')}>
+          {option.label}
+        </button>)}
       </div>
+      {tab === 'mine' && <div className="mt-2.5 flex gap-1.5" role="tablist" aria-label="Your competitions">
+        {([['created', 'Hosting'], ['archived', 'Archived']] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={view === value} onClick={() => setView(value)}
+          className={cx('h-8 rounded-full px-3.5 text-[13px] font-semibold transition-colors', view === value ? 'bg-ink text-paper' : 'bg-ink/[0.06] text-ink-2 hover:text-ink')}>{label}</button>)}
+      </div>}
 
       {activeFilters > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[12px]">
         {activity !== 'all' && <button type="button" onClick={() => setActivity('all')} className="inline-flex h-7 items-center gap-1 rounded-full bg-ink/[0.07] px-2.5 font-semibold">{ACTIVITY_CHIPS.find((chip) => chip.value === activity)?.label}<CloseIcon size={12} /></button>}
@@ -224,7 +230,7 @@ export function CompetitionsPage() {
   );
 }
 
-const DRAFT_STATUSES = ['PENDING_FUNDING', 'PENDING_APPROVAL'];
+const DRAFT_STATUSES = ['PENDING_FUNDING', 'PENDING_APPROVAL', 'DRAFT', 'SCHEDULED'];
 
 type DraftTable = { id: string; code: string; title: string; status: string; hosting: boolean; guaranteedPrizeKobo: number | null; createdAt: string };
 
@@ -249,6 +255,7 @@ function DraftsSheet({ drafts, onClose }: { drafts: DraftTable[]; onClose: () =>
     <ul className="divide-y divide-line">
       {drafts.map((draft) => {
         const review = draft.status === 'PENDING_APPROVAL';
+        const club = draft.status === 'DRAFT' || draft.status === 'SCHEDULED';
         return <li key={draft.id} className="py-3">
           {confirming === draft.id
             ? <div className="flex items-center gap-2">
@@ -260,17 +267,32 @@ function DraftsSheet({ drafts, onClose }: { drafts: DraftTable[]; onClose: () =>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold">{draft.title}</p>
                 <p className="mt-0.5 truncate text-[12px] text-ink-3">
-                  {review ? 'Waiting for Jump to review' : draft.guaranteedPrizeKobo ? `Fund the ${formatMoney(draft.guaranteedPrizeKobo).replace(/\.00$/, '')} prize to open entry` : 'Fund the prize to open entry'}
+                  {club ? (draft.status === 'DRAFT' ? 'Club draft · publish it when it’s ready' : 'Scheduled to open') : review ? 'Waiting for Jump to review' : draft.guaranteedPrizeKobo ? `Fund the ${formatMoney(draft.guaranteedPrizeKobo).replace(/\.00$/, '')} prize to open entry` : 'Fund the prize to open entry'}
                   {' · '}started {formatDate(draft.createdAt)}
                 </p>
               </div>
               <button type="button" onClick={() => setConfirming(draft.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-bad-wash hover:text-bad" aria-label={`Discard ${draft.title}`}><TrashIcon size={16} /></button>
-              <Link to="/competitions/$code" params={{ code: draft.code }} onClick={onClose} className="inline-flex h-9 shrink-0 items-center rounded-full bg-ink px-4 text-[13px] font-bold text-paper">{review ? 'View' : 'Fund'}</Link>
+              <Link to="/competitions/$code" params={{ code: draft.code }} onClick={onClose} className="inline-flex h-9 shrink-0 items-center rounded-full bg-ink px-4 text-[13px] font-bold text-paper">{review || club ? 'View' : 'Fund'}</Link>
             </div>}
         </li>;
       })}
     </ul>
   </Modal>;
+}
+
+/** "2 prizes · 4 winners · top finishers" for the prizes row. */
+function prizeSummary(draft: PrizeDraft) {
+  const named = draft.prizes.filter((prize) => prize.productName.trim());
+  if (!named.length) return 'Add what winners get.';
+  const winners = draft.prizes.reduce((sum, prize) => sum + (prize.quantity || 0), 0);
+  const first = named[0];
+  return `${first.productName.trim()} (${PRIZE_KIND[first.kind].label.toLowerCase()})${named.length > 1 ? ` + ${named.length - 1} more` : ''} · ${winners} ${winners === 1 ? 'winner' : 'winners'} · ${draft.selection === 'draw' ? 'random draw' : 'top finishers'}`;
+}
+
+function publishSummary(publish: 'now' | 'schedule' | 'draft', at: string | null, repeat: 'none' | 'weekly' | 'monthly', auto: boolean) {
+  const when = publish === 'now' ? 'Publish now' : publish === 'draft' ? 'Save as draft' : at ? `Opens ${formatDateTime(at)}` : 'Schedule';
+  const series = repeat === 'none' ? 'once' : `${repeat}${auto ? ', auto-publish' : ', confirm each edition'}`;
+  return `${when} · ${series}`;
 }
 
 const DURATIONS = [
@@ -290,7 +312,18 @@ export function NewCompetitionPage() {
   const { user } = useAuth();
   const unit = useUnit();
   const creator = useCreator();
-  const club = useQuery({ queryKey: keys.club(clubId ?? ''), queryFn: () => api<{ id: string; name: string; memberCount: number }>(`/clubs/${clubId}`), enabled: Boolean(clubId) });
+  const club = useQuery({ queryKey: keys.club(clubId ?? ''), queryFn: () => api<Club>(`/clubs/${clubId}`), enabled: Boolean(clubId) });
+  // A club manager hosting for the club: prizes, who can enter, when it opens, and repeating it.
+  const clubHost = Boolean(club.data && (club.data.myRole === 'owner' || club.data.myRole === 'admin'));
+  const [eligibleCountries, setEligibleCountries] = useState<string[]>([]);
+  const [prizesOn, setPrizesOn] = useState(false);
+  const [prizes, setPrizes] = useState<PrizeDraft>(EMPTY_PRIZES);
+  const [publish, setPublish] = useState<'now' | 'schedule' | 'draft'>('now');
+  const [publishAt, setPublishAt] = useState(() => toLocalInput(new Date(Date.now() + 86_400_000)));
+  const [repeat, setRepeat] = useState<'none' | 'weekly' | 'monthly'>('none');
+  const [autoPublish, setAutoPublish] = useState(true);
+  const [sheet, setSheet] = useState<'entry' | 'prizes' | 'publish' | 'opponent' | null>(null);
+  const [opponent, setOpponent] = useState<Opponent | null>(null);
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState(preset?.title ?? '');
   const [description, setDescription] = useState('');
@@ -323,7 +356,7 @@ export function NewCompetitionPage() {
 
   // Room for the whole club, with space for people who join later.
   useEffect(() => {
-    if (club.data && !capacity) setCapacity(String(Math.min(10000, Math.max(20, club.data.memberCount * 2))));
+    if (club.data && !capacity) setCapacity(String(Math.min(10000, Math.max(20, (club.data.memberCount ?? 0) * 2))));
   }, [club.data, capacity]);
 
   const startIso = fromLocalInput(startsAt);
@@ -335,11 +368,15 @@ export function NewCompetitionPage() {
   const entryFeeKobo = nairaInputToKobo(entryFee);
   const fundingStyle = fundingOption === 'MULTI_WINNERS' ? 'OPEN' : 'FIXED';
   const fundingDestination = fundingOption === 'FIXED_CHARITY' ? 'CHARITY' : 'WINNERS';
-  const draftOnCreate = mode === 'paid' || (mode === 'sponsored' && fundingStyle === 'FIXED');
+  const clubExtras = clubHost && mode === 'free';
+  const later = clubExtras && publish !== 'now';
+  const publishIso = later && publish === 'schedule' ? fromLocalInput(publishAt) : null;
+  const draftOnCreate = mode === 'paid' || (mode === 'sponsored' && fundingStyle === 'FIXED') || later;
   const guaranteedPrizeKobo = mode === 'paid' ? (capacityNumber ?? 0) * entryFeeKobo : mode === 'sponsored' && fundingStyle === 'FIXED' ? nairaInputToKobo(fixedPrize) : 0;
   const scoringFields = scoringPayload(scoring, unit, mode !== 'free');
-  const inviteEmails = emailText.split(/[\s,;]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
-  const invitePhones = phoneText.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
+  // Head-to-head invites its one opponent; other formats take lists.
+  const inviteEmails = headToHead ? (opponent?.kind === 'email' ? [opponent.value] : []) : emailText.split(/[\s,;]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const invitePhones = headToHead ? (opponent?.kind === 'phone' ? [opponent.value] : []) : phoneText.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
   const inviteSummary = [
     club.data && inviteClubMembers ? `Everyone in ${club.data.name}` : '',
     inviteEmails.length ? `${inviteEmails.length} ${inviteEmails.length === 1 ? 'email' : 'emails'}` : '',
@@ -362,7 +399,10 @@ export function NewCompetitionPage() {
     funding: mode === 'sponsored' && fundingStyle === 'FIXED' && (!Number.isSafeInteger(guaranteedPrizeKobo) || guaranteedPrizeKobo < 1_000_000 || guaranteedPrizeKobo > 1_000_000_000) ? 'Enter a fixed contribution from ₦10,000 to ₦10,000,000.' : mode === 'sponsored' && fundingDestination === 'CHARITY' && (fundingStyle !== 'FIXED' || charityName.trim().length < 2) ? 'Charity funding needs a fixed amount and charity name.' : undefined,
     prize: prizeError || (mode === 'paid' && guaranteedPrizeKobo < 100) ? 'Choose prize shares that total 100% and fit the maximum runner count.' : undefined,
     invites: !draftOnCreate && (inviteEmails.length > 50 || invitePhones.length > 50 || inviteEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || invitePhones.some((phone) => !/^\+[1-9]\d{7,14}$/.test(phone))) ? 'Use valid emails and international phone numbers, up to 50 of each.' : undefined,
-    club: clubId && !club.data ? 'This club could not be loaded.' : undefined,
+    club: clubId && !club.data ? 'This club could not be loaded.' : club.data?.suspended ? 'Jump has suspended this club, so it can’t host competitions.' : undefined,
+    prizes: clubExtras && prizesOn ? prizeProblem(prizes, capacityNumber) ?? undefined : undefined,
+    publishAt: later && publish === 'schedule' && (!publishIso || new Date(publishIso) <= new Date() || (scoringIso && new Date(publishIso) >= new Date(scoringIso))) ? 'Schedule it for a time in the future, before it ends.' : undefined,
+    series: clubExtras && repeat !== 'none' && endless ? 'A series needs an end date for each edition.' : undefined,
   };
   // The first thing stopping you, shown under the pinned Create button.
   const blocker = title.trim().length < 3 ? 'Give it a name of at least 3 characters.' : Object.values(errors).find(Boolean) ?? null;
@@ -382,12 +422,22 @@ export function NewCompetitionPage() {
         ...(hasPrize ? { prizeSplitBps } : {}),
         ...(mode === 'sponsored' ? { fundedFree: true, ...(fundingStyle === 'FIXED' ? { guaranteedPrizeKobo } : {}), fundingDestination, ...(fundingDestination === 'CHARITY' ? { charityName: charityName.trim() } : {}) } : {}),
         ...(mode === 'paid' ? { entryFeeKobo } : {}),
-        ...(club.data ? { communityId: club.data.id, ...(!draftOnCreate && inviteClubMembers ? { inviteClubMembers: true } : {}) } : {}),
+        ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true } : {}) } : {}),
+        ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
+        ...(clubExtras && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
+        ...(later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
+        ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish } } : {}),
         ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
         ...(mode !== 'paid' ? { format, visibility: format === 'open' ? 'public' : 'private' } : {}),
         ...(!draftOnCreate && invitePhones.length ? { invitePhones } : {}),
       }),
     async onSuccess(table) {
+      // A runner on Jump is invited by username once the competition exists.
+      if (headToHead && opponent?.kind === 'runner' && table.status === 'OPEN_FOR_ENTRY') {
+        await post(`/tables/${table.id}/invitations`, { username: opponent.username }).catch((error: unknown) => {
+          toast({ tone: 'warn', message: `Created, but we couldn’t invite @${opponent.username}: ${error instanceof Error ? error.message : 'try again from the competition page.'}` });
+        });
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: keys.tables }),
         queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] }),
@@ -460,6 +510,7 @@ export function NewCompetitionPage() {
             )}>
               <input type="radio" name="competition-mode" className="sr-only" checked={mode === value} onChange={() => {
                 setMode(value);
+                if (value !== 'free') setPrizesOn(false);
                 // Cash needs a way of winning that's hard to game; fall back to the activity's first one that is.
                 if (value !== 'free' && !METRICS[scoring.scoringMethod].prizes) {
                   const safe = ACTIVITY_RULES[challengeType].options.find((option) => METRICS[option.method].prizes);
@@ -647,16 +698,81 @@ export function NewCompetitionPage() {
                 <span className={cx('mt-1 block text-[12px] leading-snug', format === value ? 'text-paper/70' : 'text-ink-2')}>{FORMATS[value].summary}</span>
               </label>)}
             </div>
-            {format !== 'open' && <p className="text-[12px] text-ink-3">{format === 'head_to_head' ? 'Invite your opponent below, or by username once it’s created.' : 'Invite by email below, or by username from the competition page after you create it.'}</p>}
+            {format === 'invite' && <p className="text-[12px] text-ink-3">Invite by email below, or by username from the competition page after you create it.</p>}
           </section>}
 
-          {!draftOnCreate ? <section className="panel flex items-center justify-between gap-3 p-4">
+          {clubHost && <div className="space-y-2.5">
+            <p className="label">For {club.data!.name}</p>
+            <SheetRow title="Who can enter" onOpen={() => setSheet('entry')}
+              summary={eligibleCountries.length ? `${eligibleCountries.map(countryName).join(', ')} only` : 'Anyone, anywhere'} />
+            {clubExtras && <SheetRow title="Club prizes" tone={prizesOn ? 'on' : 'default'} onOpen={() => { if (!prizesOn) setPrizesOn(true); setSheet('prizes'); }} error={errors.prizes}
+              summary={prizesOn ? prizeSummary(prizes) : 'None yet. Add products, discounts or experiences.'} />}
+            {clubExtras && <SheetRow title="Publishing" onOpen={() => setSheet('publish')} error={errors.publishAt ?? errors.series}
+              summary={publishSummary(publish, publishIso ?? null, repeat, autoPublish)} />}
+          </div>}
+
+          <Sheet open={sheet === 'entry'} onOpenChange={(open) => setSheet(open ? 'entry' : null)} title="Who can enter"
+            description="Only people whose profile country is listed can join."
+            footer={<button type="button" className="btn-primary w-full" onClick={() => setSheet(null)}>Done</button>}>
+            {/* Room below for the country list to open into. */}
+            <div className="min-h-[340px]">
+              <CountriesField label="Countries" value={eligibleCountries} onChange={setEligibleCountries} emptyLabel="Anyone, anywhere" hint="Leave empty to open it to everyone." />
+            </div>
+          </Sheet>
+
+          {clubExtras && <Sheet open={sheet === 'prizes'} onOpenChange={(open) => setSheet(open ? 'prizes' : null)} title="Club prizes"
+            description={`From ${club.data!.name}. Winners get a claim form when it ends.`}
+            footer={<div className="flex gap-2">
+              <button type="button" className="btn-secondary flex-1" onClick={() => { setPrizesOn(false); setPrizes(EMPTY_PRIZES); setSheet(null); }}>Remove prizes</button>
+              <button type="button" className="btn-primary flex-1" onClick={() => { const problem = prizeProblem(prizes, capacityNumber); if (problem) toast({ tone: 'warn', message: problem }); else setSheet(null); }}>Done</button>
+            </div>}>
+            <PrizeEditor clubSlug={club.data!.slug} value={prizes} onChange={setPrizes} />
+            <p className="mt-5 text-[12px] leading-relaxed text-ink-3">By publishing, {club.data!.name} commits to these prizes and to delivering them to every listed country. Jump can remove competitions that break its rules.</p>
+          </Sheet>}
+
+          {clubExtras && <Sheet open={sheet === 'publish'} onOpenChange={(open) => setSheet(open ? 'publish' : null)} title="Publishing"
+            description="When it opens, and whether it repeats."
+            footer={<button type="button" className="btn-primary w-full" onClick={() => { if (errors.publishAt) toast({ tone: 'warn', message: errors.publishAt }); else setSheet(null); }}>Done</button>}>
+            <div className="space-y-2" role="radiogroup" aria-label="When it opens">
+              {([['now', 'Publish now', 'Opens as soon as you create it.'], ['schedule', 'Schedule', 'Opens at the time you pick.'], ['draft', 'Save as draft', 'Only your club’s managers see it.']] as const).map(([value, label, body]) =>
+                <label key={value} className={cx('flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3.5 transition-colors', publish === value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink-3')}>
+                  <input type="radio" className="sr-only" checked={publish === value} onChange={() => setPublish(value)} />
+                  <span className={cx('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2', publish === value ? 'border-paper' : 'border-ink/30')}>{publish === value && <span className="h-2.5 w-2.5 rounded-full bg-paper" />}</span>
+                  <span className="min-w-0"><span className="block text-[14px] font-bold">{label}</span><span className={cx('block text-[12.5px] leading-snug', publish === value ? 'text-paper/70' : 'text-ink-2')}>{body}</span></span>
+                </label>)}
+            </div>
+            {publish === 'schedule' && <div className="mt-4"><Field label="Opens" error={errors.publishAt}>
+              {(props) => <DateTimePicker {...props} value={publishAt} min={toLocalInput(new Date())} onChange={setPublishAt} />}
+            </Field></div>}
+            <div className="mt-6 border-t border-line pt-5">
+              <p className="label">Repeat</p>
+              <div className="grid grid-cols-3 rounded-xl bg-ink/[0.06] p-1">
+                {([['none', 'Once'], ['weekly', 'Weekly'], ['monthly', 'Monthly']] as const).map(([value, label]) =>
+                  <button key={value} type="button" aria-pressed={repeat === value} onClick={() => setRepeat(value)}
+                    className={cx('h-10 rounded-lg text-[14px] font-bold transition-colors', repeat === value ? 'bg-card text-ink shadow-[0_0_0_1.5px_#121212]' : 'text-ink-2')}>{label}</button>)}
+              </div>
+              {repeat !== 'none' && <>
+                <label className="mt-4 flex items-start gap-3 rounded-xl border border-line p-3.5 text-[14px]">
+                  <input type="checkbox" className="mt-1" checked={autoPublish} onChange={(event) => setAutoPublish(event.target.checked)} />
+                  <span><b>Publish each new edition automatically</b><span className="block text-[12.5px] text-ink-3">Otherwise each edition waits as a draft so you can change its theme and prizes first.</span></span>
+                </label>
+                <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">Each edition copies these rules and prizes, with its own dates, leaderboard and winners. It’s created a week before it starts, and you manage the series from the club dashboard.</p>
+                {errors.series && <p className="hint font-semibold text-bad">{errors.series}</p>}
+              </>}
+            </div>
+          </Sheet>}
+
+          {headToHead && !draftOnCreate ? <SheetRow title="Your opponent" onOpen={() => setSheet('opponent')} tone={opponent ? 'on' : 'default'}
+            summary={opponent ? opponentLabel(opponent) : 'Pick who you’re racing: a runner on Jump, an email or a phone number.'} />
+          : !draftOnCreate ? <section className="panel flex items-center justify-between gap-3 p-4">
             <div className="min-w-0">
               <p className="wide text-[13px] font-extrabold uppercase">Invite runners</p>
               <p className="truncate text-[12px] text-ink-2">{inviteSummary || 'Optional. Invite by email, phone or club.'}</p>
             </div>
             <button type="button" className="btn-secondary btn-sm shrink-0" onClick={() => setInvitesOpen(true)}>{inviteSummary ? 'Edit' : 'Add'}</button>
-          </section> : <Notice tone="neutral" title="Invite after launch">Save this draft first. You can invite runners after funding or approval opens entry.</Notice>}
+          </section> : later ? (club.data && <label className="panel flex items-center gap-2 p-4 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Enter everyone in {club.data.name} when it opens</label>)
+            : <Notice tone="neutral" title="Invite after launch">Save this draft first. You can invite runners after funding or approval opens entry.</Notice>}
+          <OpponentPicker open={sheet === 'opponent'} onOpenChange={(open) => setSheet(open ? 'opponent' : null)} value={opponent} onChange={setOpponent} />
           {invitesOpen && <Modal title="Invite runners" onClose={() => setInvitesOpen(false)}>
             <div className="space-y-4">
               {club.data && <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Enter everyone in {club.data.name}</label>}
@@ -674,9 +790,9 @@ export function NewCompetitionPage() {
           {/* Always in reach: pinned above the mobile tab bar, at the bottom of the window on desktop. */}
           <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 -mx-4 bg-paper px-4 pb-2.5 pt-3 shadow-[0_-16px_16px_-4px_#F2EFE8] md:bottom-0 md:mx-0 md:px-0">
             <button className="btn-primary min-h-12 w-full md:w-auto md:px-8" disabled={create.isPending || Boolean(blocker)}>
-              {create.isPending ? 'Saving…' : mode === 'paid' ? 'Submit paid draft' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Save funding draft' : 'Create competition'}
+              {create.isPending ? 'Saving…' : mode === 'paid' ? 'Submit paid draft' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Save funding draft' : later ? (publish === 'draft' ? 'Save draft' : 'Schedule it') : 'Create competition'}
             </button>
-            <p className="mt-1.5 truncate text-center text-[12px] text-ink-3 md:text-left">{blocker ?? (mode === 'paid' ? 'Jump reviews paid competitions before they open.' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Entry opens once your payment is confirmed.' : 'Opens as soon as you create it.')}</p>
+            <p className="mt-1.5 truncate text-center text-[12px] text-ink-3 md:text-left">{blocker ?? (mode === 'paid' ? 'Jump reviews paid competitions before they open.' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Entry opens once your payment is confirmed.' : later ? (publish === 'draft' ? 'Publish it from the club dashboard when it’s ready.' : `Opens ${publishIso ? formatDateTime(publishIso) : 'at the time you pick'}.`) : 'Opens as soon as you create it.')}</p>
           </div>
         </form>
 
@@ -768,6 +884,8 @@ export function CompetitionDetailPage() {
   const isFinal = Boolean(result.data);
   const shareUrl = `${window.location.origin}/competitions/${t.code}`;
   const isHost = user?.id === t.creatorId;
+  const manages = isHost || Boolean(t.canManage);
+  const unpublished = t.status === 'DRAFT' || t.status === 'SCHEDULED';
   const hostName = t.creator?.displayName ?? 'A Jump runner';
   const entrants = Math.max(standings.data?.length ?? 0, t.entrantCount ?? 0);
 
@@ -779,7 +897,7 @@ export function CompetitionDetailPage() {
 
       {search.created && (
         <Notice tone="ok" className="mb-6" title="Competition created">
-          {t.status === 'PENDING_APPROVAL' ? 'Your draft is waiting for Jump approval. ' : t.status === 'PENDING_FUNDING' ? 'Fund the prize to open entry. ' : 'Your competition is open. '}
+          {t.status === 'PENDING_APPROVAL' ? 'Your draft is waiting for Jump approval. ' : t.status === 'PENDING_FUNDING' ? 'Fund the prize to open entry. ' : t.status === 'DRAFT' ? 'Saved as a draft. Only your club’s managers can see it. ' : t.status === 'SCHEDULED' ? `It opens ${t.publishAt ? formatDateTime(t.publishAt) : 'soon'}. ` : 'Your competition is open. '}
           {t.status === 'PENDING_FUNDING' ? 'This draft is saved to your account. You can leave and return to fund it.' : 'Share the link so friends can join.'}
         </Notice>
       )}
@@ -787,6 +905,8 @@ export function CompetitionDetailPage() {
       {t.archivedAt && <Notice tone="neutral" className="mb-6" title="Archived">
         {isHost ? 'Off every list, including yours. Anyone with the link can still see it. Unarchive it below to bring it back.' : 'The host archived this competition. Its final board stays here.'}
       </Notice>}
+
+      {manages && unpublished && <DraftPanel table={t} />}
 
       {isHost && t.status === 'PENDING_FUNDING' && !search.created && <Notice tone="warn" className="mb-6" title="Funding draft">
         This competition is saved but not live. Only you can fund the fixed amount; entry opens after Jump verifies the Paystack payment.
@@ -811,12 +931,16 @@ export function CompetitionDetailPage() {
             </p>
           </div>
           {t.description && <p className="mt-4 max-w-xl whitespace-pre-line break-words text-[15px] leading-relaxed">{t.description}</p>}
+          {t.club && <Link to="/clubs/$id" params={{ id: t.club.slug }} search={{}} className="mt-4 inline-flex max-w-full items-center gap-2.5 rounded-full border-[1.5px] border-ink bg-card py-1.5 pl-1.5 pr-4 transition-shadow hover:shadow-hard-sm">
+            {t.club.logoUrl ? <img src={t.club.logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" /> : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: t.club.accentColor }}>{t.club.name.charAt(0)}</span>}
+            <span className="min-w-0 truncate text-[13px]"><b>{t.club.name}</b>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</span>
+          </Link>}
         </div>
 
         {/* The join box: sticky beside the story on desktop, straight after the intro on phones */}
         <aside className="space-y-4 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
-          <EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={entrants} faces={rows} now={now} />
-          {!['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED'].includes(t.status) && <ShareBox table={t} url={shareUrl} rows={standings.data ?? []} viewerId={user?.id} unit={unit} />}
+          {!unpublished && <EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={entrants} faces={rows} now={now} />}
+          {!['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED', 'DRAFT', 'SCHEDULED'].includes(t.status) && <ShareBox table={t} url={shareUrl} rows={standings.data ?? []} viewerId={user?.id} unit={unit} />}
         </aside>
 
         <div className="min-w-0 space-y-10 lg:col-start-1 lg:row-start-2">
@@ -849,17 +973,38 @@ export function CompetitionDetailPage() {
               </button>
             )}
           </section>
+          {t.productPrizes && <PrizeTerms terms={t.productPrizes} clubName={t.club?.name} />}
           {!me && !isHost && <HowItWorks table={t} unit={unit} />}
 
 
           <KeyDates table={t} now={now} />
-          {isHost && !['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED'].includes(t.status) && <HostTools table={t} now={now} />}
+          {manages && !['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED', 'DRAFT', 'SCHEDULED'].includes(t.status) && <HostTools table={t} now={now} />}
           <Rules table={t} unit={unit} />
           {isHost && t.status === 'OPEN_FOR_ENTRY' && <InvitationsPanel table={t} />}
         </div>
       </div>
     </div>
   );
+}
+
+/** A club competition that isn't public yet: open it now, or manage it from the club dashboard. */
+function DraftPanel({ table }: { table: CompetitionTable }) {
+  const queryClient = useQueryClient();
+  const publish = useMutation({
+    mutationFn: () => post(`/tables/${table.id}/publish`, {}),
+    async onSuccess() {
+      await Promise.all([queryClient.invalidateQueries({ queryKey: keys.table(table.code) }), queryClient.invalidateQueries({ queryKey: ['club'] })]);
+      toast({ tone: 'ok', message: 'Published. Your followers have been told.' });
+    },
+  });
+  return <Notice tone="warn" className="mb-6" title={table.status === 'SCHEDULED' ? `Scheduled to open ${table.publishAt ? formatDateTime(table.publishAt) : ''}` : 'Draft · not public yet'}
+    action={<div className="flex flex-wrap gap-2">
+      <button type="button" className="btn-primary btn-sm" disabled={publish.isPending} onClick={() => publish.mutate()}>{publish.isPending ? 'Publishing…' : 'Publish now'}</button>
+      {table.club && <Link to="/clubs/$id/dashboard" params={{ id: table.club.slug }} className="btn-secondary btn-sm">Edit in dashboard</Link>}
+    </div>}>
+    Only your club’s managers can see it. {table.status === 'SCHEDULED' ? 'It opens on its own at that time, and your followers are told.' : 'Change its theme, dates and prizes from the club dashboard, then publish it.'}
+    <ErrorNotice error={publish.error} />
+  </Notice>;
 }
 
 /** The poster at the top of an invite: the challenge's colour, its one big number and its mark. */
@@ -1086,6 +1231,7 @@ function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
   const items = [
     ...rulesLines(table, unit),
     ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance, and there are no cash prizes.'] : []),
+    ...(table.eligibleCountries?.length ? [`Open to people whose Jump profile country is ${table.eligibleCountries.map(countryName).join(', ')}.`] : []),
     ...(table.reminderTime ? [`Joined runners may receive a daily email reminder at ${table.reminderTime.slice(0, 5)} (${table.reminderTimeZone}). No reminder is sent after they record an activity that day.`] : []),
     ...(table.type === 'paid' && table.minimumEntrants > 1 ? [`Needs at least ${table.minimumEntrants} entrants to go ahead.`] : []),
     ...(table.type !== 'free' && table.fundingDestination !== 'CHARITY' ? [`Prizes go to the top ${table.prizeSplitBps?.length ?? 1} eligible ${table.prizeSplitBps?.length === 1 ? 'runner' : 'runners'}. If fewer finish, their listed shares are proportionally redistributed. A very small funded pool may pay fewer places.`] : []),

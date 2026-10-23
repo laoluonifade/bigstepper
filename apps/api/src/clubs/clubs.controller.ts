@@ -87,6 +87,18 @@ export class ClubsController {
     return this.clubsService.join(user.id, id, body.invite);
   }
 
+  @Post(':id/follow')
+  @UseGuards(JwtAuthGuard)
+  follow(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.clubsService.follow(user.id, id, true);
+  }
+
+  @Delete(':id/follow')
+  @UseGuards(JwtAuthGuard)
+  unfollow(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.clubsService.follow(user.id, id, false);
+  }
+
   @Post(':id/leave')
   @UseGuards(JwtAuthGuard)
   leave(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

@@ -201,15 +201,32 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () =
   return null;
 }
 
-export function Loading({ label = 'Loading' }: { label?: string }) {
+/**
+ * A page's data is loading: its outline. With a label (verifying email, connecting Strava), the label
+ * is shown instead, because what's happening matters more than the layout.
+ */
+export function Loading({ label }: { label?: string }) {
+  if (label) {
+    return (
+      <div className="flex items-center gap-3 py-10 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink-2" role="status">
+        <span className="flex gap-1" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="h-3 w-1.5 animate-blink bg-ink" style={{ animationDelay: `${i * 160}ms` }} />
+          ))}
+        </span>
+        {label}
+      </div>
+    );
+  }
   return (
-    <div className="flex items-center gap-3 py-10 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink-2" role="status">
-      <span className="flex gap-1" aria-hidden="true">
-        {[0, 1, 2].map((i) => (
-          <span key={i} className="h-3 w-1.5 animate-blink bg-ink" style={{ animationDelay: `${i * 160}ms` }} />
-        ))}
-      </span>
-      {label}
+    <div className="animate-[fade-in_200ms_ease-out_both]" role="status" aria-live="polite">
+      <span className="sr-only">Loading</span>
+      <Skeleton className="h-8 w-3/5 max-w-sm" />
+      <Skeleton className="mt-5 h-40 rounded-2xl sm:h-48" />
+      <div className="mt-5 space-y-2.5">
+        <Skeleton className="h-14 rounded-xl" />
+        <Skeleton className="h-14 rounded-xl" />
+      </div>
     </div>
   );
 }

@@ -63,19 +63,19 @@ export class CloudinaryService implements OnModuleInit {
     return Boolean(cloud) && url.startsWith(`https://res.cloudinary.com/${cloud}/video/upload/`) && url.includes(`/jump/voice/${userId}/`) && url.endsWith('.mp3');
   }
 
-  /** Only URLs this service produced for the runner's own posts can be attached to a post. */
-  /** A sponsor's logo or a prize photo, up to 1200px, kept under the sponsor's folder. */
-  async uploadSponsorImage(sponsorId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
-    const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/sponsors/${sponsorId}/${randomUUID()}` }, file);
+  /** A prize photo for a club's competition, up to 1200px, kept under the club's folder. */
+  async uploadClubPrizeImage(clubId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
+    const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/clubs/${clubId}/prizes/${randomUUID()}` }, file);
     return result.secure_url.replace('/image/upload/', `/image/upload/${POST_IMAGE_TRANSFORM}/`);
   }
 
-  /** Only images this service made for that sponsor can go on its prizes. */
-  isOwnSponsorImage(sponsorId: string, url: string) {
+  /** Only photos uploaded for that club can go on its prizes. */
+  isOwnClubPrizeImage(clubId: string, url: string) {
     const cloud = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
-    return Boolean(cloud) && url.startsWith(`https://res.cloudinary.com/${cloud}/image/upload/${POST_IMAGE_TRANSFORM}/`) && url.includes(`/jump/sponsors/${sponsorId}/`);
+    return Boolean(cloud) && url.startsWith(`https://res.cloudinary.com/${cloud}/image/upload/${POST_IMAGE_TRANSFORM}/`) && url.includes(`/jump/clubs/${clubId}/prizes/`);
   }
 
+  /** Only URLs this service produced for the runner's own posts can be attached to a post. */
   isOwnPostImage(userId: string, url: string) {
     const cloud = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
     return Boolean(cloud) && url.startsWith(`https://res.cloudinary.com/${cloud}/image/upload/${POST_IMAGE_TRANSFORM}/`) && url.includes(`/jump/posts/${userId}/`);

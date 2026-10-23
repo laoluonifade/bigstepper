@@ -7,6 +7,8 @@ import { creditActivities } from './competition-credits';
  * people joined the club, never past the competition's capacity. Paid ones only invite (members choose
  * whether to pay); see inviteClubToPaid.
  *
+ * Members outside a challenge's eligible countries aren't entered.
+ *
  * Returns who was enrolled where, after crediting activities they'd already recorded in the window.
  */
 export async function enrolClubMembers(manager: EntityManager, scope: { tableId: string } | { clubId: string; userId: string }) {
@@ -15,7 +17,7 @@ export async function enrolClubMembers(manager: EntityManager, scope: { tableId:
     : ['t."communityId" = $1 AND m."userId" = $2', [scope.clubId, scope.userId]];
   const enrolled = await manager.query(
     `WITH open AS (
-       SELECT t."id", t."code", t."title", t."communityId",
+       SELECT t."id", t."code", t."title", t."communityId", t."eligibleCountries",
               COALESCE(t."capacity", 2147483647) - (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id") AS "room"
        FROM "competition_tables" t
        JOIN "club_memberships" m ON m."clubId" = t."communityId"
@@ -30,7 +32,9 @@ export async function enrolClubMembers(manager: EntityManager, scope: { tableId:
               row_number() OVER (PARTITION BY o."id" ORDER BY m."joinedAt", m."userId") AS "place"
        FROM open o
        JOIN "club_memberships" m ON m."clubId" = o."communityId"
+       LEFT JOIN "profiles" p ON p."userId" = m."userId"
        WHERE ${'userId' in scope ? 'm."userId" = $2' : 'true'}
+         AND (jsonb_array_length(o."eligibleCountries") = 0 OR COALESCE(o."eligibleCountries" ? p."countryCode", false))
          AND NOT EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = o."id" AND r."userId" = m."userId")
      )
      INSERT INTO "table_registrations" ("tableId", "userId")

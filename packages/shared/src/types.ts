@@ -193,7 +193,109 @@ export interface CompetitionTable {
   entrantCount?: number;
   /** Set when the host archived it: off every list, still at its link. */
   archivedAt?: string | null;
+  /** Only people whose profile country is listed can join (empty: anyone). */
+  eligibleCountries?: string[];
+  /** DRAFT and SCHEDULED challenges open later; SCHEDULED ones at this time. */
+  publishAt?: string | null;
+  seriesId?: string | null;
+  edition?: number | null;
+  prizeSelection?: 'top' | 'draw';
+  /** Detail page only: the club's prizes and terms, when it has them. */
+  productPrizes?: ClubPrizeTerms | null;
+  /** Detail page only: the hosting club. */
+  club?: { name: string; slug: string; logoUrl: string | null; accentColor: string; verified: boolean; followerCount: number; seriesTitle: string | null; seriesCadence: 'weekly' | 'monthly' | null } | null;
+  /** Detail page only: the viewer is the host or one of the club's managers. */
+  canManage?: boolean;
+  /** Club page lists only. */
+  hasPrizes?: boolean;
+  topPrize?: string | null;
+  podium?: Array<{ rank: number; displayName: string; username: string | null; avatarUrl: string | null }> | null;
   createdAt: string;
+}
+
+export type PrizeKind = 'product' | 'discount' | 'experience';
+
+/** One prize tier: `quantity` winners each get it, in finishing (or draw) order. */
+export interface ClubPrize {
+  position: number;
+  kind: PrizeKind;
+  productName: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  quantity: number;
+  estimatedValue?: number | null;
+  currency?: string;
+  /** Shown only to a winner once they've claimed (a code, where to collect). Set when creating. */
+  redeemInstructions?: string | null;
+}
+
+export interface ClubPrizeTerms {
+  prizes: ClubPrize[];
+  winners: Array<{ position: number; displayName: string; username: string | null; productName: string }>;
+  selection: 'top' | 'draw';
+  deliveryCountries: string[];
+  fulfilment: 'club' | 'jump';
+  shipping: 'club' | 'jump' | 'other';
+  shippingNote: string | null;
+  eligibilityNote: string | null;
+  claimDays: number;
+}
+
+export type AwardStatus = 'AWAITING_DETAILS' | 'DETAILS_SUBMITTED' | 'READY_FOR_DISPATCH' | 'SHIPPED' | 'DELIVERED' | 'FORFEITED' | 'ISSUE';
+
+/** A prize you won, from GET /prizes/mine. */
+export interface MyPrize {
+  id: string;
+  position: number;
+  status: AwardStatus;
+  detailsDueAt: string;
+  kind: PrizeKind;
+  productName: string;
+  description: string | null;
+  imageUrl: string | null;
+  redeemInstructions: string | null;
+  fullName: string | null; phone: string | null; address: string | null; city: string | null; region: string | null; country: string | null; deliveryNotes: string | null;
+  trackingNote: string | null;
+  forfeitReason: string | null;
+  submittedAt: string | null; shippedAt: string | null; deliveredAt: string | null; createdAt: string;
+  code: string; title: string;
+  deliveryCountries: string[];
+  shipping: 'club' | 'jump' | 'other' | null;
+  shippingNote: string | null;
+  fulfilment: 'club' | 'jump';
+  clubName: string; clubSlug: string; clubLogoUrl: string | null;
+}
+
+/** A winner's claim as the club sees it on its dashboard: only what the prize needs, until delivered. */
+export interface ClubClaim {
+  id: string;
+  status: AwardStatus;
+  position: number;
+  detailsDueAt: string;
+  submittedAt: string | null; shippedAt: string | null; deliveredAt: string | null;
+  trackingNote: string | null; issueNote: string | null; createdAt: string;
+  productName: string; kind: PrizeKind; code: string; title: string; fulfilment: 'club' | 'jump';
+  winnerName: string; winnerUsername: string | null;
+  claim: { fullName: string; phone?: string | null; address?: string | null; city?: string | null; region?: string | null; country?: string | null; deliveryNotes?: string | null } | null;
+}
+
+export interface ClubSeries {
+  id: string; title: string; cadence: 'weekly' | 'monthly'; autoPublish: boolean; leadDays: number;
+  nextStartsAt: string; lastEdition: number; active: boolean; createdAt: string;
+}
+
+export interface ClubDashboard {
+  club: { slug: string; name: string; suspendedAt: string | null; suspendedReason: string | null; plan: 'free' | 'pro'; label: string; liveChallenges: number; activeSeries: number; promotion: boolean; advancedAnalytics: boolean };
+  totals: { followers: number; members: number; newFollowers30d: number; participants: number; repeatParticipants: number; entries: number; completions: number; challenges: number };
+  challenges: Array<{
+    id: string; code: string; title: string; status: string; type: string; challengeType: ChallengeType; publishAt: string | null; startsAt: string | null; scoringClosesAt: string | null;
+    capacity: number | null; seriesId: string | null; edition: number | null; hasPrizes: boolean; prizesFinalizedAt: string | null; archivedAt: string | null; promotedUntil: string | null;
+    phase: 'draft' | 'scheduled' | 'upcoming' | 'live' | 'finished'; entrants: number; completed: number;
+  }>;
+  winners: Array<{ id: string; code: string; title: string; scoringClosesAt: string; podium: Array<{ rank: number; displayName: string; username: string | null }> | null }>;
+  series: ClubSeries[];
+  monthly: Array<{ month: string; challenges: number; entries: number; participants: number; completions: number; newFollowers: number }>;
+  claims: ClubClaim[];
 }
 
 export interface StandingRow {
@@ -342,7 +444,16 @@ export interface Club {
   /** open: anyone can join from the page. invite: only with the invite link. */
   privacy?: 'open' | 'invite';
   memberCount?: number;
+  followerCount?: number;
+  /** Whether the viewer follows the club (members follow automatically). */
+  following?: boolean;
   liveCompetitions?: number;
+  upcomingCompetitions?: number;
+  /** Jump suspended the club: it can't run challenges. Managers also see why. */
+  suspended?: boolean;
+  suspendedReason?: string | null;
+  /** Managers only: what the club's plan includes. */
+  plan?: { plan: 'free' | 'pro'; label: string; liveChallenges: number; activeSeries: number; promotion: boolean; advancedAnalytics: boolean };
   faces?: Array<{ displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }>;
   owner?: { displayName: string; username: string | null; verified?: boolean } | null;
   /** Blue tick from a Jump admin: a badge only, unverified clubs work the same. */

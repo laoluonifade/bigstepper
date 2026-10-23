@@ -24,13 +24,13 @@ const RULES: Record<string, string> = {
   REPEATED_PAIR: 'Same people, again and again',
   SAME_WINNER: 'Keeps beating the same person',
   WIN_ROTATION: 'Wins rotated between them',
-  FAST_CHALLENGE: 'Unusually short challenge',
+  FAST_CHALLENGE: 'Unusually short competition',
   STAKE_SPIKE: 'Sudden jump in stakes',
   PAYOUT_SPIKE: 'Sudden jump in payouts',
   SHARED_DEVICE: 'Shares a device',
   SHARED_BANK_ACCOUNT: 'Shares a bank account',
   SHARED_BVN: 'BVN used by another account',
-  SHARED_IP: 'Same IP in a paid challenge',
+  SHARED_IP: 'Same IP in a paid competition',
   NO_SHOW_ENTRIES: 'Paid in, never ran',
   DEPOSIT_CYCLE: 'Paid in, then straight out',
   REPEAT_VIOLATIONS: 'Repeat violations',
@@ -382,10 +382,10 @@ interface Settings {
 type NumberKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
 
 const GROUPS: Array<[string, Array<[NumberKey, string, 'naira' | 'count']>]> = [
-  ['Challenge limits', [
-    ['maxPaidChallengesPerDay', 'Paid challenges a person can create a day', 'count'],
+  ['Competition limits', [
+    ['maxPaidChallengesPerDay', 'Paid competitions a person can create a day', 'count'],
     ['maxEntryFeeKobo', 'Highest entry fee (stake per participant)', 'naira'],
-    ['maxPotKobo', 'Highest prize pot per challenge', 'naira'],
+    ['maxPotKobo', 'Highest prize pot per competition', 'naira'],
     ['maxWalletFundingPerDayKobo', 'Wallet funding per person a day', 'naira'],
   ]],
   ['Payout review', [
@@ -399,10 +399,10 @@ const GROUPS: Array<[string, Array<[NumberKey, string, 'naira' | 'count']>]> = [
   ]],
   ['Monitoring rules', [
     ['windowDays', 'Look back over (days)', 'count'],
-    ['pairRepeatCount', 'Shared paid challenges before a pair is flagged', 'count'],
+    ['pairRepeatCount', 'Shared paid competitions before a pair is flagged', 'count'],
     ['sameWinnerCount', 'Wins over the same person before flagging', 'count'],
-    ['rotationSharedCount', 'Shared challenges before checking win rotation', 'count'],
-    ['fastChallengeMinutes', 'Flag paid challenges shorter than (minutes)', 'count'],
+    ['rotationSharedCount', 'Shared competitions before checking win rotation', 'count'],
+    ['fastChallengeMinutes', 'Flag paid competitions shorter than (minutes)', 'count'],
     ['spikeMultiplier', 'Spike: this week vs weekly average (×)', 'count'],
     ['spikeMinKobo', 'Ignore spikes below', 'naira'],
     ['noShowEntries', 'Paid entries with no activity before flagging', 'count'],
@@ -430,7 +430,7 @@ function Settings() {
     <Notice tone="info" title="Starting values">These defaults suit a young platform. Confirm them with your lawyer against Nigerian AML rules and Paystack’s policies.</Notice>
     <label className="flex items-start gap-3 rounded-md border-[1.5px] border-ink bg-card p-4">
       <input type="checkbox" className="mt-1" checked={draft.kycRequired} onChange={(event) => set('kycRequired', event.target.checked)} />
-      <span><b className="block text-[14px]">Require KYC Level 2</b><span className="text-[13px] text-ink-2">BVN and an own-name bank account before paid challenges, hosting, creator accounts and payouts. Turning this off lets unverified people move money.</span></span>
+      <span><b className="block text-[14px]">Require KYC Level 2</b><span className="text-[13px] text-ink-2">BVN and an own-name bank account before paid competitions, hosting, creator accounts and payouts. Turning this off lets unverified people move money.</span></span>
     </label>
     <label className="flex items-start gap-3 rounded-md border border-line bg-card p-4">
       <input type="checkbox" className="mt-1" checked={draft.autoHoldHighRisk} onChange={(event) => set('autoHoldHighRisk', event.target.checked)} />
@@ -463,7 +463,7 @@ function Settings() {
         </div>)}
         <button type="button" className="btn-quiet btn-sm" onClick={() => set('participantTiers', [...draft.participantTiers, { potKobo: 0, minEntrants: 2 }])}>Add tier</button>
       </div>
-      <p className="mt-2 text-[12px] text-ink-3">A challenge can’t start or pay out with fewer entrants than its pot needs.</p>
+      <p className="mt-2 text-[12px] text-ink-3">A competition can’t start or pay out with fewer entrants than its pot needs.</p>
     </fieldset>
     {save.error && <ErrorNotice error={save.error} />}
     {save.isSuccess && !changed && <Notice tone="ok">Saved. The change is in the audit log.</Notice>}

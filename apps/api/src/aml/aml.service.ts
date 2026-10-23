@@ -135,7 +135,7 @@ export class AmlService {
         reason: 'Tried to verify with a BVN that is already linked to another Jump account',
         fingerprint: `SHARED_BVN:${bvnHash.slice(0, 24)}:${userId}`,
       });
-      throw new ConflictException('This BVN is already linked to another Jump account. Each person can have one account for paid challenges. Contact support if this is a mistake.');
+      throw new ConflictException('This BVN is already linked to another Jump account. Each person can have one account for paid competitions. Contact support if this is a mistake.');
     }
     const [accountOwner] = await this.dataSource.query(
       `SELECT "userId" FROM "kyc_verifications" WHERE "accountHash" = $1 AND "userId" <> $2 AND "status" IN ('VERIFIED','PENDING')
@@ -238,7 +238,7 @@ export class AmlService {
         await this.audit(manager, null, 'KYC_VERIFIED', 'user', userId, { accountLast4: verified.accountLast4, payoutAccountChanged: Boolean(changed) });
         await this.notify(manager, userId, 'KYC_VERIFIED', 'You’re verified',
           changed ? `Payouts now go to ${verified.accountName} (••${verified.accountLast4}). As your payout account changed, payouts pause for 24 hours.`
-            : `Payouts go to ${verified.accountName} (••${verified.accountLast4}). You can now join paid challenges and request payouts.`);
+            : `Payouts go to ${verified.accountName} (••${verified.accountLast4}). You can now join paid competitions and request payouts.`);
       });
     } catch (error) {
       // Another account verified the same BVN or account first.
@@ -256,7 +256,7 @@ export class AmlService {
   /** Unverified people stay on free challenges. */
   async assertVerified(userId: string, manager: EntityManager = this.dataSource.manager) {
     if (!(await this.isVerified(userId, manager))) {
-      throw new ForbiddenException({ statusCode: 403, code: 'KYC_REQUIRED', message: 'Verify your identity to use paid challenges and payouts. It takes a couple of minutes in Wallet.' });
+      throw new ForbiddenException({ statusCode: 403, code: 'KYC_REQUIRED', message: 'Verify your identity to use paid competitions and payouts. It takes a couple of minutes in Wallet.' });
     }
   }
 
@@ -270,7 +270,7 @@ export class AmlService {
     const [today] = await this.dataSource.query(
       `SELECT count(*)::integer count FROM "competition_tables" WHERE "creatorId"=$1 AND "type"='paid' AND "createdAt" >= now() - interval '24 hours'`, [userId],
     ) as Array<{ count: number }>;
-    if (today.count >= settings.maxPaidChallengesPerDay) throw new ConflictException(`You can create up to ${settings.maxPaidChallengesPerDay} paid challenges a day. Try again tomorrow.`);
+    if (today.count >= settings.maxPaidChallengesPerDay) throw new ConflictException(`You can create up to ${settings.maxPaidChallengesPerDay} paid competitions a day. Try again tomorrow.`);
     const required = minEntrantsFor(settings, input.potKobo);
     if (required > input.capacity) throw new BadRequestException(`A ${naira(input.potKobo)} prize pot needs room for at least ${required} entrants`);
     return Math.max(input.minimumEntrants ?? 2, required);

@@ -26,7 +26,7 @@ import { FeedModule } from './feed/feed.module';
 import { StravaModule } from './strava/strava.module';
 import { GeoModule } from './geo/geo.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
-import { SponsorsModule } from './sponsors/sponsors.module';
+import { PrizesModule } from './prizes/prizes.module';
 import { AmlModule } from './aml/aml.module';
 
 @Module({
@@ -67,7 +67,7 @@ import { AmlModule } from './aml/aml.module';
     StravaModule,
     GeoModule,
     LeaderboardModule,
-    SponsorsModule,
+    PrizesModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

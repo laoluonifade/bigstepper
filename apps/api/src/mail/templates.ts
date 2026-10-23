@@ -95,7 +95,7 @@ export function prizeReminderEmail(to: { address: string; name?: string }, prize
 export function prizeShippedEmail(to: { address: string; name?: string }, prize: string, status: 'SHIPPED' | 'DELIVERED', note: string | null, url: string): MailMessage {
   const intro = status === 'SHIPPED'
     ? `Your ${prize} is on its way.${note ? ` ${note}` : ''}`
-    : `Your ${prize} was marked delivered. Enjoy it, and tag the sponsor when you post.`;
+    : `Your ${prize} was marked delivered. Enjoy it, and tag the club when you post.`;
   return {
     to,
     subject: status === 'SHIPPED' ? `Your ${prize} has shipped` : `Your ${prize} was delivered`,

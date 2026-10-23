@@ -74,7 +74,7 @@ export function KycPanel() {
     {status.status === 'NONE' && !changing && <div className="rounded-md border border-line bg-card p-4">
       <p className="text-[15px] font-bold">Verify your identity</p>
       <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
-        Needed for paid challenges, hosting and payouts; free challenges never need it. Prize money only goes to a bank account in your own name.
+        Needed for paid competitions, hosting and payouts; free competitions never need it. Prize money only goes to a bank account in your own name.
       </p>
     </div>}
     <KycForm banks={banks.data ?? []} banksLoading={banks.isLoading} initial={status} onCancel={changing ? () => setChanging(false) : undefined} onDone={() => setChanging(false)} />

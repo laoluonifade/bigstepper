@@ -2,8 +2,17 @@ import { ArrayMaxSize, IsBoolean, ArrayMinSize, IsArray, IsDateString, IsEmail, 
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../challenge-types';
 import { Type } from 'class-transformer';
 import { ValidateNested } from 'class-validator';
-import { ProductPrizesDto } from '../../sponsors/dto/sponsor.dto';
+import { ClubPrizesDto } from '../../prizes/dto/prizes.dto';
 import { ScoringFieldsDto } from './scoring-fields.dto';
+
+export class SeriesInputDto {
+  @IsIn(['weekly', 'monthly'])
+  cadence: 'weekly' | 'monthly';
+
+  /** Open each new edition on its own, or save it as a draft for a manager to confirm. */
+  @IsBoolean()
+  autoPublish: boolean;
+}
 
 export class CreateTableDto extends ScoringFieldsDto {
   @IsString()
@@ -51,9 +60,24 @@ export class CreateTableDto extends ScoringFieldsDto {
   @IsOptional() @IsIn([true])
   fundedFree?: true;
 
-  /** Products from a sponsor as the prizes, instead of cash. */
-  @IsOptional() @ValidateNested() @Type(() => ProductPrizesDto)
-  productPrizes?: ProductPrizesDto;
+  /** Prizes the hosting club puts up (products, discounts, experiences), instead of cash. Club challenges only. */
+  @IsOptional() @ValidateNested() @Type(() => ClubPrizesDto)
+  clubPrizes?: ClubPrizesDto;
+
+  /** Only people from these countries can join (empty or missing: anyone). */
+  @IsOptional() @IsArray() @ArrayMaxSize(60) @Matches(/^[A-Z]{2}$/, { each: true })
+  eligibleCountries?: string[];
+
+  /** Club challenges: open now (the default), open at publishAt, or keep as a draft. */
+  @IsOptional() @IsIn(['now', 'schedule', 'draft'])
+  publish?: 'now' | 'schedule' | 'draft';
+
+  @IsOptional() @IsDateString()
+  publishAt?: string;
+
+  /** Club challenges: repeat it every week or month as a series. */
+  @IsOptional() @ValidateNested() @Type(() => SeriesInputDto)
+  series?: SeriesInputDto;
 
   @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsInt({ each: true }) @Min(1, { each: true })
   prizeSplitBps?: number[];

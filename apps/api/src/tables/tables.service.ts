@@ -10,7 +10,8 @@ import { CreateTableDto } from './dto/create-table.dto';
 import { TableRegistration } from './table-registration.entity';
 import { ACTIVITY_RULES, METRICS, ScoringMethod } from './competition-rules';
 import { scoringColumns } from './scoring-columns';
-import { SponsorsService } from '../sponsors/sponsors.service';
+import { CloudinaryService } from '../profiles/cloudinary.service';
+import { announceToFollowers, assertClubCanHost, assertCountryEligible, canManageTable, checkClubPrizes, nextStart, prizeColumns, savePrizes, templateOf, UNPUBLISHED } from './club-challenges';
 import { RANK_ORDER } from './scoring-engine';
 import { CreateCreatorPaidChallengeDto } from '../admin/paid-table.dto';
 import { allocatePrizes, assertPrizeSplit } from './prize-split';
@@ -33,7 +34,7 @@ export class TablesService {
     private readonly dataSource: DataSource,
     private readonly mail: MailService,
     private readonly config: ConfigService,
-    private readonly sponsors: SponsorsService,
+    private readonly cloudinary: CloudinaryService,
     private readonly aml: AmlService,
   ) {}
 
@@ -93,7 +94,9 @@ export class TablesService {
     const mineLive = `((t."creatorId" = ${me} OR ${joinedByMe}) AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
                        AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now()))`;
     const discoverable = `(t."status" = 'OPEN_FOR_ENTRY' AND t."visibility" = 'public' AND (t."entryClosesAt" IS NULL OR t."entryClosesAt" > now()))`;
-    const hosted = `(t."creatorId" = ${me} AND t."status" NOT IN ('CANCELLED','PENDING_FUNDING','PENDING_APPROVAL'))`;
+    const hosted = `(t."creatorId" = ${me} AND t."status" NOT IN ('CANCELLED','PENDING_FUNDING','PENDING_APPROVAL','DRAFT','SCHEDULED'))`;
+    // Premium placement: promoted challenges lead the public lists while their promotion runs.
+    const promoted = `(CASE WHEN t."promotedUntil" > now() THEN 0 ELSE 1 END), `;
     const where = [
       view === 'for-you' ? `((${discoverable} AND NOT ${joinedByMe}) OR ${mineLive})` : view === 'created' || view === 'archived' ? hosted : discoverable,
       // Archived competitions only show in the host's Archived list; their link still works.
@@ -103,12 +106,12 @@ export class TablesService {
       ...(view === 'friends' ? [friendsInvolved] : []),
     ].join(' AND ');
     const order = view === 'archived' ? 't."archivedAt" DESC' : view === 'created' ? `(CASE WHEN ${mineLive} THEN 0 ELSE 1 END), t."createdAt" DESC`
-      : view === 'starting' ? 't."startsAt" ASC'
-      : view === 'newest' ? 't."createdAt" DESC'
+      : view === 'starting' ? `${promoted}t."startsAt" ASC`
+      : view === 'newest' ? `${promoted}t."createdAt" DESC`
       : view === 'for-you' ? `(CASE WHEN ${mineLive} THEN 1 ELSE 0 END) DESC, (CASE WHEN ${mineLive} THEN t."scoringClosesAt" END) ASC NULLS LAST,
                               ((CASE WHEN ${fits} THEN 3 ELSE 0 END) + (CASE WHEN ${friendsInvolved} THEN 2 ELSE 0 END)
                               + (CASE WHEN t."type" <> 'paid' THEN 1 ELSE 0 END) + ln(1 + ${joinedCount})) DESC, t."createdAt" DESC`
-      : `${joinedCount} DESC, t."createdAt" DESC`;
+      : `${promoted}${joinedCount} DESC, t."createdAt" DESC`;
     const ranked = (await this.dataSource.query(
       `SELECT t."id", ${joinedCount}::integer AS n
        FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId" = t."id"
@@ -274,7 +277,16 @@ export class TablesService {
     // Head-to-head is two people; invite-only is a private board.
     const format = input.format ?? (input.visibility === 'private' ? 'invite' : 'open');
     if (format === 'head_to_head' && input.capacity !== 2) throw new BadRequestException('Head-to-head is for exactly two people');
-    await this.assertCommunityManager(creatorId, input.communityId);
+    if (format === 'head_to_head' && (input.inviteClubMembers || new Set([...(input.inviteEmails ?? []).map((email) => email.trim().toLowerCase()), ...(input.invitePhones ?? [])]).size > 1)) {
+      throw new BadRequestException('Head-to-head is you and one opponent. Invite one person.');
+    }
+    const publish = input.publish ?? 'now';
+    if ((input.clubPrizes || publish !== 'now' || input.series) && !input.communityId) {
+      throw new BadRequestException('Prizes, scheduling, drafts and series are for club competitions. Host it from your club’s page.');
+    }
+    if ((publish !== 'now' || input.series) && sponsored) throw new BadRequestException('Cash-prize competitions open once they’re funded, so they can’t be drafted, scheduled or repeated');
+    // A club challenge: a manager of a club in good standing, within the club's plan (drafts don't count).
+    if (input.communityId) await assertClubCanHost(this.dataSource.manager, input.communityId, creatorId, { adding: publish !== 'draft' });
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
     if (input.inviteClubMembers && input.communityId) await this.assertClubFits(input.communityId, input.format === 'head_to_head' ? 2 : input.capacity);
     const prizeSplitBps = this.prizeSplit(input.prizeSplitBps, input.capacity);
@@ -289,7 +301,13 @@ export class TablesService {
       this.assertAwardAmounts(calculatePrizeBreakdown(input.guaranteedPrizeKobo, 1500, 0).winnerAmountKobo, prizeSplitBps);
     }
     if (input.openEnded && sponsored) throw new BadRequestException('Prize competitions need an end date so winners can be paid');
-    const product = input.productPrizes ? await this.checkProductPrizes(creatorId, input, sponsored) : null;
+    const prizes = input.clubPrizes ?? null;
+    if (prizes) {
+      if (sponsored) throw new BadRequestException('Choose cash or club prizes, not both');
+      if (input.openEnded) throw new BadRequestException('Prize competitions need an end date so winners can be decided');
+      checkClubPrizes(prizes, input.capacity, input.communityId!, this.cloudinary);
+    }
+    if (input.series && input.openEnded) throw new BadRequestException('A series needs an end date for each edition');
     const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
     // Open-ended: no closing time at all; entry stays open and every verified activity keeps counting.
     const scoringClosesAt = input.openEnded ? null : input.scoringClosesAt
@@ -299,6 +317,10 @@ export class TablesService {
     if (scoringClosesAt && entryClosesAt && (entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt)) {
       throw new ConflictException('Entry and start times must be before scoring closes');
     }
+    const publishAt = publish === 'schedule' ? new Date(input.publishAt ?? '') : null;
+    if (publishAt && (Number.isNaN(publishAt.getTime()) || publishAt <= new Date() || (scoringClosesAt && publishAt >= scoringClosesAt))) {
+      throw new BadRequestException('Schedule it for a time in the future, before it ends');
+    }
     const table = this.tables.create({
       title: input.title.trim(),
       description: input.description?.trim() || null,
@@ -306,18 +328,12 @@ export class TablesService {
       creatorId,
       type: sponsored ? 'sponsored' : 'free',
       entryFeeKobo: 0,
-      // Product prizes wait for Jump to check the sponsor's commitment before anyone can join.
-      status: product ? 'PENDING_APPROVAL' : input.guaranteedPrizeKobo ? 'PENDING_FUNDING' : 'OPEN_FOR_ENTRY',
-      ...(product ? {
-        sponsorId: product.sponsorId,
-        prizeDeliveryCountries: [...new Set(product.deliveryCountries)],
-        prizeFulfilment: product.fulfilment,
-        prizeShipping: product.shipping,
-        prizeShippingNote: product.shippingNote?.trim() || null,
-        prizeEligibilityNote: product.eligibilityNote?.trim() || null,
-        prizeClaimDays: product.claimDays ?? 14,
-        sponsorCommittedAt: new Date(),
-      } : {}),
+      // Club prizes open straight away: the club commits to them, and Jump moderates afterwards.
+      status: publish === 'draft' ? 'DRAFT' : publish === 'schedule' ? 'SCHEDULED' : input.guaranteedPrizeKobo ? 'PENDING_FUNDING' : 'OPEN_FOR_ENTRY',
+      publishAt,
+      ...(prizes ? prizeColumns(prizes) : {}),
+      eligibleCountries: [...new Set(input.eligibleCountries ?? [])],
+      autoEnrolClub: Boolean(input.inviteClubMembers && input.communityId),
       startsAt,
       entryClosesAt,
       scoringClosesAt,
@@ -335,14 +351,22 @@ export class TablesService {
       prizeSplitBps,
       visibility: format === 'open' ? 'public' : 'private',
     });
-    return this.saveWithInvites(table, input, product ? async (manager, created) => {
-      for (const prize of product.prizes) {
-        await manager.query(
-          `INSERT INTO "competition_prizes" ("tableId","position","productName","description","imageUrl","quantity","estimatedValue","currency") VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [created.id, prize.position, prize.productName.trim(), prize.description?.trim() || null, prize.imageUrl ?? null, prize.quantity, prize.estimatedValue ?? null, prize.currency ?? 'NGN'],
-        );
+    return this.saveWithInvites(table, input, async (manager, created) => {
+      if (prizes) await savePrizes(manager, created.id, prizes.prizes);
+      if (input.series && created.communityId) {
+        // This challenge is edition 1 and the template for the rest.
+        const template = await templateOf(manager, created);
+        const [series] = await manager.query(
+          `INSERT INTO "challenge_series" ("clubId","title","cadence","template","autoPublish","nextStartsAt","lastEdition","createdByUserId")
+           VALUES ($1,$2,$3,$4,$5,$6,1,$7) RETURNING "id"`,
+          [created.communityId, created.title, input.series.cadence, JSON.stringify(template), input.series.autoPublish, nextStart(created.startsAt!, input.series.cadence), creatorId],
+        ) as Array<{ id: string }>;
+        created.seriesId = series.id;
+        created.edition = 1;
+        await manager.update(CompetitionTable, { id: created.id }, { seriesId: series.id, edition: 1 });
       }
-    } : undefined);
+      if (created.status === 'OPEN_FOR_ENTRY') await announceToFollowers(manager, created);
+    });
   }
 
   async createPaidDraft(creatorId: string, input: CreateCreatorPaidChallengeDto) {
@@ -418,6 +442,7 @@ export class TablesService {
           );
           if (!allowed) throw new ForbiddenException('This is a private competition. Ask the host to invite you.');
         }
+        await assertCountryEligible(manager, table, userId);
         if (table.capacity) {
           const count = await manager.count(TableRegistration, { where: { tableId } });
           if (count >= table.capacity) throw new ConflictException('This competition is full');
@@ -472,7 +497,7 @@ export class TablesService {
     return this.dataSource.transaction(async (manager) => {
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
       if (!table) throw new NotFoundException('Competition not found');
-      if (table.creatorId !== userId) throw new ForbiddenException('Only the host can edit this competition');
+      if (!(await canManageTable(manager, table, userId))) throw new ForbiddenException('Only the host or the club’s managers can edit this competition');
       if (table.status === 'SETTLED' || table.status === 'CANCELLED') throw new ConflictException('This competition is finished and can’t be changed');
       const now = new Date();
       if (input.title !== undefined) {
@@ -520,7 +545,7 @@ export class TablesService {
   async archive(tableId: string, userId: string, archived: boolean) {
     const table = await this.tables.findOne({ where: { id: tableId } });
     if (!table) throw new NotFoundException('Competition not found');
-    if (table.creatorId !== userId) throw new ForbiddenException('Only the host can archive this competition');
+    if (!(await canManageTable(this.dataSource.manager, table, userId))) throw new ForbiddenException('Only the host or the club’s managers can archive this competition');
     if (archived) {
       const over = table.status === 'SETTLED' || (table.scoringClosesAt !== null && table.scoringClosesAt <= new Date());
       const others = await this.registrations.count({ where: { tableId } }) > 1;
@@ -535,8 +560,8 @@ export class TablesService {
     return this.dataSource.transaction(async (manager) => {
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
       if (!table) throw new NotFoundException('Competition not found');
-      if (table.creatorId !== userId) throw new ForbiddenException('Only the host can discard this draft');
-      if (table.status !== 'PENDING_FUNDING' && table.status !== 'PENDING_APPROVAL') throw new ConflictException('Only drafts can be discarded. This one is already open.');
+      if (!(await canManageTable(manager, table, userId))) throw new ForbiddenException('Only the host or the club’s managers can discard this draft');
+      if (!['PENDING_FUNDING', 'PENDING_APPROVAL', ...UNPUBLISHED].includes(table.status)) throw new ConflictException('Only drafts can be discarded. This one is already open.');
       const [funded] = await manager.query(
         `SELECT 1 FROM "payment_intents" WHERE "tableId"=$1 AND "status"='SUCCEEDED' LIMIT 1`, [tableId],
       ) as unknown[];
@@ -566,30 +591,45 @@ export class TablesService {
     );
   }
 
-  async getByCode(code: string) {
+  /** Drafts and scheduled challenges are only visible to the people who can manage them. */
+  async getByCode(code: string, viewerId?: string | null) {
     const table = await this.tables.findOne({
       where: { code: code.toUpperCase() },
       relations: { creator: true },
     });
     if (!table) throw new NotFoundException('Competition not found');
+    const manageable = Boolean(viewerId && await canManageTable(this.dataSource.manager, table, viewerId));
+    if (UNPUBLISHED.includes(table.status) && !manageable) throw new NotFoundException('Competition not found');
     const [presented] = await this.present([table]);
-    const productPrizes = table.sponsorId ? await this.productPrizes(table) : null;
+    const productPrizes = table.prizeFulfilment ? await this.clubPrizes(table, manageable) : null;
+    const [club] = table.communityId ? await this.dataSource.query(
+      `SELECT c."name", c."slug", c."logoUrl", c."accentColor", c."verifiedAt" IS NOT NULL AS "verified",
+              (SELECT count(*) FROM "club_follows" f WHERE f."clubId" = c."id")::integer AS "followerCount",
+              s."title" AS "seriesTitle", s."cadence" AS "seriesCadence"
+       FROM "clubs" c LEFT JOIN "challenge_series" s ON s."id" = $2 WHERE c."id" = $1`, [table.communityId, table.seriesId],
+    ) as Array<Record<string, unknown>> : [];
     const [host] = (await this.dataSource.query(`SELECT "username", "avatarUrl", "verifiedAt" IS NOT NULL AS "verified",
       CASE WHEN "gender"='male' THEN 'masculine' WHEN "gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
       FROM "profiles" WHERE "userId" = $1`, [table.creatorId])) as Array<{ username: string; avatarUrl: string | null; avatarStyle: string; verified: boolean }>;
-    return { ...presented, productPrizes, creator: presented.creator ? { ...presented.creator, username: host?.username ?? null, avatarUrl: host?.avatarUrl ?? null, avatarStyle: host?.avatarStyle ?? 'neutral', verified: host?.verified ?? false } : null };
+    return { ...presented, productPrizes, club: club ?? null, canManage: manageable, creator: presented.creator ? { ...presented.creator, username: host?.username ?? null, avatarUrl: host?.avatarUrl ?? null, avatarStyle: host?.avatarStyle ?? 'neutral', verified: host?.verified ?? false } : null };
   }
 
-  /** What a product-prize competition offers, and from whom: shown before anyone joins. */
-  private async productPrizes(table: CompetitionTable) {
-    const [sponsor] = await this.dataSource.query(`SELECT "name","slug","logoUrl","kind","website" FROM "sponsors" WHERE "id" = $1`, [table.sponsorId]);
+  /** What a prize challenge offers, and on what terms: shown before anyone joins. Redemption details stay with winners (and the club's managers). */
+  private async clubPrizes(table: CompetitionTable, manageable: boolean) {
     const prizes = await this.dataSource.query(
-      `SELECT "position","productName","description","imageUrl","quantity","estimatedValue","currency" FROM "competition_prizes" WHERE "tableId" = $1 ORDER BY "position"`,
+      `SELECT "position","kind","productName","description","imageUrl","quantity","estimatedValue","currency"${manageable ? ',"redeemInstructions"' : ''}
+       FROM "competition_prizes" WHERE "tableId" = $1 ORDER BY "position"`,
       [table.id],
     );
+    const winners = table.prizesFinalizedAt ? await this.dataSource.query(
+      `SELECT a."position", COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", pr."productName"
+       FROM "product_awards" a JOIN "users" u ON u."id" = a."userId" LEFT JOIN "profiles" p ON p."userId" = a."userId" JOIN "competition_prizes" pr ON pr."id" = a."prizeId"
+       WHERE a."tableId" = $1 AND a."status" <> 'FORFEITED' ORDER BY a."position", a."standingRank"`, [table.id],
+    ) : [];
     return {
-      sponsor: sponsor ?? null,
       prizes,
+      winners,
+      selection: table.prizeSelection,
       deliveryCountries: table.prizeDeliveryCountries,
       fulfilment: table.prizeFulfilment,
       shipping: table.prizeShipping,
@@ -620,26 +660,14 @@ export class TablesService {
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Prize pot is too small'); }
   }
 
-  /**
-   * Product prizes: only an active sponsor's team, for a free-entry competition with an end date; one
-   * prize per position from 1 with no gaps, photos uploaded for that sponsor.
-   */
-  private async checkProductPrizes(creatorId: string, input: CreateTableDto, cash: boolean) {
-    const product = input.productPrizes!;
-    if (cash) throw new BadRequestException('Choose cash or product prizes, not both');
-    if (input.openEnded) throw new BadRequestException('Prize competitions need an end date so winners can be decided');
-    await this.sponsors.assertMember(product.sponsorId, creatorId, { active: true });
-    const positions = product.prizes.map((prize) => prize.position).sort((a, b) => a - b);
-    if (positions.some((position, index) => position !== index + 1)) throw new BadRequestException('Give each winning place one prize, starting from 1st');
-    if (positions.length > input.capacity) throw new BadRequestException('There are more prizes than places in the competition');
-    this.sponsors.assertOwnImages(product.sponsorId, product.prizes.map((prize) => prize.imageUrl));
-    return product;
-  }
-
   private async saveWithInvites(table: CompetitionTable, input: Invites, afterSave?: (manager: EntityManager, created: CompetitionTable) => Promise<void>) {
-    if (table.status !== 'OPEN_FOR_ENTRY' && (input.inviteClubMembers || input.inviteEmails?.length || input.invitePhones?.length)) {
+    // A draft or scheduled club challenge enters the club when it opens (autoEnrolClub); other invites wait.
+    const deferred = UNPUBLISHED.includes(table.status);
+    if (deferred && (input.inviteEmails?.length || input.invitePhones?.length)) throw new BadRequestException('Invite people by email or phone once it’s published');
+    if (!deferred && table.status !== 'OPEN_FOR_ENTRY' && (input.inviteClubMembers || input.inviteEmails?.length || input.invitePhones?.length)) {
       throw new BadRequestException('Fund or approve this draft before inviting runners');
     }
+    if (deferred) input = { ...input, inviteClubMembers: undefined };
     const emails = [...new Set((input.inviteEmails ?? []).map((value) => value.trim().toLowerCase()))];
     const phones = [...new Set(input.invitePhones ?? [])];
     // Registered runners get one notification email from the outbox. Check all addresses at once.
@@ -715,6 +743,14 @@ export class TablesService {
       ) as Array<{ userId: string; username: string; email: string; displayName: string }>;
       if (!runner) throw new NotFoundException('Runner not found');
       if (runner.userId === creatorId) throw new BadRequestException('You are already hosting this competition');
+      // Head-to-head has one opponent: once someone's invited (and hasn't declined), nobody else.
+      if (table.format === 'head_to_head') {
+        const [other] = await manager.query(
+          `SELECT 1 FROM "challenge_invitations" WHERE "tableId"=$1 AND "status"<>'DECLINED' AND ("invitedUserId" IS NULL OR "invitedUserId"<>$2) LIMIT 1`,
+          [tableId, runner.userId],
+        ) as unknown[];
+        if (other) throw new ConflictException('You’ve already invited your opponent. Head-to-head is just the two of you.');
+      }
       if (await manager.exists(TableRegistration, { where: { tableId, userId: runner.userId } })) throw new ConflictException('This runner has already joined');
       const created = await manager.query(
         `INSERT INTO "challenge_invitations" ("tableId","invitedUserId") VALUES ($1,$2)
@@ -776,6 +812,7 @@ export class TablesService {
           await manager.query(`UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now() WHERE "id"=$1`, [invite.id]);
           return { status: 'ACCEPTED', joined: true, tableId: table.id, code: table.code, type: table.type };
         }
+        await assertCountryEligible(manager, table, userId);
         if (table.type === 'paid') {
           const [count] = await manager.query(
             `SELECT COUNT(*)::integer count FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`,

@@ -10,29 +10,26 @@ import { AdminOnlyGuard } from './admin-only.guard';
 import { ReviewCreatorDto } from './review-creator.dto';
 import { ApprovePayoutDto, ConfirmAdminActionDto, RejectPayoutDto } from './confirm-admin-action.dto';
 import { Throttle } from '@nestjs/throttler';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
-import { UpdateAwardDto } from '../sponsors/dto/sponsor.dto';
+import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, Length, MaxLength, ValidateIf } from 'class-validator';
+import { UpdateAwardDto } from '../prizes/dto/prizes.dto';
 
 class VerifyDto {
   @IsBoolean() verified: boolean;
 }
 
-class AdminCreateSponsorDto {
-  @IsIn(['brand', 'club']) kind: 'brand' | 'club';
-  @IsString() @Length(2, 120) name: string;
-  @IsEmail() ownerEmail: string;
-  @IsOptional() @IsEmail() contactEmail?: string;
-  @IsOptional() @IsString() @MaxLength(200) website?: string;
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(60) @Matches(/^[A-Z]{2}$/, { each: true }) deliveryCountries: string[];
+class ModerateClubDto {
+  @IsOptional() @IsBoolean() suspended?: boolean;
+  @IsOptional() @IsString() @MaxLength(300) reason?: string;
+  @IsOptional() @IsIn(['free', 'pro']) plan?: 'free' | 'pro';
+  @IsOptional() @ValidateIf((_, value) => value !== null) @IsDateString() planRenewsAt?: string | null;
 }
 
-class SponsorStatusDto {
-  @IsIn(['ACTIVE', 'SUSPENDED']) status: 'ACTIVE' | 'SUSPENDED';
+class TakeDownDto {
+  @IsString() @Length(5, 300) reason: string;
 }
 
-class ReviewSponsorshipDto {
-  @IsIn(['APPROVE', 'REJECT']) decision: 'APPROVE' | 'REJECT';
-  @IsOptional() @IsString() @MaxLength(500) reason?: string;
+class PromoteDto {
+  @ValidateIf((_, value) => value !== null) @IsDateString() until: string | null;
 }
 
 class ForfeitAwardDto {
@@ -88,37 +85,25 @@ export class AdminController {
     return this.adminService.verifyClub(user.id, clubId, body.verified);
   }
 
-  @Get('sponsors')
+  @Patch('clubs/:clubId')
   @UseGuards(AdminOnlyGuard)
-  sponsors(@Query('status') status?: string) {
-    return this.adminService.sponsors(status);
+  moderateClub(@CurrentUser() user: AuthenticatedUser, @Param('clubId', ParseUUIDPipe) clubId: string, @Body() body: ModerateClubDto) {
+    return this.adminService.moderateClub(user.id, clubId, body);
   }
 
-  @Post('sponsors')
+  @Post('tables/:id/take-down')
   @UseGuards(AdminOnlyGuard)
-  createSponsor(@CurrentUser() user: AuthenticatedUser, @Body() body: AdminCreateSponsorDto) {
-    return this.adminService.createSponsor(user.id, body);
+  takeDown(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: TakeDownDto) {
+    return this.adminService.takeDownChallenge(user.id, id, body.reason);
   }
 
-  @Patch('sponsors/:id')
+  @Post('tables/:id/promote')
   @UseGuards(AdminOnlyGuard)
-  setSponsorStatus(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: SponsorStatusDto) {
-    return this.adminService.setSponsorStatus(user.id, id, body.status);
+  promote(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: PromoteDto) {
+    return this.adminService.promoteChallenge(user.id, id, body.until);
   }
 
-  @Get('sponsorships')
-  @UseGuards(AdminOnlyGuard)
-  sponsorships(@Query('view') view?: string) {
-    return this.adminService.sponsorships(view === 'live' || view === 'decided' ? view : 'pending');
-  }
-
-  @Post('sponsorships/:id/review')
-  @UseGuards(AdminOnlyGuard)
-  reviewSponsorship(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReviewSponsorshipDto) {
-    return this.adminService.reviewSponsorship(user.id, id, body.decision, body.reason);
-  }
-
-  @Post('sponsorships/:id/finalize')
+  @Post('tables/:id/finalize-prizes')
   @UseGuards(AdminOnlyGuard)
   finalizePrizes(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.finalizePrizes(user.id, id);

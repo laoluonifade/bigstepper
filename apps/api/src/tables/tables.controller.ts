@@ -126,8 +126,9 @@ export class TablesController {
   }
 
   @Get(':code')
-  getByCode(@Param('code') code: string) {
-    return this.tablesService.getByCode(code);
+  @UseGuards(OptionalJwtAuthGuard)
+  getByCode(@Param('code') code: string, @CurrentUser() viewer: AuthenticatedUser | null) {
+    return this.tablesService.getByCode(code, viewer?.id);
   }
 
   @Get(':id/result/final')

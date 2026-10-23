@@ -132,21 +132,17 @@ export class CompetitionTable {
   @JoinColumn({ name: 'creatorId' })
   creator: User;
 
-  /** Product prizes: the brand or run club putting them up (null for cash or no prizes). */
-  @Column({ type: 'uuid', nullable: true })
-  sponsorId: string | null;
-
-  /** Countries the sponsor delivers to; only residents of these can win the products. */
+  /** Countries the club delivers prizes to; only residents of these can win them. */
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   prizeDeliveryCountries: string[];
 
-  /** Who delivers: the sponsor by default, or Jump where agreed. */
+  /** Set when the challenge has club prizes: who delivers them, the club or Jump where agreed. */
   @Column({ type: 'varchar', length: 10, nullable: true })
-  prizeFulfilment: 'sponsor' | 'jump' | null;
+  prizeFulfilment: 'club' | 'jump' | null;
 
   /** Who pays shipping, so winners never face surprise charges. */
   @Column({ type: 'varchar', length: 16, nullable: true })
-  prizeShipping: 'sponsor' | 'jump' | 'other' | null;
+  prizeShipping: 'club' | 'jump' | 'other' | null;
 
   @Column({ type: 'varchar', length: 300, nullable: true })
   prizeShippingNote: string | null;
@@ -158,13 +154,36 @@ export class CompetitionTable {
   @Column({ type: 'integer', default: 14 })
   prizeClaimDays: number;
 
-  /** When the sponsor committed to the prizes and delivery coverage (before it can open). */
-  @Column({ type: 'timestamptz', nullable: true })
-  sponsorCommittedAt: Date | null;
+  /** top: prizes go down the final standings. draw: a recorded random draw among qualifying finishers. */
+  @Column({ type: 'varchar', length: 8, default: 'top' })
+  prizeSelection: 'top' | 'draw';
 
   /** When winners were decided and their prizes assigned. */
   @Column({ type: 'timestamptz', nullable: true })
   prizesFinalizedAt: Date | null;
+
+  /** Only people whose profile country is listed can join (empty: anyone). */
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  eligibleCountries: string[];
+
+  /** DRAFT and SCHEDULED challenges aren't public yet; SCHEDULED ones open at this time. */
+  @Column({ type: 'timestamptz', nullable: true })
+  publishAt: Date | null;
+
+  /** Enter the whole club when it opens (kept so a draft or scheduled challenge does it on publish). */
+  @Column({ default: false })
+  autoEnrolClub: boolean;
+
+  /** The recurring series this is an edition of, and which edition. */
+  @Column({ type: 'uuid', nullable: true })
+  seriesId: string | null;
+
+  @Column({ type: 'integer', nullable: true })
+  edition: number | null;
+
+  /** Premium placement: listed first in discovery until then. */
+  @Column({ type: 'timestamptz', nullable: true })
+  promotedUntil: Date | null;
 
   /** Tidied away by the host once over: off every list, still at its link. */
   @Column({ type: 'timestamptz', nullable: true })

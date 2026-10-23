@@ -1,6 +1,7 @@
 import { StravaSyncBar } from '../pages/Strava';
 import { LEGAL_LINKS } from '../legal/links';
 import { Link, Outlet, useLocation, type LinkProps } from '@tanstack/react-router';
+import { NavigationProgress, PagePending } from './RouteStates';
 import { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { formatDistanceNumber, formatDuration } from '../lib/format';
@@ -27,7 +28,7 @@ export function Private({ children }: { children: ReactNode }) {
   const { status } = useAuth();
   const location = useLocation();
   if (status === 'signed-out') return <Redirect to="/login" search={{ redirect: location.href }} />;
-  if (status !== 'signed-in') return null;
+  if (status !== 'signed-in') return <PagePending />;
   return <>{children}</>;
 }
 
@@ -35,6 +36,10 @@ export function Private({ children }: { children: ReactNode }) {
 const AUTH_PATHS = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password'];
 
 export function AppShell() {
+  return <><NavigationProgress /><Shell /></>;
+}
+
+function Shell() {
   const { user } = useAuth();
   const location = useLocation();
   if (AUTH_PATHS.includes(location.pathname)) return <Outlet />;

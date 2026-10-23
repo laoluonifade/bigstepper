@@ -9,6 +9,8 @@ import { Profile } from '../profiles/profile.entity';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
 import { enrolClubMembers } from '../tables/club-competitions';
+import { RANK_ORDER } from '../tables/scoring-engine';
+import { planOf } from './club-plans';
 import { ClubMembership } from './club-membership.entity';
 import { Club } from './club.entity';
 import { CreateClubDto, UpdateClubDto } from './dto/create-club.dto';
@@ -50,6 +52,7 @@ export class ClubsService {
           inviteCode: inviteCode(),
         }));
         await manager.save(ClubMembership, manager.create(ClubMembership, { clubId: club.id, userId, role: 'owner' }));
+        await manager.query(`INSERT INTO "club_follows" ("clubId","userId") VALUES ($1,$2)`, [club.id, userId]);
         return club;
       });
     } catch (error) {
@@ -69,16 +72,18 @@ export class ClubsService {
     for (let n = 2; ; n += 1) if (!taken.has(`${root}-${n}`)) return `${root}-${n}`;
   }
 
-  /** Your clubs (with your role), or open clubs to discover, biggest first. */
+  /** Your clubs (ones you're in or follow, with your role), or open clubs to discover, most followed first. */
   async list(viewerId: string, view: 'mine' | 'discover') {
     return this.dataSource.query(
       `SELECT c."id", c."slug", c."name", c."description", c."logoUrl", c."accentColor", c."location", c."privacy", c."verifiedAt" IS NOT NULL AS "verified",
               (SELECT count(*) FROM "club_memberships" x WHERE x."clubId" = c."id")::integer AS "memberCount",
-              me."role" AS "myRole"
+              (SELECT count(*) FROM "club_follows" x WHERE x."clubId" = c."id")::integer AS "followerCount",
+              me."role" AS "myRole", f."userId" IS NOT NULL AS "following"
        FROM "clubs" c
        LEFT JOIN "club_memberships" me ON me."clubId" = c."id" AND me."userId" = $1
-       WHERE ${view === 'mine' ? 'me."id" IS NOT NULL' : `c."privacy" = 'open' AND me."id" IS NULL`}
-       ORDER BY ${view === 'mine' ? `CASE me."role" WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, me."joinedAt" DESC` : `"memberCount" DESC, c."createdAt" DESC`}
+       LEFT JOIN "club_follows" f ON f."clubId" = c."id" AND f."userId" = $1
+       WHERE ${view === 'mine' ? '(me."id" IS NOT NULL OR f."userId" IS NOT NULL)' : `c."privacy" = 'open' AND me."id" IS NULL AND f."userId" IS NULL AND c."suspendedAt" IS NULL`}
+       ORDER BY ${view === 'mine' ? `CASE me."role" WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'member' THEN 2 ELSE 3 END, COALESCE(me."joinedAt", f."createdAt") DESC` : `"followerCount" DESC, "memberCount" DESC, c."createdAt" DESC`}
        LIMIT 50`,
       [viewerId],
     );
@@ -113,10 +118,14 @@ export class ClubsService {
     const role = await this.roleOf(club.id, viewerId);
     const [counts] = await this.dataSource.query(
       `SELECT (SELECT count(*) FROM "club_memberships" WHERE "clubId" = $1)::integer AS "memberCount",
+              (SELECT count(*) FROM "club_follows" WHERE "clubId" = $1)::integer AS "followerCount",
+              (SELECT count(*) FROM "competition_tables" WHERE "communityId" = $1 AND "status" NOT IN ('DRAFT','SCHEDULED','CANCELLED','PENDING_FUNDING','PENDING_APPROVAL')
+                 AND "visibility" = 'public' AND "archivedAt" IS NULL AND "startsAt" > now())::integer AS "upcomingCompetitions",
+              EXISTS (SELECT 1 FROM "club_follows" WHERE "clubId" = $1 AND "userId" = $2) AS "following",
               (SELECT count(*) FROM "competition_tables" WHERE "communityId" = $1
                  AND "status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED') AND ("scoringClosesAt" IS NULL OR "scoringClosesAt" > now()))::integer AS "liveCompetitions"`,
-      [club.id],
-    ) as Array<{ memberCount: number; liveCompetitions: number }>;
+      [club.id, viewerId ?? null],
+    ) as Array<{ memberCount: number; followerCount: number; upcomingCompetitions: number; following: boolean; liveCompetitions: number }>;
     const faces = await this.dataSource.query(
       `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified"
@@ -129,10 +138,14 @@ export class ClubsService {
        FROM "users" u LEFT JOIN "profiles" p ON p."userId" = u."id" WHERE u."id" = $1`,
       [club.ownerUserId],
     );
-    const { inviteCode: code, verifiedAt, ...page } = club;
+    const { inviteCode: code, verifiedAt, plan, planRenewsAt, suspendedAt, suspendedReason, ...page } = club;
+    const manager = role === 'owner' || role === 'admin';
     return {
       ...page,
       verified: Boolean(verifiedAt),
+      suspended: Boolean(suspendedAt),
+      // Only the club's managers see why, and its plan.
+      ...(manager ? { suspendedReason, plan: planOf(plan, planRenewsAt) } : {}),
       ...counts,
       faces,
       owner: owner ?? null,
@@ -215,21 +228,53 @@ export class ClubsService {
     );
   }
 
-  /** The club's competitions: live and upcoming first, then the last few that finished. */
+  /**
+   * The club's published challenges in three lists: live, upcoming (open to join, not started yet) and
+   * past, with each past one's top three and prize winners. Drafts and scheduled ones are only on the
+   * dashboard. Past challenges stay listed even when archived.
+   */
   async competitions(clubRef: string, viewerId?: string | null) {
     const club = await this.find(clubRef);
     const member = Boolean(await this.roleOf(club.id, viewerId));
-    if (club.privacy === 'invite' && !member) return [];
-    return this.dataSource.query(
-      `SELECT t.*, (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id")::integer AS "entrantCount",
-              EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = t."id" AND r."userId" = $2) AS "joined"
+    if (club.privacy === 'invite' && !member) return { live: [], upcoming: [], past: [] };
+    const rows = await this.dataSource.query(
+      `SELECT t.*, (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id" AND r."userId" <> t."creatorId")::integer AS "entrantCount",
+              EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = t."id" AND r."userId" = $2) AS "joined",
+              EXISTS (SELECT 1 FROM "competition_prizes" p WHERE p."tableId" = t."id") AS "hasPrizes",
+              (SELECT p."productName" FROM "competition_prizes" p WHERE p."tableId" = t."id" ORDER BY p."position" LIMIT 1) AS "topPrize",
+              CASE WHEN t."status" = 'SETTLED' OR (t."scoringClosesAt" IS NOT NULL AND t."scoringClosesAt" <= now()) THEN 'past'
+                   WHEN t."startsAt" > now() THEN 'upcoming' ELSE 'live' END AS "section",
+              CASE WHEN t."status" = 'SETTLED' OR (t."scoringClosesAt" IS NOT NULL AND t."scoringClosesAt" <= now()) THEN (
+                SELECT json_agg(x ORDER BY x."rank") FROM (
+                  SELECT row_number() OVER (ORDER BY ${RANK_ORDER})::integer AS "rank", COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", p."avatarUrl"
+                  FROM "table_registrations" r JOIN "users" u ON u."id" = r."userId" LEFT JOIN "profiles" p ON p."userId" = r."userId"
+                  WHERE r."tableId" = t."id" AND r."userId" <> t."creatorId" AND r."score" IS NOT NULL ORDER BY ${RANK_ORDER} LIMIT 3) x) END AS "podium"
        FROM "competition_tables" t
-       WHERE t."communityId" = $1 AND t."status" NOT IN ('CANCELLED','PENDING_FUNDING','PENDING_APPROVAL') AND t."archivedAt" IS NULL
+       WHERE t."communityId" = $1 AND t."status" NOT IN ('CANCELLED','PENDING_FUNDING','PENDING_APPROVAL','DRAFT','SCHEDULED')
          AND ($3 OR t."visibility" = 'public')
-       ORDER BY (t."status" = 'SETTLED' OR (t."scoringClosesAt" IS NOT NULL AND t."scoringClosesAt" <= now())), t."scoringClosesAt" ASC NULLS LAST
-       LIMIT 20`,
+         AND (t."archivedAt" IS NULL OR t."status" = 'SETTLED' OR t."scoringClosesAt" <= now())
+       ORDER BY t."startsAt" ASC NULLS LAST
+       LIMIT 200`,
       [club.id, viewerId ?? null, member],
-    );
+    ) as Array<Record<string, unknown> & { section: 'live' | 'upcoming' | 'past'; scoringClosesAt: Date | null }>;
+    const pick = (section: string) => rows.filter((row) => row.section === section);
+    return {
+      live: pick('live').sort((a, b) => (a.scoringClosesAt?.getTime() ?? Infinity) - (b.scoringClosesAt?.getTime() ?? Infinity)),
+      upcoming: pick('upcoming'),
+      past: pick('past').sort((a, b) => (b.scoringClosesAt?.getTime() ?? 0) - (a.scoringClosesAt?.getTime() ?? 0)).slice(0, 30),
+    };
+  }
+
+  /** Follow a club to see its challenges and hear about new ones, without joining it. */
+  async follow(userId: string, clubRef: string, following: boolean) {
+    const club = await this.find(clubRef);
+    if (following) await this.dataSource.query(`INSERT INTO "club_follows" ("clubId","userId") VALUES ($1,$2) ON CONFLICT DO NOTHING`, [club.id, userId]);
+    else {
+      if (await this.roleOf(club.id, userId) === 'owner') throw new ConflictException('The owner always follows their club');
+      await this.dataSource.query(`DELETE FROM "club_follows" WHERE "clubId" = $1 AND "userId" = $2`, [club.id, userId]);
+    }
+    const [{ followerCount }] = await this.dataSource.query(`SELECT count(*)::integer AS "followerCount" FROM "club_follows" WHERE "clubId" = $1`, [club.id]) as Array<{ followerCount: number }>;
+    return { following, followerCount };
   }
 
   /**
@@ -246,6 +291,7 @@ export class ClubsService {
         `INSERT INTO "club_memberships" ("clubId", "userId", "role") VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING RETURNING "id"`,
         [club.id, userId],
       ) as unknown[];
+      await manager.query(`INSERT INTO "club_follows" ("clubId","userId") VALUES ($1,$2) ON CONFLICT DO NOTHING`, [club.id, userId]);
       if (!inserted.length) return { joined: true, competitions: 0 };
       const enrolled = await enrolClubMembers(manager, { clubId: club.id, userId });
       await this.notifyManagers(manager, club, userId, 'joined');
@@ -273,6 +319,7 @@ export class ClubsService {
     try {
       return await this.dataSource.transaction(async (manager) => {
         const membership = await manager.save(ClubMembership, manager.create(ClubMembership, { clubId: club.id, userId: profile.userId, role: 'member' }));
+        await manager.query(`INSERT INTO "club_follows" ("clubId","userId") VALUES ($1,$2) ON CONFLICT DO NOTHING`, [club.id, profile.userId]);
         await enrolClubMembers(manager, { clubId: club.id, userId: profile.userId });
         await manager.query(
           `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'CLUB_ADDED',$2,$3,$4)`,

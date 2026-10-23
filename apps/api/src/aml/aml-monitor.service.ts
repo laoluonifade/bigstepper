@@ -56,7 +56,7 @@ export class AmlMonitorService {
     ) as Array<{ a: string; b: string; shared: number; tables: string[]; wins: number }>;
     return rows.map((row) => ({
       rule: 'REPEATED_PAIR', severity: row.wins >= 2 ? 2 : 1, userId: row.a, relatedUserIds: [row.b],
-      reason: `Entered ${row.shared} paid challenges with the same person in ${s.windowDays} days${row.wins ? `; one of them won ${row.wins}` : ''}`,
+      reason: `Entered ${row.shared} paid competitions with the same person in ${s.windowDays} days${row.wins ? `; one of them won ${row.wins}` : ''}`,
       evidence: { shared: row.shared, wins: row.wins, tableIds: row.tables },
       fingerprint: `REPEATED_PAIR:${row.a}:${row.b}:${Math.floor(row.shared / s.pairRepeatCount)}`,
     }));
@@ -76,7 +76,7 @@ export class AmlMonitorService {
     ) as Array<{ winner: string; loser: string; times: number; amount: string; tables: string[] }>;
     return rows.map((row) => ({
       rule: 'SAME_WINNER', severity: 2, userId: row.winner, relatedUserIds: [row.loser],
-      reason: `Beat the same person in ${row.times} paid challenges in ${s.windowDays} days, winning ${naira(Number(row.amount))}`,
+      reason: `Beat the same person in ${row.times} paid competitions in ${s.windowDays} days, winning ${naira(Number(row.amount))}`,
       evidence: { times: row.times, amountKobo: Number(row.amount), tableIds: row.tables },
       fingerprint: `SAME_WINNER:${row.winner}:${row.loser}:${Math.floor(row.times / s.sameWinnerCount)}`,
     }));
@@ -98,7 +98,7 @@ export class AmlMonitorService {
     ) as Array<{ a: string; b: string; tables: string[]; shared: number; avgSize: number; winsA: number; winsB: number }>;
     return rows.filter((row) => row.winsA >= 1 && row.winsB >= 1 && row.winsA + row.winsB >= row.shared * 0.75).map((row) => ({
       rule: 'WIN_ROTATION', severity: 3, userId: row.a, relatedUserIds: [row.b],
-      reason: `Took turns winning: ${row.winsA} and ${row.winsB} wins across ${row.shared} small paid challenges together. Possible coordinated laundering.`,
+      reason: `Took turns winning: ${row.winsA} and ${row.winsB} wins across ${row.shared} small paid competitions together. Possible coordinated laundering.`,
       evidence: { shared: row.shared, winsA: row.winsA, winsB: row.winsB, averageEntrants: Number(row.avgSize), tableIds: row.tables },
       fingerprint: `WIN_ROTATION:${row.a}:${row.b}:${Math.floor(row.shared / s.rotationSharedCount)}`,
     }));
@@ -118,7 +118,7 @@ export class AmlMonitorService {
     ) as Array<{ id: string; creatorId: string; code: string; pot: string | null; minutes: number; entrants: string[] }>;
     return rows.map((row) => ({
       rule: 'FAST_CHALLENGE', severity: Number(row.pot ?? 0) >= s.payoutReviewThresholdKobo ? 2 : 1, userId: row.creatorId, relatedUserIds: row.entrants, tableId: row.id,
-      reason: `Paid challenge ${row.code} ran ${row.minutes} minutes from creation to close, under the ${s.fastChallengeMinutes}-minute minimum`,
+      reason: `Paid competition ${row.code} ran ${row.minutes} minutes from creation to close, under the ${s.fastChallengeMinutes}-minute minimum`,
       evidence: { minutes: row.minutes, potKobo: Number(row.pot ?? 0) },
       fingerprint: `FAST_CHALLENGE:${row.id}`,
     }));
@@ -174,7 +174,7 @@ export class AmlMonitorService {
       for (const userId of paid) {
         flags.push({
           rule: 'SHARED_DEVICE', severity: severity as 2 | 3, userId, relatedUserIds: device.users.filter((id) => id !== userId),
-          reason: `Uses the same device as ${device.users.length - 1} other account${device.users.length > 2 ? 's' : ''} with paid activity${severity === 3 ? ', and they entered the same paid challenge' : ''}`,
+          reason: `Uses the same device as ${device.users.length - 1} other account${device.users.length > 2 ? 's' : ''} with paid activity${severity === 3 ? ', and they entered the same paid competition' : ''}`,
           evidence: { accounts: device.users.length }, fingerprint: `SHARED_DEVICE:${device.id}:${userId}`,
         });
       }
@@ -205,7 +205,7 @@ export class AmlMonitorService {
     for (const row of ips) for (const userId of row.users) {
       flags.push({
         rule: 'SHARED_IP', severity: 1, userId, relatedUserIds: row.users.filter((id) => id !== userId), tableId: row.tableId,
-        reason: `Entered a paid challenge with ${row.users.length - 1} account${row.users.length > 2 ? 's' : ''} on the same IP address`,
+        reason: `Entered a paid competition with ${row.users.length - 1} account${row.users.length > 2 ? 's' : ''} on the same IP address`,
         evidence: { accounts: row.users.length }, fingerprint: `SHARED_IP:${row.tableId}:${userId}`,
       });
     }
@@ -225,7 +225,7 @@ export class AmlMonitorService {
     ) as Array<{ userId: string; entries: number; paid: string; tables: string[]; winners: string[] }>;
     return rows.map((row) => ({
       rule: 'NO_SHOW_ENTRIES', severity: 2, userId: row.userId, relatedUserIds: row.winners,
-      reason: `Paid ${naira(Number(row.paid))} into ${row.entries} challenges without recording any activity`,
+      reason: `Paid ${naira(Number(row.paid))} into ${row.entries} competitions without recording any activity`,
       evidence: { entries: row.entries, paidKobo: Number(row.paid), tableIds: row.tables },
       fingerprint: `NO_SHOW_ENTRIES:${row.userId}:${Math.floor(row.entries / s.noShowEntries)}`,
     }));

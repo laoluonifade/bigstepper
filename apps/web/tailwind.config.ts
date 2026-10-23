@@ -48,6 +48,8 @@ export default {
       },
       keyframes: {
         blink: { '0%, 100%': { opacity: '1' }, '50%': { opacity: '0.25' } },
+        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+        'nav-progress': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(300%)' } },
         rise: { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'none' } },
         'rise-lg': { from: { opacity: '0', transform: 'translateY(18px)' }, to: { opacity: '1', transform: 'none' } },
         fade: { from: { opacity: '0' }, to: { opacity: '1' } },

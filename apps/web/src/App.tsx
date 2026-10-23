@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
 import { AppShell, Private } from './components/Shell';
+import { NotFound, PagePending, RouteError } from './components/RouteStates';
 import { DashboardPage } from './pages/Dashboard';
 import { LandingPage } from './pages/Landing';
 import { StravaCallbackPage, StravaSignupPage } from './pages/Strava';
@@ -93,6 +94,8 @@ const club = createRoute({
   }),
   component: page(() => import('./pages/Clubs'), 'ClubDetailPage'),
 });
+const clubDashboard = createRoute({ getParentRoute: () => root, path: '/clubs/$id/dashboard', component: protectedPage(() => import('./pages/ClubDashboard'), 'ClubDashboardPage') });
+const prizes = createRoute({ getParentRoute: () => root, path: '/prizes', component: protectedPage(() => import('./pages/Prizes'), 'PrizesPage') });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(() => import('./pages/You'), 'RewardsPage') });
 const wallet = createRoute({ getParentRoute: () => root, path: '/wallet', component: protectedPage(() => import('./pages/You'), 'WalletPage') });
 const creator = createRoute({ getParentRoute: () => root, path: '/creator', component: protectedPage(() => import('./pages/You'), 'CreatorPage') });
@@ -113,10 +116,20 @@ const routeTree = root.addChildren([
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, welcome, leaderboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
-  leagues, league, clubs, club, clubChat, rewards, wallet, creator, notifications, profile, paymentReturn,
+  leagues, league, clubs, club, clubChat, clubDashboard, prizes, rewards, wallet, creator, notifications, profile, paymentReturn,
 ]);
 
-export const router = createRouter({ routeTree, defaultPreload: 'intent' });
+export const router = createRouter({
+  routeTree,
+  defaultPreload: 'intent',
+  // While a page's code loads, show its outline instead of a blank screen; quick loads skip it, and once
+  // shown it stays long enough not to flicker.
+  defaultPendingComponent: PagePending,
+  defaultPendingMs: 100,
+  defaultPendingMinMs: 300,
+  defaultErrorComponent: RouteError,
+  defaultNotFoundComponent: NotFound,
+});
 
 declare module '@tanstack/react-router' {
   interface Register { router: typeof router }

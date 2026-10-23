@@ -51,6 +51,20 @@ export class Club {
   @Column({ type: 'timestamptz', nullable: true })
   verifiedAt: Date | null;
 
+  /** What the club pays for: see CLUB_PLANS. Everyone starts on free. */
+  @Column({ type: 'varchar', length: 12, default: 'free' })
+  plan: 'free' | 'pro';
+
+  @Column({ type: 'timestamptz', nullable: true })
+  planRenewsAt: Date | null;
+
+  /** Set by Jump moderation: the page stays up but the club can't run challenges. */
+  @Column({ type: 'timestamptz', nullable: true })
+  suspendedAt: Date | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  suspendedReason: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

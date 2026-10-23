@@ -14,6 +14,7 @@ import { ProviderWebhook } from './provider-webhook.entity';
 import { CreateRecipientDto } from './payout.dto';
 import * as bcrypt from 'bcrypt';
 import { AmlService } from '../aml/aml.service';
+import { assertCountryEligible } from '../tables/club-challenges';
 
 @Injectable()
 export class PaymentsService {
@@ -43,6 +44,7 @@ export class PaymentsService {
     await this.assertPaidEligibility(userId);
     if (table.creatorId === userId) throw new ForbiddenException('Competition hosts cannot enter their own paid prize');
     if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) throw new ConflictException('Entry is closed');
+    await assertCountryEligible(this.dataSource.manager, table, userId);
     if (table.entryFeeKobo <= 0) throw new BadRequestException('Competition fee is invalid');
     if (await this.dataSource.getRepository(TableRegistration).exist({ where: { tableId, userId } })) throw new ConflictException('You already joined this competition');
     if (await this.intents.exist({ where: { userId, tableId, purpose: 'CHALLENGE_ENTRY', status: In(['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED']) } })) {
@@ -150,6 +152,7 @@ export class PaymentsService {
       await this.assertPaidEligibility(userId, manager);
       if (table.creatorId === userId) throw new ForbiddenException('Competition hosts cannot enter their own paid prize');
       if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) throw new ConflictException('Entry is closed');
+      await assertCountryEligible(manager, table, userId);
       if (await manager.exists(TableRegistration, { where: { tableId, userId } })) throw new ConflictException('You already joined this competition');
       const count = Number((await manager.query(`SELECT COUNT(*)::integer count FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`, [tableId, table.creatorId]) as Array<{ count: number }>)[0].count);
       if (table.capacity !== null && count >= table.capacity) throw new ConflictException('This competition is full');

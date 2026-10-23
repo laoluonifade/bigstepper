@@ -19,8 +19,7 @@ import { calculatePrizeBreakdown, cashPrizeEligible } from '../payments/financia
 import { allocateFundedPrizes, allocatePrizes, assertPrizeSplit } from '../tables/prize-split';
 import { paidPrizePot } from '../tables/paid-prize';
 import { AdminAuthService } from './admin-auth.service';
-import { PrizeAwardsService } from '../sponsors/prize-awards.service';
-import { enrolClubMembers } from '../tables/club-competitions';
+import { PrizeAwardsService } from '../prizes/prize-awards.service';
 
 @Injectable()
 export class AdminService {
@@ -32,110 +31,73 @@ export class AdminService {
     private readonly awardsService: PrizeAwardsService,
   ) {}
 
-  /* ───────── Sponsors and product prizes ───────── */
+  /* ───────── Club moderation and prizes ───────── */
 
-  sponsors(status?: string) {
-    const filter = ['PENDING', 'ACTIVE', 'SUSPENDED'].includes(status ?? '') ? status : null;
-    return this.dataSource.query(
-      `SELECT s.*, (SELECT count(*) FROM "sponsor_members" m WHERE m."sponsorId" = s."id")::integer AS "members",
-              (SELECT count(*) FROM "competition_tables" t WHERE t."sponsorId" = s."id")::integer AS "competitions",
-              (SELECT u."email" FROM "sponsor_members" m JOIN "users" u ON u."id" = m."userId" WHERE m."sponsorId" = s."id" AND m."role" = 'owner' LIMIT 1) AS "ownerEmail"
-       FROM "sponsors" s WHERE ($1::text IS NULL OR s."status" = $1) ORDER BY (s."status" = 'PENDING') DESC, s."createdAt" DESC LIMIT 200`,
-      [filter],
-    );
-  }
-
-  /** Onboard a partner directly (e.g. a brand Jump signed): active straight away, owned by a Jump account. */
-  async createSponsor(actorUserId: string, input: { kind: 'brand' | 'club'; name: string; ownerEmail: string; contactEmail?: string; website?: string; deliveryCountries: string[] }) {
-    const [owner] = await this.dataSource.query(`SELECT "id" FROM "users" WHERE lower("email") = lower($1)`, [input.ownerEmail.trim()]) as Array<{ id: string }>;
-    if (!owner) throw new NotFoundException('No Jump account uses the owner email. Ask them to sign up first.');
+  /**
+   * Jump's enforcement on clubs: suspend (it keeps its page but can't run challenges; its live challenges
+   * keep going unless taken down) and its plan (for paid features). Both are audited.
+   */
+  async moderateClub(actorUserId: string, clubId: string, input: { suspended?: boolean; reason?: string; plan?: 'free' | 'pro'; planRenewsAt?: string | null }) {
+    if (input.suspended && (input.reason?.trim().length ?? 0) < 5) throw new BadRequestException('Say why the club is suspended; its managers see it');
     return this.dataSource.transaction(async (manager) => {
-      const base = input.name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'sponsor';
-      const taken = new Set((await manager.query(`SELECT "slug" FROM "sponsors" WHERE "slug" = $1 OR "slug" LIKE $1 || '-%'`, [base]) as Array<{ slug: string }>).map((row) => row.slug));
-      let slug = base;
-      for (let n = 2; taken.has(slug); n += 1) slug = `${base}-${n}`;
-      const [sponsor] = await manager.query(
-        `INSERT INTO "sponsors" ("kind","name","slug","website","contactEmail","deliveryCountries","status","createdByUserId","reviewedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,'ACTIVE',$7,now()) RETURNING *`,
-        [input.kind, input.name.trim(), slug, input.website?.trim() || null, (input.contactEmail ?? input.ownerEmail).trim().toLowerCase(), JSON.stringify([...new Set(input.deliveryCountries)]), actorUserId],
-      );
-      await manager.query(`INSERT INTO "sponsor_members" ("sponsorId","userId","role") VALUES ($1,$2,'owner')`, [sponsor.id, owner.id]);
+      const [club] = await manager.query(`SELECT "id","slug","name","plan","suspendedAt" FROM "clubs" WHERE "id" = $1 FOR UPDATE`, [clubId]) as Array<{ id: string; slug: string; name: string; plan: string; suspendedAt: Date | null }>;
+      if (!club) throw new NotFoundException('Club not found');
+      if (input.suspended !== undefined) {
+        await manager.query(`UPDATE "clubs" SET "suspendedAt" = CASE WHEN $2 THEN COALESCE("suspendedAt", now()) ELSE NULL END, "suspendedReason" = CASE WHEN $2 THEN $3 ELSE NULL END WHERE "id" = $1`,
+          [clubId, input.suspended, input.reason?.trim() ?? null]);
+        await manager.query(
+          `INSERT INTO "notifications" ("userId","type","title","body","link")
+           SELECT "userId",'CLUB_MODERATION',$2,$3,$4 FROM "club_memberships" WHERE "clubId" = $1 AND "role" IN ('owner','admin')`,
+          [clubId, input.suspended ? `${club.name} is suspended` : `${club.name} can run competitions again`,
+            input.suspended ? `${input.reason!.trim()} Contact Jump support to resolve it.` : 'The suspension was lifted.', `/clubs/${club.slug}`],
+        );
+      }
+      if (input.plan) await manager.query(`UPDATE "clubs" SET "plan" = $2, "planRenewsAt" = $3 WHERE "id" = $1`, [clubId, input.plan, input.planRenewsAt ? new Date(input.planRenewsAt) : null]);
       await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'SPONSOR_UPDATE',$2,'You can now put up product prizes on Jump competitions.','/sponsor')`,
-        [owner.id, `${input.name.trim()} is set up as a Jump sponsor`],
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'CLUB_MODERATED','club',$2,$3)`,
+        [actorUserId, clubId, JSON.stringify({ suspended: input.suspended ?? null, reason: input.reason ?? null, plan: input.plan ?? null, planRenewsAt: input.planRenewsAt ?? null })],
       );
-      await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId") VALUES ($1,'SPONSOR_CREATED','sponsor',$2)`, [actorUserId, sponsor.id]);
-      return sponsor;
+      return { id: clubId };
     });
   }
 
-  async setSponsorStatus(actorUserId: string, sponsorId: string, status: 'ACTIVE' | 'SUSPENDED') {
-    const [sponsor] = await this.dataSource.query(`UPDATE "sponsors" SET "status" = $2, "reviewedAt" = now(), "updatedAt" = now() WHERE "id" = $1 RETURNING "id","name"`, [sponsorId, status]) as [Array<{ id: string; name: string }>, number];
-    const row = sponsor[0];
-    if (!row) throw new NotFoundException('Sponsor not found');
-    await this.dataSource.query(
-      `INSERT INTO "notifications" ("userId","type","title","body","link") SELECT "userId",'SPONSOR_UPDATE',$2,$3,'/sponsor' FROM "sponsor_members" WHERE "sponsorId" = $1`,
-      [sponsorId, status === 'ACTIVE' ? `${row.name} is approved` : `${row.name} is paused`, status === 'ACTIVE' ? 'You can now put up product prizes on Jump competitions.' : 'Contact Jump to sponsor competitions again.'],
-    );
-    await this.dataSource.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId") VALUES ($1,$2,'sponsor',$3)`, [actorUserId, `SPONSOR_${status}`, sponsorId]);
-    return { status };
-  }
-
-  /** Product-prize competitions: waiting for approval, running, or decided. */
-  sponsorships(view: string) {
-    const where = view === 'pending' ? `t."status" = 'PENDING_APPROVAL'` : view === 'live' ? `t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')` : `t."status" = 'SETTLED'`;
-    return this.dataSource.query(
-      `SELECT t."id", t."code", t."title", t."status", t."startsAt", t."scoringClosesAt", t."prizeDeliveryCountries", t."prizeFulfilment", t."prizeShipping",
-              t."prizeShippingNote", t."prizeEligibilityNote", t."prizeClaimDays", t."sponsorCommittedAt", t."prizesFinalizedAt", t."createdAt",
-              s."name" AS "sponsorName", s."status" AS "sponsorStatus",
-              COALESCE(p."displayName", u."displayName") AS "hostName",
-              (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id")::integer AS "entrants",
-              (SELECT json_agg(json_build_object('position', x."position", 'productName', x."productName", 'quantity', x."quantity",
-                 'estimatedValue', x."estimatedValue", 'currency', x."currency", 'imageUrl', x."imageUrl", 'description', x."description") ORDER BY x."position")
-                 FROM "competition_prizes" x WHERE x."tableId" = t."id") AS "prizes"
-       FROM "competition_tables" t JOIN "sponsors" s ON s."id" = t."sponsorId"
-       JOIN "users" u ON u."id" = t."creatorId" LEFT JOIN "profiles" p ON p."userId" = u."id"
-       WHERE ${where} ORDER BY t."createdAt" DESC LIMIT 100`,
-    );
-  }
-
-  /** Open a product-prize competition once the prizes, coverage and commitment check out. */
-  async reviewSponsorship(actorUserId: string, tableId: string, decision: 'APPROVE' | 'REJECT', reason?: string) {
+  /** Takes a challenge down for breaking the rules: cancelled, off every list, and its host told why. */
+  async takeDownChallenge(actorUserId: string, tableId: string, reason: string) {
     return this.dataSource.transaction(async (manager) => {
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
-      if (!table?.sponsorId) throw new NotFoundException('Sponsored competition not found');
-      if (table.status !== 'PENDING_APPROVAL') throw new ConflictException('It isn’t waiting for approval');
-      if (decision === 'APPROVE') {
-        const [sponsor] = await manager.query(`SELECT "status" FROM "sponsors" WHERE "id" = $1`, [table.sponsorId]) as Array<{ status: string }>;
-        if (sponsor?.status !== 'ACTIVE') throw new ConflictException('Approve the sponsor first');
-        if (!table.sponsorCommittedAt) throw new ConflictException('The sponsor hasn’t committed to the prizes');
-        if (table.scoringClosesAt && table.scoringClosesAt <= new Date()) throw new ConflictException('Its end date has already passed');
-      } else if (!reason?.trim()) {
-        throw new BadRequestException('Say why, so the sponsor can fix it');
-      }
-      table.status = decision === 'APPROVE' ? 'OPEN_FOR_ENTRY' : 'CANCELLED';
+      if (!table) throw new NotFoundException('Competition not found');
+      if (table.type !== 'free') throw new ConflictException('Cash and paid competitions are settled or refunded through the payments review instead');
+      table.status = 'CANCELLED';
+      table.archivedAt = new Date();
       await manager.save(table);
-      if (decision === 'APPROVE' && table.communityId) await enrolClubMembers(manager, { tableId });
-      await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link")
-         SELECT DISTINCT x."userId",'SPONSOR_UPDATE',$2,$3,$4 FROM (SELECT "userId" FROM "sponsor_members" WHERE "sponsorId" = $1 UNION SELECT $5::uuid) x`,
-        [table.sponsorId, decision === 'APPROVE' ? `${table.title} is live` : `${table.title} wasn’t approved`,
-          decision === 'APPROVE' ? 'Runners can join now. Share the link.' : reason!.trim(), `/competitions/${table.code}`, table.creatorId],
-      );
-      await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,'competition_table',$3,$4)`,
-        [actorUserId, `SPONSORSHIP_${decision}`, tableId, JSON.stringify({ reason: reason ?? null })]);
-      return { status: table.status };
+      await manager.query(`UPDATE "product_awards" SET "status" = 'FORFEITED', "forfeitReason" = 'Competition removed by Jump', "updatedAt" = now() WHERE "tableId" = $1 AND "status" = 'AWAITING_DETAILS'`, [tableId]);
+      await manager.query(`INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'CHALLENGE_REMOVED',$2,$3,$4)`,
+        [table.creatorId, `${table.title} was taken down`, `${reason.trim()} Contact Jump support if you think this is a mistake.`, `/competitions/${table.code}`]);
+      await manager.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'CHALLENGE_TAKEN_DOWN','competition_table',$2,$3)`,
+        [actorUserId, tableId, JSON.stringify({ reason: reason.trim(), title: table.title })]);
+      return { id: tableId, status: table.status };
     });
   }
 
-  /** Every winner and prize across sponsors, with delivery details (admins see them to resolve issues). */
+  /** Premium placement: listed first in discovery until the given time (null ends it). */
+  async promoteChallenge(actorUserId: string, tableId: string, until: string | null) {
+    const end = until ? new Date(until) : null;
+    if (end && end <= new Date()) throw new BadRequestException('Promote it until a time in the future');
+    const result = await this.dataSource.query(`UPDATE "competition_tables" SET "promotedUntil" = $2 WHERE "id" = $1 RETURNING "id"`, [tableId, end]) as [unknown[], number];
+    if (!result[0].length) throw new NotFoundException('Competition not found');
+    await this.dataSource.query(`INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'CHALLENGE_PROMOTED','competition_table',$2,$3)`,
+      [actorUserId, tableId, JSON.stringify({ until: end })]);
+    return { id: tableId, promotedUntil: end };
+  }
+
+  /** Every winner and prize across clubs, with claim details (admins see them to resolve issues). */
   prizeAwards(status?: string) {
     const filter = ['AWAITING_DETAILS', 'DETAILS_SUBMITTED', 'READY_FOR_DISPATCH', 'SHIPPED', 'DELIVERED', 'FORFEITED', 'ISSUE'].includes(status ?? '') ? status : null;
     return this.dataSource.query(
-      `SELECT a.*, pr."productName", t."code", t."title", t."prizeFulfilment", s."name" AS "sponsorName",
+      `SELECT a.*, pr."productName", pr."kind", t."code", t."title", t."prizeFulfilment", c."name" AS "clubName", c."slug" AS "clubSlug",
               COALESCE(p."displayName", u."displayName") AS "winnerName", u."email" AS "winnerEmail", p."countryCode" AS "winnerCountry"
        FROM "product_awards" a JOIN "competition_prizes" pr ON pr."id" = a."prizeId" JOIN "competition_tables" t ON t."id" = a."tableId"
-       JOIN "sponsors" s ON s."id" = t."sponsorId" JOIN "users" u ON u."id" = a."userId" LEFT JOIN "profiles" p ON p."userId" = a."userId"
+       JOIN "clubs" c ON c."id" = t."communityId" JOIN "users" u ON u."id" = a."userId" LEFT JOIN "profiles" p ON p."userId" = a."userId"
        WHERE ($1::text IS NULL OR a."status" = $1)
        ORDER BY CASE a."status" WHEN 'ISSUE' THEN 0 WHEN 'DETAILS_SUBMITTED' THEN 1 WHEN 'AWAITING_DETAILS' THEN 2 ELSE 3 END, a."updatedAt" DESC LIMIT 300`,
       [filter],
@@ -151,10 +113,10 @@ export class AdminService {
     return this.awardsService.forfeit(awardId, reason);
   }
 
-  /** Decide winners now for a closed product-prize competition (instead of waiting for the schedule). */
+  /** Decide winners now for a closed prize challenge (instead of waiting for the schedule). */
   async finalizePrizes(_actorUserId: string, tableId: string) {
     const table = await this.dataSource.getRepository(CompetitionTable).findOne({ where: { id: tableId } });
-    if (!table?.sponsorId) throw new NotFoundException('Sponsored competition not found');
+    if (!table?.prizeFulfilment) throw new NotFoundException('Prize competition not found');
     if (!table.scoringClosesAt || table.scoringClosesAt > new Date()) throw new ConflictException('It hasn’t ended yet');
     return { winners: await this.awardsService.finalize(tableId) };
   }
@@ -241,8 +203,10 @@ export class AdminService {
     const term = input.q?.trim().toLowerCase().replace(/[%_\\]/g, '').slice(0, 80) ?? '';
     const rows = await this.dataSource.query(
       `SELECT c."id", c."slug", c."name", c."logoUrl", c."accentColor", c."location", c."privacy", c."createdAt",
-              c."verifiedAt" IS NOT NULL AS "verified",
+              c."verifiedAt" IS NOT NULL AS "verified", c."plan", c."planRenewsAt", c."suspendedAt", c."suspendedReason",
               (SELECT count(*) FROM "club_memberships" m WHERE m."clubId" = c."id")::integer AS "memberCount",
+              (SELECT count(*) FROM "club_follows" f WHERE f."clubId" = c."id")::integer AS "followerCount",
+              (SELECT count(*) FROM "competition_tables" t WHERE t."communityId" = c."id" AND t."status" NOT IN ('DRAFT','CANCELLED'))::integer AS "challengeCount",
               COALESCE(p."displayName", u."displayName", 'Runner') AS "ownerName", u."email" AS "ownerEmail",
               count(*) OVER ()::integer AS "total"
        FROM "clubs" c JOIN "users" u ON u."id" = c."ownerUserId" LEFT JOIN "profiles" p ON p."userId" = u."id"

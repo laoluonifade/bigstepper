@@ -83,7 +83,7 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
           ));
           sent.push(recipient.id);
         } catch (error) {
-          this.logger.error(`Challenge reminder delivery failed for ${recipient.id}`, error instanceof Error ? error.stack : String(error));
+          this.logger.error(`Competition reminder delivery failed for ${recipient.id}`, error instanceof Error ? error.stack : String(error));
         }
       }
     }));

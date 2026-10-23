@@ -45,6 +45,7 @@ export const YOU_NAV = [
   { to: '/leagues', label: 'League' },
   { to: '/wallet', label: 'Wallet' },
   { to: '/rewards', label: 'Rewards' },
+  { to: '/prizes', label: 'Prizes' },
   { to: '/creator', label: 'Creator' },
   { to: '/notifications', label: 'Notifications' },
 ] as const;

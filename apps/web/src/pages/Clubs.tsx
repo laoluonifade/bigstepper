@@ -18,7 +18,7 @@ import { toast } from '../lib/toast';
 import type { Club, ClubMember, ClubRole, ClubStanding, CompetitionTable } from '../lib/types';
 import { CompeteSubNav } from './Competitions';
 
-type ClubSummary = Pick<Club, 'id' | 'slug' | 'name' | 'description' | 'logoUrl' | 'accentColor' | 'location' | 'privacy' | 'memberCount' | 'verified'> & { myRole: ClubRole | null };
+type ClubSummary = Pick<Club, 'id' | 'slug' | 'name' | 'description' | 'logoUrl' | 'accentColor' | 'location' | 'privacy' | 'memberCount' | 'followerCount' | 'following' | 'verified'> & { myRole: ClubRole | null };
 
 /** Colours a club can wear: the Jump palette. */
 const ACCENTS = ['#FF5A1F', '#E4FF3A', '#8B7CF6', '#5EE0C1', '#FF8FB1', '#FFC53D', '#6FB7FF', '#121212'];
@@ -59,7 +59,7 @@ export function ClubsPage() {
     <PageHeader
       eyebrow="Compete"
       title="Clubs"
-      description="Your crew’s home on Jump. Club competitions enter every member automatically."
+      description="Run clubs and brands on Jump. Follow them for their competitions, or join your crew’s club."
       actions={<button type="button" className="btn-dark btn-sm" onClick={() => setCreating(true)}><PlusIcon size={16} /> Start a club</button>}
     />
 
@@ -99,7 +99,7 @@ function ClubCard({ club }: { club: ClubSummary }) {
         {club.privacy === 'invite' && <LockIcon size={12} className="shrink-0 text-ink-3" />}
       </p>
       <p className="mt-0.5 truncate text-[12px] text-ink-2">
-        {[`${club.memberCount ?? 0} ${club.memberCount === 1 ? 'member' : 'members'}`, club.location, club.myRole && club.myRole !== 'member' ? ROLE_LABEL[club.myRole] : null].filter(Boolean).join(' · ')}
+        {[`${club.followerCount ?? 0} ${club.followerCount === 1 ? 'follower' : 'followers'}`, club.location, club.myRole && club.myRole !== 'member' ? ROLE_LABEL[club.myRole] : !club.myRole && club.following ? 'Following' : null].filter(Boolean).join(' · ')}
       </p>
     </div>
     <ArrowRightIcon size={16} className="shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5" />
@@ -183,6 +183,10 @@ export function ClubDetailPage() {
       if (search.invite || search.join) void navigate({ to: '/clubs/$id', params: { id: club.data?.slug ?? id }, search: {}, replace: true });
     },
   });
+  const follow = useMutation({
+    mutationFn: (next: boolean) => api<{ following: boolean; followerCount: number }>(`/clubs/${id}/follow`, { method: next ? 'POST' : 'DELETE' }),
+    async onSuccess(result) { await refresh(); toast({ tone: 'ok', message: result.following ? `Following ${club.data?.name ?? 'the club'}. You’ll hear about its new competitions.` : 'Unfollowed.' }); },
+  });
   const leave = useMutation({
     mutationFn: () => post(`/clubs/${id}/leave`),
     async onSuccess() { await refresh(); toast({ tone: 'ok', message: `You left ${club.data?.name ?? 'the club'}.` }); },
@@ -233,9 +237,15 @@ export function ClubDetailPage() {
           : <Link to="/register" search={{ redirect: back }} className="btn-primary min-h-11 px-6">Join {c.name}</Link>}
         <p className="text-center text-[12px] text-ink-3 sm:text-right">On Jump already? <Link to="/login" search={{ redirect: back }} className="font-semibold text-ink underline">Log in</Link></p>
       </div>
-        : !member ? (canJoin
-          ? <button type="button" className="btn-primary min-h-11 px-6" disabled={join.isPending || (autoJoin && !join.isError)} onClick={() => join.mutate()}>{join.isPending || (autoJoin && !join.isError) ? 'Joining…' : 'Join club'}</button>
-          : <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-3 py-2 text-[13px] font-semibold text-ink-2"><LockIcon size={13} /> Invite-only. Ask a manager for the link.</span>)
+        : !member ? <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <button type="button" className={cx('min-h-11 flex-1 px-6 sm:flex-none', c.following ? 'btn-secondary' : 'btn-primary')} disabled={follow.isPending} onClick={() => follow.mutate(!c.following)}>
+            {c.following ? <><CheckIcon size={16} /> Following</> : 'Follow'}
+          </button>
+          {canJoin
+            ? <button type="button" className="btn-secondary min-h-11 flex-1 px-5 sm:flex-none" disabled={join.isPending || (autoJoin && !join.isError)} onClick={() => join.mutate()}>{join.isPending || (autoJoin && !join.isError) ? 'Joining…' : 'Join club'}</button>
+            : <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-3 py-2 text-[13px] font-semibold text-ink-2"><LockIcon size={13} /> Invite-only</span>}
+          <ShareClubButton club={c} />
+        </div>
           : <div className="flex w-full items-center gap-2 sm:w-auto">
             <Link to="/clubs/$id/chat" params={{ id: c.slug }} className="btn-dark min-h-11 flex-1 sm:flex-none sm:px-6"><FeedIcon size={16} /> Club chat</Link>
             <ShareClubButton club={c} />
@@ -243,17 +253,25 @@ export function ClubDetailPage() {
               label="Club options"
               buttonClassName="flex h-11 w-11 items-center justify-center rounded border-[1.5px] border-ink bg-card text-[20px] font-bold leading-none shadow-hard-sm hover:bg-paper"
               actions={[
+                { label: 'Dashboard', run: () => void navigate({ to: '/clubs/$id/dashboard', params: { id: c.slug } }) },
+                ...(c.suspended ? [] : [{ label: 'New competition', run: () => void navigate({ to: '/competitions/new', search: { club: c.slug } }) }]),
                 { label: 'Edit club', run: () => setEditing(true) },
-                { label: 'Host a competition', run: () => void navigate({ to: '/competitions/new', search: { club: c.id } }) },
               ]}
             />}
           </div>}
     </ClubHero>
-    <ErrorNotice error={join.error} className="mt-3" />
+    <ErrorNotice error={join.error ?? follow.error} className="mt-3" />
 
-    {!member && <Notice tone="neutral" className="mt-5" title="What you get">
-      Club competitions enter you automatically, so every run counts for the club. Leave any time.
+    {c.suspended && <Notice tone="warn" className="mt-5" title="Suspended by Jump">
+      {isManager(role) ? `${c.suspendedReason ?? 'This club can’t run competitions right now.'} Contact Jump support to resolve it.` : 'This club can’t run new competitions right now.'}
     </Notice>}
+
+    {isManager(role) && !c.suspended && <Link to="/clubs/$id/dashboard" params={{ id: c.slug }} className="mt-5 flex items-center gap-3 rounded-xl border-[1.5px] border-ink bg-volt/60 px-4 py-3 transition-colors hover:bg-volt">
+      <span className="min-w-0 flex-1"><span className="block text-[14px] font-bold">Club dashboard</span><span className="block text-[12.5px] text-ink-2">Competitions, series, prizes and how your community is doing.</span></span>
+      <ArrowRightIcon size={16} />
+    </Link>}
+
+    {!member && user && <p className="mt-4 text-[13px] text-ink-2">Follow to hear about every new competition. Join to be in the club, its chat and the competitions it enters members in.</p>}
 
     <div className="no-scrollbar mt-8 flex gap-5 overflow-x-auto border-b border-line" role="tablist" aria-label="Club sections">
       {tabs.map((option) => <button key={option.value} type="button" role="tab" aria-selected={tab === option.value} onClick={() => setTab(option.value)}
@@ -318,7 +336,8 @@ function ClubHero({ club, children }: { club: Club; children: ReactNode }) {
       <div className="mt-5 flex items-center gap-3 border-t border-line pt-4">
         <span className="flex -space-x-2">{(club.faces ?? []).slice(0, 5).map((face, index) => <Avatar key={index} name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={28} className="rounded-full ring-2 ring-card" />)}</span>
         <p className="num text-[13px] text-ink-2">
-          <span className="font-bold text-ink">{club.memberCount ?? 0}</span> {club.memberCount === 1 ? 'member' : 'members'}
+          <span className="font-bold text-ink">{club.followerCount ?? 0}</span> {club.followerCount === 1 ? 'follower' : 'followers'}
+          {' · '}<span className="font-bold text-ink">{club.memberCount ?? 0}</span> {club.memberCount === 1 ? 'member' : 'members'}
           {Boolean(club.liveCompetitions) && <> · <span className="font-bold text-ink">{club.liveCompetitions}</span> live {club.liveCompetitions === 1 ? 'competition' : 'competitions'}</>}
           {club.owner && <> · run by {club.owner.username ? <Link to="/runners/$username" params={{ username: club.owner.username }} search={{}} className="font-semibold text-ink hover:underline">{club.owner.displayName}</Link> : club.owner.displayName}</>}
         </p>
@@ -327,25 +346,50 @@ function ClubHero({ club, children }: { club: Club; children: ReactNode }) {
   </section>;
 }
 
+type ClubChallenges = { live: CompetitionTable[]; upcoming: CompetitionTable[]; past: CompetitionTable[] };
+
+/** Live, upcoming and past competitions; past ones show who won. */
 function ClubCompetitions({ club }: { club: Club }) {
   const unit = useUnit();
   const now = useNow(60_000);
-  const competitions = useQuery({ queryKey: ['club', club.slug, 'competitions', club.myRole ?? 'guest'], queryFn: () => api<CompetitionTable[]>(`/clubs/${club.slug}/competitions`) });
+  const competitions = useQuery({ queryKey: ['club', club.slug, 'competitions', club.myRole ?? 'guest'], queryFn: () => api<ClubChallenges>(`/clubs/${club.slug}/competitions`) });
   if (competitions.isLoading) return <Skeleton className="h-32 rounded-2xl" />;
   if (competitions.error) return <ErrorNotice error={competitions.error} onRetry={() => void competitions.refetch()} />;
-  if (!competitions.data?.length) {
-    return <EmptyState title="No club competitions yet" action={isManager(club.myRole) ? <Link to="/competitions/new" search={{ club: club.id }} className="btn-primary btn-sm"><PlusIcon size={16} /> Host one</Link> : undefined}>
-      {isManager(club.myRole) ? 'Host one and every member is entered automatically.' : club.privacy === 'invite' && !club.myRole ? 'Join to see what the club is racing.' : 'When the club hosts one, members are entered automatically.'}
+  const data = competitions.data ?? { live: [], upcoming: [], past: [] };
+  const manager = isManager(club.myRole) && !club.suspended;
+  if (!data.live.length && !data.upcoming.length && !data.past.length) {
+    return <EmptyState title="No competitions yet" action={manager ? <Link to="/competitions/new" search={{ club: club.slug }} className="btn-primary btn-sm"><PlusIcon size={16} /> Create one</Link> : undefined}>
+      {manager ? 'Create a competition, add prizes if you like, and share the link with your community.' : club.privacy === 'invite' && !club.myRole ? 'Join to see what the club is racing.' : 'Follow the club to hear when it posts one.'}
     </EmptyState>;
   }
-  return <>
-    {isManager(club.myRole) && <div className="mb-3 flex justify-end">
-      <Link to="/competitions/new" search={{ club: club.id }} className="btn-dark btn-sm"><PlusIcon size={14} /> Host a competition</Link>
-    </div>}
-    <ul className="divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card">
-      {competitions.data.map((table) => <li key={table.id}><CompetitionRow table={table} unit={unit} now={now} /></li>)}
-    </ul>
-  </>;
+  const list = (rows: CompetitionTable[]) => <ul className="divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card">
+    {rows.map((table) => <li key={table.id}>
+      <CompetitionRow table={table} unit={unit} now={now} />
+      {table.hasPrizes && table.topPrize && <p className="-mt-1.5 truncate px-3.5 pb-2.5 pl-[66px] text-[12px] font-semibold text-ok">Prizes · {table.topPrize}</p>}
+    </li>)}
+  </ul>;
+  return <div className="space-y-7">
+    {manager && <div className="flex justify-end"><Link to="/competitions/new" search={{ club: club.slug }} className="btn-dark btn-sm"><PlusIcon size={14} /> New competition</Link></div>}
+    {data.live.length > 0 && <section><SectionTitle aside={`${data.live.length}`}>Live now</SectionTitle>{list(data.live)}</section>}
+    {data.upcoming.length > 0 && <section><SectionTitle aside={`${data.upcoming.length}`}>Upcoming</SectionTitle>{list(data.upcoming)}</section>}
+    {data.past.length > 0 && <section>
+      <SectionTitle>Past competitions</SectionTitle>
+      <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-card">
+        {data.past.map((table) => <li key={table.id}>
+          <Link to="/competitions/$code" params={{ code: table.code }} className="flex items-center gap-3 px-3.5 py-3 hover:bg-ink/[0.025]">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[14px] font-semibold">{table.title}</p>
+              <p className="mt-0.5 truncate text-[12px] text-ink-3">{table.scoringClosesAt ? `Ended ${formatDate(table.scoringClosesAt, { year: 'numeric' })}` : 'Ended'} · {table.entrantCount ?? 0} took part</p>
+            </div>
+            {table.podium?.length ? <span className="flex shrink-0 items-center gap-1.5 text-[12px] font-semibold">
+              <Avatar name={table.podium[0].displayName} src={table.podium[0].avatarUrl} size={24} className="rounded-full" />
+              <span className="max-w-[110px] truncate">{table.podium[0].displayName}</span>
+            </span> : null}
+          </Link>
+        </li>)}
+      </ul>
+    </section>}
+  </div>;
 }
 
 function ClubLeaderboard({ id }: { id: string }) {
