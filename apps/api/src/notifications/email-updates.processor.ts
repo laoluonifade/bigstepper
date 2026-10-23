@@ -32,7 +32,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
   }
 
   async process(job: Job): Promise<void> {
-    if (!this.mail.configured) return;
+    if (!this.mail.canSendBulk) return;
     if (job.name === 'send-notifications') await this.sendNotifications();
     if (job.name === 'send-digests') await this.sendDigests();
     if (job.name === 'send-streak-reminders') await this.sendStreakReminders();

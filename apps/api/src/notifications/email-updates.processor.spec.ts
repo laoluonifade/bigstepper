@@ -1,7 +1,7 @@
 import { EmailUpdatesProcessor } from './email-updates.processor';
 
 describe('EmailUpdatesProcessor', () => {
-  const mail = { configured: true, send: jest.fn().mockResolvedValue(undefined) };
+  const mail = { canSendBulk: true, send: jest.fn().mockResolvedValue(undefined) };
   const config = { getOrThrow: jest.fn().mockReturnValue('https://jump.example') };
   const queue = { upsertJobScheduler: jest.fn().mockResolvedValue(undefined) };
   const dataSource = { query: jest.fn() };
@@ -9,7 +9,7 @@ describe('EmailUpdatesProcessor', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mail.configured = true;
+    mail.canSendBulk = true;
   });
 
   it('groups multiple notifications for the same runner into one email', async () => {
@@ -48,7 +48,7 @@ describe('EmailUpdatesProcessor', () => {
   });
 
   it('does not claim or mark emails sent without a configured provider', async () => {
-    mail.configured = false;
+    mail.canSendBulk = false;
 
     await processor.process({ name: 'send-notifications' } as never);
 

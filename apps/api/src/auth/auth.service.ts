@@ -11,7 +11,7 @@ import { Profile } from '../profiles/profile.entity';
 import { createHash, randomBytes } from 'node:crypto';
 import { AuthActionToken } from './auth-action-token.entity';
 import { ConfigService } from '@nestjs/config';
-import { IsNull, MoreThan } from 'typeorm';
+import { MoreThan } from 'typeorm';
 
 @Injectable()
 export class AuthService {
@@ -143,10 +143,14 @@ export class AuthService {
     const user = await this.usersRepo.findOne({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Session user no longer exists');
     if (user.emailVerified) return { success: true, alreadyVerified: true };
-    // Only the newest link should work.
-    await this.actionTokensRepo.update({ userId, type: 'VERIFY_EMAIL', usedAt: IsNull() }, { usedAt: new Date() });
     const rawToken = await this.createActionToken(userId, 'VERIFY_EMAIL', 24 * 60 * 60 * 1000);
     await this.mail.send(verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', rawToken)));
+    // A provider failure must not invalidate a previously delivered link.
+    await this.actionTokensRepo.createQueryBuilder().update()
+      .set({ usedAt: new Date() })
+      .where('"userId" = :userId AND "type" = :type AND "usedAt" IS NULL AND "tokenHash" <> :tokenHash',
+        { userId, type: 'VERIFY_EMAIL', tokenHash: this.hashToken(rawToken) })
+      .execute();
     return {
       success: true,
       alreadyVerified: false,

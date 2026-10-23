@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 
@@ -30,6 +30,9 @@ export class MailService implements OnModuleInit {
   }
 
   private smtp: Transporter | null = null;
+  private bulkBlockedUntil = 0;
+
+  get canSendBulk() { return this.configured && Date.now() >= this.bulkBlockedUntil; }
 
   private get enabled() {
     return Boolean(this.config.get<string>('ZEPTOMAIL_API_KEY') && this.config.get<string>('ZEPTOMAIL_FROM_ADDRESS'));
@@ -47,16 +50,25 @@ export class MailService implements OnModuleInit {
 
   async send(message: MailMessage): Promise<void> {
     if (!this.enabled && !this.smtpEnabled) {
-      this.logger.warn(`Email not sent (no mail provider configured) → ${message.to.address}: ${message.subject}\n${message.text}`);
-      return;
+      throw new ServiceUnavailableException('Email delivery is temporarily unavailable. Please try again later.');
     }
-    if (!this.enabled) return this.sendSmtp(message);
     try {
-      await this.sendZepto(message);
+      if (!this.enabled) await this.sendSmtp(message);
+      else await this.sendZepto(message);
     } catch (error) {
-      if (!this.smtpEnabled) throw error;
-      this.logger.warn(`ZeptoMail failed, sending through Zoho SMTP instead: ${error instanceof Error ? error.message.slice(0, 200) : String(error)}`);
-      await this.sendSmtp(message);
+      if (this.enabled && this.smtpEnabled) {
+        try {
+          await this.sendSmtp(message);
+          return;
+        } catch (fallbackError) {
+          this.logger.error(`Both email providers rejected delivery: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+        }
+      } else {
+        this.logger.error(`Email provider rejected delivery: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      // Keep optional notification jobs from hammering a provider that has blocked sending.
+      this.bulkBlockedUntil = Date.now() + 60 * 60_000;
+      throw new ServiceUnavailableException('Email delivery is temporarily unavailable. Please try again later.');
     }
   }
 
@@ -109,7 +121,7 @@ export class MailService implements OnModuleInit {
   /** Fire-and-forget for request paths: a slow or failing provider must not hold up sign-up. */
   sendInBackground(message: MailMessage) {
     void this.send(message).catch((error: unknown) =>
-      this.logger.error(`Failed to send "${message.subject}" to ${message.to.address}`, error instanceof Error ? error.stack : String(error)),
+      this.logger.error(`Failed to send email to ${message.to.address}`, error instanceof Error ? error.message : String(error)),
     );
   }
 }

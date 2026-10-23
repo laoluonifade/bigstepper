@@ -92,7 +92,12 @@ export class AdminAuthService {
         [userId, purpose, hash(userId, code), new Date(Date.now() + CODE_TTL_MS)],
       );
     });
-    this.mail.sendInBackground(adminCodeEmail({ address: email }, code, purpose));
+    try {
+      await this.mail.send(adminCodeEmail({ address: email }, code, purpose));
+    } catch (error) {
+      await this.dataSource.query(`UPDATE "admin_login_codes" SET "usedAt" = now() WHERE "userId" = $1 AND "purpose" = $2 AND "usedAt" IS NULL`, [userId, purpose]);
+      throw error;
+    }
     // Local development only: the code in the terminal, so a failing or unconfigured mailer never locks
     // you out. Never in production.
     if (this.config.get<string>('NODE_ENV') !== 'production') this.logger.warn(`Dev admin ${purpose} code for ${email}: ${code}`);
