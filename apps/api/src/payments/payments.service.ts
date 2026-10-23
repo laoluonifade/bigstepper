@@ -24,6 +24,12 @@ export class PaymentsService {
     private readonly paystack: PaystackClient,
   ) {}
 
+  /** The return page is for navigation only; webhooks and verification still decide payment status. */
+  private returnUrl() {
+    const origin = this.config.getOrThrow<string>('WEB_ORIGIN').split(',')[0].trim().replace(/\/+$/, '');
+    return `${origin}/payments/return`;
+  }
+
   async checkout(userId: string, tableId: string) {
     this.assertPaidEnabled();
     const [user, table] = await Promise.all([
@@ -49,6 +55,7 @@ export class PaymentsService {
       const initialized = await this.paystack.initialize({
         email: user.email, amount: intent.amountKobo, currency: intent.currency, reference: intent.reference,
         metadata: JSON.stringify({ payment_intent_id: intent.id }),
+        callback_url: this.returnUrl(),
       });
       await this.intents.update({ id: intent.id }, { status: 'PENDING', providerStatus: 'initialized' });
       return { authorizationUrl: initialized.authorization_url, accessCode: initialized.access_code, reference: intent.reference };
@@ -84,6 +91,7 @@ export class PaymentsService {
       const initialized = await this.paystack.initialize({
         email: user.email, amount: intent.amountKobo, currency: intent.currency, reference: intent.reference,
         metadata: JSON.stringify({ payment_intent_id: intent.id, purpose: intent.purpose }),
+        callback_url: this.returnUrl(),
       });
       await this.intents.update({ id: intent.id }, { status: 'PENDING', providerStatus: 'initialized' });
       return { authorizationUrl: initialized.authorization_url, accessCode: initialized.access_code, reference: intent.reference };
@@ -118,6 +126,7 @@ export class PaymentsService {
         currency: intent.currency,
         reference: intent.reference,
         metadata: JSON.stringify({ payment_intent_id: intent.id, purpose: intent.purpose }),
+        callback_url: this.returnUrl(),
       });
       await this.intents.update({ id: intent.id }, { status: 'PENDING', providerStatus: 'initialized' });
       return { authorizationUrl: initialized.authorization_url, accessCode: initialized.access_code, reference: intent.reference };
@@ -601,7 +610,7 @@ export class PaymentsService {
       // A club's funded competition takes the club in once it opens.
       if (legacyFixed && table.communityId) await enrolClubMembers(manager, { tableId: table.id });
       const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified funded competition prize') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
-      if (journal[0]) await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2 ELSE -$2 END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','sponsor_prize_liability')`, [journal[0].id, locked.amountKobo]);
+      if (journal[0]) await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','sponsor_prize_liability')`, [journal[0].id, locked.amountKobo]);
       return false;
     });
     if (needsRefund) {
@@ -630,7 +639,7 @@ export class PaymentsService {
       await manager.save(locked);
       const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified wallet funding') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
       if (journal[0]) {
-        await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2 ELSE -$2 END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','wallet_liability')`, [journal[0].id, locked.amountKobo]);
+        await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','wallet_liability')`, [journal[0].id, locked.amountKobo]);
       }
     });
   }
@@ -681,13 +690,13 @@ export class PaymentsService {
   private async postEntryLedger(manager: import('typeorm').EntityManager, intent: PaymentIntent) {
     const journal = (await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified Paystack competition entry') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${intent.reference}`])) as Array<{ id: string }>;
     if (!journal[0]) return;
-    await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2 ELSE -$2 END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','contest_entry_liability')`, [journal[0].id, intent.amountKobo]);
+    await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','contest_entry_liability')`, [journal[0].id, intent.amountKobo]);
   }
 
   private async postWalletEntryLedger(manager: import('typeorm').EntityManager, reference: string, amountKobo: number) {
     const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Wallet-funded competition entry') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [reference]) as Array<{ id: string }>;
     if (!journal[0]) return;
-    await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'wallet_liability' THEN $2 ELSE -$2 END FROM "ledger_accounts" WHERE "code" IN ('wallet_liability','contest_entry_liability')`, [journal[0].id, amountKobo]);
+    await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'wallet_liability' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('wallet_liability','contest_entry_liability')`, [journal[0].id, amountKobo]);
   }
 
   private assertPaidEnabled() {

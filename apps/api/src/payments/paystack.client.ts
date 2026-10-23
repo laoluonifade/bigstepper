@@ -8,7 +8,7 @@ export class PaystackClient {
   private readonly baseUrl = 'https://api.paystack.co';
   constructor(private readonly config: ConfigService) {}
 
-  initialize(input: { email: string; amount: number; currency: string; reference: string; metadata: string }) {
+  initialize(input: { email: string; amount: number; currency: string; reference: string; metadata: string; callback_url: string }) {
     return this.request<{ authorization_url: string; access_code: string; reference: string }>('/transaction/initialize', { method: 'POST', body: JSON.stringify(input) });
   }
 

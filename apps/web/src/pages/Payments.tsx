@@ -80,10 +80,10 @@ function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerif
   });
 
   useEffect(() => {
-    if (!autoVerify || payment.purpose !== 'SPONSOR_FUNDING' || status.isLoading || status.error || paymentCopy(value).terminal || checkedOnReturn.current) return;
+    if (!autoVerify || status.isLoading || status.error || paymentCopy(value).terminal || checkedOnReturn.current) return;
     checkedOnReturn.current = true;
     verify.mutate();
-  }, [autoVerify, payment.purpose, status.isLoading, status.error, value, verify]);
+  }, [autoVerify, status.isLoading, status.error, value, verify]);
 
   useEffect(() => {
     if (!status.data) return;

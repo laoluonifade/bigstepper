@@ -41,12 +41,15 @@ describe('funded-free checkout', () => {
     query: jest.fn(),
   };
   const paystack = { initialize: jest.fn().mockResolvedValue({ authorization_url: 'https://paystack.example/checkout', access_code: 'access' }) };
-  const config = { get: jest.fn((key) => key === 'PAID_CONTESTS_ENABLED' ? true : key === 'PAYSTACK_SECRET_KEY' ? 'sk_test_example' : undefined) };
+  const config = {
+    get: jest.fn((key) => key === 'PAID_CONTESTS_ENABLED' ? true : key === 'PAYSTACK_SECRET_KEY' ? 'sk_test_example' : undefined),
+    getOrThrow: jest.fn((key) => key === 'WEB_ORIGIN' ? 'https://jump.example' : undefined),
+  };
   const service = new PaymentsService(intents as never, {} as never, dataSource as never, config as never, paystack as never);
 
   it('uses the funder-selected amount for an open free challenge', async () => {
     const result = await service.fundPrize(user.id, table.id, 12_345);
-    expect(paystack.initialize).toHaveBeenCalledWith(expect.objectContaining({ amount: 12_345 }));
+    expect(paystack.initialize).toHaveBeenCalledWith(expect.objectContaining({ amount: 12_345, callback_url: 'https://jump.example/payments/return' }));
     expect(result.reference).toMatch(/^jump-prize-/);
   });
 
@@ -98,5 +101,27 @@ describe('funded-free checkout', () => {
     (paystack as typeof paystack & { verifyTransaction: jest.Mock }).verifyTransaction = jest.fn().mockResolvedValue({ reference: 'ongoing', amount: 500, currency: 'NGN', status: 'ongoing' });
     await service.sweepAbandonedCheckouts();
     expect(dataSource.query.mock.calls[1][1]).toEqual(['ongoing-id', false, false, 'ongoing']);
+  });
+});
+
+describe('prize funding settlement', () => {
+  it('posts balanced ledger entries with an explicitly typed amount', async () => {
+    const intent = { id: 'intent', tableId: 'table', userId: 'host', amountKobo: 10_000, currency: 'NGN', reference: 'jump-prize-test', status: 'PENDING' };
+    const table = { id: 'table', creatorId: 'host', type: 'sponsored', status: 'OPEN_FOR_ENTRY', guaranteedPrizeKobo: null, scoringClosesAt: new Date(Date.now() + 60_000), fundedAt: null };
+    const manager = {
+      findOneOrFail: jest.fn().mockResolvedValue(intent),
+      findOne: jest.fn().mockResolvedValue(table),
+      exists: jest.fn().mockResolvedValue(false),
+      save: jest.fn(async (value) => value),
+      query: jest.fn().mockResolvedValueOnce([{ amount: '0' }]).mockResolvedValueOnce([{ id: 'journal' }]).mockResolvedValueOnce([]),
+    };
+    const dataSource = { transaction: jest.fn(async (work: (transactionManager: typeof manager) => Promise<unknown>) => work(manager)) };
+    const service = new PaymentsService({} as never, {} as never, dataSource as never, {} as never, {} as never);
+
+    await (service as unknown as { fulfillPrizeFunding: (payment: typeof intent, provider: { id: number; status: string }) => Promise<void> })
+      .fulfillPrizeFunding(intent, { id: 123, status: 'success' });
+
+    expect(intent.status).toBe('SUCCEEDED');
+    expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('THEN $2::bigint ELSE -($2::bigint)'), ['journal', 10_000]);
   });
 });
