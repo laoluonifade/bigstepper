@@ -66,6 +66,7 @@ export class MailService implements OnModuleInit {
       host: this.config.get<string>('SMTP_HOST') || 'smtp.zoho.com',
       port,
       secure: port === 465,
+      requireTLS: port !== 465,
       auth: { user: this.smtpUser, pass: this.config.getOrThrow<string>('ZOHO_APP_PASS') },
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
