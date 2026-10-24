@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckIcon, ChevronDownIcon, CloseIcon, CycleIcon, OfflineIcon, PauseIcon, PlayIcon, RunIcon, SignalIcon, StopIcon, WalkIcon } from '@/components/icons';
 import { RunMap, type LivePosition } from '@/components/RunMap';
 import { Sheet } from '@/components/Sheet';
+import { onStartPressed } from '@/components/TabBar';
 import { Button, ErrorNotice, haptic, HardShadow, Loading, Notice, PageHeader, Screen, Txt, useCountUp, useNow } from '@/components/ui';
 import { api } from '@/lib/api';
 import { usePlaceName } from '@/lib/place';
@@ -106,6 +107,8 @@ function ReadyScreen() {
   });
   const gpsError = recorder.gpsError;
   useEffect(() => { if (gpsError) toast({ tone: 'warn', title: 'No location yet', message: gpsError }); }, [gpsError]);
+  // The tab bar's centre button is Start on this screen; it opens the same check as the sheet's Start.
+  useEffect(() => onStartPressed(() => setShowStartInfo(true)), []);
   const placeName = usePlaceName(preview.position);
 
   if (recorder.phase === 'blocked') {

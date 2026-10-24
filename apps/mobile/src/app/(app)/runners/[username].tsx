@@ -48,12 +48,17 @@ export default function RunnerScreen() {
       meta={`${countryName(data.countryCode)} · Joined ${formatDate(data.memberSince, { month: 'short', year: 'numeric' })}`}
       bio={data.bio}
       counts={{ activities: data.stats.activities, followers: data.followers, following: data.following }}
-      actions={<>
-        <FollowButton username={data.username} following={data.followedByMe} size="sm" preview={isMe} style={{ flex: 1 }} />
-        {!isMe && user && <Button size="sm" variant="secondary" full style={{ flex: 1 }} title="Message" onPress={() => router.push(`/messages/${data.username}`)} />}
-        {!isMe && <InviteButton username={data.username} />}
-        <ShareProfileButton username={data.username} displayName={data.displayName} />
-      </>}
+      actions={<View style={{ width: '100%', gap: 10 }}>
+        {/* Follow gets the whole row (with share beside it); the rest sit underneath, two to a row, so no label is cut off. */}
+        <View style={styles.actionRow}>
+          <FollowButton username={data.username} following={data.followedByMe} preview={isMe} style={{ flex: 1 }} />
+          <ShareProfileButton username={data.username} displayName={data.displayName} size="md" />
+        </View>
+        {!isMe && <View style={styles.actionRow}>
+          {user && <Button variant="secondary" full style={{ flex: 1 }} title="Message" onPress={() => router.push(`/messages/${data.username}`)} />}
+          <InviteButton username={data.username} />
+        </View>}
+      </View>}
     >
       {data.followsMe && !isMe ? <Txt size={12} weight="semibold" color="ink2" style={{ marginTop: 12 }}>Follows you</Txt> : null}
       <ProfileStats stats={data.stats} unit={unit} />
@@ -96,7 +101,7 @@ function InviteButton({ username }: { username: string }) {
     onError: (error) => toast({ tone: 'bad', message: error.message }),
   });
   return <>
-    <Button size="sm" variant="secondary" full style={{ flex: 1 }} title="Invite" onPress={() => setOpen(true)} />
+    <Button variant="secondary" full style={{ flex: 1 }} title="Invite" onPress={() => setOpen(true)} />
     <OptionSheet open={open} onOpenChange={setOpen} title={`Invite @${username}`} value={null} onChange={(tableId) => invite.mutate(tableId)}
       description={tables.isLoading ? 'Loading competitions…' : hosted.length ? 'Pick one of your open competitions.' : 'You have no open competitions to invite them to.'}
       options={hosted.map((table) => ({ value: table.id, label: table.title }))} />
@@ -104,6 +109,7 @@ function InviteButton({ username }: { username: string }) {
 }
 
 const styles = StyleSheet.create({
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 10, marginBottom: 12 },
   list: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 4, paddingVertical: 14 },

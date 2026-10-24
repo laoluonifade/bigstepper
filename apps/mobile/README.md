@@ -13,8 +13,8 @@ web app; the admin console stays on the web.
 - **The design system** is the web's, rebuilt natively in `src/components/ui.tsx` and `src/lib/theme.ts`: the
   same colours, the Archivo cuts (normal, wide and narrow, bundled as static fonts in `assets/fonts`), hard
   offset shadows, buttons and cards.
-- **Native where it matters**: the tab bar is the platform's own (UITabBar on iOS, a Material bar on Android),
-  screens push with native headers and back gestures, option lists use the iOS action sheet, dates use the
+- **Native where it matters**: the tab bar is the web's (`src/components/TabBar.tsx`, with the raised Run
+  button), but screens push with native headers and back gestures, option lists use the iOS action sheet, dates use the
   system pickers, and maps are MapLibre with the web's OpenFreeMap style.
 
 ## Recording activities

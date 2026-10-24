@@ -139,10 +139,11 @@ export function ProfileTabs<T extends string>({ value, onChange, tabs }: { value
 }
 
 /** Shares the profile link through the phone's share sheet. */
-export function ShareProfileButton({ username, displayName }: { username: string; displayName: string }) {
+/** `md` matches a full-size button's height, for when it sits beside one. */
+export function ShareProfileButton({ username, displayName, size = 'sm' }: { username: string; displayName: string; size?: 'sm' | 'md' }) {
   const url = `${WEB_URL}/runners/${username}`;
   return <Pressable onPress={() => void Share.share({ title: `${displayName} on Jump`, message: `Follow ${displayName}’s walks and runs on Jump: ${url}`, url })} accessibilityRole="button" accessibilityLabel="Share profile">
-    {({ pressed }) => <HardShadow radius={radius.base} pressed={pressed}><View style={styles.square}><ShareIcon size={16} /></View></HardShadow>}
+    {({ pressed }) => <HardShadow radius={radius.base} pressed={pressed}><View style={[styles.square, size === 'md' && { width: 50, height: 46 }]}><ShareIcon size={size === 'md' ? 18 : 16} /></View></HardShadow>}
   </Pressable>;
 }
 
