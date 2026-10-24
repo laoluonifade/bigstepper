@@ -11,7 +11,7 @@ import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton, VerifiedTick } 
 import { api, post } from '../lib/api';
 import { avatarStyleForGender } from '../lib/avatars';
 import { useUser } from '../lib/auth';
-import { activityName, formatDistance, formatDuration } from '../lib/format';
+import { activityName, formatDistance, formatDuration, shortAgo } from '../lib/format';
 import type { AvatarStyle, Unit } from '../lib/types';
 import { useActivities, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
 import { reactionEmoji as symbolFor, REACTIONS, type Reaction } from '../lib/reactions';
@@ -482,17 +482,6 @@ export function SendButton({ disabled, label, children }: { disabled: boolean; l
   return <button className="my-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-track text-paper transition hover:bg-track-deep disabled:bg-transparent disabled:text-ink-3" aria-label={label} title={label} disabled={disabled}>
     {children ?? <SendIcon size={15} />}
   </button>;
-}
-
-/** Twitter-style timestamp: `now`, `5m`, `3h`, `2d`, then the date. */
-function shortAgo(iso: string) {
-  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
-  if (minutes < 7 * 1440) return `${Math.floor(minutes / 1440)}d`;
-  const date = new Date(iso);
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 
 function ActivityAttachment({ item, unit, mine }: { item: FeedPost; unit: Unit; mine: boolean }) {

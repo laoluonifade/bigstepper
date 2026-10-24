@@ -19,6 +19,17 @@ export function creditedMetres(activity: Activity) {
   return isVerified(activity) ? Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) : 0;
 }
 
+/** Distance to show for an activity: verified (GPS, or steps × stride when larger), else what was recorded. */
+export function shownMetres(activity: Activity) {
+  if (activity.verificationStatus !== 'VERIFIED') return activity.recordedDistanceMetres;
+  return Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0);
+}
+
+/** True when a verified activity's distance came from steps (indoors) rather than GPS. */
+export function fromSteps(activity: Activity) {
+  return activity.verificationStatus === 'VERIFIED' && (activity.stepDistanceMetres ?? 0) > activity.validatedDistanceMetres;
+}
+
 export type ActivityKind = 'all' | 'run' | 'walk';
 
 export function ofKind(activities: Activity[], kind: ActivityKind) {

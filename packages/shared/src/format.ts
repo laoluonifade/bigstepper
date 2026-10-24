@@ -89,7 +89,18 @@ export function formatTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
-const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+// Hermes (the phone app's engine) may lack RelativeTimeFormat, so fall back to the same English wording.
+const relative: Pick<Intl.RelativeTimeFormat, 'format'> = typeof Intl.RelativeTimeFormat === 'function'
+  ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  : {
+    format(value: number, unit: Intl.RelativeTimeFormatUnit) {
+      if (unit === 'day' && value === -1) return 'yesterday';
+      if (unit === 'day' && value === 1) return 'tomorrow';
+      const count = Math.abs(value);
+      const label = `${count} ${unit}${count === 1 ? '' : 's'}`;
+      return value < 0 ? `${label} ago` : `in ${label}`;
+    },
+  };
 
 export function formatRelative(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return '-';
@@ -151,4 +162,15 @@ export function activityName(iso: string, type: 'walk' | 'run' | 'cycle') {
   const hour = date.getHours();
   const part = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
   return `${date.toLocaleDateString('en-GB', { weekday: 'long' })} ${part} ${type === 'cycle' ? 'ride' : type}`;
+}
+
+/** Twitter-style timestamp: `now`, `5m`, `3h`, `2d`, then the date. */
+export function shortAgo(iso: string) {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  if (minutes < 7 * 1440) return `${Math.floor(minutes / 1440)}d`;
+  const date = new Date(iso);
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }

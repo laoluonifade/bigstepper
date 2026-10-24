@@ -1,3 +1,4 @@
+import { canEnter, challengeHeadline, competitionPhase, phaseLine, prizeLabel, windowProgress } from '@jump/shared/competition';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { type ReactNode, useId, useState } from 'react';
@@ -5,13 +6,13 @@ import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
 import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '../lib/format';
-import { activityLabel, formatScore, headline, metricOf, towardLeader, winsLabel } from '../lib/scoring';
+import { activityLabel, formatScore, metricOf, towardLeader, winsLabel } from '../lib/scoring';
 import type { AvatarStyle, ChallengeType, CompetitionTable, Unit } from '../lib/types';
 import { ArrowRightIcon, ChevronRightIcon, LockIcon, UsersIcon } from './icons';
 import { METALS } from './Milestones';
 import { Avatar, cx } from './ui';
 
-export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' | 'scoring-closed' | 'final';
+export { canEnter, challengeHeadline, competitionPhase, phaseLine, prizeLabel, prizeSplit, windowProgress, type CompetitionPhase } from '@jump/shared/competition';
 
 /**
  * A 3D tile for the competition type, in the same metals as the milestone medals: a thick base edge,
@@ -57,49 +58,6 @@ export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; 
   </span>;
 }
 
-export function competitionPhase(table: CompetitionTable, now = Date.now()): CompetitionPhase {
-  if (table.status === 'SETTLED') return 'final';
-  if (table.status === 'PENDING_APPROVAL' || table.status === 'PENDING_FUNDING') return 'pending';
-  const t = (iso: string | null) => (iso ? new Date(iso).getTime() : null);
-  const starts = t(table.startsAt);
-  const entryCloses = t(table.entryClosesAt);
-  const scoringCloses = t(table.scoringClosesAt);
-  if (scoringCloses !== null && now >= scoringCloses) return 'scoring-closed';
-  if ((entryCloses !== null && now >= entryCloses) || (table.status !== 'OPEN_FOR_ENTRY' && table.status !== 'ACTIVE')) {
-    return 'entry-closed';
-  }
-  if (starts !== null && now < starts) return 'upcoming';
-  return 'open';
-}
-
-export function canEnter(table: CompetitionTable, now = Date.now()) {
-  const phase = competitionPhase(table, now);
-  return table.status === 'OPEN_FOR_ENTRY' && (phase === 'open' || phase === 'upcoming');
-}
-
-/** One short line describing where the competition is in its lifecycle. */
-export function phaseLine(table: CompetitionTable, now = Date.now()): string {
-  switch (competitionPhase(table, now)) {
-    case 'pending':
-      return table.status === 'PENDING_FUNDING' ? 'Prize funding needed' : 'Awaiting approval';
-    case 'upcoming':
-      return `Starts in ${formatCountdown(table.startsAt!, now)}`;
-    case 'open':
-      return table.entryClosesAt && table.entryClosesAt !== table.scoringClosesAt
-        ? `Entry closes in ${formatCountdown(table.entryClosesAt, now)}`
-        : table.scoringClosesAt
-          ? `Ends in ${formatCountdown(table.scoringClosesAt, now)}`
-          : 'Open';
-    case 'entry-closed':
-      return table.scoringClosesAt ? `Entry closed · ends in ${formatCountdown(table.scoringClosesAt, now)}` : 'Entry closed';
-    case 'scoring-closed':
-      // Free competitions are done when they close; prize ones wait for Jump to settle the result.
-      return table.type === 'free' ? 'Ended' : 'Scoring closed · result pending';
-    case 'final':
-      return 'Final result';
-  }
-}
-
 export function TypeTag({ table }: { table: CompetitionTable }) {
   if (table.type === 'paid') {
     return <span className="tag border-ink bg-ink text-paper">Paid · {formatMoney(table.entryFeeKobo)}</span>;
@@ -132,34 +90,6 @@ export function cardTheme(table: CompetitionTable) {
   if (table.challengeType === 'RUN') return { band: 'bg-track text-ink', accent: 'bg-ink' };
   if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: 'bg-volt text-ink', accent: 'bg-ink' };
   return { band: 'bg-ink text-paper', accent: 'bg-volt' };
-}
-
-/** The one big thing about a challenge, from its real settings. */
-export function challengeHeadline(table: CompetitionTable, unit: Unit): { big: string; small: string } {
-  const prizePot = table.type === 'sponsored' ? (table.fundedPrizeKobo || table.guaranteedPrizeKobo) : table.guaranteedPrizeKobo;
-  if (prizePot) {
-    const amount = prizeSplit(prizePot, table.platformFeeBps, table.creatorCommissionBps).winnerKobo;
-    if (table.fundingDestination === 'CHARITY') return { big: formatMoney(amount).replace(/\.00$/, ''), small: `for ${table.charityName ?? 'charity'} · held for verification` };
-    return { big: formatMoney(amount).replace(/\.00$/, ''), small: table.prizeSplitBps?.length > 1 ? `across top ${table.prizeSplitBps.length}` : 'to the winner' };
-  }
-  return headline(table, unit);
-}
-
-/** How far through its window a challenge is, 0–1, or null when it has no end. */
-function progress(table: CompetitionTable, now: number) {
-  if (!table.scoringClosesAt) return null;
-  const start = new Date(table.startsAt ?? table.createdAt).getTime();
-  const end = new Date(table.scoringClosesAt).getTime();
-  if (end <= start) return null;
-  return Math.min(1, Math.max(0, (now - start) / (end - start)));
-}
-
-/** Prize or entry in a few characters: "₦50,000", "Free", "₦1,000 entry". */
-export function prizeLabel(table: CompetitionTable, unit: Unit) {
-  const hero = challengeHeadline(table, unit);
-  if (hero.big.startsWith('₦')) return { text: hero.big, prize: true };
-  if (table.type === 'paid') return { text: `${formatMoney(table.entryFeeKobo).replace(/\.00$/, '')} entry`, prize: false };
-  return { text: table.type === 'sponsored' ? 'Funded' : 'Free', prize: false };
 }
 
 /** One row in a competition list: tile, title, what wins, who's in, time left, prize. Sits inside a bordered list. */
@@ -306,7 +236,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
   const hero = challengeHeadline(table, unit);
   const phase = competitionPhase(table, now);
   const live = phase === 'open';
-  const done = progress(table, now);
+  const done = windowProgress(table, now);
   const joined = table.entrantCount ?? null;
 
   return (
@@ -436,14 +366,4 @@ export function LockedNotice({ children }: { children: ReactNode }) {
       {children}
     </p>
   );
-}
-
-/**
- * How a funded prize pot is paid out at settlement (mirrors the API's calculatePrizeBreakdown):
- * Jump's fee comes off the pot; paid creators also receive a commission from that fee.
- */
-export function prizeSplit(potKobo: number, platformFeeBps: number, creatorCommissionBps: number) {
-  const feeKobo = Math.floor((potKobo * platformFeeBps) / 10_000);
-  const creatorKobo = Math.floor((potKobo * creatorCommissionBps) / 10_000);
-  return { winnerKobo: potKobo - feeKobo, creatorKobo, jumpKobo: feeKobo - creatorKobo };
 }

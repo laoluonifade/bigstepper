@@ -12,7 +12,8 @@
     "test": "pnpm -r --if-present run test",
     "db:migrate": "pnpm --filter @jump/api migration:run",
     "db:revert": "pnpm --filter @jump/api migration:revert",
-    "dev:mobile": "pnpm --filter @jump/mobile start"
+    "dev:mobile": "pnpm --filter @jump/mobile start",
+    "dev:mobile:go": "pnpm --filter @jump/mobile go"
   },
   "pnpm": {
     "overrides": {

@@ -13,7 +13,9 @@ const PERIODS = ['week', 'month', 'all'] as const;
 export class LeaderboardService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async board(viewerId: string, activity = 'foot', period = 'week', scope = 'global', limit = '50') {
+  async board(viewerId: string | null, activity = 'foot', period = 'week', scope = 'global', limit = '50') {
+    // A guest has no home country, so the country board is for signed-in runners.
+    if (!viewerId && scope === 'country') throw new BadRequestException('Sign in to see your country’s board');
     const types = ACTIVITIES[activity];
     const size = Number(limit);
     if (!types || !PERIODS.includes(period as (typeof PERIODS)[number]) || !['global', 'country'].includes(scope) || !Number.isInteger(size) || size < 1 || size > 100) {

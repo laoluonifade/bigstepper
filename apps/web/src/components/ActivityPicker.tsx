@@ -1,3 +1,4 @@
+import { shownMetres as activityMetres } from '@jump/shared/progress';
 import { RefObject } from 'react';
 import { activityName, formatDistance } from '../lib/format';
 import type { Activity, Unit } from '../lib/types';
@@ -11,9 +12,7 @@ export function ActivityBadge({ type, size = 36 }: { type: 'walk' | 'run' | 'cyc
   </span>;
 }
 
-export function activityMetres(activity: Activity) {
-  return activity.verificationStatus === 'VERIFIED' ? Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) : activity.recordedDistanceMetres;
-}
+export { shownMetres as activityMetres } from '@jump/shared/progress';
 
 /** Scrollable list of all your activities, newest first, to attach one to a post or message. */
 export function ActivityPicker({ anchor, activities, unit, selectedId, title = 'Share an activity', onPick, onClose }: {

@@ -1,38 +1,9 @@
 import { JUMP_LOGO } from '../components/icons';
 import { circleImage } from './boardImage';
 
-export type CardFormat = 'story' | 'post';
+import type { CardFormat, CompetitionCardData } from '@jump/shared/competition';
 
-export interface CardPerson {
-  userId: string;
-  name: string;
-  /** Already formatted: "12.4 km", "56:09", "8,120 steps". */
-  score: string;
-  rank: number;
-}
-
-export interface CompetitionCardData {
-  title: string;
-  /** "Run · Farthest distance" */
-  kind: string;
-  /** The one big thing: "10K", "STEPS", "STREAK". */
-  big: string;
-  /** Under it: "fastest time wins". */
-  small: string;
-  /** "₦50,000 to the winner", "Free to join". */
-  stakes: string;
-  entrants: number;
-  /** "5 days left", "Starts in 2 days", "No end date". */
-  timing: string;
-  code: string;
-  /** Without the scheme, e.g. "startajump.com/competitions/58D59271". */
-  link: string;
-  podium: CardPerson[];
-  /** You, when you're in: your place and score. */
-  me: (CardPerson & { scored: boolean }) | null;
-  /** The activity's colour for the big word and lane. */
-  accent: string;
-}
+export type { CardFormat, CardPerson, CompetitionCardData } from '@jump/shared/competition';
 
 const SIZES: Record<CardFormat, { w: number; h: number }> = { story: { w: 1080, h: 1920 }, post: { w: 1080, h: 1350 } };
 const INK = '#121212';
