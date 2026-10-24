@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import { Queue } from 'bullmq';
 import { GpsSampleDto } from './dto/add-samples.dto';
 import { GpsSample } from './gps-sample.entity';
@@ -34,6 +34,13 @@ export class RunningService {
       }
       throw error;
     }
+  }
+
+  async getActive(userId: string) {
+    return this.sessions.findOne({
+      where: { userId, status: In(['RUNNING', 'PAUSED']) },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async addSamples(userId: string, sessionId: string, input: GpsSampleDto[]) {

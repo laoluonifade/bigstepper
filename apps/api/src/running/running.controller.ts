@@ -10,6 +10,11 @@ import { StartRunDto } from './dto/start-run.dto';
 export class RunningController {
   constructor(private readonly runningService: RunningService) {}
 
+  @Get('active')
+  getActive(@CurrentUser() user: AuthenticatedUser) {
+    return this.runningService.getActive(user.id);
+  }
+
   @Post('start')
   start(@CurrentUser() user: AuthenticatedUser, @Body() body?: StartRunDto) {
     return this.runningService.start(user.id, body?.activityType ?? 'run');

@@ -272,18 +272,20 @@ async function reset() {
 }
 
 /** Called once a runner is signed in: picks up a run that was in progress when the app last closed. */
-export async function restoreRecorder(forUser: string, client: QueryClient) {
+export async function restoreRecorder(forUser: string, client: QueryClient, force = false) {
   queryClient = client;
-  if (userId === forUser && state.phase !== 'restoring' && state.phase !== 'unavailable') return;
+  if (!force && userId === forUser && state.phase !== 'restoring' && state.phase !== 'unavailable') return;
   userId = forUser;
   const pointer = getActiveRun(forUser);
-  if (!pointer) {
-    set({ phase: 'idle', error: null });
-    return;
-  }
   set({ phase: 'restoring', error: null });
   try {
-    const run = await api<RunSession>(`/runs/${pointer.runId}`);
+    const activeRun = await api<RunSession | null>('/runs/active');
+    const run = activeRun ?? (pointer ? await api<RunSession>(`/runs/${pointer.runId}`) : null);
+    if (!run) {
+      set({ phase: 'idle', error: null });
+      return;
+    }
+    setActiveRun({ runId: run.id, userId: forUser, startedAt: run.startedAt, activityType: run.activityType });
     adopt(run);
     set({ pendingCount: countPending(run.id) });
     motionAllowed = run.activityType !== 'cycle' && (await Pedometer.getPermissionsAsync().then((permission) => permission.granted).catch(() => false));
@@ -301,6 +303,7 @@ export async function restoreRecorder(forUser: string, client: QueryClient) {
     }
   } catch (error) {
     if (isApiError(error, 404)) {
+      if (pointer) clearRun(pointer.runId);
       await reset();
       set({ phase: 'idle' });
     } else {
@@ -346,8 +349,18 @@ async function start(kind: ActivityKind = 'run'): Promise<StartProblem> {
     if (first) onFixes([first]);
     await startWatching();
   } catch (error) {
-    if (isApiError(error, 409)) set({ phase: 'blocked' });
-    else set({ phase: 'idle', error: error instanceof Error ? error.message : 'Couldn’t start your activity.' });
+    if (isApiError(error, 409)) {
+      const currentUserId = userId;
+      const currentQueryClient = queryClient;
+      if (currentUserId && currentQueryClient) {
+        set({ phase: 'restoring' });
+        await restoreRecorder(currentUserId, currentQueryClient, true);
+      } else {
+        set({ phase: 'blocked' });
+      }
+    } else {
+      set({ phase: 'idle', error: error instanceof Error ? error.message : 'Couldn’t start your activity.' });
+    }
     return null;
   }
   return background && background.status !== 'granted' ? 'background-denied' : null;
@@ -448,7 +461,7 @@ const actions = {
   finish,
   discard,
   retryRestore: () => {
-    if (userId && queryClient) void restoreRecorder(userId, queryClient);
+    if (userId && queryClient) void restoreRecorder(userId, queryClient, true);
   },
   clearError: () => set({ error: null }),
 };

@@ -283,14 +283,16 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
   useEffect(() => {
     let cancelled = false;
     const pointer = getActiveRun(user.id);
-    if (!pointer) {
-      setPhase('idle');
-      return;
-    }
     setPhase('restoring');
-    api<RunSession>(`/runs/${pointer.runId}`)
+    api<RunSession | null>('/runs/active')
+      .then((activeRun) => activeRun ?? (pointer ? api<RunSession>(`/runs/${pointer.runId}`) : null))
       .then(async (run) => {
         if (cancelled) return;
+        if (!run) {
+          setPhase('idle');
+          return;
+        }
+        setActiveRun({ runId: run.id, userId: user.id, startedAt: run.startedAt });
         adopt(run);
         // Android allows motion without asking; iOS needs a tap, so steps resume only where allowed.
         motionAllowedRef.current = await requestMotionPermission();
@@ -311,6 +313,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       .catch(async (err) => {
         if (cancelled) return;
         if (isApiError(err, 404)) {
+          if (pointer) await clearRun(pointer.runId);
           await reset();
           setPhase('idle');
         } else {
@@ -398,8 +401,10 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       else setGpsError('Waiting for GPS to lock on. Keep Jump open with a clear view of the sky.');
       startWatch();
     } catch (err) {
-      if (isApiError(err, 409)) setPhase('blocked');
-      else {
+      if (isApiError(err, 409)) {
+        setPhase('restoring');
+        setRestoreAttempt((attempt) => attempt + 1);
+      } else {
         setError(err instanceof Error ? err.message : 'Couldn’t start your run.');
         setPhase('idle');
       }
