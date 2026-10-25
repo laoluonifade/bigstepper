@@ -79,6 +79,7 @@ function PublicShell() {
       <footer className="border-t border-line">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 text-[13px] text-ink-3 sm:flex-row sm:items-center sm:justify-between">
           <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-1.5">
+            <Link to="/brands" className="font-medium text-ink-2 hover:text-ink">For brands</Link>
             {LEGAL_LINKS.map((link) => <Link key={link.to} to={link.to} className="font-medium text-ink-2 hover:text-ink">{link.label}</Link>)}
             <a href="mailto:start@startajump.com" className="font-medium text-ink-2 hover:text-ink">Contact</a>
           </nav>

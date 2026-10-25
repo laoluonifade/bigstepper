@@ -65,7 +65,7 @@ export default function FeedPostScreen() {
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
     <Stack.Screen options={{ title: 'Post' }} />
-    <Screen padded={false} refreshing={comments.isRefetching} onRefresh={refresh} footer={<Footer style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10 }}>
+    <Screen ownKeyboard padded={false} refreshing={comments.isRefetching} onRefresh={refresh} footer={<Footer style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10 }}>
       <Avatar name={profile.data?.displayName ?? 'You'} src={profile.data?.avatarUrl} avatarStyle={avatarStyleForGender(profile.data?.gender)} size={34} round style={{ marginBottom: 4 }} />
       <View style={styles.reply}>
         <MentionInput ref={replyField} value={body} onValueChange={setBody} placement="above" multiline maxLength={500} placeholder={`Reply to ${item.displayName.split(' ')[0]}…`} accessibilityLabel="Write a comment"

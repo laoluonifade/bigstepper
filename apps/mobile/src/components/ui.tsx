@@ -335,17 +335,21 @@ function usePullToRefresh(refetching: boolean) {
 export const BottomBarInset = createContext(0);
 
 /** The standard scrolling page: paper background, 16px gutters, room for the tab bar. */
-export function Screen({ ref, children, refreshing, onRefresh, padded = true, contentStyle, footer }: { ref?: Ref<ComponentRef<typeof ScrollView>>; children: ReactNode; refreshing?: boolean; onRefresh?: () => void; padded?: boolean; contentStyle?: StyleProp<ViewStyle>; footer?: ReactNode }) {
+export function Screen({ ref, children, refreshing, onRefresh, padded = true, contentStyle, footer, ownKeyboard = false }: {
+  ref?: Ref<ComponentRef<typeof ScrollView>>; children: ReactNode; refreshing?: boolean; onRefresh?: () => void; padded?: boolean; contentStyle?: StyleProp<ViewStyle>; footer?: ReactNode;
+  /** The screen wraps itself in its own KeyboardAvoidingView (to lift a footer): don't adjust here too, or they fight and the scroll jumps. */
+  ownKeyboard?: boolean;
+}) {
   const pulling = usePullToRefresh(Boolean(refreshing));
   const barInset = useContext(BottomBarInset);
   // The keyboard must never cover the field you're typing in: iOS insets the scroll view and scrolls the
   // focused field into view; Android (edge-to-edge, so the window doesn't resize) gets padding instead.
-  return <KeyboardAvoidingView behavior={Platform.OS === 'android' ? 'padding' : undefined} enabled={Platform.OS === 'android'} style={{ flex: 1, backgroundColor: colors.paper }}>
+  return <KeyboardAvoidingView behavior={Platform.OS === 'android' ? 'padding' : undefined} enabled={Platform.OS === 'android' && !ownKeyboard} style={{ flex: 1, backgroundColor: colors.paper }}>
     <ScrollView
       ref={ref}
       style={{ flex: 1 }}
       contentInsetAdjustmentBehavior="automatic"
-      automaticallyAdjustKeyboardInsets
+      automaticallyAdjustKeyboardInsets={!ownKeyboard}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       contentContainerStyle={[padded && { paddingHorizontal: GUTTER, paddingTop: 16, paddingBottom: 48 }, contentStyle]}

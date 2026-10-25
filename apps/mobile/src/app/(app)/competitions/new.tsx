@@ -227,7 +227,7 @@ export default function NewCompetitionScreen() {
   const submitHint = blocker ?? (mode === 'paid' ? 'Jump reviews paid competitions before they open.' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Entry opens once your payment is confirmed.' : later ? (publish === 'draft' ? 'Publish it from the club dashboard when it’s ready.' : `Opens ${publishIso ? formatDateTime(publishIso) : 'at the time you pick'}.`) : 'Opens as soon as you create it.');
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 56 : 0}>
-    <Screen footer={<Footer>
+    <Screen ownKeyboard footer={<Footer>
       <Button full size="lg" title={submitLabel} loading={create.isPending} disabled={Boolean(blocker)} onPress={() => (blocker ? toast({ tone: 'warn', message: blocker }) : create.mutate())} />
       <Txt size={12} color="ink3" align="center" numberOfLines={1} style={{ marginTop: 6 }}>{submitHint}</Txt>
     </Footer>}>

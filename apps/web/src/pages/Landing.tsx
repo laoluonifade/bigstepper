@@ -41,6 +41,14 @@ export function LandingPage() {
       </div>
 
       <OpenChallenges />
+      {/* For brands: one band under the hero, pointing to the shareable /brands page. */}
+      <Link to="/brands" className="group flex flex-wrap items-center gap-4 rounded-2xl bg-ink px-6 py-6 text-paper lg:col-span-2">
+        <span className="min-w-0 flex-1">
+          <span className="eyebrow block text-paper/55">For brands</span>
+          <span className="wide mt-1 block text-[20px] font-black uppercase leading-tight sm:text-[24px]">Sponsor a competition. Reach runners across countries.</span>
+        </span>
+        <span className="btn-primary min-h-11 px-5">See Jump for brands <ArrowRightIcon size={16} /></span>
+      </Link>
     </section>
   );
 }

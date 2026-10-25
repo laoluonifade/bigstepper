@@ -14,4 +14,10 @@ export class AppController {
   health() {
     return this.appService.health();
   }
+
+  /** Public headline numbers for the brands page: totals only, nothing about any one person. */
+  @Get('stats')
+  stats() {
+    return this.appService.publicStats();
+  }
 }

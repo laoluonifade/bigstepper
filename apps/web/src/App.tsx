@@ -63,6 +63,7 @@ const reset = createRoute({ getParentRoute: () => authLayout, path: '/reset-pass
 const terms = createRoute({ getParentRoute: () => root, path: '/terms', component: page(() => import('./pages/Legal'), 'TermsPage') });
 const privacy = createRoute({ getParentRoute: () => root, path: '/privacy', component: page(() => import('./pages/Legal'), 'PrivacyPage') });
 const safety = createRoute({ getParentRoute: () => root, path: '/safety', component: page(() => import('./pages/Legal'), 'SafetyPage') });
+const brands = createRoute({ getParentRoute: () => root, path: '/brands', component: page(() => import('./pages/Brands'), 'BrandsPage') });
 const support = createRoute({ getParentRoute: () => root, path: '/support', component: page(() => import('./pages/Support'), 'SupportPage') });
 const leaderboard = createRoute({ getParentRoute: () => root, path: '/leaderboard', component: protectedPage(() => import('./pages/LeaderboardPage'), 'LeaderboardPage') });
 const welcome = createRoute({ getParentRoute: () => root, path: '/welcome', component: protectedPage(() => import('./pages/Welcome'), 'WelcomePage') });
@@ -114,7 +115,7 @@ function tokenSearch(search: Record<string, unknown>): { token?: string } {
 }
 
 const routeTree = root.addChildren([
-  home, competitions, competition, runners, runner, terms, privacy, safety, support,
+  home, competitions, competition, runners, runner, terms, privacy, safety, support, brands,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, welcome, leaderboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
