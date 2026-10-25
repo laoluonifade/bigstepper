@@ -74,36 +74,69 @@ export function pickBoosts(rows: StandingRow[]): StandingRow[] {
   return [...best.values()];
 }
 
-/** The push: where they stand, against whom, and a reason to move today. */
-export function boostMessage(row: StandingRow): Boost {
+/** Cheeky lines for each situation, a different one each day. `{gap}`, `{name}`, `{place}`, `{verb}`, `{others}` fill in. */
+const JOKES = {
+  chasing: [
+    '{gap} behind {name} for {place}. That’s basically a walk to the fridge. Go.',
+    '{name} is {gap} ahead and probably feeling themselves. Humble them tonight.',
+    'Only {gap} between you and {place}. Your trainers are judging you.',
+    '{name} leads you by {gap}. Don’t let them screenshot that leaderboard.',
+    '{gap} to catch {name}. One {verb} and the group chat goes quiet.',
+  ],
+  leading: [
+    '{gap} ahead of {name}. They’re lacing up as we speak. Keep the gap.',
+    'Top of the board, {gap} clear of {name}. Crowns don’t defend themselves.',
+    'You lead {name} by {gap}. Resting is for whoever’s in 2nd.',
+    '{gap} ahead of {name}. Lovely view from the top. Don’t get comfortable.',
+  ],
+  tied: [
+    'Dead level with {name}. Whoever moves tonight gets the bragging rights.',
+    'You and {name} are tied. Someone has to blink first. Make it them.',
+  ],
+  alone: [
+    'Out in front and nobody else has started. Stretch the lead before they wake up.',
+    'You’re leading and the rest are still finding their trainers. Keep it that way.',
+  ],
+  climbing: [
+    'One {verb} tonight could move you up. The sofa will understand.',
+    'Someone above you is beatable. One {verb} tonight and we’ll see.',
+  ],
+  unscored: [
+    'Your name’s on the board but your legs aren’t. One {verb} fixes that.',
+    '{others} already racing and you’re still warming up. Tonight’s the night.',
+    'Joined, then vanished? Classic. One {verb} puts you on the board.',
+  ],
+};
+
+/** The same line all day for one runner, a different one tomorrow. */
+function pick(lines: string[], row: StandingRow, day: string) {
+  let hash = 0;
+  for (const char of `${row.userId}:${row.tableId}:${day}`) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return lines[Math.abs(hash) % lines.length];
+}
+
+const fill = (line: string, values: Record<string, string>) => line.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? '');
+
+/** The evening push: where they stand, against whom, and a cheeky reason to move tonight. */
+export function boostMessage(row: StandingRow, day = new Date().toISOString().slice(0, 10)): Boost {
   const link = `/competitions/${row.code}`;
-  const verb = noun(row.challengeType);
   const method = row.scoringMethod;
-  if (!scored(method, row.score)) {
-    const others = Math.max(0, row.entrants - 1);
-    return { userId: row.userId, link, title: `${row.title} is on`, body: `Your first ${verb} puts you on the board.${others ? ` ${others} ${others === 1 ? 'other is' : 'others are'} already racing.` : ''}` };
-  }
+  const others = Math.max(0, row.entrants - 1);
+  const values = { verb: noun(row.challengeType), others: `${others} ${others === 1 ? 'other is' : 'others are'}` };
+  const say = (kind: keyof typeof JOKES, extra: Record<string, string> = {}) => fill(pick(JOKES[kind], row, day), { ...values, ...extra });
+  if (!scored(method, row.score)) return { userId: row.userId, link, title: `${row.title} is on`, body: say('unscored') };
   if (row.rank === 1) {
-    if (row.behindScore === null || !scored(method, row.behindScore)) {
-      return { userId: row.userId, link, title: `You’re leading ${row.title}`, body: 'Out in front. Keep it that way today.' };
-    }
-    const gap = Number(row.score) === Number(row.behindScore) ? null : formatGap(method, row.score!, row.behindScore);
-    return {
-      userId: row.userId, link, title: `You’re leading ${row.title}`,
-      body: Number(row.score) === Number(row.behindScore) ? `Level with ${first(row.behindName)}. One more ${verb} takes it.`
-        : gap ? `${gap} ahead of ${first(row.behindName)}. Keep the gap today.` : `${first(row.behindName)} is right behind you. Keep moving.`,
-    };
+    const title = `You’re leading ${row.title}`;
+    if (row.behindScore === null || !scored(method, row.behindScore)) return { userId: row.userId, link, title, body: say('alone') };
+    const name = first(row.behindName);
+    if (Number(row.score) === Number(row.behindScore)) return { userId: row.userId, link, title, body: say('tied', { name }) };
+    const gap = formatGap(method, row.score!, row.behindScore);
+    return { userId: row.userId, link, title, body: gap ? say('leading', { gap, name }) : say('alone') };
   }
   const title = `You’re ${ordinal(row.rank)} in ${row.title}`;
-  if (row.aheadScore === null || !scored(method, row.aheadScore)) {
-    return { userId: row.userId, link, title, body: `One ${verb} today could move you up.` };
-  }
-  if (Number(row.score) === Number(row.aheadScore)) {
-    return { userId: row.userId, link, title, body: `Level with ${first(row.aheadName)}. One ${verb} breaks the tie.` };
-  }
+  if (row.aheadScore === null || !scored(method, row.aheadScore)) return { userId: row.userId, link, title, body: say('climbing') };
+  const name = first(row.aheadName);
+  if (Number(row.score) === Number(row.aheadScore)) return { userId: row.userId, link, title, body: say('tied', { name }) };
   const gap = formatGap(method, row.score!, row.aheadScore);
-  return {
-    userId: row.userId, link, title,
-    body: gap ? `${gap} behind ${first(row.aheadName)} for ${ordinal(row.rank - 1)}. One ${verb} could change that.` : `${first(row.aheadName)} is just ahead in ${ordinal(row.rank - 1)}. Go get them.`,
-  };
+  return { userId: row.userId, link, title, body: gap ? say('chasing', { gap, name, place: ordinal(row.rank - 1) }) : say('climbing') };
 }

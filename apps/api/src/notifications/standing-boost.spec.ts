@@ -10,20 +10,35 @@ const row = (over: Partial<StandingRow>): StandingRow => ({
 });
 
 describe('standing boost', () => {
-  it('tells a chaser how far behind the next runner they are', () => {
-    expect(boostMessage(row({}))).toEqual({
-      userId: 'u1', link: '/competitions/ABC12345', title: 'You’re 2nd in Move with Tee', body: '1.49 km behind Ada for 1st. One run could change that.',
-    });
+  it('tells a chaser, cheekily, how far behind the next runner they are', () => {
+    const boost = boostMessage(row({}), '2026-10-25');
+    expect(boost).toMatchObject({ userId: 'u1', link: '/competitions/ABC12345', title: 'You’re 2nd in Move with Tee' });
+    expect(boost.body).toContain('1.49 km');
+    expect(boost.body).toContain('Ada');
+    expect(boost.body).not.toMatch(/\{\w+\}/);
   });
 
   it('says level, never "by 0 days", when scores are tied', () => {
-    expect(boostMessage(row({ scoringMethod: 'MOST_ACTIVE_DAYS', rank: 1, score: 1, behindScore: 1, behindName: 'walebakre' })).body)
-      .toBe('Level with walebakre. One more run takes it.');
+    const body = boostMessage(row({ scoringMethod: 'MOST_ACTIVE_DAYS', rank: 1, score: 1, behindScore: 1, behindName: 'walebakre' }), '2026-10-25').body;
+    expect(body).toMatch(/level|tied/i);
+    expect(body).toContain('walebakre');
+    expect(body).not.toContain('0 days');
   });
 
-  it('tells a leader their margin, and a runner yet to score how to get on the board', () => {
-    expect(boostMessage(row({ rank: 1, score: 5210, behindScore: 3720 })).body).toBe('1.49 km ahead of Tunde. Keep the gap today.');
-    expect(boostMessage(row({ score: 0, challengeType: 'WALK' })).body).toBe('Your first walk puts you on the board. 4 others are already racing.');
+  it('tells a leader their margin, and nudges a runner yet to score', () => {
+    const lead = boostMessage(row({ rank: 1, score: 5210, behindScore: 3720 }), '2026-10-25');
+    expect(lead.title).toBe('You’re leading Move with Tee');
+    expect(lead.body).toContain('1.49 km');
+    expect(lead.body).toContain('Tunde');
+    const fresh = boostMessage(row({ score: 0, challengeType: 'WALK' }), '2026-10-25');
+    expect(fresh.title).toBe('Move with Tee is on');
+    expect(fresh.body).not.toMatch(/\{\w+\}/);
+  });
+
+  it('keeps one line all day and changes it across days', () => {
+    const days = ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30'];
+    expect(boostMessage(row({}), '2026-10-25').body).toBe(boostMessage(row({}), '2026-10-25').body);
+    expect(new Set(days.map((day) => boostMessage(row({}), day).body)).size).toBeGreaterThan(1);
   });
 
   it('picks one competition per runner: the tightest race they are chasing', () => {

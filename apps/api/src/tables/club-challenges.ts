@@ -101,13 +101,35 @@ export async function announceToFollowers(manager: EntityManager, table: Pick<Co
   );
 }
 
-/** Opens a draft or scheduled challenge: entry opens, the club is entered if asked, and followers hear. */
+/**
+ * A public competition just opened: tell everyone. While Jump is small, every runner hears about every
+ * new one, as a push and (if they get activity emails) an email. Club followers get the club's own
+ * wording above instead; the host and anyone already in it hear nothing; and it's once per competition.
+ */
+export async function announceCompetition(manager: EntityManager, table: Pick<CompetitionTable, 'id' | 'communityId' | 'visibility' | 'creatorId' | 'title' | 'code'>) {
+  if (table.visibility !== 'public') return;
+  await announceToFollowers(manager, table);
+  await manager.query(
+    `INSERT INTO "notifications" ("userId","type","title","body","link")
+     SELECT u."id", 'NEW_COMPETITION', 'New competition: ' || $2,
+            COALESCE((SELECT p."displayName" FROM "profiles" p WHERE p."userId" = $4), 'A Jump runner') || ' just started it. Tap to see the rules and join.',
+            '/competitions/' || $3
+     FROM "users" u
+     WHERE u."deletedAt" IS NULL AND u."id" <> $4
+       AND NOT EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = $1 AND r."userId" = u."id")
+       AND ($5::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM "club_follows" f WHERE f."clubId" = $5 AND f."userId" = u."id"))
+       AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId" = u."id" AND n."type" = 'NEW_COMPETITION' AND n."link" = '/competitions/' || $3)`,
+    [table.id, table.title, table.code, table.creatorId, table.communityId ?? null],
+  );
+}
+
+/** Opens a draft or scheduled challenge: entry opens, the club is entered if asked, and everyone hears. */
 export async function openTable(manager: EntityManager, table: CompetitionTable) {
   table.status = 'OPEN_FOR_ENTRY';
   table.publishAt = null;
   await manager.save(CompetitionTable, table);
   if (table.autoEnrolClub && table.communityId && table.type !== 'paid') await enrolClubMembers(manager, { tableId: table.id });
-  await announceToFollowers(manager, table);
+  await announceCompetition(manager, table);
   return table;
 }
 

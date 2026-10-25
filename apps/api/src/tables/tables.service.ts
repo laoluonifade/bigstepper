@@ -12,7 +12,7 @@ import { ACTIVITY_RULES, METRICS, ScoringMethod } from './competition-rules';
 import { scoringColumns } from './scoring-columns';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
-import { announceToFollowers, assertClubCanHost, assertCountryEligible, canManageTable, checkClubPrizes, nextStart, prizeColumns, savePrizes, templateOf, UNPUBLISHED } from './club-challenges';
+import { announceCompetition, assertClubCanHost, assertCountryEligible, canManageTable, checkClubPrizes, nextStart, prizeColumns, savePrizes, templateOf, UNPUBLISHED } from './club-challenges';
 import { RANK_ORDER } from './scoring-engine';
 import { CreateCreatorPaidChallengeDto } from '../admin/paid-table.dto';
 import { allocatePrizes, assertPrizeSplit } from './prize-split';
@@ -372,7 +372,7 @@ export class TablesService {
         created.edition = 1;
         await manager.update(CompetitionTable, { id: created.id }, { seriesId: series.id, edition: 1 });
       }
-      if (created.status === 'OPEN_FOR_ENTRY') await announceToFollowers(manager, created);
+      if (created.status === 'OPEN_FOR_ENTRY') await announceCompetition(manager, created);
     });
   }
 

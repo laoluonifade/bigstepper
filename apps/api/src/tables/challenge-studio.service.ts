@@ -5,7 +5,7 @@ import { PrizeAwardsService } from '../prizes/prize-awards.service';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
 import {
-  assertClubCanHost, canManageTable, ChallengeTemplate, checkClubPrizes, createFromTemplate, nextStart, openTable, prizeColumns, savePrizes,
+  announceCompetition, assertClubCanHost, canManageTable, ChallengeTemplate, checkClubPrizes, createFromTemplate, nextStart, openTable, prizeColumns, savePrizes,
   templateOf, UNPUBLISHED,
 } from './club-challenges';
 import { retotal } from './competition-credits';
@@ -229,6 +229,7 @@ export class ChallengeStudioService {
       const table = await createFromTemplate(manager, series.template, {
         creatorId, communityId: series.clubId, startsAt, status: canOpen ? 'OPEN_FOR_ENTRY' : 'DRAFT', seriesId, edition, title: `${series.title} #${edition}`,
       });
+      if (canOpen) await announceCompetition(manager, table);
       await manager.query(`UPDATE "challenge_series" SET "lastEdition" = $2, "nextStartsAt" = $3, "updatedAt" = now() WHERE "id" = $1`, [seriesId, edition, nextStart(startsAt, series.cadence)]);
       await manager.query(
         `INSERT INTO "notifications" ("userId","type","title","body","link")

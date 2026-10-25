@@ -14,7 +14,7 @@ import { ProviderWebhook } from './provider-webhook.entity';
 import { CreateRecipientDto } from './payout.dto';
 import * as bcrypt from 'bcrypt';
 import { AmlService } from '../aml/aml.service';
-import { assertCountryEligible } from '../tables/club-challenges';
+import { announceCompetition, assertCountryEligible } from '../tables/club-challenges';
 
 @Injectable()
 export class PaymentsService {
@@ -656,6 +656,7 @@ export class PaymentsService {
       await manager.save(table);
       // A club's funded competition takes the club in once it opens.
       if (legacyFixed && table.communityId) await enrolClubMembers(manager, { tableId: table.id });
+      if (legacyFixed) await announceCompetition(manager, table);
       const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified funded competition prize') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
       if (journal[0]) await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','sponsor_prize_liability')`, [journal[0].id, locked.amountKobo]);
       return false;

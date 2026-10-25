@@ -78,7 +78,9 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
          AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId" = me."userId" AND n."type" = 'STANDING_BOOST'
            AND (n."createdAt" AT TIME ZONE 'Africa/Lagos')::date = (now() AT TIME ZONE 'Africa/Lagos')::date)`,
     ) as StandingRow[];
-    const boosts = pickBoosts(rows).map(boostMessage);
+    // Today in Lagos picks today's joke for each runner.
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(now);
+    const boosts = pickBoosts(rows).map((row) => boostMessage(row, day));
     if (!boosts.length) return 0;
     // Push only: marked emailed already, so the email digest leaves them out.
     await this.dataSource.query(
