@@ -60,7 +60,7 @@ export class CreateTableDto extends ScoringFieldsDto {
   @IsOptional() @IsIn([true])
   fundedFree?: true;
 
-  /** Prizes the hosting club puts up (products, discounts, experiences), instead of cash. Club challenges only. */
+  /** Prizes the hosting club puts up (products, discounts, experiences) on top of cash. Funded club challenges only. */
   @IsOptional() @ValidateNested() @Type(() => ClubPrizesDto)
   clubPrizes?: ClubPrizesDto;
 

@@ -60,7 +60,8 @@ export class PrizeAwardsService {
     const due = await this.dataSource.query(
       `SELECT t."id" FROM "competition_tables" t
        WHERE t."prizeFulfilment" IS NOT NULL AND t."prizesFinalizedAt" IS NULL
-         AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
+         -- A cash competition may already be settled (its payout) before its club prizes are decided.
+         AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED','SETTLED')
          AND t."scoringClosesAt" IS NOT NULL AND t."scoringClosesAt" <= now() - ($1 || ' hours')::interval
          AND (t."scoringClosesAt" <= now() - ($2 || ' days')::interval OR NOT EXISTS (
            SELECT 1 FROM "activities" a JOIN "table_registrations" r ON r."userId" = a."userId"
@@ -104,7 +105,9 @@ export class PrizeAwardsService {
           made.push(award.id);
         }
       }
-      await manager.query(`UPDATE "competition_tables" SET "status" = 'SETTLED', "prizesFinalizedAt" = $2 WHERE "id" = $1`, [tableId, decidedAt]);
+      // Club prizes settle a free competition (older ones could have them). A cash one (funded or paid) has a payout to settle,
+      // which the admin settlement does: leave its status for that.
+      await manager.query(`UPDATE "competition_tables" SET "status" = CASE WHEN "type" = 'free' THEN 'SETTLED' ELSE "status" END, "prizesFinalizedAt" = $2 WHERE "id" = $1`, [tableId, decidedAt]);
       await this.notifyClub(manager, table.communityId, `Winners decided for ${table.title}`, `${made.length} ${made.length === 1 ? 'winner has' : 'winners have'} been asked to claim their prizes.`);
       return made;
     });

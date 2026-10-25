@@ -4,8 +4,9 @@ import { router } from 'expo-router';
 import { ReactNode, useId } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { colors, fontFamily, radius, score } from '@/lib/theme';
+import { brand, colors, fontFamily, radius, score } from '@/lib/theme';
 import { Avatar, Tag, Txt, VerifiedTick } from './ui';
+import { AccentSurface } from '@/lib/surface';
 
 export interface LeaderboardRow {
   rank: number;
@@ -82,20 +83,22 @@ function Row({ row, isMe, unit, formatScore, last }: { row: LeaderboardRow; isMe
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Txt size={15} weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>{row.name}</Txt>
           {row.verified ? <VerifiedTick /> : null}
-          {isMe ? <Tag color={colors.volt} background={colors.ink} border={colors.ink} style={{ height: 20, paddingHorizontal: 6 }}>You</Tag> : null}
+          {isMe ? <Tag color={brand.volt} background={brand.ink} border={brand.ink} style={{ height: 20, paddingHorizontal: 6 }}>You</Tag> : null}
           {row.host ? <Tag background={colors.paper} border={colors.line} style={{ height: 20, paddingHorizontal: 6 }}>Host</Tag> : null}
         </View>
         {row.detail ? <Txt size={12} color="ink3" num numberOfLines={1}>{row.detail}</Txt> : null}
       </View>
     </View>
     <View style={{ paddingRight: 16, alignItems: 'flex-end' }}>
-      {formatScore ? formatScore(row) : <Text style={score(20)}>{formatDistanceNumber(row.metres, unit)}<Text style={styles.unit}> {unit}</Text></Text>}
+      {formatScore ? formatScore(row) : <Text style={[score(20), isMe && { color: colors.onAccent }]}>{formatDistanceNumber(row.metres, unit)}<Text style={[styles.unit, isMe && { color: colors.onAccent }]}> {unit}</Text></Text>}
     </View>
   </>;
   const style = [styles.row, !last && styles.rowLine, isMe && { backgroundColor: colors.volt }];
+  // Your row is volt: its text stays dark in both themes.
+  const content = isMe ? <AccentSurface.Provider value>{body}</AccentSurface.Provider> : body;
   return row.username
-    ? <Pressable onPress={() => router.push(`/runners/${row.username}`)} style={({ pressed }) => [...style, pressed && !isMe && { backgroundColor: colors.inkWash }]} accessibilityRole="button" accessibilityLabel={`${ordinal(row.rank)}, ${row.name}`}>{body}</Pressable>
-    : <View style={style}>{body}</View>;
+    ? <Pressable onPress={() => router.push(`/runners/${row.username}`)} style={({ pressed }) => [...style, pressed && !isMe && { backgroundColor: colors.inkWash }]} accessibilityRole="button" accessibilityLabel={`${ordinal(row.rank)}, ${row.name}`}>{content}</Pressable>
+    : <View style={style}>{content}</View>;
 }
 
 const styles = StyleSheet.create({

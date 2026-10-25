@@ -56,7 +56,7 @@ export function LiveRunBar() {
     <LiveDot live={recorder.phase === 'recording'} color={recorder.phase === 'recording' ? colors.track : colors.paper} />
     <Txt size={11} weight="bold" upper tracking={0.14} color="paper">{recorder.phase === 'recording' ? 'Recording' : 'Paused'}</Txt>
     <View style={{ flex: 1 }} />
-    <Text style={[score(22), { color: colors.volt }]}>{formatDistanceNumber(recorder.distanceMetres, unit)}<Text style={{ fontSize: 12, color: 'rgba(242,239,232,0.7)' }}> {unit}</Text></Text>
+    <Text style={[score(22), { color: colors.volt }]}>{formatDistanceNumber(recorder.distanceMetres, unit)}<Text style={{ fontSize: 12, color: colors.onInkMuted }}> {unit}</Text></Text>
     <Text style={[score(22), { color: colors.paper }]}>{formatDuration(movingSeconds(recorder.session, now))}</Text>
     <ArrowRightIcon size={18} color={colors.paper} />
   </Pressable>;

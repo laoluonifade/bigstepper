@@ -49,7 +49,7 @@ export function PrivacyChoice({ value, onChange }: { value: 'open' | 'invite'; o
         const active = value === option;
         return <Pressable key={option} onPress={() => { haptic(); onChange(option); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.choice, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
           <Txt size={13} weight="bold" color={active ? 'paper' : 'ink'}>{title}</Txt>
-          <Txt size={12} leading={1.35} style={{ marginTop: 2, color: active ? 'rgba(242,239,232,0.7)' : colors.ink2 }}>{body}</Txt>
+          <Txt size={12} leading={1.35} style={{ marginTop: 2, color: active ? colors.onInkMuted : colors.ink2 }}>{body}</Txt>
         </Pressable>;
       })}
     </View>

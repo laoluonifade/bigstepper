@@ -9,6 +9,8 @@ import { Avatar, Button, Centered, ErrorNotice, haptic, HardShadow, Screen, Skel
 import { api } from '@/lib/api';
 import { useProfile, useUnit } from '@/lib/queries';
 import { colors, GUTTER, radius, score } from '@/lib/theme';
+import { ShareIcon } from './icons';
+import { ShareBoardSheet } from './ShareBoard';
 
 type BoardActivity = 'foot' | 'run' | 'walk' | 'cycle';
 type BoardPeriod = 'week' | 'month' | 'all';
@@ -57,11 +59,11 @@ function Podium({ rows, unit, showFlag }: { rows: BoardRow[]; unit: Unit; showFl
       if (!row) return <View key={index} style={{ flex: 1 }} />;
       const first = row.rank === 1;
       return <RowLink key={row.userId} row={row} style={{ flex: 1, alignItems: 'center', minWidth: 0 }}>
-        <Runner row={row} size={first ? 64 : 48} showFlag={showFlag} ring={first || row.isMe ? colors.volt : 'rgba(242,239,232,0.25)'} />
+        <Runner row={row} size={first ? 64 : 48} showFlag={showFlag} ring={first || row.isMe ? colors.volt : colors.onInkWash} />
         <Txt size={13} weight="semibold" numberOfLines={1} style={{ marginTop: 8, color: row.isMe ? colors.volt : colors.paper }}>{row.isMe ? 'You' : row.displayName.split(' ')[0]}</Txt>
-        <Txt size={15} weight="bold" num style={{ color: first ? colors.volt : 'rgba(242,239,232,0.8)' }}>{formatDistance(row.metres, unit)}</Txt>
-        <View style={[styles.step, { height: heights[index], backgroundColor: first ? colors.volt : 'rgba(242,239,232,0.1)' }]}>
-          <Text style={[score(22), { color: first ? colors.ink : 'rgba(242,239,232,0.7)' }]}>{row.rank}</Text>
+        <Txt size={15} weight="bold" num style={{ color: first ? colors.volt : colors.onInkMuted }}>{formatDistance(row.metres, unit)}</Txt>
+        <View style={[styles.step, { height: heights[index], backgroundColor: first ? colors.volt : colors.onInkWash }]}>
+          <Text style={[score(22), { color: first ? colors.onAccent : colors.onInkMuted }]}>{row.rank}</Text>
         </View>
       </RowLink>;
     })}
@@ -75,6 +77,7 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
   const country = profile.data?.countryCode ?? null;
   const [activity, setActivity] = useState<BoardActivity>('foot');
   const [period, setPeriod] = useState<BoardPeriod>('week');
+  const [sharing, setSharing] = useState(false);
   const [chosenScope, setScope] = useState<'global' | 'country'>('global');
   const scope = guest ? 'global' : chosenScope;
   const board = useQuery({ queryKey: ['leaderboard', activity, period, scope, 50], queryFn: () => api<Board>(`/leaderboard?activity=${activity}&period=${period}&scope=${scope}&limit=50`), staleTime: 60_000 });
@@ -110,11 +113,16 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
         <Txt size={14} weight="semibold" color={activity === tab.value ? 'ink' : 'ink3'}>{tab.label}</Txt>
       </Pressable>)}
     </ScrollView>
-    <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
       {PERIODS.map((option) => <Pressable key={option.value} onPress={() => { haptic(); setPeriod(option.value); }} style={[styles.period, period === option.value && { backgroundColor: colors.ink }]} accessibilityRole="tab" accessibilityState={{ selected: period === option.value }}>
         <Txt size={13} weight="semibold" color={period === option.value ? 'paper' : 'ink2'}>{option.label}</Txt>
       </Pressable>)}
+      {!guest && <Pressable onPress={() => { haptic(); setSharing(true); }} hitSlop={6} style={[styles.period, styles.share]} accessibilityRole="button" accessibilityLabel="Share the leaderboard as an image">
+        <ShareIcon size={14} color={colors.ink} />
+      </Pressable>}
     </View>
+    {!guest && <ShareBoardSheet open={sharing} onOpenChange={setSharing} activity={activity} period={period} initialScope={scope} country={country} unit={unit}
+      filter={`${ACTIVITY_TABS.find((tab) => tab.value === activity)?.label} · ${PERIODS.find((option) => option.value === period)?.label}`} />}
 
     <ErrorNotice error={board.error} onRetry={() => void board.refetch()} />
     {board.isLoading ? <View style={{ gap: 12, marginTop: 16 }}><Skeleton style={{ height: 224, borderRadius: 24 }} /><Skeleton style={{ height: 288, borderRadius: radius['2xl'] }} /></View>
@@ -156,6 +164,7 @@ const styles = StyleSheet.create({
   tabs: { marginTop: 16, flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, marginHorizontal: -GUTTER, paddingHorizontal: GUTTER },
   tab: { paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   period: { height: 32, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 14, justifyContent: 'center' },
+  share: { marginLeft: 'auto', width: 32, paddingHorizontal: 0, alignItems: 'center' },
   empty: { marginTop: 16, borderRadius: radius['2xl'], borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.3)', paddingHorizontal: 16, paddingVertical: 48 },
   me: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'rgba(228,255,58,0.4)', paddingHorizontal: 16, paddingVertical: 12 },
   go: { borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 14, paddingVertical: 8 },

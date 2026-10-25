@@ -69,7 +69,7 @@ export class ChallengeStudioService {
         if (table.publishAt && table.publishAt >= end) throw new BadRequestException('It’s scheduled to open after it would end. Change the schedule first.');
       }
       if (input.clubPrizes !== undefined) {
-        if (input.clubPrizes && (!table.communityId || table.type !== 'free')) throw new BadRequestException('Only free-entry club competitions can have club prizes');
+        if (input.clubPrizes && (!table.communityId || table.type === 'free')) throw new BadRequestException('Club prizes are for funded and paid club competitions');
         if (input.clubPrizes) checkClubPrizes(input.clubPrizes, table.capacity, table.communityId!, this.cloudinary);
         Object.assign(table, prizeColumns(input.clubPrizes));
         await savePrizes(manager, table.id, input.clubPrizes?.prizes ?? [], { replace: true });

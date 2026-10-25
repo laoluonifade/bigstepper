@@ -87,7 +87,14 @@
       ],
       "expo-font",
       "expo-image",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#FF4D12"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

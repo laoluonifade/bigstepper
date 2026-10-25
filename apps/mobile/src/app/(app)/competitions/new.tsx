@@ -107,7 +107,10 @@ export default function NewCompetitionScreen() {
   const entryFeeKobo = nairaInputToKobo(entryFee);
   const fundingStyle = fundingOption === 'MULTI_WINNERS' ? 'OPEN' : 'FIXED';
   const fundingDestination = fundingOption === 'FIXED_CHARITY' ? 'CHARITY' : 'WINNERS';
+  // Scheduling and series are for free competitions (cash ones open once funded); club prizes are for
+  // funded and paid ones only, on top of their cash.
   const clubExtras = clubHost && mode === 'free';
+  const clubPrizesOn = clubHost && mode !== 'free';
   const later = clubExtras && publish !== 'now';
   const publishIso = later && publish === 'schedule' ? fromLocalInput(publishAt) : null;
   const draftOnCreate = mode === 'paid' || (mode === 'sponsored' && fundingStyle === 'FIXED') || later;
@@ -139,7 +142,7 @@ export default function NewCompetitionScreen() {
     prize: prizeError || (mode === 'paid' && guaranteedPrizeKobo < 100) ? 'Choose prize shares that total 100% and fit the maximum runner count.' : undefined,
     invites: !draftOnCreate && (inviteEmails.length > 50 || invitePhones.length > 50 || inviteEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || invitePhones.some((phone) => !/^\+[1-9]\d{7,14}$/.test(phone))) ? 'Use valid emails and international phone numbers, up to 50 of each.' : undefined,
     club: clubId && !club.data ? 'This club could not be loaded.' : club.data?.suspended ? 'Jump has suspended this club, so it can’t host competitions.' : undefined,
-    prizes: clubExtras && prizesOn ? prizeProblem(prizes, capacityNumber) ?? undefined : undefined,
+    prizes: clubPrizesOn && prizesOn ? prizeProblem(prizes, capacityNumber) ?? undefined : undefined,
     publishAt: later && publish === 'schedule' && (!publishIso || new Date(publishIso) <= new Date() || (scoringIso && new Date(publishIso) >= new Date(scoringIso))) ? 'Schedule it for a time in the future, before it ends.' : undefined,
     series: clubExtras && repeat !== 'none' && endless ? 'A series needs an end date for each edition.' : undefined,
   };
@@ -162,7 +165,7 @@ export default function NewCompetitionScreen() {
       ...(mode === 'paid' ? { entryFeeKobo } : {}),
       ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true } : {}) } : {}),
       ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
-      ...(clubExtras && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
+      ...(clubPrizesOn && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
       ...(later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
       ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish } } : {}),
       ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
@@ -230,7 +233,7 @@ export default function NewCompetitionScreen() {
                 {({ pressed }) => <HardShadow offset={2} radius={radius.md} pressed={active || pressed}>
                   <View style={[styles.mode, active && { backgroundColor: colors.ink }]}>
                     <Text style={[wideLabel(13, 0), active && { color: colors.paper }]}>{label}</Text>
-                    <Txt size={11.5} leading={1.3} style={{ marginTop: 4, color: active ? 'rgba(242,239,232,0.7)' : colors.ink2 }}>{body}</Txt>
+                    <Txt size={11.5} leading={1.3} style={{ marginTop: 4, color: active ? colors.onInkMuted : colors.ink2 }}>{body}</Txt>
                   </View>
                 </HardShadow>}
               </Pressable>;
@@ -313,7 +316,7 @@ export default function NewCompetitionScreen() {
             const active = format === value;
             return <Pressable key={value} onPress={() => { haptic(); setFormat(value); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.format, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
               <Text style={[wideLabel(13, 0), active && { color: colors.paper }]}>{FORMATS[value].label}</Text>
-              <Txt size={12} leading={1.35} style={{ marginTop: 4, color: active ? 'rgba(242,239,232,0.7)' : colors.ink2 }}>{FORMATS[value].summary}</Txt>
+              <Txt size={12} leading={1.35} style={{ marginTop: 4, color: active ? colors.onInkMuted : colors.ink2 }}>{FORMATS[value].summary}</Txt>
             </Pressable>;
           })}
           {format === 'invite' && <Txt size={12} color="ink3">Invite by email below, or by username from the competition page after you create it.</Txt>}
@@ -322,7 +325,7 @@ export default function NewCompetitionScreen() {
         {clubHost && <View style={{ gap: 10 }}>
           <FieldLabel label={`For ${club.data!.name}`} />
           <SheetRow title="Who can enter" onOpen={() => setSheet('entry')} summary={eligibleCountries.length ? `${eligibleCountries.map(countryName).join(', ')} only` : 'Anyone, anywhere'} />
-          {clubExtras && <SheetRow title="Club prizes" tone={prizesOn ? 'on' : 'default'} error={errors.prizes} onOpen={() => { if (!prizesOn) setPrizesOn(true); setSheet('prizes'); }}
+          {clubPrizesOn && <SheetRow title="Club prizes" tone={prizesOn ? 'on' : 'default'} error={errors.prizes} onOpen={() => { if (!prizesOn) setPrizesOn(true); setSheet('prizes'); }}
             summary={prizesOn ? prizeSummary(prizes) : 'None yet. Add products, discounts or experiences.'} />}
           {clubExtras && <SheetRow title="Publishing" error={errors.publishAt ?? errors.series} onOpen={() => setSheet('publish')} summary={publishSummary(publish, publishIso ?? null, repeat, autoPublish)} />}
         </View>}
@@ -341,7 +344,7 @@ export default function NewCompetitionScreen() {
         <CountriesField label="Countries" value={eligibleCountries} onChange={setEligibleCountries} emptyLabel="Anyone, anywhere" hint="Leave empty to open it to everyone." />
       </Sheet>
 
-      {clubExtras && <Sheet open={sheet === 'prizes'} onOpenChange={(open) => setSheet(open ? 'prizes' : null)} title="Club prizes" description={`From ${club.data!.name}. Winners get a claim form when it ends.`}
+      {clubPrizesOn && <Sheet open={sheet === 'prizes'} onOpenChange={(open) => setSheet(open ? 'prizes' : null)} title="Club prizes" description={`From ${club.data!.name}. Winners get a claim form when it ends.`}
         footer={<View style={{ flexDirection: 'row', gap: 8 }}>
           <Button variant="secondary" full style={{ flex: 1 }} title="Remove prizes" onPress={() => { setPrizesOn(false); setPrizes(EMPTY_PRIZES); setSheet(null); }} />
           <Button full style={{ flex: 1 }} title="Done" onPress={() => { const problem = prizeProblem(prizes, capacityNumber); if (problem) toast({ tone: 'warn', message: problem }); else setSheet(null); }} />
@@ -359,7 +362,7 @@ export default function NewCompetitionScreen() {
               <View style={[styles.radio, active && { borderColor: colors.paper }]}>{active ? <View style={styles.radioDot} /> : null}</View>
               <View style={{ flex: 1 }}>
                 <Txt size={14} weight="bold" color={active ? 'paper' : 'ink'}>{label}</Txt>
-                <Txt size={12.5} leading={1.35} style={{ color: active ? 'rgba(242,239,232,0.7)' : colors.ink2 }}>{body}</Txt>
+                <Txt size={12.5} leading={1.35} style={{ color: active ? colors.onInkMuted : colors.ink2 }}>{body}</Txt>
               </View>
             </Pressable>;
           })}

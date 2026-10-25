@@ -48,11 +48,11 @@ export function WeekChart({ days, unit }: { days: WeekDay[]; unit: Unit }) {
 }
 
 const styles = StyleSheet.create({
-  baseline: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(18,18,18,0.15)' },
+  baseline: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.inkFaint },
   columns: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row' },
   column: { flex: 1, alignItems: 'center' },
   bar: { width: BAR_WIDTH, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  dot: { width: 3, height: 3, borderRadius: 2, backgroundColor: 'rgba(18,18,18,0.25)', marginBottom: 3 },
+  dot: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.inkFaint, marginBottom: 3 },
   value: { position: 'absolute', fontFamily: fontFamily('bold'), fontSize: 12, color: colors.ink, fontVariant: ['tabular-nums'] },
   label: { marginTop: 6, fontFamily: fontFamily('bold'), fontSize: 11, textTransform: 'uppercase', color: colors.ink3 },
 });

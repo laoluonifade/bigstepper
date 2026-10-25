@@ -18,8 +18,9 @@ import { api, patch, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { openCheckout } from '@/lib/checkout';
 import { savePayment } from '@/lib/payments';
+import { playSound } from '@/lib/sounds';
 import { keys, useActivities, useUnit } from '@/lib/queries';
-import { colors, fontFamily, GUTTER, radius, score } from '@/lib/theme';
+import { colors, fontFamily, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecording } from '@/lib/voice';
 import { ActivityBadge, ActivityPicker } from './ActivityRow';
@@ -137,6 +138,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
     },
     onSuccess(saved, _draft, context) {
       haptic();
+      playSound('send');
       queryClient.setQueryData<T>(queryKey, (current) => current && {
         ...current,
         messages: current.messages.flatMap((message) => (message.id === context?.pendingId ? (current.messages.some((item) => item.id === saved.id) ? [] : [{ ...message, ...saved, pending: false }]) : [message])),
@@ -271,7 +273,8 @@ function Banner({ tone, title, body, onCancel }: { tone: string; title: string; 
 
 /** Sent, then read: one tick, then two in the accent colour, drawn rather than typed so they sit crisply. */
 export function Ticks({ read, dark = false }: { read: boolean; dark?: boolean }) {
-  const colour = read ? (dark ? colors.volt : colors.trackDeep) : dark ? 'rgba(242,239,232,0.55)' : colors.ink3;
+  // On your own (ink) bubble read ticks are volt; in dark mode that bubble is cream, so orange instead.
+  const colour = read ? (dark ? (scheme === 'dark' ? colors.trackDeep : colors.volt) : colors.trackDeep) : dark ? colors.onInkMuted : colors.ink3;
   return <Svg width={read ? 17 : 12} height={10} viewBox={read ? '0 0 17 10' : '0 0 12 10'} accessibilityLabel={read ? 'Read' : 'Sent'}>
     <Path d="M1 5.4 4.3 8.6 11 1.6" stroke={colour} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
     {read ? <Path d="M7.4 8.1 7.9 8.6 14.6 1.6" stroke={colour} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" /> : null}
@@ -315,7 +318,7 @@ function MessageMenu({ frame, mine, children, current, onPick, actions, onClose 
   return <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
     <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close">
       <Animated.View entering={FadeIn.duration(180)} style={StyleSheet.absoluteFill}>
-        {Platform.OS === 'ios' ? <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} /> : null}
+        {Platform.OS === 'ios' ? <BlurView intensity={28} tint={scheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: Platform.OS === 'ios' ? 'rgba(18,18,18,0.12)' : 'rgba(18,18,18,0.45)' }]} />
       </Animated.View>
     </Pressable>
@@ -389,7 +392,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
       ? { borderTopRightRadius: firstInGroup ? 20 : 6, borderBottomRightRadius: lastInGroup ? 20 : 6 }
       : { borderTopLeftRadius: firstInGroup ? 20 : 6, borderBottomLeftRadius: lastInGroup ? 20 : 6 },
     beingEdited && { borderWidth: 2, borderColor: colors.track }]}>
-    {message.replyToBody ? <View style={[styles.quote, { borderLeftColor: dark ? colors.volt : colors.track, backgroundColor: dark ? 'rgba(242,239,232,0.1)' : 'rgba(18,18,18,0.05)' }]}>
+    {message.replyToBody ? <View style={[styles.quote, { borderLeftColor: dark ? colors.volt : colors.track, backgroundColor: dark ? colors.onInkWash : 'rgba(18,18,18,0.05)' }]}>
       <Txt size={12} weight="bold" color={dark ? 'paper' : 'ink'}>{message.replyToSenderId === viewerId ? 'You' : nameOf(message.replyToSenderId ?? '')}</Txt>
       <Txt size={12} numberOfLines={1} style={{ opacity: 0.75, color: dark ? colors.paper : colors.ink }}>{message.replyToBody}</Txt>
     </View> : null}
@@ -398,7 +401,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
     {message.body ? <Txt size={16} leading={1.35} color={dark ? 'paper' : 'ink'} style={message.activity ? { marginTop: 6 } : undefined}>{message.body}</Txt> : null}
     {/* Time, edited and the ticks tucked into the bottom corner. */}
     <View style={styles.meta}>
-      <Txt size={11} num style={{ color: dark ? 'rgba(242,239,232,0.55)' : colors.ink3 }}>
+      <Txt size={11} num style={{ color: dark ? colors.onInkMuted : colors.ink3 }}>
         {message.pending ? (message.audioUrl ? '' : 'Sending…') : `${message.editedAt ? 'Edited · ' : ''}${time}`}
       </Txt>
       {mine && !group && !message.pending ? <Ticks read={Boolean(message.readAt)} dark={dark} /> : null}
@@ -451,24 +454,24 @@ function VoiceNotePlayer({ id, src, seconds, dark, sending = false }: { id: stri
   }, [player, status.didJustFinish]);
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 210, paddingVertical: 2 }}>
     {sending
-      ? <View style={[styles.play, { backgroundColor: dark ? 'rgba(242,239,232,0.15)' : colors.inkFaint }]}><ActivityIndicator size="small" color={dark ? colors.paper : colors.ink} /></View>
+      ? <View style={[styles.play, { backgroundColor: dark ? colors.onInkWash : colors.inkFaint }]}><ActivityIndicator size="small" color={dark ? colors.paper : colors.ink} /></View>
       : <Pressable onPress={() => (status.playing ? player.pause() : player.play())} style={[styles.play, { backgroundColor: dark ? colors.paper : colors.ink }]} accessibilityLabel={status.playing ? 'Pause voice note' : 'Play voice note'}>
         {status.playing ? <PauseIcon size={15} color={dark ? colors.ink : colors.paper} /> : <PlayIcon size={15} color={dark ? colors.ink : colors.paper} />}
       </Pressable>}
     <View style={{ flex: 1, height: 32, flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      {bars.map((height, index) => <View key={index} style={{ flex: 1, height: `${height}%`, borderRadius: 2, backgroundColor: index / bars.length < progress ? (dark ? colors.volt : colors.track) : dark ? 'rgba(242,239,232,0.35)' : 'rgba(18,18,18,0.2)' }} />)}
+      {bars.map((height, index) => <View key={index} style={{ flex: 1, height: `${height}%`, borderRadius: 2, backgroundColor: index / bars.length < progress ? (dark ? colors.volt : colors.track) : dark ? colors.onInkWash : 'rgba(18,18,18,0.2)' }} />)}
     </View>
-    <Txt size={12} num align="right" style={{ width: sending ? 56 : 36, color: dark ? 'rgba(242,239,232,0.7)' : colors.ink2 }}>{sending ? 'Sending…' : formatClock(status.playing || status.currentTime ? duration - status.currentTime : duration)}</Txt>
+    <Txt size={12} num align="right" style={{ width: sending ? 56 : 36, color: dark ? colors.onInkMuted : colors.ink2 }}>{sending ? 'Sending…' : formatClock(status.playing || status.currentTime ? duration - status.currentTime : duration)}</Txt>
   </View>;
 }
 
 /** A walk, run or ride shared in a chat. Your own opens its activity page. */
 function SharedActivityCard({ activity, unit, dark, mine }: { activity: SharedActivity; unit: Unit; dark: boolean; mine: boolean }) {
-  return <Pressable disabled={!mine} onPress={() => router.push(`/activities/${activity.id}`)} style={[styles.shared, { backgroundColor: dark ? 'rgba(242,239,232,0.1)' : colors.paper }]}>
+  return <Pressable disabled={!mine} onPress={() => router.push(`/activities/${activity.id}`)} style={[styles.shared, { backgroundColor: dark ? colors.onInkWash : colors.paper }]}>
     <ActivityBadge type={activity.activityType} />
     <View style={{ flex: 1, minWidth: 0 }}>
       <Txt size={13} weight="bold" numberOfLines={1} color={dark ? 'paper' : 'ink'}>{activityName(activity.startedAt, activity.activityType)}</Txt>
-      <Txt size={12} num style={{ color: dark ? 'rgba(242,239,232,0.6)' : colors.ink3 }}>{`${formatDuration(activity.movingSeconds)}${activity.verificationStatus === 'VERIFIED' ? ' · Verified' : ''}`}</Txt>
+      <Txt size={12} num style={{ color: dark ? colors.onInkMuted : colors.ink3 }}>{`${formatDuration(activity.movingSeconds)}${activity.verificationStatus === 'VERIFIED' ? ' · Verified' : ''}`}</Txt>
     </View>
     <Text style={[score(20), { color: dark ? colors.paper : colors.ink }]}>{formatDistance(activity.distanceMetres, unit)}</Text>
   </Pressable>;

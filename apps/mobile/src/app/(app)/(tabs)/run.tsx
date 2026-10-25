@@ -11,6 +11,7 @@ import Animated, { Easing, Extrapolation, FadeInUp, FadeOutUp, interpolate, runO
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StartCountdown } from '@/components/Countdown';
 import { DragSheet } from '@/components/DragSheet';
+import { Glass, LIQUID_GLASS } from '@/components/Glass';
 import { CheckIcon, ChevronDownIcon, CloseIcon, CycleIcon, PauseIcon, PlayIcon, RunIcon, StopIcon, WalkIcon } from '@/components/icons';
 import { RunMap, type LivePosition } from '@/components/RunMap';
 import { Sheet } from '@/components/Sheet';
@@ -18,10 +19,11 @@ import { onStartPressed } from '@/components/TabBar';
 import { Button, ErrorNotice, haptic, Loading, Notice, PageHeader, Screen, Txt, useCountUp, useNow } from '@/components/ui';
 import { api } from '@/lib/api';
 import { confirm } from '@/lib/dialog';
+import { playSound } from '@/lib/sounds';
 import { usePlaceName } from '@/lib/place';
 import { useUnit } from '@/lib/queries';
 import { movingSeconds, useRecorder, type ActivityKind } from '@/lib/recorder';
-import { colors, fontFamily, GUTTER, score } from '@/lib/theme';
+import { brand, colors, fontFamily, GUTTER, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
 export default function RunScreen() {
@@ -85,9 +87,9 @@ function usePreviewPosition() {
 
 /** Each activity has its own colour when picked: run orange, walk lemon, ride ink with a volt icon. */
 const ACTIVITY_CHOICES = [
-  { value: 'run', label: 'Run', icon: RunIcon, fill: colors.track, iconOn: colors.ink },
-  { value: 'walk', label: 'Walk', icon: WalkIcon, fill: colors.volt, iconOn: colors.ink },
-  { value: 'cycle', label: 'Ride', icon: CycleIcon, fill: colors.ink, iconOn: colors.volt },
+  { value: 'run', label: 'Run', icon: RunIcon, fill: colors.track, iconOn: colors.onAccent },
+  { value: 'walk', label: 'Walk', icon: WalkIcon, fill: colors.volt, iconOn: colors.onAccent },
+  { value: 'cycle', label: 'Ride', icon: CycleIcon, fill: brand.ink, iconOn: colors.volt },
 ] as const;
 
 /** Less than this and GPS hasn't really seen you move: End offers to discard instead of saving. */
@@ -115,21 +117,11 @@ function Slab({ children, style, inner, radius: r = 20, background = colors.card
 }) {
   const frosted = glass && Platform.OS === 'ios';
   return <View style={[styles.lift, { borderRadius: r }, flex && { flex: 1 }, pressed && { transform: [{ scale: 0.96 }], shadowOpacity: 0.06 }, style]}>
-    <View style={[{ borderRadius: r, backgroundColor: frosted ? 'rgba(255,255,255,0.55)' : background, overflow: 'hidden' }, flex && { flex: 1 }, inner]}>
-      {frosted ? <BlurView intensity={70} tint="systemThickMaterialLight" style={StyleSheet.absoluteFill} /> : null}
+    <View style={[{ borderRadius: r, backgroundColor: frosted ? (scheme === 'dark' ? 'rgba(26,26,28,0.55)' : 'rgba(255,255,255,0.55)') : background, overflow: 'hidden' }, flex && { flex: 1 }, inner]}>
+      {frosted ? <BlurView intensity={70} tint={scheme === 'dark' ? 'systemThickMaterialDark' : 'systemThickMaterialLight'} style={StyleSheet.absoluteFill} /> : null}
       {children}
     </View>
   </View>;
-}
-
-/** A slab you press: it sinks into its shadow while held, with a tap from the Taptic Engine. */
-function SlabButton({ children, onPress, label, disabled, background, offset = 4, radius: r = 20, style, inner, feel = 'tap' }: {
-  children: ReactNode; onPress: () => void; label: string; disabled?: boolean; background?: string; offset?: number; radius?: number; style?: StyleProp<ViewStyle>; inner?: StyleProp<ViewStyle>;
-  feel?: Parameters<typeof haptic>[0];
-}) {
-  return <Pressable onPress={() => { haptic(feel); onPress(); }} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={[{ opacity: disabled ? 0.5 : 1 }, style]}>
-    {({ pressed }) => <Slab offset={offset} radius={r} background={background} pressed={pressed && !disabled} inner={inner}>{children}</Slab>}
-  </Pressable>;
 }
 
 function ReadyScreen() {
@@ -180,13 +172,14 @@ function ReadyScreen() {
     <View style={{ flexDirection: 'row', justifyContent: 'space-evenly' }} accessibilityRole="radiogroup" accessibilityLabel="Activity type">
       {ACTIVITY_CHOICES.map(({ value, label, icon: Icon, fill, iconOn }) => {
         const active = activityType === value;
+        // Glass circles: the picked one is tinted in its colour; on iOS 26 they also react to your touch.
         return <Pressable key={value} style={{ alignItems: 'center', gap: 12 }} onPress={() => { if (!active) { haptic('select'); setActivityType(value); } }}
           accessibilityRole="radio" accessibilityState={{ checked: active }} accessibilityLabel={label}>
           {({ pressed }) => <>
-            <Slab radius={52} background={active ? fill : colors.card} pressed={pressed} inner={styles.choice}>
-              <Icon size={44} color={active ? iconOn : colors.ink2} />
-            </Slab>
-            <Text style={plain(16, active ? colors.ink : colors.ink3)}>{label}</Text>
+            <Glass interactive tint={active ? fill : undefined} solid={active ? fill : colors.inkWash} style={[styles.choice, pressed && !LIQUID_GLASS && { transform: [{ scale: 0.95 }] }]}>
+              <Icon size={44} color={active ? iconOn : colors.ink} />
+            </Glass>
+            <Text style={plain(16, active ? colors.ink : colors.ink2)}>{label}</Text>
           </>}
         </Pressable>;
       })}
@@ -203,22 +196,19 @@ function ReadyScreen() {
     <RunMap route={[]} position={preview.position} zoom={15} style={StyleSheet.absoluteFill} bottomInset={sheetHeight} topInset={insets.top + 52} />
 
     <View style={[styles.topRow, { top: insets.top + 8 }]} pointerEvents="box-none">
-      {gpsTappable
-        ? <SlabButton offset={3} radius={14} onPress={() => (preview.state === 'denied' ? void Linking.openSettings() : void preview.enable())} label={gpsLabel} inner={styles.chip}>
+      <Pressable disabled={!gpsTappable} onPress={() => { haptic(); void (preview.state === 'denied' ? Linking.openSettings() : preview.enable()); }} accessibilityRole={gpsTappable ? 'button' : undefined} accessibilityLabel={gpsLabel}>
+        <Glass interactive={gpsTappable} style={styles.chip}>
           <View style={[styles.signalDot, { backgroundColor: gpsColour }]} />
-          <Txt size={14} weight="bold">{gpsLabel}</Txt>
-        </SlabButton>
-        : <Slab offset={3} radius={14} glass inner={styles.chip}>
-          <View style={[styles.signalDot, { backgroundColor: gpsColour }]} />
-          <Txt size={14} weight="bold" numberOfLines={1} style={{ maxWidth: 200 }}>{preview.state === 'ready' && placeName ? placeName : gpsLabel}</Txt>
+          <Txt size={14} weight="semibold" numberOfLines={1} style={{ maxWidth: 200 }}>{preview.state === 'ready' && placeName ? placeName : gpsLabel}</Txt>
           {accuracy !== null && preview.state === 'ready' ? <Txt size={13} color="ink2" num>±{Math.round(accuracy)} m</Txt> : null}
-        </Slab>}
+        </Glass>
+      </Pressable>
     </View>
 
-    <DragSheet initiallyOpen={false} onVisibleHeight={setSheetHeight} header={picker}>
+    <DragSheet initiallyOpen={false} onVisibleHeight={setSheetHeight} header={picker} style={styles.floating}>
       {/* Pulled up: what this one counts toward. */}
       <View style={{ gap: 12, paddingBottom: 20 }}>
-        <Slab radius={16} inner={{ padding: 14 }}>
+        <Slab radius={18} background={colors.inkWash} style={{ shadowOpacity: 0, elevation: 0 }} inner={{ padding: 14 }}>
           <Text style={plain(13, colors.ink2)}>Counting toward</Text>
           {eligible.isLoading ? <Txt size={14} color="ink3" style={{ marginTop: 8 }}>Checking…</Txt>
             : eligible.data?.length ? <View style={{ marginTop: 8, gap: 8 }}>{eligible.data.map((table) => <View key={table.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -260,7 +250,10 @@ function ReadyScreen() {
 function Scoreboard() {
   const recorder = useRecorder();
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  // The panel fills what the screen actually measures: on Android the app draws behind the navigation
+  // bar, so the window height alone leaves a strip of map showing at the bottom.
+  const windowHeight = useWindowDimensions().height;
+  const [height, setHeight] = useState(windowHeight);
   const unit = useUnit();
   const now = useNow(1000);
   const recording = recorder.phase === 'recording';
@@ -320,6 +313,7 @@ function Scoreboard() {
     const activity = await recorder.finish();
     if (activity) {
       haptic('success');
+      playSound('finish');
       router.push({ pathname: '/activities/[id]', params: { id: activity.id, fresh: '1' } });
     }
   }
@@ -337,9 +331,10 @@ function Scoreboard() {
   const startedAt = recorder.session ? new Date(recorder.session.startedAt).getTime() : now;
   const showStillHint = recording && recorder.distanceMetres < 1 && now - startedAt > 20_000 && strength >= 2 && !stale;
   const warning = recorder.error ?? recorder.gpsError ?? (stale ? 'GPS signal lost. Stay outdoors with a clear view of the sky.' : showStillHint ? 'No distance yet. It counts once GPS sees you move a few metres outdoors.' : null);
-  const bright = recording ? colors.volt : 'rgba(242,239,232,0.4)';
+  const bright = recording ? brand.volt : 'rgba(242,239,232,0.4)';
 
-  return <View style={{ flex: 1, backgroundColor: colors.ink }}>
+  // Always dark, in either theme: the brand palette, not the theme's.
+  return <View style={{ flex: 1, backgroundColor: brand.ink }} onLayout={(event) => setHeight(Math.max(event.nativeEvent.layout.height, windowHeight))}>
     <StatusBar style={collapsed ? 'dark' : 'light'} />
     <RunMap route={recorder.route} position={recorder.position} style={StyleSheet.absoluteFill} bottomInset={peek} topInset={insets.top} />
 
@@ -354,9 +349,9 @@ function Scoreboard() {
                 <Text style={[score(44), { lineHeight: 48, color: bright }]}>{formatDistanceNumber(shownMetres, unit)}</Text>
                 <Text style={plain(15, 'rgba(242,239,232,0.6)')}>{unit}</Text>
               </View>
-              <Text style={[score(30), { lineHeight: 34, color: colors.paper }]}>{formatDuration(seconds)}</Text>
-              <Pressable onPress={togglePause} disabled={finishing} style={[styles.miniKey, { backgroundColor: recording ? colors.volt : colors.track }]} accessibilityRole="button" accessibilityLabel={recording ? 'Pause' : 'Resume'}>
-                {recording ? <PauseIcon size={22} /> : <PlayIcon size={22} />}
+              <Text style={[score(30), { lineHeight: 34, color: brand.paper }]}>{formatDuration(seconds)}</Text>
+              <Pressable onPress={togglePause} disabled={finishing} style={[styles.miniKey, { backgroundColor: recording ? brand.volt : brand.track }]} accessibilityRole="button" accessibilityLabel={recording ? 'Pause' : 'Resume'}>
+                {recording ? <PauseIcon size={22} color={brand.ink} /> : <PlayIcon size={22} color={brand.ink} />}
               </Pressable>
             </View>
           </Pressable>
@@ -366,9 +361,9 @@ function Scoreboard() {
         <Animated.View style={[{ flex: 1, paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 12) + 8, paddingHorizontal: GUTTER }, full]} pointerEvents={collapsed ? 'none' : 'auto'}>
           <View style={styles.grabber} />
           <View style={styles.liveTop}>
-            <Text style={plain(17, recording ? 'rgba(242,239,232,0.7)' : colors.volt)}>{finishing ? 'Saving…' : recording ? capitalised(noun) : 'Paused'}</Text>
+            <Text style={plain(17, recording ? 'rgba(242,239,232,0.7)' : brand.volt)}>{finishing ? 'Saving…' : recording ? capitalised(noun) : 'Paused'}</Text>
             <Pressable onPress={() => router.navigate('/dashboard')} hitSlop={10} style={styles.roundGhost} accessibilityRole="button" accessibilityLabel="Minimise, keep recording">
-              <ChevronDownIcon size={20} color={colors.paper} />
+              <ChevronDownIcon size={20} color={brand.paper} />
             </Pressable>
           </View>
 
@@ -386,9 +381,9 @@ function Scoreboard() {
           </View>
 
           <View style={styles.keys}>
-            <Key label="Discard" background="rgba(242,239,232,0.12)" icon={<CloseIcon size={26} color={colors.paper} />} disabled={finishing} onPress={() => { haptic(); void confirmDiscard(); }} />
-            <Key label={recording ? 'Pause' : 'Resume'} background={recording ? colors.volt : colors.track} icon={recording ? <PauseIcon size={30} /> : <PlayIcon size={30} />} disabled={finishing} onPress={togglePause} />
-            <Key label={finishing ? 'Saving' : 'End'} background="#FF453A" icon={<StopIcon size={24} color={colors.paper} />} disabled={finishing} onPress={() => { haptic('medium'); void confirmFinish(); }} />
+            <Key label="Discard" background="rgba(242,239,232,0.12)" icon={<CloseIcon size={26} color={brand.paper} />} disabled={finishing} onPress={() => { haptic(); void confirmDiscard(); }} />
+            <Key label={recording ? 'Pause' : 'Resume'} background={recording ? brand.volt : brand.track} icon={recording ? <PauseIcon size={30} color={brand.ink} /> : <PlayIcon size={30} color={brand.ink} />} disabled={finishing} onPress={togglePause} />
+            <Key label={finishing ? 'Saving' : 'End'} background="#FF453A" icon={<StopIcon size={24} color={brand.paper} />} disabled={finishing} onPress={() => { haptic('medium'); void confirmFinish(); }} />
           </View>
         </Animated.View>
       </Animated.View>
@@ -396,7 +391,7 @@ function Scoreboard() {
 
     {split && <View style={[styles.splitWrap, { top: insets.top + 56 }]} pointerEvents="none">
       <Animated.View key={split.count} entering={FadeInUp.duration(260)} exiting={FadeOutUp.duration(200)} style={styles.splitToast} accessibilityLiveRegion="polite">
-        <Text style={[score(22), { lineHeight: 24, color: colors.ink }]}>{`${split.count} ${unit} · ${formatDuration(split.seconds)}`}</Text>
+        <Text style={[score(22), { lineHeight: 24, color: brand.ink }]}>{`${split.count} ${unit} · ${formatDuration(split.seconds)}`}</Text>
       </Animated.View>
     </View>}
   </View>;
@@ -407,7 +402,7 @@ const plain = (size: number, color: string): TextStyle => ({ fontFamily: fontFam
 
 function Stat({ label, value }: { label: string; value: string }) {
   return <View style={{ flex: 1, alignItems: 'center' }}>
-    <Text style={[score(46), { lineHeight: 50, color: colors.paper }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+    <Text style={[score(46), { lineHeight: 50, color: brand.paper }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
     <Text style={plain(15, 'rgba(242,239,232,0.5)')} numberOfLines={1}>{label}</Text>
   </View>;
 }
@@ -436,6 +431,7 @@ function useSplitBanner(metres: number, unit: 'km' | 'mi', seconds: number) {
     if (count > last.current) {
       last.current = count;
       haptic('success');
+      playSound('split');
       setBanner({ count, seconds });
       const timer = setTimeout(() => setBanner(null), 4000);
       return () => clearTimeout(timer);
@@ -449,13 +445,15 @@ function useSplitBanner(metres: number, unit: 'km' | 'mi', seconds: number) {
 
 const styles = StyleSheet.create({
   topRow: { position: 'absolute', left: GUTTER, right: GUTTER, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 12 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, borderRadius: 20, paddingHorizontal: 14 },
+  /** The ready sheet floats clear of the edges, rounded all round, like Maps on iOS 26. */
+  floating: { left: 10, right: 10, bottom: 10, borderRadius: 34 },
   signalDot: { width: 10, height: 10, borderRadius: 5 },
-  lift: { shadowColor: colors.ink, shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
-  choice: { width: 104, height: 104, alignItems: 'center', justifyContent: 'center' },
-  check: { width: 22, height: 22, borderRadius: 6, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  lift: { shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+  choice: { width: 104, height: 104, borderRadius: 52, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 22, height: 22, borderRadius: 6, backgroundColor: brand.ink, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   liveTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  panel: { position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: colors.ink, overflow: 'hidden' },
+  panel: { position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: brand.ink, overflow: 'hidden' },
   compact: { position: 'absolute', left: 0, right: 0, top: 0, zIndex: 2 },
   compactRow: { paddingHorizontal: GUTTER, paddingTop: 8, paddingBottom: 12 },
   grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, backgroundColor: 'rgba(242,239,232,0.3)', marginBottom: 10 },

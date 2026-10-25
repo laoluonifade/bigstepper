@@ -1,5 +1,7 @@
 import { OmitType } from '@nestjs/swagger';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ClubPrizesDto } from '../prizes/dto/prizes.dto';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../tables/challenge-types';
 import { ScoringFieldsDto } from '../tables/dto/scoring-fields.dto';
 
@@ -25,6 +27,8 @@ export class CreatePaidTableDto extends ScoringFieldsDto {
   /** Defaults to when the challenge ends: entry stays open the whole time. */
   @IsOptional() @IsDateString() entryClosesAt?: string;
   @IsDateString() scoringClosesAt: string;
+  /** Prizes the hosting club puts up on top of the cash pot (products, discounts, experiences). Club competitions only. */
+  @IsOptional() @ValidateNested() @Type(() => ClubPrizesDto) clubPrizes?: ClubPrizesDto;
 }
 
 export class CreateCreatorPaidChallengeDto extends OmitType(CreatePaidTableDto, ['creatorId'] as const) {}

@@ -303,7 +303,7 @@ export class TablesService {
     if (input.openEnded && sponsored) throw new BadRequestException('Prize competitions need an end date so winners can be paid');
     const prizes = input.clubPrizes ?? null;
     if (prizes) {
-      if (sponsored) throw new BadRequestException('Choose cash or club prizes, not both');
+      if (!sponsored) throw new BadRequestException('Club prizes are for funded and paid competitions. Choose funded or paid to add them.');
       if (input.openEnded) throw new BadRequestException('Prize competitions need an end date so winners can be decided');
       checkClubPrizes(prizes, input.capacity, input.communityId!, this.cloudinary);
     }
@@ -374,6 +374,12 @@ export class TablesService {
     const scoring = scoringColumns(input, true);
     await this.assertCommunityManager(creatorId, input.communityId);
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
+    // A club can put up its own prizes on top of the cash pot.
+    const clubPrizes = input.clubPrizes ?? null;
+    if (clubPrizes) {
+      if (!input.communityId) throw new BadRequestException('Club prizes are for club competitions. Host it from your club’s page.');
+      checkClubPrizes(clubPrizes, input.capacity, input.communityId, this.cloudinary);
+    }
     let guaranteedPrizeKobo: number;
     try { guaranteedPrizeKobo = paidPrizePot(input.capacity, input.entryFeeKobo); }
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Invalid paid prize pot'); }
@@ -417,7 +423,10 @@ export class TablesService {
       platformFeeBps: 3500,
       creatorCommissionBps: 500,
       prizeSplitBps,
-    }), input);
+      ...(clubPrizes ? prizeColumns(clubPrizes) : {}),
+    }), input, async (manager, created) => {
+      if (clubPrizes) await savePrizes(manager, created.id, clubPrizes.prizes);
+    });
   }
 
   async registerFree(tableId: string, userId: string) {

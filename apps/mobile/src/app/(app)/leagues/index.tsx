@@ -27,12 +27,12 @@ export default function LeaguesScreen() {
         : <Card variant="strong" padded={false}>
           <View style={styles.season}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Eyebrow style={{ color: 'rgba(242,239,232,0.6)' }}>Current season</Eyebrow>
+              <Eyebrow style={{ color: colors.onInkMuted }}>Current season</Eyebrow>
               <Text style={[display(26), { color: colors.paper, marginTop: 4 }]}>{active.name}</Text>
-              <Txt size={13} num style={{ marginTop: 4, color: 'rgba(242,239,232,0.7)' }}>{`${formatDate(active.startsAt)} – ${formatDate(active.endsAt, { year: 'numeric' })}`}</Txt>
+              <Txt size={13} num style={{ marginTop: 4, color: colors.onInkMuted }}>{`${formatDate(active.startsAt)} – ${formatDate(active.endsAt, { year: 'numeric' })}`}</Txt>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Eyebrow style={{ color: 'rgba(242,239,232,0.6)' }}>Ends in</Eyebrow>
+              <Eyebrow style={{ color: colors.onInkMuted }}>Ends in</Eyebrow>
               <Score size={30} color="volt" style={{ marginTop: 4 }}>{formatCountdown(active.endsAt, now)}</Score>
             </View>
           </View>

@@ -368,7 +368,10 @@ export function NewCompetitionPage() {
   const entryFeeKobo = nairaInputToKobo(entryFee);
   const fundingStyle = fundingOption === 'MULTI_WINNERS' ? 'OPEN' : 'FIXED';
   const fundingDestination = fundingOption === 'FIXED_CHARITY' ? 'CHARITY' : 'WINNERS';
+  // Scheduling and series are for free competitions (cash ones open once funded); club prizes are for
+  // funded and paid ones only, on top of their cash.
   const clubExtras = clubHost && mode === 'free';
+  const clubPrizesOn = clubHost && mode !== 'free';
   const later = clubExtras && publish !== 'now';
   const publishIso = later && publish === 'schedule' ? fromLocalInput(publishAt) : null;
   const draftOnCreate = mode === 'paid' || (mode === 'sponsored' && fundingStyle === 'FIXED') || later;
@@ -400,7 +403,7 @@ export function NewCompetitionPage() {
     prize: prizeError || (mode === 'paid' && guaranteedPrizeKobo < 100) ? 'Choose prize shares that total 100% and fit the maximum runner count.' : undefined,
     invites: !draftOnCreate && (inviteEmails.length > 50 || invitePhones.length > 50 || inviteEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || invitePhones.some((phone) => !/^\+[1-9]\d{7,14}$/.test(phone))) ? 'Use valid emails and international phone numbers, up to 50 of each.' : undefined,
     club: clubId && !club.data ? 'This club could not be loaded.' : club.data?.suspended ? 'Jump has suspended this club, so it can’t host competitions.' : undefined,
-    prizes: clubExtras && prizesOn ? prizeProblem(prizes, capacityNumber) ?? undefined : undefined,
+    prizes: clubPrizesOn && prizesOn ? prizeProblem(prizes, capacityNumber) ?? undefined : undefined,
     publishAt: later && publish === 'schedule' && (!publishIso || new Date(publishIso) <= new Date() || (scoringIso && new Date(publishIso) >= new Date(scoringIso))) ? 'Schedule it for a time in the future, before it ends.' : undefined,
     series: clubExtras && repeat !== 'none' && endless ? 'A series needs an end date for each edition.' : undefined,
   };
@@ -424,7 +427,7 @@ export function NewCompetitionPage() {
         ...(mode === 'paid' ? { entryFeeKobo } : {}),
         ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true } : {}) } : {}),
         ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
-        ...(clubExtras && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
+        ...(clubPrizesOn && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
         ...(later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
         ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish } } : {}),
         ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
@@ -705,7 +708,7 @@ export function NewCompetitionPage() {
             <p className="label">For {club.data!.name}</p>
             <SheetRow title="Who can enter" onOpen={() => setSheet('entry')}
               summary={eligibleCountries.length ? `${eligibleCountries.map(countryName).join(', ')} only` : 'Anyone, anywhere'} />
-            {clubExtras && <SheetRow title="Club prizes" tone={prizesOn ? 'on' : 'default'} onOpen={() => { if (!prizesOn) setPrizesOn(true); setSheet('prizes'); }} error={errors.prizes}
+            {clubPrizesOn && <SheetRow title="Club prizes" tone={prizesOn ? 'on' : 'default'} onOpen={() => { if (!prizesOn) setPrizesOn(true); setSheet('prizes'); }} error={errors.prizes}
               summary={prizesOn ? prizeSummary(prizes) : 'None yet. Add products, discounts or experiences.'} />}
             {clubExtras && <SheetRow title="Publishing" onOpen={() => setSheet('publish')} error={errors.publishAt ?? errors.series}
               summary={publishSummary(publish, publishIso ?? null, repeat, autoPublish)} />}
@@ -720,7 +723,7 @@ export function NewCompetitionPage() {
             </div>
           </Sheet>
 
-          {clubExtras && <Sheet open={sheet === 'prizes'} onOpenChange={(open) => setSheet(open ? 'prizes' : null)} title="Club prizes"
+          {clubPrizesOn && <Sheet open={sheet === 'prizes'} onOpenChange={(open) => setSheet(open ? 'prizes' : null)} title="Club prizes"
             description={`From ${club.data!.name}. Winners get a claim form when it ends.`}
             footer={<div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => { setPrizesOn(false); setPrizes(EMPTY_PRIZES); setSheet(null); }}>Remove prizes</button>

@@ -51,7 +51,7 @@ export function AvatarEditor({ profile, size = 84 }: { profile: Profile; size?: 
     <Pressable onPress={change} disabled={busy} accessibilityRole="button" accessibilityLabel={profile.avatarUrl ? 'Change profile photo' : 'Add a profile photo'}>
       <View style={{ opacity: busy ? 0.6 : 1 }}><Avatar name={profile.displayName} src={profile.avatarUrl} avatarStyle={avatarStyleForGender(profile.gender)} size={size} style={{ borderRadius: radius.lg }} /></View>
       {busy && <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}><ActivityIndicator color={colors.ink} /></View>}
-      <View style={styles.camera}><CameraIcon size={15} /></View>
+      <View style={styles.camera}><CameraIcon size={15} color={colors.onAccent} /></View>
     </Pressable>
     {error ? <Txt size={12} weight="semibold" color="bad" style={{ marginTop: 8, maxWidth: 200 }}>{error.message}</Txt> : null}
   </View>;
@@ -209,7 +209,8 @@ export function ConnectionList({ username, direction }: { username: string; dire
 }
 
 const styles = StyleSheet.create({
-  camera: { position: 'absolute', right: -6, bottom: -6, width: 32, height: 32, borderRadius: 16, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
+  // Volt with a dark icon in both themes, ringed in the page colour so it lifts off the photo.
+  camera: { position: 'absolute', right: -6, bottom: -6, width: 32, height: 32, borderRadius: 16, borderWidth: 2.5, borderColor: colors.paper, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
   hero: { borderRadius: radius.md, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.card, padding: 20 },
   count: { flex: 1, alignItems: 'center', borderRadius: radius.md, paddingVertical: 4 },
   stats: { marginTop: 20, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper },

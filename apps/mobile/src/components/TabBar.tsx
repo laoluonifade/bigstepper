@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useRecorder } from '@/lib/recorder';
-import { colors, fontFamily } from '@/lib/theme';
+import { colors, fontFamily, scheme } from '@/lib/theme';
 import { FeedIcon, HomeIcon, PlayIcon, RunIcon, TableIcon, UserIcon } from './icons';
 import { haptic, HardShadow } from './ui';
 
@@ -15,6 +15,10 @@ export function onStartPressed(listener: () => void) {
   startListeners.add(listener);
   return () => void startListeners.delete(listener);
 }
+
+/** The active tab's pill: ink with a volt icon in light mode; in dark mode ink is cream, so volt with a dark icon. */
+const PILL = scheme === 'dark' ? colors.volt : colors.ink;
+const PILL_ICON = scheme === 'dark' ? colors.onAccent : colors.volt;
 
 const TABS: Record<string, { label: string; icon: (color: string) => ReactNode }> = {
   dashboard: { label: 'Home', icon: (color) => <HomeIcon color={color} /> },
@@ -31,7 +35,7 @@ function Tab({ label, icon, active, onPress }: { label: string; icon: (color: st
   useEffect(() => { on.value = withTiming(active ? 1 : 0, EASE); }, [active, on]);
   const bar = useAnimatedStyle(() => ({ opacity: on.value, transform: [{ scaleX: 0.3 + 0.7 * on.value }] }));
   const pill = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(on.value, [0, 1], ['rgba(18,18,18,0)', colors.ink]),
+    backgroundColor: interpolateColor(on.value, [0, 1], ['rgba(18,18,18,0)', PILL]),
     transform: [{ scale: 0.86 + 0.14 * on.value }],
   }));
   const lit = useAnimatedStyle(() => ({ opacity: on.value }));
@@ -43,7 +47,7 @@ function Tab({ label, icon, active, onPress }: { label: string; icon: (color: st
     <Animated.View style={[styles.iconPill, pill]}>
       {/* The two icon colours cross-fade rather than snap. */}
       <Animated.View style={[styles.icon, dim]}>{icon(colors.ink3)}</Animated.View>
-      <Animated.View style={[styles.icon, lit]}>{icon(colors.volt)}</Animated.View>
+      <Animated.View style={[styles.icon, lit]}>{icon(PILL_ICON)}</Animated.View>
     </Animated.View>
     <Animated.Text style={[styles.label, { fontFamily: fontFamily(active ? 'black' : 'semibold') }, text]}>{label}</Animated.Text>
   </Pressable>;
@@ -64,7 +68,7 @@ export function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
 
   return <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]} accessibilityRole="tablist">
     {/* No rule across the top: the bar lifts off the page with a soft shadow, frosted on iOS. */}
-    {Platform.OS === 'ios' ? <BlurView intensity={80} tint="systemChromeMaterialLight" style={styles.glass} /> : null}
+    {Platform.OS === 'ios' ? <BlurView intensity={80} tint={scheme === 'dark' ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} style={styles.glass} /> : null}
     {state.routes.map((route, index) => {
       const active = state.index === index;
       const go = () => { haptic(); navigateToTab(route.key); };
@@ -82,7 +86,7 @@ export function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
           {({ pressed }) => <>
             <HardShadow offset={3} radius={8} pressed={pressed || (start && locating)} style={styles.raised}>
               <View style={styles.runButton}>
-                {start ? (locating ? <ActivityIndicator color={colors.ink} /> : <PlayIcon size={24} />) : <RunIcon size={22} />}
+                {start ? (locating ? <ActivityIndicator color={colors.onAccent} /> : <PlayIcon size={24} color={colors.onAccent} />) : <RunIcon size={22} color={colors.onAccent} />}
               </View>
             </HardShadow>
             <Text style={[styles.label, { color: colors.ink, fontFamily: fontFamily(start ? 'extrabold' : 'bold') }]}>{start ? (locating ? 'GPS…' : 'Start') : 'Run'}</Text>
@@ -98,8 +102,8 @@ export function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 8, paddingTop: 6,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(242,239,232,0.72)' : colors.paper,
-    shadowColor: colors.ink, shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: -4 }, elevation: 16,
+    backgroundColor: Platform.OS === 'ios' ? (scheme === 'dark' ? 'rgba(14,14,15,0.72)' : 'rgba(242,239,232,0.72)') : colors.paper,
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: -4 }, elevation: 16,
   },
   glass: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   tab: { flex: 1, alignItems: 'center', gap: 2, paddingTop: 6, paddingBottom: 4 },
@@ -108,5 +112,5 @@ const styles = StyleSheet.create({
   icon: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
   raised: { marginTop: -26, marginBottom: 2 },
-  runButton: { width: 56, height: 56, borderRadius: 8, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.track, alignItems: 'center', justifyContent: 'center' },
+  runButton: { width: 56, height: 56, borderRadius: 8, borderWidth: 2, borderColor: colors.onAccent, backgroundColor: colors.track, alignItems: 'center', justifyContent: 'center' },
 });

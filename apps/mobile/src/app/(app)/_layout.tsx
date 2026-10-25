@@ -3,7 +3,8 @@ import { router, Stack, usePathname } from 'expo-router';
 import { useEffect } from 'react';
 import { api } from '@/lib/api';
 import { onboardingSkipped, ONBOARDING_REQUIRED_SINCE } from '@/lib/onboarding';
-import { useProfile } from '@/lib/queries';
+import { useNotifications, useProfile } from '@/lib/queries';
+import { setAppBadge } from '@/lib/push';
 import { colors, fontFamily } from '@/lib/theme';
 
 /** Screens a runner can use before joining their first competition: the ways into one, and account basics. */
@@ -28,6 +29,9 @@ export const unstable_settings = { initialRouteName: '(tabs)' };
 /** Signed-in screens: the tabs, and everything that pushes over them with a native header and back gesture. */
 export default function AppLayout() {
   useOnboardingGate();
+  // The app icon's badge follows the unread count as notifications are read here.
+  const unread = useNotifications().data?.filter((item) => !item.readAt).length;
+  useEffect(() => { if (unread !== undefined) setAppBadge(unread); }, [unread]);
   return <Stack screenOptions={{
     headerStyle: { backgroundColor: colors.paper },
     headerShadowVisible: false,

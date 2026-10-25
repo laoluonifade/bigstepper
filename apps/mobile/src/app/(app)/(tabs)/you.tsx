@@ -10,15 +10,18 @@ import { ActivityIcon, BellIcon, CheckIcon, ChevronRightIcon, LadderIcon, Logout
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
 import { AvatarEditor, ProfileHero, ProfileStats, ShareProfileButton } from '@/components/Profile';
 import { TabScreen } from '@/components/Shell';
-import { Sheet } from '@/components/Sheet';
+import { OptionSheet, Sheet } from '@/components/Sheet';
 import { StravaConnection } from '@/components/strava';
 import { Button, CopyButton, ErrorNotice, haptic, Loading, Segmented, Skeleton, TextField, Txt } from '@/components/ui';
 import { api, patch } from '@/lib/api';
 import { useAuth, useUser } from '@/lib/auth';
 import { openWeb } from '@/lib/links';
+import { setSoundsEnabled, useSoundsEnabled } from '@/lib/sounds';
 import { keys, useActivities, useNotifications, useProfile, useUnit } from '@/lib/queries';
-import { colors, GUTTER, radius } from '@/lib/theme';
+import { colors, GUTTER, radius, setThemePreference, themePreference, type ThemePreference } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+
+const THEME_LABEL: Record<ThemePreference, string> = { system: 'System default', light: 'Light', dark: 'Dark' };
 
 const LEGAL = [{ to: '/terms', label: 'Terms of Service' }, { to: '/privacy', label: 'Privacy Policy' }, { to: '/safety', label: 'Safety & Acceptable Use' }] as const;
 
@@ -32,7 +35,10 @@ export default function YouScreen() {
   const stats = useMemo(() => profileStats(activities.data ?? []), [activities.data]);
   // Follower counts come from the public profile.
   const social = useQuery({ queryKey: ['runner', profile.data?.username ?? ''], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(profile.data!.username)}`), enabled: Boolean(profile.data?.username) });
-  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | null>(null);
+  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | null>(null);
+  const soundsOn = useSoundsEnabled();
+  // What's picked shows straight away, even before the restart that applies it.
+  const [chosenTheme, setChosenTheme] = useState<ThemePreference>(themePreference);
   const save = useSaveProfile();
 
   if (profile.isLoading) return <TabScreen banners={false}><Loading /></TabScreen>;
@@ -82,6 +88,18 @@ export default function YouScreen() {
         <Row>
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>Distance units</Txt>
           <Segmented<Unit> size="sm" label="Distance units" value={me.preferredUnit} onChange={(value) => save.mutate({ preferredUnit: value })} options={[{ value: 'km', label: 'km' }, { value: 'mi', label: 'miles' }]} />
+        </Row>
+        <Row onPress={() => setSheet('appearance')}>
+          <Txt size={14} weight="semibold" style={{ flex: 1 }}>Appearance</Txt>
+          <Txt size={13} color="ink3">{THEME_LABEL[chosenTheme]}</Txt>
+          <ChevronRightIcon size={16} color={colors.ink3} />
+        </Row>
+        <Row>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt size={14} weight="semibold">Sounds</Txt>
+            <Txt size={13} color="ink3">Countdown, splits and finishing</Txt>
+          </View>
+          <Switch value={soundsOn} onValueChange={(on) => { haptic('select'); setSoundsEnabled(on); }} trackColor={{ true: colors.track, false: colors.line }} thumbColor={colors.white} accessibilityLabel="Sounds" />
         </Row>
         <Row onPress={() => setSheet('email')}>
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>Email updates</Txt>
@@ -133,6 +151,21 @@ export default function YouScreen() {
     {sheet === 'profile' && <EditProfileSheet profile={me} onClose={() => setSheet(null)} />}
     {sheet === 'personal' && <PersonalSheet profile={me} onClose={() => setSheet(null)} />}
     {sheet === 'email' && <EmailSheet profile={me} onClose={() => setSheet(null)} />}
+    <OptionSheet<ThemePreference> open={sheet === 'appearance'} onOpenChange={(open) => { if (!open) setSheet(null); }} title="Appearance" value={chosenTheme}
+      description="Jump restarts for a second to switch."
+      options={[
+        { value: 'system', label: THEME_LABEL.system, detail: 'Light or dark, following your phone' },
+        { value: 'light', label: THEME_LABEL.light },
+        { value: 'dark', label: THEME_LABEL.dark },
+      ]}
+      onChange={(value) => {
+        setSheet(null);
+        if (value === chosenTheme) return;
+        setChosenTheme(value);
+        void setThemePreference(value).then((restarted) => {
+          if (!restarted) toast({ tone: 'info', title: 'Saved', message: 'Close and reopen Jump to switch.' });
+        });
+      }} />
   </TabScreen>;
 }
 

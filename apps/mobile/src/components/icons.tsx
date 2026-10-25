@@ -1,26 +1,28 @@
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import type { StyleProp, ViewStyle } from 'react-native';
+import { useIconColor } from '@/lib/surface';
 import { colors } from '@/lib/theme';
 
 /** Ported from apps/web/src/components/icons.tsx: the same 24px line icons, drawn in `color`. */
 export type IconProps = { size?: number; color?: string; strokeWidth?: number; strokeLinecap?: 'butt' | 'round' | 'square'; strokeLinejoin?: 'miter' | 'round' | 'bevel'; fill?: string; style?: StyleProp<ViewStyle> };
 
-function Icon({ size = 20, color = colors.ink, children, ...props }: IconProps & { children?: React.ReactNode }) {
+function Icon({ size = 20, color: wanted, children, ...props }: IconProps & { children?: React.ReactNode }) {
+  const color = useIconColor(wanted);
   return (
-    <Svg
-      width={size}
-      color={color}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="square"
-      strokeLinejoin="miter"
-      {...props}
-    >
-      {children}
-    </Svg>
+      <Svg
+        width={size}
+        color={color}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+        {...props}
+      >
+        {children}
+      </Svg>
   );
 }
 
@@ -310,18 +312,24 @@ export function StepMark({ size = 28 }: { size?: number }) {
 }
 
 /** Filled flame for streaks. */
-export const FlameIcon = ({ size = 20, color = colors.ink, ...props }: IconProps) => (
-  <Svg width={size} color={color} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>
-    <Path d="M12 2c.6 3.2-1 5.2-2.6 7C7.7 10.9 6 12.9 6 15.6 6 19.2 8.7 22 12 22s6-2.8 6-6.3c0-2.6-1.3-4.4-2.6-5.9-.2 1.5-.9 2.6-2.1 3.2.4-3.8-.6-8.3-1.3-11Z" />
-  </Svg>
-);
+export function FlameIcon({ size = 20, color: wanted, ...props }: IconProps) {
+  const color = useIconColor(wanted);
+  return (
+    <Svg width={size} color={color} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <Path d="M12 2c.6 3.2-1 5.2-2.6 7C7.7 10.9 6 12.9 6 15.6 6 19.2 8.7 22 12 22s6-2.8 6-6.3c0-2.6-1.3-4.4-2.6-5.9-.2 1.5-.9 2.6-2.1 3.2.4-3.8-.6-8.3-1.3-11Z" />
+    </Svg>
+  );
+}
 
 /** Outline heart; pass `filled` for the liked state. */
-export const HeartIcon = ({ filled = false, size = 20, color = colors.ink, ...props }: IconProps & { filled?: boolean }) => (
-  <Svg width={size} color={color} height={size} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} strokeLinejoin="round" {...props}>
-    <Path d="M12 20.5s-7.5-4.4-9.3-9.2C1.5 8 3.4 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.6 0 5.5 3.5 4.3 6.8-1.8 4.8-9.3 9.2-9.3 9.2Z" />
-  </Svg>
-);
+export function HeartIcon({ filled = false, size = 20, color: wanted, ...props }: IconProps & { filled?: boolean }) {
+  const color = useIconColor(wanted);
+  return (
+    <Svg width={size} color={color} height={size} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} strokeLinejoin="round" {...props}>
+      <Path d="M12 20.5s-7.5-4.4-9.3-9.2C1.5 8 3.4 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.6 0 5.5 3.5 4.3 6.8-1.8 4.8-9.3 9.2-9.3 9.2Z" />
+    </Svg>
+  );
+}
 
 export const CommentIcon = (p: IconProps) => (
   <Icon {...p} strokeLinejoin="round">
@@ -336,11 +344,14 @@ export const MicIcon = (p: IconProps) => (
   </Icon>
 );
 
-export const PlayIcon = ({ size = 20, color = colors.ink, ...props }: IconProps) => (
-  <Svg width={size} color={color} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>
-    <Path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z" />
-  </Svg>
-);
+export function PlayIcon({ size = 20, color: wanted, ...props }: IconProps) {
+  const color = useIconColor(wanted);
+  return (
+    <Svg width={size} color={color} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <Path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z" />
+    </Svg>
+  );
+}
 
 export const ReplyIcon = (p: IconProps) => (
   <Icon {...p} strokeLinecap="round" strokeLinejoin="round">

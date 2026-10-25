@@ -2,6 +2,7 @@ import type { AuthResponse, User } from '@jump/shared/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, isApiError, onUnauthorized, post } from './api';
+import { unregisterForPush } from './push';
 import { clearToken, getToken, loadToken, setToken } from './token';
 
 type AuthStatus = 'checking' | 'signed-in' | 'signed-out' | 'unreachable';
@@ -81,6 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser((current) => (current ? { ...current, ...changes } : current));
       },
       async logout() {
+        // Stop this phone's pushes while the session can still say whose they are.
+        await unregisterForPush();
         await post('/auth/logout').catch(() => undefined);
         setExpired(false);
         signOutLocally();

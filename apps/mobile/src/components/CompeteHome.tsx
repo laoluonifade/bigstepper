@@ -12,7 +12,7 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { api, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { keys, useDiscover, useStandings } from '@/lib/queries';
-import { colors, fontFamily, radius, score } from '@/lib/theme';
+import { brand, colors, fontFamily, radius, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { ChallengeMark, CompetitionPreviewCard, openCompetition } from './competition';
 import { ChevronRightIcon, PlusIcon, SearchIcon, UsersIcon } from './icons';
@@ -247,7 +247,7 @@ function Ring({ progress }: { progress: number }) {
   const animatedProps = useAnimatedProps(() => ({ strokeDasharray: [shown.value * CIRCUMFERENCE, CIRCUMFERENCE] }));
   return <Svg width={116} height={116} viewBox="0 0 116 116">
     <Circle cx="58" cy="58" r={RADIUS} fill="none" stroke="#2A2A2E" strokeWidth="10" />
-    <AnimatedCircle cx="58" cy="58" r={RADIUS} fill="none" stroke={colors.volt} strokeWidth="10" strokeLinecap="round" transform="rotate(-90 58 58)" animatedProps={animatedProps} />
+    <AnimatedCircle cx="58" cy="58" r={RADIUS} fill="none" stroke={brand.volt} strokeWidth="10" strokeLinecap="round" transform="rotate(-90 58 58)" animatedProps={animatedProps} />
   </Svg>;
 }
 
@@ -260,12 +260,12 @@ function Lane({ name, me, position, scoreText, avatar }: { name: string; me: boo
   }, [along, position]);
   const animated = useAnimatedStyle(() => ({ transform: [{ translateX: along.value * width - 12 }] }));
   return <View style={styles.lane}>
-    <Txt size={12} weight={me ? 'bold' : 'regular'} numberOfLines={1} style={{ width: 56, color: me ? colors.volt : 'rgba(242,239,232,0.6)' }}>{name}</Txt>
+    <Txt size={12} weight={me ? 'bold' : 'regular'} numberOfLines={1} style={{ width: 56, color: me ? brand.volt : brand.onInkMuted }}>{name}</Txt>
     <View style={{ flex: 1, height: 28, justifyContent: 'center' }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(242,239,232,0.1)' }} />
+      <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: brand.onInkWash }} />
       {width > 0 && <Animated.View style={[{ position: 'absolute', left: 0, top: 2 }, animated]}>{avatar}</Animated.View>}
     </View>
-    <Txt size={12} weight={me ? 'bold' : 'regular'} num numberOfLines={1} align="right" style={{ width: 56, color: me ? colors.volt : 'rgba(242,239,232,0.6)' }}>{scoreText}</Txt>
+    <Txt size={12} weight={me ? 'bold' : 'regular'} num numberOfLines={1} align="right" style={{ width: 56, color: me ? brand.volt : brand.onInkMuted }}>{scoreText}</Txt>
   </View>;
 }
 
@@ -306,25 +306,26 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   const leaderScore = leader ? laneScore(leader) : null;
   const gapToLeader = myScore !== null && leaderScore !== null ? formatGap(race, myScore, leaderScore, unit) : null;
   const progress = !joined || !me || myScore === null ? 0 : me.rank === 1 ? 1 : lanePosition(method, me, leader);
-  const bold = (text: string | null) => <Txt size={15} weight="semibold" color="paper">{text}</Txt>;
+  const bold = (text: string | null) => <Txt size={15} weight="semibold" style={{ color: brand.paper }}>{text}</Txt>;
   const line = !joined
     ? <>{bold(`${race.entrants} ${race.entrants === 1 ? 'runner' : 'runners'}`)} in, {ends}. Join and your next run counts.</>
     : myScore === null ? <>Your first run puts you on the board, {ends}.</>
       : me?.rank === 1 ? (runnerUp !== null ? <>Leading by {bold(formatGap(race, runnerUp, myScore, unit))}, {ends}. Keep the gap.</> : <>Out in front, {ends}. Invite rivals to chase you.</>)
         : <>{bold(gapToLeader)} behind {firstName(leader.displayName)} with {ends}.</>;
 
-  return <View style={styles.hero}>
+  // Always dark, in either theme: drawn in the brand palette, with a hairline edge on a dark page.
+  return <View style={[styles.hero, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
       <View style={{ width: 116, height: 116 }}>
         <Ring progress={progress} />
         <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-          <Text style={[score(40), { color: colors.paper, lineHeight: 42 }]}>{joined && me ? ordinal(me.rank) : race.entrants}</Text>
-          <Txt size={11} style={{ color: 'rgba(242,239,232,0.5)' }}>{joined && me ? `of ${rows.length}` : race.entrants === 1 ? 'runner' : 'runners'}</Txt>
+          <Text style={[score(40), { color: brand.paper, lineHeight: 42 }]}>{joined && me ? ordinal(me.rank) : race.entrants}</Text>
+          <Txt size={11} style={{ color: brand.onInkMuted }}>{joined && me ? `of ${rows.length}` : race.entrants === 1 ? 'runner' : 'runners'}</Txt>
         </View>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={styles.heroKicker}>{race.title} · {joined ? 'Live' : 'Popular'}</Text>
-        <Txt size={15} leading={1.35} style={{ marginTop: 8, color: 'rgba(242,239,232,0.7)' }}>{line}</Txt>
+        <Txt size={15} leading={1.35} style={{ marginTop: 8, color: brand.onInkMuted }}>{line}</Txt>
       </View>
     </View>
     {lanes.length > 0 && <View style={{ marginTop: 20, gap: 4 }}>
@@ -332,15 +333,15 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
         const isMe = row.userId === user.id;
         return <Lane key={row.userId} me={isMe} name={isMe ? 'You' : firstName(row.displayName)} position={lanePosition(method, row, leader)}
           scoreText={hasScored(method, row.score) ? formatScore(race, laneScore(row), unit) ?? '–' : '–'}
-          avatar={<View style={isMe ? { borderRadius: 14, borderWidth: 2, borderColor: colors.volt } : undefined}><Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={24} round /></View>} />;
+          avatar={<View style={isMe ? { borderRadius: 14, borderWidth: 2, borderColor: brand.volt } : undefined}><Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={24} round /></View>} />;
       })}
     </View>}
     <Pressable onPress={() => { haptic(); if (joined) router.navigate('/run'); else if (race.type === 'paid') openCompetition(race.code); else join.mutate(); }} disabled={join.isPending}
       style={({ pressed }) => [styles.heroButton, (pressed || join.isPending) && { opacity: 0.8, transform: [{ scale: 0.98 }] }]} accessibilityRole="button">
-      <Txt size={15} weight="bold">{joined ? 'Start a run' : race.type === 'paid' ? 'See entry' : join.isPending ? 'Joining…' : 'Join the race'}</Txt>
+      <Txt size={15} weight="bold" style={{ color: brand.ink }}>{joined ? 'Start a run' : race.type === 'paid' ? 'See entry' : join.isPending ? 'Joining…' : 'Join the race'}</Txt>
     </Pressable>
     <Pressable onPress={() => openCompetition(race.code)} hitSlop={8} style={{ marginTop: 12, alignItems: 'center' }} accessibilityRole="link">
-      <Txt size={13} weight="semibold" style={{ color: 'rgba(242,239,232,0.55)' }}>Full board</Txt>
+      <Txt size={13} weight="semibold" style={{ color: brand.onInkMuted }}>Full board</Txt>
     </Pressable>
     <ErrorNotice error={join.error} />
   </View>;
@@ -388,7 +389,7 @@ const styles = StyleSheet.create({
   smallButton: { height: 32, justifyContent: 'center', borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.ink, paddingHorizontal: 12 },
   darkButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.base, backgroundColor: colors.ink },
   plus: { width: 40, height: 40, borderRadius: radius.lg, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  hero: { borderRadius: 24, backgroundColor: colors.ink, padding: 20, overflow: 'hidden' },
+  hero: { borderRadius: 24, backgroundColor: brand.ink, padding: 20, overflow: 'hidden' },
   heroKicker: { fontFamily: fontFamily('bold'), fontSize: 11, letterSpacing: 1.54, textTransform: 'uppercase', color: colors.volt },
   lane: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   heroButton: { marginTop: 20, height: 48, borderRadius: radius.full, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },

@@ -26,6 +26,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepe
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, SvgXml } from 'react-native-svg';
 import { isApiError } from '@/lib/api';
+import { AccentSurface, useTextColor } from '@/lib/surface';
 import { colors, eyebrow, fontFamily, GUTTER, radius, score, wideLabel, type Color, type Weight, type Width } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { AlertIcon, CheckIcon, CopyIcon, InfoIcon } from './icons';
@@ -47,7 +48,8 @@ export type TxtProps = TextProps & {
 };
 
 /** Archivo text. Weight and width pick a bundled cut, since custom fonts can't be bolded with fontWeight. */
-export function Txt({ size = 15, weight = 'regular', width = 'normal', color = 'ink', upper, tracking, leading = 1.4, align, num, style, ...props }: TxtProps) {
+export function Txt({ size = 15, weight = 'regular', width = 'normal', color: wanted, upper, tracking, leading = 1.4, align, num, style, ...props }: TxtProps) {
+  const color = useTextColor(wanted);
   return <Text
     {...props}
     style={[
@@ -164,7 +166,7 @@ export type CardVariant = 'panel' | 'strong' | 'hard' | 'dashed' | 'ink' | 'volt
 
 /** The web's `.panel` (hairline), `.panel-strong` (ink border) and the hard-shadow card. */
 export function Card({ variant = 'panel', children, style, padded = true }: { variant?: CardVariant; children: ReactNode; style?: StyleProp<ViewStyle>; padded?: boolean }) {
-  const body = <View style={[styles.card, cardVariants[variant], padded && styles.cardPadding, style]}>{children}</View>;
+  const body = <View style={[styles.card, cardVariants[variant], padded && styles.cardPadding, style]}>{variant === 'volt' ? <AccentSurface.Provider value>{children}</AccentSurface.Provider> : children}</View>;
   return variant === 'hard' ? <HardShadow radius={radius.md}>{body}</HardShadow> : body;
 }
 
@@ -191,9 +193,10 @@ export function Touchable({ style, pressedStyle, children, ...props }: Pressable
 export type ButtonVariant = 'primary' | 'secondary' | 'dark' | 'quiet' | 'danger' | 'volt';
 
 const buttonColors: Record<ButtonVariant, { bg: string; fg: Color; border: string; borderWidth: number; shadow: boolean }> = {
-  primary: { bg: colors.track, fg: 'ink', border: colors.ink, borderWidth: 2, shadow: true },
+  // Orange and volt keep dark text in both themes.
+  primary: { bg: colors.track, fg: 'onAccent', border: colors.ink, borderWidth: 2, shadow: true },
   secondary: { bg: colors.card, fg: 'ink', border: colors.ink, borderWidth: 2, shadow: true },
-  volt: { bg: colors.volt, fg: 'ink', border: colors.ink, borderWidth: 2, shadow: true },
+  volt: { bg: colors.volt, fg: 'onAccent', border: colors.ink, borderWidth: 2, shadow: true },
   dark: { bg: colors.ink, fg: 'paper', border: colors.ink, borderWidth: 2, shadow: false },
   quiet: { bg: 'transparent', fg: 'ink', border: colors.line, borderWidth: 1, shadow: false },
   danger: { bg: colors.card, fg: 'bad', border: colors.bad, borderWidth: 2, shadow: false },
@@ -289,8 +292,40 @@ export function SectionTitle({ children, aside, style }: { children: ReactNode; 
   </View>;
 }
 
+/**
+ * The pull-to-refresh spinner, shown only for a refresh you pulled for. Screens poll in the background,
+ * and tying the spinner to "is refetching" left it spinning (and on iOS, stuck open) during those.
+ * It shows at least briefly, ends when the refetch does, and never hangs longer than 10 seconds.
+ */
+function usePullToRefresh(refetching: boolean) {
+  const [active, setActive] = useState(false);
+  const startedAt = useRef(0);
+  const sawRefetch = useRef(false);
+  useEffect(() => {
+    if (!active) return;
+    if (refetching) sawRefetch.current = true;
+    // Done once the refetch it triggered has finished (or never started), after a short minimum.
+    if (!refetching) {
+      const wait = Math.max(0, 500 - (Date.now() - startedAt.current));
+      const timer = setTimeout(() => setActive(false), sawRefetch.current ? wait : Math.max(wait, 800));
+      return () => clearTimeout(timer);
+    }
+    const cap = setTimeout(() => setActive(false), 10_000);
+    return () => clearTimeout(cap);
+  }, [active, refetching]);
+  return {
+    active,
+    start() {
+      startedAt.current = Date.now();
+      sawRefetch.current = false;
+      setActive(true);
+    },
+  };
+}
+
 /** The standard scrolling page: paper background, 16px gutters, room for the tab bar. */
 export function Screen({ ref, children, refreshing, onRefresh, padded = true, contentStyle, footer }: { ref?: Ref<ComponentRef<typeof ScrollView>>; children: ReactNode; refreshing?: boolean; onRefresh?: () => void; padded?: boolean; contentStyle?: StyleProp<ViewStyle>; footer?: ReactNode }) {
+  const pulling = usePullToRefresh(Boolean(refreshing));
   return <View style={{ flex: 1, backgroundColor: colors.paper }}>
     <ScrollView
       ref={ref}
@@ -299,7 +334,7 @@ export function Screen({ ref, children, refreshing, onRefresh, padded = true, co
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       contentContainerStyle={[padded && { paddingHorizontal: GUTTER, paddingTop: 16, paddingBottom: 48 }, contentStyle]}
-      refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.ink} colors={[colors.track]} /> : undefined}
+      refreshControl={onRefresh ? <RefreshControl refreshing={pulling.active} onRefresh={() => { pulling.start(); onRefresh(); }} tintColor={colors.ink} colors={[colors.track]} /> : undefined}
     >
       {children}
     </ScrollView>

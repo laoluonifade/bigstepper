@@ -2,16 +2,31 @@ import type { AuthResponse, Gender } from '@jump/shared/types';
 import { useMutation } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated, { FadeInRight } from 'react-native-reanimated';
 import { AuthHeading, AuthScreen, OrDivider, StravaButton } from '@/components/auth';
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
-import { Button, ErrorNotice, TextField, TextLink, Txt } from '@/components/ui';
+import { Button, ErrorNotice, haptic, TextField, TextLink, Txt } from '@/components/ui';
 import { post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { storageKeys, writeStored } from '@/lib/local';
+import { colors } from '@/lib/theme';
 
+const STEPS = [
+  { title: 'Create your account', blurb: 'Record your first run today. Free competitions never cost a thing.' },
+  { title: 'About you', blurb: 'How you show up on leaderboards. You can change all of this later.' },
+  { title: 'Stay in the loop', blurb: 'So we can reach you about prizes and your account. Optional.' },
+] as const;
+
+const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+/**
+ * Sign-up in three short steps rather than one long form: the account first (with Strava right at the
+ * top, so it's the first thing you see), then who you are, then how to reach you.
+ */
 export default function RegisterScreen() {
   const auth = useAuth();
+  const [step, setStep] = useState(0);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,21 +49,53 @@ export default function RegisterScreen() {
     },
   });
 
+  function go(next: number) {
+    haptic('select');
+    register.reset();
+    setStep(next);
+  }
+
+  const { title, blurb } = STEPS[step];
   return <AuthScreen>
-    <AuthHeading eyebrow="Free to join" title="Create your account">Record your first run today. Free competitions never cost a thing.</AuthHeading>
-    <View style={{ gap: 20 }}>
-      <TextField label="Display name" optional hint="Shown on leaderboards. You can change it later." value={displayName} onChangeText={setDisplayName} autoComplete="nickname" textContentType="nickname" maxLength={80} />
-      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
-      <CountryPicker label="Country of residence" value={country} onChange={setCountry} />
-      <GenderSelect optional hint="Only used to choose your default avatar. You can change this later." value={gender} onChange={setGender} />
-      <PhoneField label="WhatsApp number" optional hint="Private. Only Jump uses it, to reach you about prizes and your account." value={whatsapp} onChange={setWhatsapp} defaultCountry={country} />
-      <TextField label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}
-        value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
-      <ErrorNotice error={register.error} />
-      <Button full title={register.isPending ? 'Creating account…' : 'Create account'} loading={register.isPending} disabled={!email.trim() || password.length < 8} onPress={() => register.mutate()} />
+    <View style={styles.progress} accessibilityLabel={`Step ${step + 1} of ${STEPS.length}`}>
+      {STEPS.map((_, index) => <View key={index} style={[styles.segment, index <= step && { backgroundColor: colors.track }]} />)}
     </View>
-    <OrDivider />
-    <StravaButton label="Sign up with Strava" />
-    <Txt size={14} color="ink2" style={{ marginTop: 24 }}>Already running with us? <TextLink title="Log in" onPress={() => router.back()} /></Txt>
+    <AuthHeading eyebrow={`Step ${step + 1} of ${STEPS.length}`} title={title}>{blurb}</AuthHeading>
+
+    <Animated.View key={step} entering={FadeInRight.duration(220)} style={{ gap: 20 }}>
+      {step === 0 && <>
+        <StravaButton label="Continue with Strava" />
+        <OrDivider />
+        <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
+        <TextField label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}
+          value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
+        <Button full title="Continue" disabled={!looksLikeEmail(email) || password.length < 8} onPress={() => go(1)} />
+      </>}
+
+      {step === 1 && <>
+        <TextField label="Display name" optional hint="Shown on leaderboards." value={displayName} onChangeText={setDisplayName} autoComplete="nickname" textContentType="nickname" maxLength={80} />
+        <CountryPicker label="Country of residence" value={country} onChange={setCountry} />
+        <GenderSelect optional hint="Only used to choose your default avatar." value={gender} onChange={setGender} />
+        <Button full title="Continue" onPress={() => go(2)} />
+      </>}
+
+      {step === 2 && <>
+        <PhoneField label="WhatsApp number" optional hint="Private. Only Jump uses it." value={whatsapp} onChange={setWhatsapp} defaultCountry={country} />
+        <ErrorNotice error={register.error} />
+        <Button full title={register.isPending ? 'Creating account…' : 'Create account'} loading={register.isPending} onPress={() => register.mutate()} />
+        {!whatsapp && <Txt size={13} color="ink3" align="center">You can leave this blank and add it later.</Txt>}
+      </>}
+    </Animated.View>
+
+    {step > 0
+      ? <Pressable onPress={() => go(step - 1)} hitSlop={10} style={{ alignSelf: 'flex-start', marginTop: 24 }} accessibilityRole="button">
+        <Txt size={14} weight="semibold" color="ink2">← Back</Txt>
+      </Pressable>
+      : <Txt size={14} color="ink2" style={{ marginTop: 24 }}>Already running with us? <TextLink title="Log in" onPress={() => router.back()} /></Txt>}
   </AuthScreen>;
 }
+
+const styles = StyleSheet.create({
+  progress: { flexDirection: 'row', gap: 6, marginBottom: 20 },
+  segment: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.line },
+});

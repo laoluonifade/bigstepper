@@ -75,7 +75,7 @@ export default function DashboardScreen() {
       <Card variant="strong" style={{ padding: 20 }}>
         <Eyebrow>Streak</Eyebrow>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
-          <FlameIcon size={44} color={streak.ranToday ? colors.track : streak.atRisk ? 'rgba(255,77,18,0.35)' : 'rgba(18,18,18,0.15)'} />
+          <FlameIcon size={44} color={streak.ranToday ? colors.track : streak.atRisk ? 'rgba(255,77,18,0.35)' : colors.inkFaint} />
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
             <Score size={56}>{activities.isLoading ? '–' : <CountUp value={streak.current} />}</Score>
             <Txt size={14} weight="semibold" color="ink2">{streak.current === 1 ? 'day' : 'days'}</Txt>
@@ -162,7 +162,7 @@ function PeriodPicker({ period, onChange, now }: { period: Period; onChange: (pe
   const labels: Record<Period, string> = { week: 'This week', month: new Date(now).toLocaleDateString('en-GB', { month: 'long' }), all: 'All time' };
   return <>
     <Pressable onPress={() => setOpen(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Period: ${labels[period]}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      <Eyebrow color="ink" style={{ textDecorationLine: 'underline', textDecorationColor: 'rgba(18,18,18,0.3)' }}>{labels[period]}</Eyebrow>
+      <Eyebrow color="ink" style={{ textDecorationLine: 'underline', textDecorationColor: colors.ink3 }}>{labels[period]}</Eyebrow>
       <ChevronDownIcon size={13} />
     </Pressable>
     <OptionSheet open={open} onOpenChange={setOpen} title="Choose a period" value={period} onChange={onChange}
@@ -267,7 +267,7 @@ function StreakDots({ activities, now }: { activities: Activity[]; now: number }
   return <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }} accessibilityLabel="Last seven days">
     {days.map((day, index) => <View key={index} style={{ alignItems: 'center', gap: 4 }}>
       <View style={[styles.streakDay, day.moved ? { backgroundColor: colors.track } : day.today ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.ink } : { backgroundColor: colors.inkWash }]}>
-        <FlameIcon size={14} color={day.moved ? colors.paper : day.today ? 'rgba(18,18,18,0.25)' : 'rgba(18,18,18,0.2)'} />
+        <FlameIcon size={14} color={day.moved ? colors.paper : day.today ? colors.inkFaint : colors.inkFaint} />
       </View>
       <Txt size={10} weight="bold" color={day.today ? 'ink' : 'ink3'}>{day.label}</Txt>
     </View>)}

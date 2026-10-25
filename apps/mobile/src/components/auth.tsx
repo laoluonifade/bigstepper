@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, display, fontFamily, GUTTER, radius } from '@/lib/theme';
@@ -9,7 +9,8 @@ import { Eyebrow, Txt } from './ui';
 /** The web's AuthLayout on a phone: the wordmark, then the form centred in what's left. */
 export function AuthScreen({ children }: { children: ReactNode }) {
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }} edges={['top', 'bottom']}>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+    {/* Both platforms pad for the keyboard: Android draws edge to edge, so the window no longer shrinks for it. */}
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         <JumpLogo height={26} />
         <View style={styles.form}>{children}</View>

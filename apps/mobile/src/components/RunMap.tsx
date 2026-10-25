@@ -5,7 +5,7 @@ import { Platform, Pressable, StyleProp, StyleSheet, TurboModuleRegistry, View, 
 import MapView, { Marker as NativeMarker, Polyline } from 'react-native-maps';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { colors } from '@/lib/theme';
+import { colors, scheme } from '@/lib/theme';
 import { haptic } from './ui';
 
 /**
@@ -209,7 +209,7 @@ function PlatformLiveMap({ route, position, follow, style, zoom, bottomInset, to
 
   const start = position ?? { latitude: FALLBACK_CENTRE[1], longitude: FALLBACK_CENTRE[0] };
   return <View style={[styles.frame, style]}>
-    <MapView ref={map} style={StyleSheet.absoluteFill} userInterfaceStyle="light"
+    <MapView ref={map} style={StyleSheet.absoluteFill} userInterfaceStyle={scheme}
       initialRegion={{ ...start, latitudeDelta: spanFor(position ? zoom : 11), longitudeDelta: spanFor(position ? zoom : 11) }}
       showsUserLocation showsMyLocationButton={false} showsCompass={false} toolbarEnabled={false} pitchEnabled={false} rotateEnabled={false}
       mapPadding={{ top: 0, right: 0, bottom: bottomInset, left: 0 }}
@@ -229,7 +229,7 @@ function PlatformFittedMap({ route, style, interactive }: { route: LatLng[]; sty
   const map = useRef<MapView>(null);
   const coordinates = route.map(coordinate);
   return <View style={[styles.frame, style]} pointerEvents={interactive ? 'auto' : 'none'}>
-    <MapView ref={map} style={StyleSheet.absoluteFill} userInterfaceStyle="light" scrollEnabled={interactive} zoomEnabled={interactive} pitchEnabled={false} rotateEnabled={false}
+    <MapView ref={map} style={StyleSheet.absoluteFill} userInterfaceStyle={scheme} scrollEnabled={interactive} zoomEnabled={interactive} pitchEnabled={false} rotateEnabled={false}
       toolbarEnabled={false} showsCompass={false}
       onMapReady={() => map.current?.fitToCoordinates(coordinates, { edgePadding: { top: 32, right: 32, bottom: 32, left: 32 }, animated: false })}>
       <PlatformRoute route={route} width={4} />

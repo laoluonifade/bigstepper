@@ -8,7 +8,8 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { WEB_URL } from '@/lib/api';
-import { colors, fontFamily, mono } from '@/lib/theme';
+// Share pictures look the same whoever posts them, so they use the brand palette, not the theme's.
+import { brand as colors, fontFamily, mono } from '@/lib/theme';
 import { CopyIcon, JumpLogo, ShareIcon } from './icons';
 import { Sheet } from './Sheet';
 import { Avatar, Button, haptic, Txt } from './ui';

@@ -4,8 +4,10 @@ import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native
 import Animated, { Easing, FadeOut, useAnimatedProps, useSharedValue, withTiming, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import { colors, fontFamily, score } from '@/lib/theme';
+// Always dark, in either theme.
+import { brand as colors, fontFamily, score } from '@/lib/theme';
 import { haptic } from './ui';
+import { playSound } from '@/lib/sounds';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const FROM = 3;
@@ -25,6 +27,7 @@ export function useCountdown(active: boolean, onDone: () => void) {
     if (finished.current) return;
     finished.current = true;
     haptic('success');
+    playSound('go');
     done.current();
   }
 
@@ -35,12 +38,14 @@ export function useCountdown(active: boolean, onDone: () => void) {
     progress.value = 0;
     progress.value = withTiming(1, { duration: FROM * 1000, easing: Easing.linear });
     haptic('heavy');
+    playSound('tick');
     let left = FROM;
     const timer = setInterval(() => {
       left -= 1;
       if (left > 0) {
         setCount(left);
         haptic('heavy');
+        playSound('tick');
       } else {
         clearInterval(timer);
         finish();

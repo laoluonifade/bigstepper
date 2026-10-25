@@ -26,6 +26,7 @@ import { keys, useFinalResult, useStandings, useUnit, useWallet } from '@/lib/qu
 import { colors, display, mono, radius, score, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { confirm } from '@/lib/dialog';
+import { AccentSurface } from '@/lib/surface';
 
 /** Whatever the board isn't ranked on: km for a steps race, steps for a distance one, both otherwise. */
 function otherMetrics(row: { creditedDistanceMetres: number; creditedSteps: number }, table: Pick<CompetitionTable, 'challengeType' | 'scoringMethod'>, unit: Unit) {
@@ -481,7 +482,7 @@ function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, n
   if (joined || joinedRank !== undefined || user?.id === table.creatorId) {
     const canLeave = joined && table.type !== 'paid' && table.status !== 'SETTLED' && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now);
     return <HardShadow radius={radius.xl}>
-      <View style={[styles.entry, { backgroundColor: colors.volt }]}>
+      <View style={[styles.entry, { backgroundColor: colors.volt }]}><AccentSurface.Provider value>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {table.status !== 'PENDING_FUNDING' && <CheckIcon size={16} />}
           <Txt size={12} weight="bold" upper tracking={0.12}>{table.status === 'PENDING_FUNDING' ? 'Draft · funding needed' : user?.id === table.creatorId ? 'You’re hosting and already joined' : 'You’re in'}</Txt>
@@ -490,7 +491,7 @@ function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, n
           ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 16 }}>
             <RankBadge rank={joinedRank} size="lg" />
             <View>
-              <Text style={[wideLabel(20, 0), { fontFamily: 'ArchivoWide-Black' }]}>{ordinal(joinedRank)} place</Text>
+              <Text style={[wideLabel(20, 0), { fontFamily: 'ArchivoWide-Black', color: colors.onAccent }]}>{ordinal(joinedRank)} place</Text>
               <Txt size={13} num style={{ marginTop: 4 }}>{`${joinedScore ?? 'No score yet'} · of ${entrants}`}</Txt>
             </View>
           </View>
@@ -502,7 +503,7 @@ function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, n
           <Txt size={12} weight="bold" color="ink2" style={{ textDecorationLine: 'underline' }}>{leave.isPending ? 'Leaving…' : 'Leave competition'}</Txt>
         </Pressable>}
         <ErrorNotice error={leave.error} />
-      </View>
+      </AccentSurface.Provider></View>
     </HardShadow>;
   }
 

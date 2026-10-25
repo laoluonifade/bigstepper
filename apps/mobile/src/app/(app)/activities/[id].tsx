@@ -18,6 +18,7 @@ import { api, isApiError, post } from '@/lib/api';
 import { keys, useProfile, useUnit } from '@/lib/queries';
 import { colors, display, radius, wideLabel } from '@/lib/theme';
 import { confirm } from '@/lib/dialog';
+import { AccentSurface } from '@/lib/surface';
 
 export default function ActivityDetailScreen() {
   const { id, fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
@@ -69,13 +70,13 @@ export default function ActivityDetailScreen() {
 
     {fresh === '1' && verified && <Animated.View entering={ZoomIn.springify()} style={{ marginBottom: 24 }}>
       <HardShadow radius={radius.md}>
-        <View style={styles.counts}>
+        <View style={styles.counts}><AccentSurface.Provider value>
           <View style={styles.countsIcon}><CheckIcon size={22} color={colors.volt} /></View>
           <View style={{ flex: 1 }}>
-            <Text style={[wideLabel(16, 0), { fontFamily: 'ArchivoWide-Black' }]}>Verified. It counts.</Text>
+            <Text style={[wideLabel(16, 0), { fontFamily: 'ArchivoWide-Black', color: colors.onAccent }]}>Verified. It counts.</Text>
             <Txt size={13}>{a.activityType === 'cycle' ? `${formatDistance(metres, unit)} can count in your active Cycling and Distance competitions. It does not count toward the running league.` : `${formatDistance(metres, unit)} counts in your active league. Eligible competitions are listed below.`}</Txt>
           </View>
-        </View>
+        </AccentSurface.Provider></View>
       </HardShadow>
     </Animated.View>}
 
@@ -219,7 +220,7 @@ function ReviewRequest({ activityId }: { activityId: string }) {
 const styles = StyleSheet.create({
   action: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.full, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
   counts: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.volt, paddingHorizontal: 20, paddingVertical: 16 },
-  countsIcon: { width: 40, height: 40, borderRadius: radius.sm, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  countsIcon: { width: 40, height: 40, borderRadius: radius.sm, backgroundColor: colors.onAccent, alignItems: 'center', justifyContent: 'center' },
   map: { height: 220, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, marginBottom: 16 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 20, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 20 },
   cell: { width: '50%', paddingRight: 12 },

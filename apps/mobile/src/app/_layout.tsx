@@ -3,15 +3,18 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { reloadAppAsync } from 'expo';
+import { useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BOOT_INTRO_MS, BootScreen } from '@/components/BootScreen';
 import { DialogHost } from '@/components/DialogHost';
 import { Toaster } from '@/components/Toaster';
 import { AuthProvider, useAuth } from '@/lib/auth';
-import { detachRecorder, restoreRecorder } from '@/lib/recorder';
-import { colors, FONT_FILES } from '@/lib/theme';
+import { detachRecorder, restoreRecorder, useRecorder } from '@/lib/recorder';
+import { listenForPush, registerForPush } from '@/lib/push';
+import { colors, FONT_FILES, scheme, systemSchemeChanged } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,6 +35,27 @@ function Routes({ fontsReady }: { fontsReady: boolean }) {
     if (user) void restoreRecorder(user.id, queryClient);
     else if (status === 'signed-out') void detachRecorder();
   }, [queryClient, status, user]);
+
+  // Signed in: this phone gets pushes, and tapping one opens what it's about.
+  useEffect(() => {
+    if (!user) return;
+    void registerForPush();
+    return listenForPush(queryClient);
+    // Once per runner signing in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // On "System default", follow the phone when it switches between light and dark: colours are fixed
+  // per launch, so restart into the new one when Jump comes back to the front, never mid-activity.
+  const phase = useRecorder().phase;
+  const live = useRef(false);
+  live.current = phase === 'recording' || phase === 'paused' || phase === 'finishing' || phase === 'locating';
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && systemSchemeChanged() && !live.current) void reloadAppAsync('System theme changed');
+    });
+    return () => subscription.remove();
+  }, []);
 
   return <>
     {ready && <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
@@ -55,7 +79,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <StatusBar style="dark" />
+          <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
           {/* A font that fails to load falls back to the system face rather than blocking the app. */}
           <Routes fontsReady={fontsReady || Boolean(fontError)} />
           <Toaster />

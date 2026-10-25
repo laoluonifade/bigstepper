@@ -1,9 +1,9 @@
-import { BlurView } from 'expo-blur';
 import { ReactNode, useEffect, useState } from 'react';
-import { Platform, Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { colors } from '@/lib/theme';
+import { Glass } from './Glass';
 import { haptic } from './ui';
 
 const SNAP = { duration: 280, easing: Easing.out(Easing.cubic) };
@@ -78,9 +78,8 @@ export function DragSheet({ header, children, initiallyOpen = true, open: openPr
 
   return <GestureDetector gesture={pan}>
     <Animated.View style={[styles.sheet, style, moved]} onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
-      {Platform.OS === 'ios'
-        ? <BlurView intensity={90} tint="systemChromeMaterialLight" style={StyleSheet.absoluteFill} />
-        : <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card }]} />}
+      {/* Liquid Glass on iOS 26, frosted on older iPhones, solid on Android. */}
+      <Glass style={StyleSheet.absoluteFill} />
       <Pressable onPress={toggle} hitSlop={12} style={styles.grabberHit} accessibilityRole="button" accessibilityLabel={open ? 'Show less' : 'Show more'}>
         <View style={styles.grabber} />
       </Pressable>
@@ -97,5 +96,5 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: -4 }, elevation: 12,
   },
   grabberHit: { alignSelf: 'center', paddingTop: 8, paddingBottom: 10, paddingHorizontal: 24 },
-  grabber: { width: 36, height: 5, borderRadius: 3, backgroundColor: 'rgba(60,60,67,0.3)' },
+  grabber: { width: 36, height: 5, borderRadius: 3, backgroundColor: colors.inkFaint },
 });

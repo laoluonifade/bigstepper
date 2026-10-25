@@ -1,7 +1,9 @@
-import type { TextStyle } from 'react-native';
+import { reloadAppAsync } from 'expo';
+import { Storage } from 'expo-sqlite/kv-store';
+import { Appearance, DevSettings, type TextStyle } from 'react-native';
 
 /** Same palette as apps/web/tailwind.config.ts. */
-export const colors = {
+const LIGHT = {
   paper: '#F2EFE8',
   card: '#FBFAF6',
   white: '#FFFFFF',
@@ -23,13 +25,117 @@ export const colors = {
   silver: '#B4B6B1',
   bronze: '#C77B3B',
   verified: '#1D9BF0',
+  /** Text and icons on volt or orange: always dark, whatever the theme. */
+  onAccent: '#121212',
+  /** Secondary text and faint fills on an `ink` surface (a selected card, the podium). */
+  onInkMuted: 'rgba(242,239,232,0.68)',
+  onInkWash: 'rgba(242,239,232,0.12)',
   /** Ink at low opacity, for pressed rows and hairline fills. */
   inkWash: 'rgba(18,18,18,0.06)',
   inkFaint: 'rgba(18,18,18,0.10)',
   scrim: 'rgba(18,18,18,0.5)',
-} as const;
+};
 
-export type Color = keyof typeof colors;
+export type Palette = typeof LIGHT;
+export type Color = keyof Palette;
+
+/**
+ * Dark mode: the same roles, flipped. `paper` (the page) goes near-black and `ink` (text, strong
+ * surfaces) goes cream, so every screen that speaks in roles comes out right. Orange and volt stay.
+ */
+const DARK: Palette = {
+  paper: '#0E0E0F',
+  card: '#1A1A1C',
+  white: '#242426',
+  ink: '#F2EFE8',
+  ink2: '#B9B4AA',
+  ink3: '#86817A',
+  line: '#2C2C2F',
+  track: '#FF5A1F',
+  trackDeep: '#FF8A5C',
+  trackWash: 'rgba(255,90,31,0.18)',
+  volt: '#E4FF3A',
+  ok: '#3DD68C',
+  okWash: 'rgba(61,214,140,0.16)',
+  warn: '#F5B83D',
+  warnWash: 'rgba(245,184,61,0.16)',
+  bad: '#FF6B5E',
+  badWash: 'rgba(255,107,94,0.16)',
+  gold: '#E3B23C',
+  silver: '#B4B6B1',
+  bronze: '#C77B3B',
+  verified: '#1D9BF0',
+  onAccent: '#121212',
+  onInkMuted: 'rgba(18,18,18,0.62)',
+  onInkWash: 'rgba(18,18,18,0.1)',
+  inkWash: 'rgba(242,239,232,0.07)',
+  inkFaint: 'rgba(242,239,232,0.12)',
+  scrim: 'rgba(0,0,0,0.6)',
+};
+
+export type ThemePreference = 'system' | 'light' | 'dark';
+const THEME_KEY = 'jump_theme';
+
+function readPreference(): ThemePreference {
+  try {
+    const stored = Storage.getItemSync(THEME_KEY);
+    return stored === 'light' || stored === 'dark' ? stored : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+/** What the runner picked in Settings: follow the phone, or always light or dark. */
+export const themePreference = readPreference();
+
+// An override set earlier survives a JS restart on Android; following the phone again means clearing it
+// before reading the phone's scheme.
+if (themePreference === 'system') {
+  try { Appearance.setColorScheme('unspecified'); } catch { /* nothing was overridden */ }
+}
+/** The scheme this launch uses. Colours are fixed for the session; changing it restarts the app. */
+export const scheme: 'light' | 'dark' = themePreference === 'system' ? (Appearance.getColorScheme() === 'dark' ? 'dark' : 'light') : themePreference;
+
+export const colors: Palette = scheme === 'dark' ? DARK : LIGHT;
+
+// A chosen theme also overrides the system's for the native parts (Liquid Glass, maps, the keyboard,
+// pickers, alerts), so they match the app instead of the phone.
+if (themePreference !== 'system') {
+  try { Appearance.setColorScheme(themePreference); } catch { /* older native side: they follow the phone */ }
+}
+
+/**
+ * The brand's own colours, the same in both themes, for surfaces that are always dark or always light:
+ * the live workout, the countdown, and the share pictures (a posted image shouldn't depend on the
+ * poster's settings).
+ */
+export const brand: Palette = LIGHT;
+
+/**
+ * Saves the choice and restarts into it (behind the boot animation), since every style is built at
+ * launch. Resolves false if the app couldn't restart itself (some Android dev setups), so the screen
+ * can ask the runner to reopen Jump; the choice is saved either way.
+ */
+export async function setThemePreference(next: ThemePreference): Promise<boolean> {
+  try { Storage.setItemSync(THEME_KEY, next); } catch { return false; }
+  try {
+    await reloadAppAsync('Theme changed');
+    return true;
+  } catch {
+    try {
+      DevSettings.reload('Theme changed');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Whether the phone's own setting now disagrees with this launch, for "Use system setting". */
+export function systemSchemeChanged() {
+  if (themePreference !== 'system') return false;
+  return (Appearance.getColorScheme() === 'dark' ? 'dark' : 'light') !== scheme;
+}
 
 export const radius = { sm: 2, base: 4, md: 6, lg: 8, xl: 12, '2xl': 16, sheet: 22, full: 999 } as const;
 
