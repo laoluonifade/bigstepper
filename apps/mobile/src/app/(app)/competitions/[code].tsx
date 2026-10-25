@@ -122,7 +122,8 @@ export default function CompetitionDetailScreen() {
   const entrants = Math.max(standings.data?.length ?? 0, t.entrantCount ?? 0);
 
   return <Screen refreshing={table.isRefetching} onRefresh={refresh}>
-    <Stack.Screen options={{ title: t.code, headerTitleStyle: { fontFamily: mono, fontSize: 14 } }} />
+    {/* The page has its own big title; the header stays clear (the code lives on the share card). */}
+    <Stack.Screen options={{ title: '' }} />
     {created === '1' && <Notice tone="ok" title="Competition created" style={{ marginBottom: 24 }}>
       {`${t.status === 'PENDING_APPROVAL' ? 'Your draft is waiting for Jump approval. ' : t.status === 'PENDING_FUNDING' ? 'Fund the prize to open entry. ' : t.status === 'DRAFT' ? 'Saved as a draft. Only your club’s managers can see it. ' : t.status === 'SCHEDULED' ? `It opens ${t.publishAt ? formatDateTime(t.publishAt) : 'soon'}. ` : 'Your competition is open. '}${t.status === 'PENDING_FUNDING' ? 'This draft is saved to your account. You can leave and return to fund it.' : 'Share the link so friends can join.'}`}
     </Notice>}
