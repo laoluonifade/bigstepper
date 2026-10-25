@@ -543,7 +543,7 @@ export function NewCompetitionPage() {
           </Notice>}
           {mode === 'paid' && !creator.data && (
             <Notice tone="warn" title="Creator account required" action={<Link to="/creator" className="btn-quiet btn-sm">Become a creator</Link>}>
-              Paid competitions earn creators 5% and must be reviewed before opening.
+              Paid competitions are hosted by approved creators. Apply first; Jump reviews every application.
             </Notice>
           )}
           {mode === 'paid' && creator.data && creator.data.status !== 'ACTIVE' && (

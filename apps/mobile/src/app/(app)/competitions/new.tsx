@@ -253,7 +253,7 @@ export default function NewCompetitionScreen() {
             : inviteClubMembers ? `All ${club.data.memberCount} members are entered automatically, and anyone who joins the club later is added while it’s open.`
               : 'Linked to your club. Members aren’t entered automatically.'}
         </Notice>}
-        {mode === 'paid' && !creator.data && <Notice tone="warn" title="Creator account required" action={<Button size="sm" variant="quiet" title="Become a creator" onPress={() => router.push('/creator')} />}>Paid competitions earn creators 5% and must be reviewed before opening.</Notice>}
+        {mode === 'paid' && !creator.data && <Notice tone="warn" title="Creator account required" action={<Button size="sm" variant="quiet" title="Become a creator" onPress={() => router.push('/creator')} />}>Paid competitions are hosted by approved creators. Apply first; Jump reviews every application.</Notice>}
         {mode === 'paid' && creator.data && creator.data.status !== 'ACTIVE' && <Notice tone="warn" title={creator.data.status === 'PENDING' ? 'Your creator account is awaiting approval' : 'Your creator account is suspended'}>
           {creator.data.status === 'PENDING' ? 'You can host paid competitions once Jump approves you. You’ll get a notification.' : 'You can’t host paid competitions right now. Contact Jump support.'}
         </Notice>}

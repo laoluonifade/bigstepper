@@ -606,11 +606,15 @@ export function CreatorPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.creatorEarnings }),
   });
 
+  const approved = creator.data?.status === 'ACTIVE';
   if (creator.isLoading) return <Loading />;
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Creator" description="Create paid competitions for your audience and earn 5% when they settle." />
+      {/* What creators earn is only shown once you're approved: before that, it's an application. */}
+      <PageHeader eyebrow="You" title={approved ? 'Creator' : 'Become a creator'}
+        description={approved ? 'Host paid competitions for your audience and earn 5% when they settle.'
+          : creator.data ? 'Thanks for applying. Jump reviews every application.' : 'Run a community, club or audience? Apply to host paid competitions on Jump. Every application is reviewed.'} />
       {!creator.data ? (
         <form
           className="panel-strong max-w-2xl space-y-5 p-6"
@@ -619,7 +623,7 @@ export function CreatorPage() {
             if (displayName.trim().length >= 2) signup.mutate();
           }}
         >
-          <SectionTitle>Creator signup</SectionTitle>
+          <SectionTitle>Application</SectionTitle>
           <Field label="Creator type">
             {(props) => (
               <select {...props} className="field" value={creatorType} onChange={(event) => setCreatorType(event.target.value as CreatorProfile['creatorType'])}>
@@ -639,16 +643,15 @@ export function CreatorPage() {
           <Field label="About" optional>
             {(props) => <textarea {...props} className="field min-h-28" maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} />}
           </Field>
-          <Notice tone="neutral">Creator competitions use a 35% total deduction: Jump keeps 30%, the creator earns 5%, and the winner receives 65%.</Notice>
           <ErrorNotice error={signup.error} />
-          <p className="text-[13px] text-ink-2">Jump reviews every creator application before you can host paid competitions.</p>
-          <button className="btn-primary" disabled={signup.isPending || displayName.trim().length < 2}>{signup.isPending ? 'Sending…' : 'Apply to be a creator'}</button>
+          <p className="text-[13px] text-ink-2">We’ll let you know once it’s reviewed. Free competitions are open to everyone in the meantime.</p>
+          <button className="btn-primary" disabled={signup.isPending || displayName.trim().length < 2}>{signup.isPending ? 'Sending…' : 'Send application'}</button>
         </form>
       ) : (
         <>
         {creator.data.status === 'PENDING' && (
-          <Notice tone="info" className="mb-8" title="Waiting for approval">
-            Jump reviews every new creator before they can host paid competitions. You’ll get a notification once you’re approved. Free competitions work in the meantime.
+          <Notice tone="info" className="mb-8" title="Application received">
+            Jump reviews every application. You’ll get a notification once it’s done. Free competitions work in the meantime.
           </Notice>
         )}
         {creator.data.status === 'SUSPENDED' && (
@@ -657,8 +660,9 @@ export function CreatorPage() {
           </Notice>
         )}
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <section>
+          {approved ? <section>
             <SectionTitle>Earnings</SectionTitle>
+            <Notice tone="neutral" className="mb-4">Paid competitions you host take a 35% total deduction: Jump keeps 30%, you earn 5%, and the winners receive 65%.</Notice>
             <ErrorNotice error={earnings.error} onRetry={() => void earnings.refetch()} />
             {(earnings.data ?? []).length === 0 ? (
               <EmptyState mark="5%" title="No creator earnings yet" action={<Link to="/competitions/new" className="btn-primary">Create a competition</Link>}>
@@ -679,7 +683,7 @@ export function CreatorPage() {
               </ul>
             )}
             {payout.error && <div className="mt-4"><ErrorNotice error={payout.error} /></div>}
-          </section>
+          </section> : <div />}
           <aside>
             <SectionTitle>Creator account</SectionTitle>
             <div className="panel p-5">
