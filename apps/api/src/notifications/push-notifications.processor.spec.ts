@@ -19,6 +19,14 @@ function setup(pending: Array<Record<string, unknown>>, tokens: Array<{ token: s
 const now = () => new Date();
 
 describe('PushNotificationsProcessor', () => {
+  it('claims with a query that returns rows (a bare UPDATE … RETURNING comes back as [rows, count])', async () => {
+    const { processor, query } = setup([], []);
+    await processor.process(job);
+    const claim = String(query.mock.calls[0][0]);
+    expect(claim).toContain('claimed AS (');
+    expect(claim.trim().endsWith('SELECT * FROM claimed')).toBe(true);
+  });
+
   const realFetch = global.fetch;
   afterEach(() => { global.fetch = realFetch; });
 

@@ -9,7 +9,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { colors, fontFamily, mono, radius, score, wideLabel } from '@/lib/theme';
+import { brand, colors, fontFamily, mono, radius, score, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { ArrowRightIcon, ChevronRightIcon, LockIcon, UsersIcon } from './icons';
 import { METALS } from './Milestones';
@@ -84,10 +84,11 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
 }
 
 /** The card's colour comes from the activity: runs orange, walks/steps volt, anything else ink. */
+/** A competition's colours: brand artwork, so the same in light and dark mode (dark text on orange and volt). */
 export function cardTheme(table: Pick<CompetitionTable, 'challengeType'>) {
-  if (table.challengeType === 'RUN') return { band: colors.track, text: colors.ink, accent: colors.ink };
-  if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: colors.volt, text: colors.ink, accent: colors.ink };
-  return { band: colors.ink, text: colors.paper, accent: colors.volt };
+  if (table.challengeType === 'RUN') return { band: brand.track, text: brand.ink, accent: brand.ink };
+  if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: brand.volt, text: brand.ink, accent: brand.ink };
+  return { band: brand.ink, text: brand.paper, accent: brand.volt };
 }
 
 /** One row in a competition list: tile, title, what wins, who's in, time left, prize. */

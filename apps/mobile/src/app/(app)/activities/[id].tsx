@@ -10,6 +10,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 import { CheckIcon, FeedIcon, SendIcon, ShareIcon } from '@/components/icons';
+import { FinishCelebration } from '@/components/FinishCelebration';
 import { RouteMap } from '@/components/RunMap';
 import { SendActivitySheet } from '@/components/SendActivity';
 import { ShareRunSheet } from '@/components/ShareRun';
@@ -31,14 +32,8 @@ export default function ActivityDetailScreen() {
     refetchInterval: (query) => (query.state.data?.verificationStatus === 'PENDING_VERIFICATION' ? 2500 : false),
   });
   const track = useQuery({ queryKey: ['activity-track', id], queryFn: () => api<{ points: Array<[number, number]> }>(`/activities/${id}/track`), staleTime: Infinity });
-  // A just-finished activity opens its share sheet once it comes back verified.
-  const autoOpened = useRef(false);
-  useEffect(() => {
-    if (fresh === '1' && activity.data?.verificationStatus === 'VERIFIED' && !autoOpened.current) {
-      autoOpened.current = true;
-      setSheet('share');
-    }
-  }, [fresh, activity.data?.verificationStatus]);
+  // A just-finished activity opens on its celebration first.
+  const [celebrating, setCelebrating] = useState(fresh === '1');
 
   if (activity.isLoading) return <Screen><Stack.Screen options={{ title: '' }} /><Loading /></Screen>;
   if (activity.error || !activity.data) return <Screen><Stack.Screen options={{ title: 'Not found' }} /><ErrorNotice error={activity.error ?? new Error('This activity doesn’t exist.')} /></Screen>;
@@ -55,6 +50,7 @@ export default function ActivityDetailScreen() {
 
   return <Screen refreshing={activity.isRefetching} onRefresh={() => void activity.refetch()}>
     <Stack.Screen options={{ title: formatDateTime(a.startedAt) }} />
+    {celebrating && <FinishCelebration activity={a} route={route} unit={unit} onClose={() => setCelebrating(false)} onShare={() => { setCelebrating(false); setSheet('share'); }} />}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
       <VerificationTag status={a.verificationStatus} />
       {a.source === 'strava' ? <Txt size={12} weight="bold" style={{ color: '#FC5200' }}>via Strava</Txt> : null}

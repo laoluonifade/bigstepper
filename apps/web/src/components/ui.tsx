@@ -118,6 +118,19 @@ export function PageHeader({
   );
 }
 
+/** A green light that breathes, so a board that's live looks it. */
+export function LiveTag({ label = 'Live' }: { label?: string }) {
+  return (
+    <span className="tag shrink-0 gap-2 border-ok/50 bg-ok-wash text-ok">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22C55E] opacity-60" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-[#22C55E]" />
+      </span>
+      {label}
+    </span>
+  );
+}
+
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
     <div className="mb-3 flex items-baseline justify-between gap-4 border-b-2 border-ink pb-2">
@@ -194,7 +207,7 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () =
       message: error instanceof Error ? error.message : 'Something went wrong.',
       // The API asks for KYC before paid features; send people straight to it.
       action: error instanceof Error && error.message.startsWith('Verify your identity')
-        ? { label: 'Verify now', run: () => window.location.assign('/wallet#verify') }
+        ? { label: 'Verify now', run: () => window.location.assign('/rewards#verify') }
         : retry.current && !disabled ? { label: 'Retry', run: () => retry.current?.() } : undefined,
     });
   }, [error]);

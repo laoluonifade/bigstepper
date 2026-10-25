@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
 import { AppShell, Private } from './components/Shell';
 import { NotFound, PagePending, RouteError } from './components/RouteStates';
@@ -98,7 +98,7 @@ const club = createRoute({
 const clubDashboard = createRoute({ getParentRoute: () => root, path: '/clubs/$id/dashboard', component: protectedPage(() => import('./pages/ClubDashboard'), 'ClubDashboardPage') });
 const prizes = createRoute({ getParentRoute: () => root, path: '/prizes', component: protectedPage(() => import('./pages/Prizes'), 'PrizesPage') });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(() => import('./pages/You'), 'RewardsPage') });
-const wallet = createRoute({ getParentRoute: () => root, path: '/wallet', component: protectedPage(() => import('./pages/You'), 'WalletPage') });
+const wallet = createRoute({ getParentRoute: () => root, path: '/wallet', beforeLoad: () => { throw redirect({ to: '/rewards', hash: window.location.hash.slice(1) || undefined }); } });
 const creator = createRoute({ getParentRoute: () => root, path: '/creator', component: protectedPage(() => import('./pages/You'), 'CreatorPage') });
 const notifications = createRoute({ getParentRoute: () => root, path: '/notifications', component: protectedPage(() => import('./pages/You'), 'NotificationsPage') });
 const profile = createRoute({ getParentRoute: () => root, path: '/settings/profile', component: protectedPage(() => import('./pages/You'), 'ProfileSettingsPage') });

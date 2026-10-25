@@ -104,7 +104,8 @@ export function smoothTrack(points: TrackPoint[], trailing = false): Smoothed[] 
  * - moves slower than walking pace (drift while standing still) never count;
  * - on foot, with the pedometer on, a move only counts if steps were taken during it: GPS drifting
  *   while you stand still has no steps behind it, and a shaken phone has no movement;
- * - a lone too-fast hop is a spike and is skipped; sustained too-fast travel (a car) flags the run.
+ * - a lone too-fast hop is a spike and is skipped; sustained too-fast travel (a car) flags the run;
+ * - a jump across a gap in tracking (no fixes for over two minutes) isn't counted.
  */
 export function measureTrack(points: TrackPoint[], options: { trailing?: boolean; activityType?: 'walk' | 'run' | 'cycle' } = {}): TrackMeasure {
   const reasons = new Set<string>();
@@ -123,6 +124,14 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
   let anchor = track[0];
   for (let index = 1; index < track.length; index += 1) {
     const point = track[index];
+    // GPS went silent (app closed, phone off, no signal) and came back somewhere else: nobody saw the
+    // way between, so the jump isn't counted. Measuring carries on from where it picked up.
+    if ((point.at - track[index - 1].at) / 1000 > GAP_SECONDS) {
+      reasons.add('GPS_GAP');
+      anchor = point;
+      fastInARow = 0;
+      continue;
+    }
     const seconds = (point.at - anchor.at) / 1000;
     if (seconds <= 0) continue;
     const metres = haversineMetres(anchor.lat, anchor.lon, point.lat, point.lon);
@@ -149,8 +158,8 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
       anchor = point; // drift, not walking: move the anchor without counting it
       continue;
     }
-    if (seconds > GAP_SECONDS) reasons.add('GPS_GAP');
-    else moving += seconds;
+    // A long wait before this move (standing at a junction, GPS still running) isn't moving time.
+    if (seconds <= GAP_SECONDS) moving += seconds;
     distance += metres;
     anchor = point;
   }

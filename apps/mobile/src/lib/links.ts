@@ -8,6 +8,8 @@ const ALIASES: Array<[RegExp, string]> = [
   [/^\/$/, '/dashboard'],
   [/^\/settings(\/profile)?\/?$/, '/you'],
   [/^\/auth\/strava/, '/you'],
+  // The entry balance merged into Rewards; old notifications still link to /wallet.
+  [/^\/wallet\/?$/, '/rewards'],
 ];
 
 /** Pages that stay on the web (legal text): opened in an in-app browser. */

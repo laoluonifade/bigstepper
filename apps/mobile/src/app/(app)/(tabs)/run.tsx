@@ -124,7 +124,7 @@ function ReadyScreen() {
     queryFn: () => api<Array<{ id: string; code: string; title: string; challengeType: string; type: string }>>(`/tables/eligible?activity=${activityType}`),
   });
   const gpsError = recorder.gpsError;
-  useEffect(() => { if (gpsError) toast({ tone: 'warn', title: 'No location yet', message: gpsError }); }, [gpsError]);
+  useEffect(() => { if (gpsError) toast({ tone: 'warn', title: 'No location yet', message: gpsError, action: gpsError.includes('Settings') ? { label: 'Open Settings', run: () => void Linking.openSettings() } : undefined }); }, [gpsError]);
   const placeName = usePlaceName(preview.position);
   const noun = nounFor(activityType);
 
@@ -288,7 +288,7 @@ function Scoreboard() {
   async function finish() {
     const activity = await recorder.finish();
     if (activity) {
-      haptic('success');
+      // The celebration on the activity page brings the haptics.
       playSound('finish');
       router.push({ pathname: '/activities/[id]', params: { id: activity.id, fresh: '1' } });
     }

@@ -157,4 +157,24 @@ describe('measureTrack', () => {
       expect(measureTrack(ride, { activityType: 'cycle' }).distanceMetres).toBeGreaterThan(1700);
     });
   });
+
+  describe('gaps in tracking', () => {
+    it('doesn’t count a jump across a gap where GPS saw nothing (app closed, then reopened elsewhere)', () => {
+      const before = track(60, 1.4, { accuracy: 6 });
+      // Ten silent minutes, then fixes resume 3.7 km away.
+      const after = track(60, 1.4, { accuracy: 6, start: 660, northOffset: 3700 });
+      const result = measureTrack([...before, ...after]);
+      expect(result.reasons.has('GPS_GAP')).toBe(true);
+      expect(result.distanceMetres).toBeLessThan(200);
+    });
+
+    it('still counts a walk after standing still with GPS running', () => {
+      const walk = track(120, 1.4, { accuracy: 6 });
+      const stand = track(180, 0, { accuracy: 6, start: 121, northOffset: 168 });
+      const more = track(120, 1.4, { accuracy: 6, start: 302, northOffset: 168 });
+      const result = measureTrack([...walk, ...stand, ...more]);
+      expect(result.reasons.has('GPS_GAP')).toBe(false);
+      expect(result.distanceMetres).toBeGreaterThan(300);
+    });
+  });
 });

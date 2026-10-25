@@ -5,8 +5,8 @@ import type { Gender, Profile, PublicProfile, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
 import { ReactNode, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
-import { ActivityIcon, BellIcon, CheckIcon, ChevronRightIcon, LadderIcon, LogoutIcon, UserIcon, UsersIcon, WalletIcon } from '@/components/icons';
+import { Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIcon, BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, LadderIcon, LogoutIcon, UserIcon, UsersIcon, WalletIcon, XLogoIcon } from '@/components/icons';
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
 import { AvatarEditor, ProfileHero, ProfileStats, ShareProfileButton } from '@/components/Profile';
 import { TabScreen } from '@/components/Shell';
@@ -24,6 +24,10 @@ import { toast } from '@/lib/toast';
 
 const THEME_LABEL: Record<ThemePreference, string> = { system: 'System default', light: 'Light', dark: 'Dark' };
 
+const SOCIALS = [
+  { url: 'https://x.com/startajump', label: 'Jump on X', Icon: XLogoIcon, size: 16 },
+  { url: 'https://www.instagram.com/startajump', label: 'Jump on Instagram', Icon: InstagramIcon, size: 19 },
+] as const;
 const LEGAL = [{ to: '/terms', label: 'Terms of Service' }, { to: '/privacy', label: 'Privacy Policy' }, { to: '/safety', label: 'Safety & Acceptable Use' }] as const;
 
 export default function YouScreen() {
@@ -50,7 +54,6 @@ export default function YouScreen() {
     { href: '/activities', label: 'Your activity', icon: <ActivityIcon size={18} /> },
     { href: '/leagues', label: 'My league', icon: <LadderIcon size={18} /> },
     { href: '/notifications', label: 'Notifications', icon: <BellIcon size={18} />, badge: unread },
-    { href: '/wallet', label: 'Wallet', icon: <WalletIcon size={18} /> },
     { href: '/rewards', label: 'Rewards', icon: <WalletIcon size={18} /> },
     { href: '/prizes', label: 'Prizes', icon: <Txt size={16} weight="black">★</Txt> },
     { href: '/creator', label: 'Creator', icon: <UserIcon size={18} /> },
@@ -148,6 +151,13 @@ export default function YouScreen() {
       <Pressable onPress={() => { haptic(); void logout(); }} style={({ pressed }) => [styles.logout, pressed && { backgroundColor: colors.badWash }]} accessibilityRole="button">
         <LogoutIcon size={16} color={colors.bad} /><Txt size={14} weight="bold" color="bad">Log out</Txt>
       </Pressable>
+      <View style={styles.socials}>
+        {SOCIALS.map(({ url, label, Icon, size }) => (
+          <Pressable key={url} onPress={() => { haptic(); void Linking.openURL(url); }} style={({ pressed }) => [styles.social, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="link" accessibilityLabel={label} hitSlop={4}>
+            <Icon size={size} color={colors.ink2} />
+          </Pressable>
+        ))}
+      </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 16, rowGap: 4 }}>
         {LEGAL.map((link) => <Pressable key={link.to} onPress={() => void openWeb(link.to)} hitSlop={6}><Txt size={12} color="ink3">{link.label}</Txt></Pressable>)}
       </View>
@@ -329,6 +339,8 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
 }
 
 const styles = StyleSheet.create({
+  socials: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 14 },
+  social: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   group: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingHorizontal: GUTTER, paddingVertical: 10 },
   badge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.track, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },

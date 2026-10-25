@@ -1,6 +1,6 @@
 import { AWARD_STATUS } from '@jump/shared/copy';
-import { formatDate, formatMoney, shortId } from '@jump/shared/format';
-import type { PayoutRecipient, PrizeAward } from '@jump/shared/types';
+import { formatDate, formatMoney, formatNairaInput, nairaInputToKobo, shortId } from '@jump/shared/format';
+import type { CheckoutResponse, PayoutRecipient, PrizeAward } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useState } from 'react';
@@ -10,7 +10,9 @@ import { Button, Card, CountUp, EmptyState, ErrorNotice, Eyebrow, Notice, PageHe
 import { api, isApiError, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { useStored } from '@/lib/local';
-import { keys } from '@/lib/queries';
+import { openCheckout } from '@/lib/checkout';
+import { savePayment } from '@/lib/payments';
+import { keys, useWallet, useWalletTransactions } from '@/lib/queries';
 import { colors, mono, radius, score } from '@/lib/theme';
 
 type SavedRecipient = Pick<PayoutRecipient, 'accountName' | 'bankCode' | 'accountLast4'> & { availableForPayoutAt?: string };
@@ -35,10 +37,15 @@ export default function RewardsScreen() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.rewards }),
   });
 
-  return <Screen refreshing={rewards.isRefetching} onRefresh={() => void rewards.refetch()}>
+  const balance = useWallet();
+  const activity = useWalletTransactions();
+
+  return <Screen refreshing={rewards.isRefetching || balance.isRefetching} onRefresh={() => { void rewards.refetch(); void balance.refetch(); void activity.refetch(); }}>
     <Stack.Screen options={{ title: 'Rewards' }} />
-    <PageHeader eyebrow="You" title="Rewards" description="Prizes from paid competitions you’ve won. Free competitions are for glory." />
-    <Card variant="strong" padded={false} style={{ flexDirection: 'row', marginBottom: 32 }}>
+    <PageHeader eyebrow="You" title="Rewards" description="Your balance for entries, and the prizes you’ve won." />
+    <EntryBalance balanceKobo={balance.isLoading ? null : Number(balance.data?.balanceKobo ?? 0)} />
+
+    <Card variant="strong" padded={false} style={{ flexDirection: 'row', marginTop: 32, marginBottom: 32 }}>
       <View style={{ flex: 1, padding: 20 }}><Eyebrow>Total won</Eyebrow><Score size={34} style={{ marginTop: 8 }}>{rewards.isLoading ? '–' : <CountUp value={total} format={(k) => formatMoney(Math.round(k))} />}</Score></View>
       <View style={{ flex: 1, padding: 20, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.line }}><Eyebrow>Paid out</Eyebrow><Score size={34} style={{ marginTop: 8 }}>{rewards.isLoading ? '–' : <CountUp value={paid} format={(k) => formatMoney(Math.round(k))} />}</Score></View>
     </Card>
@@ -70,6 +77,20 @@ export default function RewardsScreen() {
     </Notice>}
 
     <View style={{ marginTop: 40 }}>
+      <SectionTitle>Balance activity</SectionTitle>
+      <ErrorNotice error={activity.error} onRetry={() => void activity.refetch()} />
+      {activity.isLoading ? <Skeleton style={{ height: 120 }} />
+        : !(activity.data ?? []).length ? <Txt size={14} color="ink3">Top-ups and entries you pay from your balance show here.</Txt>
+          : <View style={styles.list}>{(activity.data ?? []).map((item, index) => <View key={item.id} style={[styles.row, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Txt size={14} weight="bold">{item.description}</Txt>
+              <Txt size={12} color="ink3" style={{ marginTop: 2 }}>{`${formatDate(item.createdAt, { year: 'numeric' })} · balance ${formatMoney(item.balanceAfterKobo)}`}</Txt>
+            </View>
+            <Text style={[score(22), { color: Number(item.amountKobo) < 0 ? colors.bad : colors.ok }]}>{`${Number(item.amountKobo) > 0 ? '+' : '−'}${formatMoney(Math.abs(Number(item.amountKobo)))}`}</Text>
+          </View>)}</View>}
+    </View>
+
+    <View style={{ marginTop: 40 }}>
       <SectionTitle>Payout details</SectionTitle>
       {kycRequired ? <KycPanel /> : recipient && !editing ? <Card style={{ padding: 16 }}>
         <Txt size={15} weight="bold">{recipient.accountName}</Txt>
@@ -80,6 +101,33 @@ export default function RewardsScreen() {
       {!kycRequired && <Txt size={12} color="ink3" leading={1.5} style={{ marginTop: 16 }}>We only keep the account name, bank and last four digits. Jump reviews and approves every payout before it’s sent.</Txt>}
     </View>
   </Screen>;
+}
+
+/**
+ * What's on account for competition entries: topped up by card, spent on entries, never withdrawn
+ * (it's an entry balance, not a store of money).
+ */
+function EntryBalance({ balanceKobo }: { balanceKobo: number | null }) {
+  const [amount, setAmount] = useState('');
+  const amountKobo = nairaInputToKobo(amount);
+  const topUp = useMutation({
+    mutationFn: () => post<CheckoutResponse>('/wallet/fund', { amountKobo }),
+    async onSuccess(response) {
+      savePayment({ reference: response.reference, purpose: 'WALLET_FUNDING', tableTitle: 'Entry balance top-up', amountKobo, createdAt: new Date().toISOString() });
+      setAmount('');
+      await openCheckout(response.authorizationUrl);
+    },
+  });
+  return <Card variant="strong" style={{ padding: 20 }}>
+    <Eyebrow>Balance for entries</Eyebrow>
+    <Score size={44} style={{ marginTop: 8 }}>{balanceKobo === null ? '–' : <CountUp value={balanceKobo} format={(k) => formatMoney(Math.round(k))} />}</Score>
+    <Txt size={12} color="ink3" leading={1.45} style={{ marginTop: 6 }}>Use it to enter paid competitions. It can’t be withdrawn or transferred.</Txt>
+    <View style={{ marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 20, gap: 14 }}>
+      <TextField label="Amount to add" hint="Minimum ₦100." keyboardType="decimal-pad" value={amount} onChangeText={(text) => setAmount(formatNairaInput(text))} left={<Txt size={16} weight="bold">₦</Txt>} />
+      <Button full title={topUp.isPending ? 'Opening Paystack…' : 'Add funds'} loading={topUp.isPending} disabled={amountKobo < 10_000} onPress={() => topUp.mutate()} />
+      <ErrorNotice error={topUp.error} />
+    </View>
+  </Card>;
 }
 
 function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecipient) => void; onCancel?: () => void }) {
@@ -111,4 +159,6 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
 
 const styles = StyleSheet.create({
   award: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 16 },
+  list: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 4, paddingVertical: 14 },
 });

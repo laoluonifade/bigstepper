@@ -140,8 +140,8 @@ function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerif
             </Link>
           )}
           {succeeded && payment.purpose === 'WALLET_FUNDING' && (
-            <Link to="/wallet" className="btn-primary btn-sm">
-              View wallet
+            <Link to="/rewards" className="btn-primary btn-sm">
+              View balance
             </Link>
           )}
           {(value === 'FAILED' || notFound) && payment.tableCode && (

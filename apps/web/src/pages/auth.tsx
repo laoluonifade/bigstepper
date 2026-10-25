@@ -11,6 +11,7 @@ import type { AuthResponse, Gender } from '../lib/types';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { GenderSelect } from '../components/GenderSelect';
 import { StravaButton } from './Strava';
+import { PasswordInput } from '../components/PasswordInput';
 
 const DEV_VERIFY_KEY = 'jump_dev_verify_token';
 
@@ -134,7 +135,7 @@ export function LoginPage() {
           {(props) => <input {...props} className="field" name="email" type="email" autoComplete="email" required />}
         </Field>
         <Field label="Password">
-          {(props) => <input {...props} className="field" name="password" type="password" autoComplete="current-password" required />}
+          {(props) => <PasswordInput {...props} className="field" name="password" autoComplete="current-password" required />}
         </Field>
         <ErrorNotice error={login.error} />
         <button className="btn-primary w-full" disabled={login.isPending}>
@@ -217,11 +218,10 @@ export function RegisterPage() {
         </Field>
         <Field label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}>
           {(props) => (
-            <input
+            <PasswordInput
               {...props}
               className="field"
               name="password"
-              type="password"
               autoComplete="new-password"
               minLength={8}
               required
@@ -402,6 +402,9 @@ export function ForgotPasswordPage() {
   );
 }
 
+/** A phone, where the Jump app is likely installed. */
+const ON_PHONE = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 export function ResetPasswordPage() {
   const search = useSearch({ strict: false }) as { token?: string };
   const [token, setToken] = useState(search.token ?? '');
@@ -418,9 +421,13 @@ export function ResetPasswordPage() {
         <AuthHeading eyebrow="Done" title="Password updated">
           For your security, every device has been signed out. Log in with your new password.
         </AuthHeading>
-        <Link to="/login" className="btn-primary w-full">
+        {/* Reset links open in the phone's browser; on a phone, the way back is the app. */}
+        {ON_PHONE ? <>
+          <a href="jump://login" className="btn-primary w-full">Open the Jump app</a>
+          <Link to="/login" className="mt-3 block text-center text-[14px] font-semibold text-ink-2 underline underline-offset-2">Log in on the web instead</Link>
+        </> : <Link to="/login" className="btn-primary w-full">
           Log in
-        </Link>
+        </Link>}
       </>
     );
   }
@@ -442,10 +449,9 @@ export function ResetPasswordPage() {
         )}
         <Field label="New password" hint="At least 8 characters.">
           {(props) => (
-            <input
+            <PasswordInput
               {...props}
               className="field"
-              type="password"
               autoComplete="new-password"
               minLength={8}
               required
@@ -456,10 +462,9 @@ export function ResetPasswordPage() {
         </Field>
         <Field label="Confirm new password" error={mismatch ? 'Passwords don’t match.' : undefined}>
           {(props) => (
-            <input
+            <PasswordInput
               {...props}
               className="field"
-              type="password"
               autoComplete="new-password"
               required
               value={confirm}

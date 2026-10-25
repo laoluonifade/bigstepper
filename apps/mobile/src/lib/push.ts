@@ -77,21 +77,42 @@ export async function unregisterForPush() {
  */
 export function listenForPush(queryClient: QueryClient) {
   if (!Notifications) return () => undefined;
+  const notifications = Notifications;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  // A tap that launched the app can be reported twice (as the last response and to the listener).
+  const handled = new Set<string>();
+  // Navigating before the root navigator has mounted throws (and in a release build, closes the app),
+  // which is what a tap that launches Jump from closed would hit: keep trying until it's up.
+  const openWhenReady = (link: string, attempt = 0) => {
+    try {
+      openLink(link);
+    } catch {
+      if (attempt >= 20) return;
+      const timer = setTimeout(() => { timers.delete(timer); openWhenReady(link, attempt + 1); }, 250);
+      timers.add(timer);
+    }
+  };
   const open = (response: NotificationsModule.NotificationResponse | null) => {
-    const link = response?.notification.request.content.data?.link;
-    if (typeof link === 'string' && link) openLink(link);
+    if (!response) return;
+    const id = response.notification.request.identifier;
+    if (handled.has(id)) return;
+    handled.add(id);
+    // Handled: don't replay it when this runs again (signing back in, say).
+    try { notifications.clearLastNotificationResponse(); } catch { /* older native side */ }
+    const link = response.notification.request.content.data?.link;
+    if (typeof link === 'string' && link) openWhenReady(link);
   };
   try {
-    // One that launched the app opens once navigation is up.
+    // One that launched the app opens as soon as navigation is up.
     const launched = Notifications.getLastNotificationResponse();
-    const timer = launched ? setTimeout(() => open(launched), 600) : null;
+    const timer = launched ? setTimeout(() => open(launched), 300) : null;
     const tapped = Notifications.addNotificationResponseReceivedListener(open);
     const received = Notifications.addNotificationReceivedListener(() => {
       // Same keys as lib/queries (not imported: queries → auth → push would be a cycle).
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
       void queryClient.invalidateQueries({ queryKey: ['messages', 'unread'] });
     });
-    return () => { if (timer) clearTimeout(timer); tapped.remove(); received.remove(); };
+    return () => { if (timer) clearTimeout(timer); timers.forEach(clearTimeout); tapped.remove(); received.remove(); };
   } catch {
     return () => undefined;
   }

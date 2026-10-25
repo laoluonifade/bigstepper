@@ -13,7 +13,7 @@ function setup(state: Partial<typeof clear> = {}) {
 
 describe('AccountDeletionService', () => {
   it.each([
-    [{ balance: '50000' }, /wallet/],
+    [{ balance: '50000' }, /balance for entries/],
     [{ unpaidPrizes: 1 }, /prize money/],
     [{ unpaidEarnings: 2 }, /earnings/],
     [{ clubs: 1 }, /own a club/],

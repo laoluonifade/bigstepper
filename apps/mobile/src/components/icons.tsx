@@ -4,7 +4,7 @@ import { useIconColor } from '@/lib/surface';
 import { colors } from '@/lib/theme';
 
 /** Ported from apps/web/src/components/icons.tsx: the same 24px line icons, drawn in `color`. */
-export type IconProps = { size?: number; color?: string; strokeWidth?: number; strokeLinecap?: 'butt' | 'round' | 'square'; strokeLinejoin?: 'miter' | 'round' | 'bevel'; fill?: string; style?: StyleProp<ViewStyle> };
+export type IconProps = { size?: number; color?: string; strokeWidth?: number; strokeLinecap?: 'butt' | 'round' | 'square'; strokeLinejoin?: 'miter' | 'round' | 'bevel'; fill?: string; stroke?: string; style?: StyleProp<ViewStyle> };
 
 function Icon({ size = 20, color: wanted, children, ...props }: IconProps & { children?: React.ReactNode }) {
   const color = useIconColor(wanted);
@@ -25,6 +25,20 @@ function Icon({ size = 20, color: wanted, children, ...props }: IconProps & { ch
       </Svg>
   );
 }
+
+export const XLogoIcon = (p: IconProps) => (
+  <Icon {...p} stroke="none" fill="currentColor">
+    <Path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </Icon>
+);
+
+export const InstagramIcon = (p: IconProps) => (
+  <Icon {...p} strokeLinejoin="round">
+    <Rect x="3" y="3" width="18" height="18" rx="5" />
+    <Circle cx="12" cy="12" r="4" />
+    <Circle cx="17.5" cy="6.5" r="0.6" fill="currentColor" />
+  </Icon>
+);
 
 export const HomeIcon = (p: IconProps) => (
   <Icon {...p}>
@@ -267,6 +281,22 @@ export const CameraIcon = (p: IconProps) => (
   <Icon {...p}>
     <Path d="M3 7h4l2-3h6l2 3h4v13H3z" />
     <Circle cx="12" cy="13" r="4" />
+  </Icon>
+);
+
+/** Show password. */
+export const EyeIcon = (p: IconProps) => (
+  <Icon {...p} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+    <Circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+
+/** Hide password. */
+export const EyeOffIcon = (p: IconProps) => (
+  <Icon {...p} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-2.6 3.5M6.6 6.6C3.7 8.5 2 12 2 12s3.6 7 10 7a10.4 10.4 0 0 0 5.4-1.6" />
+    <Path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" />
   </Icon>
 );
 

@@ -19,6 +19,7 @@ import {
   EmptyState,
   ErrorNotice,
   Field,
+  LiveTag,
   Loading,
   Notice,
   PageHeader,
@@ -948,7 +949,7 @@ export function CompetitionDetailPage() {
 
         <div className="min-w-0 space-y-10 lg:col-start-1 lg:row-start-2">
           <section>
-            <SectionTitle aside={isFinal ? <span className="tag border-ink bg-volt">Final</span> : <span className="tag border-line bg-card text-ink-2">{t.status === 'PENDING_FUNDING' ? 'Draft' : 'Live'}</span>}>
+            <SectionTitle aside={isFinal ? <span className="tag border-ink bg-volt">Final</span> : t.status === 'PENDING_FUNDING' ? <span className="tag border-line bg-card text-ink-2">Draft</span> : <LiveTag />}>
               Leaderboard
             </SectionTitle>
             {standings.isLoading ? (
@@ -1478,7 +1479,7 @@ function EntryPanel({
             </button>
             {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && (
               <button type="button" className="btn-secondary mt-2 w-full" onClick={() => enterWallet.mutate()} disabled={enterWallet.isPending}>
-                {enterWallet.isPending ? 'Entering…' : `Use wallet · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`}
+                {enterWallet.isPending ? 'Entering…' : `Use your balance · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`}
               </button>
             )}
             <p className="mt-2 text-[12px] text-ink-3">You’ll pay securely on Paystack. Your seat is confirmed once we verify the payment.</p>

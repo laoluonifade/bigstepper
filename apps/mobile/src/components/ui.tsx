@@ -29,7 +29,7 @@ import { isApiError } from '@/lib/api';
 import { AccentSurface, useTextColor } from '@/lib/surface';
 import { colors, eyebrow, fontFamily, GUTTER, radius, score, wideLabel, type Color, type Weight, type Width } from '@/lib/theme';
 import { toast } from '@/lib/toast';
-import { AlertIcon, CheckIcon, CopyIcon, InfoIcon } from './icons';
+import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, InfoIcon } from './icons';
 
 /* ───────────────────────── Type ───────────────────────── */
 
@@ -390,7 +390,7 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () =
       title: offline ? 'You’re offline' : disabled ? 'Not available right now' : undefined,
       message: error instanceof Error ? error.message : 'Something went wrong.',
       action: error instanceof Error && error.message.startsWith('Verify your identity')
-        ? { label: 'Verify now', run: () => router.push('/wallet') }
+        ? { label: 'Verify now', run: () => router.push('/rewards') }
         : retry.current && !disabled ? { label: 'Retry', run: () => retry.current?.() } : undefined,
     });
   }, [error]);
@@ -435,7 +435,18 @@ export function EmptyState({ mark, title, children, action }: { mark?: ReactNode
 
 export function Tag({ children, color = colors.ink, background = colors.card, border = 'rgba(18,18,18,0.8)', style }: { children: ReactNode; color?: string; background?: string; border?: string; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.tag, { backgroundColor: background, borderColor: border }, style]}>
-    {typeof children === 'string' ? <Text style={[styles.tagText, { color }]} numberOfLines={1}>{children}</Text> : children}
+    {/* Uppercased here, not with textTransform: iOS sizes the text before transforming it, which clipped "LIVE" to "LIV". */}
+    {typeof children === 'string' ? <Text style={[styles.tagText, { color }]} numberOfLines={1}>{children.toUpperCase()}</Text> : children}
+  </View>;
+}
+
+/** A breathing green light, so a board that's live looks it. */
+const LIVE_GREEN = '#22C55E';
+
+export function LiveTag({ label = 'Live' }: { label?: string }) {
+  return <View style={[styles.tag, styles.liveTag]}>
+    <LiveDot live color={LIVE_GREEN} size={8} />
+    <Text style={[styles.tagText, { color: colors.ok }]} numberOfLines={1}>{label.toUpperCase()}</Text>
   </View>;
 }
 
@@ -520,8 +531,15 @@ export function Hint({ children, error }: { children: ReactNode; error?: boolean
 /** A labelled text field: the web's `.label` + `.field` + `.hint`. */
 export type TextFieldRef = ComponentRef<typeof TextInput>;
 
-export function TextField({ ref, label, hint, error, optional, left, right, containerStyle, style, multiline, onFocus, onBlur, ...props }: TextInputProps & { ref?: Ref<TextFieldRef>; label?: ReactNode; hint?: ReactNode; error?: ReactNode; optional?: boolean; left?: ReactNode; right?: ReactNode; containerStyle?: StyleProp<ViewStyle> }) {
+export function TextField({ ref, label, hint, error, optional, left, right, containerStyle, style, multiline, onFocus, onBlur, secureTextEntry, ...props }: TextInputProps & { ref?: Ref<TextFieldRef>; label?: ReactNode; hint?: ReactNode; error?: ReactNode; optional?: boolean; left?: ReactNode; right?: ReactNode; containerStyle?: StyleProp<ViewStyle> }) {
   const [focused, setFocused] = useState(false);
+  // Password fields get an eye to show what's been typed.
+  const [revealed, setRevealed] = useState(false);
+  const reveal = secureTextEntry && !right
+    ? <Pressable onPress={() => { haptic('select'); setRevealed((value) => !value); }} hitSlop={10} style={styles.reveal} accessibilityRole="button" accessibilityLabel={revealed ? 'Hide password' : 'Show password'}>
+      {revealed ? <EyeOffIcon size={20} color={colors.ink2} /> : <EyeIcon size={20} color={colors.ink2} />}
+    </Pressable>
+    : null;
   return <View style={containerStyle}>
     {label ? <FieldLabel label={label} optional={optional} /> : null}
     <View style={[styles.field, multiline && { minHeight: 112, alignItems: 'flex-start' }, { borderColor: error ? colors.bad : focused ? colors.ink : colors.line }]}>
@@ -536,9 +554,10 @@ export function TextField({ ref, label, hint, error, optional, left, right, cont
         onFocus={(event) => { setFocused(true); onFocus?.(event); }}
         onBlur={(event) => { setFocused(false); onBlur?.(event); }}
         style={[styles.input, multiline && { paddingVertical: 12, lineHeight: 22 }, style]}
+        secureTextEntry={secureTextEntry && !revealed}
         {...props}
       />
-      {right}
+      {right ?? reveal}
     </View>
     {error ? <Hint error>{error}</Hint> : hint ? <Hint>{hint}</Hint> : null}
   </View>;
@@ -610,12 +629,14 @@ const styles = StyleSheet.create({
   footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, backgroundColor: colors.paper, paddingHorizontal: GUTTER, paddingTop: 12 },
   notice: { flexDirection: 'row', gap: 12, borderRadius: radius.base, borderWidth: 1, borderLeftWidth: 4, paddingHorizontal: 16, paddingVertical: 12 },
   empty: { borderRadius: radius.md, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(138,133,123,0.6)', paddingHorizontal: 24, paddingVertical: 40 },
-  tag: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', height: 24, borderRadius: radius.sm, borderWidth: 1, paddingHorizontal: 8 },
-  tagText: { fontFamily: fontFamily('bold'), fontSize: 10.5, letterSpacing: 0.84, textTransform: 'uppercase' },
+  tag: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', flexShrink: 0, height: 24, borderRadius: radius.sm, borderWidth: 1, paddingHorizontal: 8 },
+  tagText: { fontFamily: fontFamily('bold'), fontSize: 10.5, letterSpacing: 0.84 },
+  liveTag: { gap: 7, flexShrink: 0, backgroundColor: colors.okWash, borderColor: 'rgba(34,197,94,0.55)' },
   keyValue: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, paddingVertical: 10 },
   label: { fontFamily: fontFamily('semibold'), fontSize: 13, color: colors.ink, marginBottom: 6 },
   field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 50, borderRadius: radius.base, borderWidth: 1.5, backgroundColor: colors.white, paddingHorizontal: 14 },
   input: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink, paddingVertical: 12 },
+  reveal: { paddingLeft: 8, paddingVertical: 8 },
   segmented: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, flexGrow: 0 },
   segment: { alignItems: 'center', justifyContent: 'center', borderRadius: radius.base },
   chip: { height: 36, justifyContent: 'center', borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14 },

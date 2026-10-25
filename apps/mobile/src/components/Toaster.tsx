@@ -23,7 +23,7 @@ export function Toaster() {
             <Text style={styles.message}>{item.message}</Text>
           </View>
           {item.action ? <Pressable hitSlop={8} onPress={() => { item.action?.run(); dismissToast(item.id); }} accessibilityRole="button">
-            <Text style={styles.action}>{item.action.label}</Text>
+            <Text style={styles.action}>{item.action.label.toUpperCase()}</Text>
           </Pressable> : null}
         </Pressable>
       </HardShadow>
@@ -36,5 +36,5 @@ const styles = StyleSheet.create({
   toast: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: radius.md, borderWidth: 2, borderLeftWidth: 5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 12 },
   title: { fontFamily: fontFamily('bold'), fontSize: 14, lineHeight: 19, color: colors.ink },
   message: { fontFamily: fontFamily('regular'), fontSize: 14, lineHeight: 19, color: colors.ink2 },
-  action: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.ink, textDecorationLine: 'underline', paddingTop: 2 },
+  action: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 11, letterSpacing: 0.6, color: colors.ink, textDecorationLine: 'underline', paddingTop: 2 },
 });

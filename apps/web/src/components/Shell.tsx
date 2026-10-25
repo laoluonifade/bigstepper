@@ -144,7 +144,6 @@ function SignedInShell() {
       items: [
         { to: '/activities', label: 'Your activity', icon: <ActivityIcon /> },
         { to: '/leagues', label: 'My league', icon: <LadderIcon /> },
-        { to: '/wallet', label: 'Wallet', icon: <WalletIcon /> },
         { to: '/rewards', label: 'Rewards', icon: <WalletIcon /> },
         { to: '/creator', label: 'Creator', icon: <UserIcon /> },
         { popover: 'notifications', label: 'Notifications', icon: <BellIcon />, badge: unread },
@@ -258,13 +257,13 @@ function SignedInShell() {
   );
 }
 
-/** Which bottom tab owns a page, so "You" stays lit on Wallet, League etc. and "Compete" on Clubs. */
+/** Which bottom tab owns a page, so "You" stays lit on Rewards, League etc. and "Compete" on Clubs. */
 const TAB_PATHS: Record<string, string[]> = {
   Home: ['/dashboard'],
   Compete: ['/competitions', '/leaderboard', '/clubs'],
   Run: ['/run', '/runs'],
   Rant: ['/feed'],
-  You: ['/settings', '/activities', '/leagues', '/wallet', '/rewards', '/creator', '/notifications', '/payments'],
+  You: ['/settings', '/activities', '/leagues', '/rewards', '/creator', '/notifications', '/payments'],
 };
 
 function useTabActive(label: string) {

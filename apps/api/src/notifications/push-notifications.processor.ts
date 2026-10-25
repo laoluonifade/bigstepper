@@ -41,15 +41,19 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
 
   private async sendPending() {
     const rows = await this.dataSource.query(
+      // Claim inside a CTE and SELECT from it: a bare UPDATE … RETURNING comes back from TypeORM as
+      // [rows, count], not rows (the email job claims the same way).
       `WITH pending AS (
          SELECT n."id" FROM "notifications" n
          WHERE n."pushProcessedAt" IS NULL
            AND (n."pushClaimedAt" IS NULL OR n."pushClaimedAt" < now() - interval '2 minutes')
          ORDER BY n."createdAt",n."id" LIMIT 200 FOR UPDATE SKIP LOCKED
+       ), claimed AS (
+         UPDATE "notifications" n SET "pushClaimedAt"=now()
+         FROM pending WHERE n."id"=pending."id"
+         RETURNING n."id",n."userId",n."type",n."title",n."body",n."link",n."createdAt"
        )
-       UPDATE "notifications" n SET "pushClaimedAt"=now()
-       FROM pending WHERE n."id"=pending."id"
-       RETURNING n."id",n."userId",n."type",n."title",n."body",n."link",n."createdAt"`,
+       SELECT * FROM claimed`,
     ) as Pending[];
     if (!rows.length) return;
 

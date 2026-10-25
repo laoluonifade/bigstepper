@@ -168,12 +168,7 @@ export class FeedService {
       `INSERT INTO "feed_posts" ("userId","body","activityId","imageUrl") VALUES ($1,$2,$3,$4)
        RETURNING "id","createdAt"`, [userId, body, input.activityId ?? null, input.imageUrl ?? null],
     );
-    await this.notify(
-      `INSERT INTO "notifications" ("userId","type","title","body","link")
-       SELECT fol."followerId",'FOLLOWING_POST',p."displayName" || ' posted a Rant','See their latest update on Jump.','/feed/' || $2
-       FROM "follows" fol JOIN "profiles" p ON p."userId"=$1
-       WHERE fol."followingId"=$1`, [userId, post.id],
-    );
+    // Followers aren't notified of new Rants (too many); they're in the feed. Mentions still are.
     if (body) await this.notifyMentions(userId, post.id, body, 'a Rant');
     return post;
   }

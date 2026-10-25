@@ -110,7 +110,7 @@ export class PaymentsService {
     this.assertPaidEnabled();
     const user = await this.dataSource.getRepository(User).findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (!user.emailVerified) throw new ForbiddenException('Verify your email before funding a wallet');
+    if (!user.emailVerified) throw new ForbiddenException('Verify your email before adding funds');
     await this.assertPaidEligibility(userId);
     await this.aml.assertWalletFunding(userId, amountKobo);
     const intent = await this.intents.save(this.intents.create({
@@ -158,8 +158,8 @@ export class PaymentsService {
       if (table.capacity !== null && count >= table.capacity) throw new ConflictException('This competition is full');
       const wallets = await manager.query(`SELECT "id","balanceKobo","frozenAt" FROM "wallets" WHERE "userId"=$1 FOR UPDATE`, [userId]) as Array<{ id: string; balanceKobo: string; frozenAt: Date | null }>;
       const wallet = wallets[0];
-      if (wallet?.frozenAt) throw new ForbiddenException('Wallet spending is temporarily restricted; contact support');
-      if (!wallet || Number(wallet.balanceKobo) < table.entryFeeKobo) throw new ConflictException('Insufficient wallet balance');
+      if (wallet?.frozenAt) throw new ForbiddenException('Spending your balance is temporarily restricted; contact support');
+      if (!wallet || Number(wallet.balanceKobo) < table.entryFeeKobo) throw new ConflictException('There isn’t enough in your balance for this entry');
       const balanceAfter = Number(wallet.balanceKobo) - table.entryFeeKobo;
       const reference = `jump-wallet-entry-${randomUUID()}`;
       await manager.query(`UPDATE "wallets" SET "balanceKobo"=$1,"updatedAt"=now() WHERE "id"=$2`, [balanceAfter, wallet.id]);
@@ -262,7 +262,7 @@ export class PaymentsService {
       );
       if (existing[0]) {
         await manager.query(
-          `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_RECIPIENT_CHANGED','Payout account changed','Your payout account was changed. Payouts are paused for 24 hours; contact support immediately if this was not you.','/wallet')`,
+          `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_RECIPIENT_CHANGED','Payout account changed','Your payout account was changed. Payouts are paused for 24 hours; contact support immediately if this was not you.','/rewards')`,
           [userId],
         );
       }
@@ -413,7 +413,7 @@ export class PaymentsService {
         [transfer.transfer_code, transfer.status.toUpperCase(), JSON.stringify(transfer), claimed.reference],
       );
       await this.dataSource.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_SENT','Your payout is on its way',$2,'/wallet')`,
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_SENT','Your payout is on its way',$2,'/rewards')`,
         [claimed.userId, `₦${(Number(claimed.amountKobo) / 100).toLocaleString('en-NG')} is being sent to your bank. It usually arrives within minutes.`],
       );
       return { reference: claimed.reference, status: transfer.status };
@@ -442,7 +442,7 @@ export class PaymentsService {
         [actorUserId, payoutId, JSON.stringify({ reason, userId: rows[0].userId })],
       );
       await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_REJECTED','Payout not approved',$2,'/wallet')`,
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_REJECTED','Payout not approved',$2,'/rewards')`,
         [rows[0].userId, `${reason} You can request it again once that’s sorted.`],
       );
       return { id: rows[0].id, status: 'REJECTED' };
@@ -669,7 +669,7 @@ export class PaymentsService {
       const balanceAfter = Number(wallets[0].balanceKobo) + locked.amountKobo;
       await manager.query(`UPDATE "wallets" SET "balanceKobo"=$1,"updatedAt"=now() WHERE "id"=$2`, [balanceAfter, wallets[0].id]);
       await manager.query(
-        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'FUNDING',$2,$3,$4,'Wallet funding') ON CONFLICT ("reference") DO NOTHING`,
+        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'FUNDING',$2,$3,$4,'Balance top-up') ON CONFLICT ("reference") DO NOTHING`,
         [wallets[0].id, locked.amountKobo, balanceAfter, locked.reference],
       );
       locked.status = 'SUCCEEDED';

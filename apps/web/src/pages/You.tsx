@@ -1,9 +1,9 @@
 import { StravaConnection } from './Strava';
-import { LEGAL_LINKS } from '../legal/links';
+import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
-import { BellIcon, CheckIcon, ChevronRightIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon } from '../components/icons';
+import { BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, XLogoIcon } from '../components/icons';
 import { AvatarEditor, ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '../components/Profile';
 import { BankPicker } from '../components/BankPicker';
 import { KycPanel, useKyc } from '../components/KycPanel';
@@ -37,13 +37,13 @@ import { Modal } from '../components/Modal';
 import { toast } from '../lib/toast';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { GenderSelect } from '../components/GenderSelect';
+import { PasswordInput } from '../components/PasswordInput';
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
   { to: '/activities', label: 'Activity' },
   { to: '/runners', label: 'Find runners' },
   { to: '/leagues', label: 'League' },
-  { to: '/wallet', label: 'Wallet' },
   { to: '/rewards', label: 'Rewards' },
   { to: '/prizes', label: 'Prizes' },
   { to: '/creator', label: 'Creator' },
@@ -143,6 +143,14 @@ export function ProfileSettingsPage() {
         <button type="button" className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-bold text-bad transition-colors hover:bg-bad-wash" onClick={() => void logout()}>
           <LogoutIcon size={16} /> Log out
         </button>
+        <nav aria-label="Jump on social media" className="flex justify-center gap-3">
+          {SOCIAL_LINKS.map((link) => (
+            <a key={link.href} href={link.href} target="_blank" rel="noreferrer noopener" aria-label={link.label} title={link.label}
+              className="grid h-10 w-10 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink hover:text-ink">
+              {link.href.includes('instagram') ? <InstagramIcon size={18} /> : <XLogoIcon size={16} />}
+            </a>
+          ))}
+        </nav>
         <nav aria-label="Legal" className="flex flex-wrap justify-center gap-x-4 gap-y-1 pb-2 text-[12px] text-ink-3">
           {LEGAL_LINKS.map((link) => <Link key={link.to} to={link.to} className="hover:text-ink">{link.label}</Link>)}
         </nav>
@@ -347,7 +355,7 @@ export function RewardsPage() {
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Rewards" description="Prizes from paid competitions you’ve won. Free competitions are for glory." />
+      <PageHeader eyebrow="You" title="Rewards" description="Prizes you’ve won, and your balance for entering paid competitions." />
 
       <div className="panel-strong mb-8 grid grid-cols-2 divide-x divide-line">
         <div className="p-5">
@@ -421,11 +429,15 @@ export function RewardsPage() {
                 : 'Jump reviews every payout before sending it. You’ll get a notification when it’s on its way.'}
             </Notice>
           )}
+          <BalanceActivity />
         </section>
 
         <section>
+          <SectionTitle>Balance</SectionTitle>
+          <EntryBalance />
+          <div className="mt-8" />
           <SectionTitle>Payout details</SectionTitle>
-          {kycRequired ? <KycPanel /> : recipient && !editing ? (
+          {kycRequired ? <div id="verify" className="scroll-mt-24"><KycPanel /></div> : recipient && !editing ? (
             <div className="rounded-md border border-line bg-card p-4">
               <p className="text-[15px] font-bold">{recipient.accountName}</p>
               <p className="num mt-1 text-[13px] text-ink-2">
@@ -450,6 +462,12 @@ export function RewardsPage() {
           {!kycRequired && <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
             We only keep the account name, bank and last four digits. Jump reviews and approves every payout before it’s sent.
           </p>}
+          {!kycRequired && (
+            <div id="verify" className="mt-8 scroll-mt-24">
+              <SectionTitle>Identity</SectionTitle>
+              <KycPanel />
+            </div>
+          )}
         </section>
       </div>
     </div>
@@ -537,7 +555,7 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
       )}
 
       <Field label="Current password" hint="Required to protect bank-detail changes.">
-        {(props) => <input {...props} className="field" type="password" autoComplete="current-password" minLength={8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required />}
+        {(props) => <PasswordInput {...props} className="field" autoComplete="current-password" minLength={8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required />}
       </Field>
       {save.error &&
         (isApiError(save.error, 503) ? (
@@ -561,9 +579,9 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
   );
 }
 
-export function WalletPage() {
+/** Money put in for entries: a closed loop, it can only be spent on competitions. */
+function EntryBalance() {
   const wallet = useWallet();
-  const transactions = useWalletTransactions();
   const [amount, setAmount] = useState('');
   const amountKobo = nairaInputToKobo(amount);
   const fund = useMutation({
@@ -572,7 +590,7 @@ export function WalletPage() {
       savePayment({
         reference: response.reference,
         purpose: 'WALLET_FUNDING',
-        tableTitle: 'Wallet funding',
+        tableTitle: 'Entry balance top-up',
         amountKobo,
         createdAt: new Date().toISOString(),
       });
@@ -581,70 +599,60 @@ export function WalletPage() {
   });
 
   return (
-    <div className="animate-rise">
-      <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Wallet" description="Fund entries once and use your balance for paid competitions." />
-      <Notice tone="neutral" className="mb-6" title="Closed-loop balance">
-        Wallet funding cannot be withdrawn or transferred back. It can only be used for eligible Jump competition entries.
-      </Notice>
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section>
-          <SectionTitle>Transactions</SectionTitle>
-          <ErrorNotice error={transactions.error} onRetry={() => void transactions.refetch()} />
-          {transactions.isLoading ? (
-            <Skeleton className="h-36" />
-          ) : (transactions.data ?? []).length === 0 ? (
-            <EmptyState mark="₦0" title="No wallet activity">Fund your wallet to see transactions here.</EmptyState>
-          ) : (
-            <ul className="stagger divide-y divide-line border-y border-line">
-              {(transactions.data ?? []).map((item) => (
-                <li key={item.id} className="flex items-center gap-4 px-2 py-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-bold">{item.description}</p>
-                    <p className="mt-1 text-[12px] text-ink-3">{formatDate(item.createdAt, { year: 'numeric' })} · balance {formatMoney(item.balanceAfterKobo)}</p>
-                  </div>
-                  <p className={cx('score text-[24px]', Number(item.amountKobo) < 0 ? 'text-bad' : 'text-ok')}>
-                    {Number(item.amountKobo) > 0 ? '+' : '−'}{formatMoney(Math.abs(Number(item.amountKobo)))}
-                  </p>
-                </li>
-              ))}
-            </ul>
+    <div className="panel-strong p-5">
+      <p className="eyebrow">Balance for entries</p>
+      <p className="score mt-2 text-[48px]">{wallet.isLoading ? '–' : <CountUp value={Number(wallet.data?.balanceKobo ?? 0)} format={(k) => formatMoney(Math.round(k))} />}</p>
+      <p className="mt-2 text-[12px] leading-relaxed text-ink-3">Use it to enter paid competitions. It can’t be withdrawn or transferred.</p>
+      <form
+        className="mt-5 space-y-4 border-t border-line pt-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (amountKobo >= 10_000) fund.mutate();
+        }}
+      >
+        <Field label="Amount to add" hint="Minimum ₦100.">
+          {(props) => (
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold">₦</span>
+              <input {...props} className="field pl-8 num" type="text" inputMode="decimal" value={amount} onChange={(event) => setAmount(formatNairaInput(event.target.value))} />
+            </div>
           )}
-        </section>
-
-        <aside>
-          <SectionTitle>Balance</SectionTitle>
-          <div className="panel-strong p-5">
-            <p className="eyebrow">Available for entries</p>
-            <p className="score mt-2 text-[48px]">{wallet.isLoading ? '–' : <CountUp value={Number(wallet.data?.balanceKobo ?? 0)} format={(k) => formatMoney(Math.round(k))} />}</p>
-            <form
-              className="mt-6 space-y-4 border-t border-line pt-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (amountKobo >= 10_000) fund.mutate();
-              }}
-            >
-              <Field label="Amount to fund" hint="Minimum ₦100.">
-                {(props) => (
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold">₦</span>
-                    <input {...props} className="field pl-8 num" type="text" inputMode="decimal" value={amount} onChange={(event) => setAmount(formatNairaInput(event.target.value))} />
-                  </div>
-                )}
-              </Field>
-              <button className="btn-primary w-full" disabled={fund.isPending || amountKobo < 10_000}>
-                {fund.isPending ? 'Opening Paystack…' : 'Fund wallet'}
-              </button>
-              {fund.error && <ErrorNotice error={fund.error} />}
-            </form>
-          </div>
-          <div id="verify" className="mt-8 scroll-mt-24">
-            <SectionTitle>Identity &amp; payouts</SectionTitle>
-            <KycPanel />
-          </div>
-        </aside>
-      </div>
+        </Field>
+        <button className="btn-primary w-full" disabled={fund.isPending || amountKobo < 10_000}>
+          {fund.isPending ? 'Opening Paystack…' : 'Add funds'}
+        </button>
+        {fund.error && <ErrorNotice error={fund.error} />}
+      </form>
     </div>
+  );
+}
+
+function BalanceActivity() {
+  const transactions = useWalletTransactions();
+  const items = transactions.data ?? [];
+  if (!transactions.isLoading && !transactions.error && items.length === 0) return null;
+  return (
+    <section className="mt-10">
+      <SectionTitle>Balance activity</SectionTitle>
+      <ErrorNotice error={transactions.error} onRetry={() => void transactions.refetch()} />
+      {transactions.isLoading ? (
+        <Skeleton className="h-36" />
+      ) : (
+        <ul className="stagger divide-y divide-line border-y border-line">
+          {items.map((item) => (
+            <li key={item.id} className="flex items-center gap-4 px-2 py-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-bold">{item.description}</p>
+                <p className="mt-1 text-[12px] text-ink-3">{formatDate(item.createdAt, { year: 'numeric' })} · balance {formatMoney(item.balanceAfterKobo)}</p>
+              </div>
+              <p className={cx('score text-[24px]', Number(item.amountKobo) < 0 ? 'text-bad' : 'text-ok')}>
+                {Number(item.amountKobo) > 0 ? '+' : '−'}{formatMoney(Math.abs(Number(item.amountKobo)))}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

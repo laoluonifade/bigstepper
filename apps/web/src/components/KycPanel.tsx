@@ -4,6 +4,7 @@ import { api, post } from '../lib/api';
 import { BankPicker } from './BankPicker';
 import { CheckIcon, JumpLogo, LockIcon } from './icons';
 import { ErrorNotice, Field, Notice, Skeleton } from './ui';
+import { PasswordInput } from './PasswordInput';
 
 export interface KycStatus {
   required: boolean;
@@ -130,7 +131,7 @@ function KycForm({ banks, banksLoading, initial, onCancel, onDone }: {
           : <ErrorNotice error={resolved.error} />}
     </div>}
     <Field label="Current password" hint="Required to protect bank details.">
-      {(props) => <input {...props} className="field" type="password" autoComplete="current-password" minLength={8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required />}
+      {(props) => <PasswordInput {...props} className="field" autoComplete="current-password" minLength={8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required />}
     </Field>
     {submit.error && <ErrorNotice error={submit.error} />}
     <div className="flex gap-2">

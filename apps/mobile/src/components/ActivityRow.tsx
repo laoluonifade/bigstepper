@@ -3,14 +3,15 @@ import { shownMetres } from '@jump/shared/progress';
 import type { Activity, Unit } from '@jump/shared/types';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fontFamily, GUTTER, radius, score } from '@/lib/theme';
+import { brand, colors, fontFamily, GUTTER, radius, score } from '@/lib/theme';
 import { CheckIcon, ChevronRightIcon, CycleIcon, RunIcon } from './icons';
 import { Sheet } from './Sheet';
 import { haptic, Txt, VerificationTag } from './ui';
 
 export function ActivityBadge({ type, size = 36 }: { type: 'walk' | 'run' | 'cycle'; size?: number }) {
   return <View style={{ width: size, height: size, borderRadius: radius.xl, alignItems: 'center', justifyContent: 'center', backgroundColor: type === 'run' ? colors.track : colors.volt }}>
-    {type === 'cycle' ? <CycleIcon size={size / 2.1} /> : <RunIcon size={size / 2.1} color={type === 'run' ? colors.paper : colors.ink} />}
+    {/* Brand colours: the badge is orange or lemon in both themes, so its icon must not flip. */}
+    {type === 'cycle' ? <CycleIcon size={size / 2.1} color={brand.ink} /> : <RunIcon size={size / 2.1} color={type === 'run' ? brand.paper : brand.ink} />}
   </View>;
 }
 

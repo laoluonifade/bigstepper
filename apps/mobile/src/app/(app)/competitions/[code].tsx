@@ -17,7 +17,7 @@ import { CheckIcon, EditIcon, LockIcon, ShareIcon } from '@/components/icons';
 import { Leaderboard, RankBadge, type LeaderboardRow } from '@/components/Leaderboard';
 import { ShareCompetitionSheet } from '@/components/ShareCompetition';
 import { Sheet } from '@/components/Sheet';
-import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, haptic, HardShadow, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow } from '@/components/ui';
+import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, haptic, HardShadow, LiveTag, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow } from '@/components/ui';
 import { api, isApiError, patch, post, WEB_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { openCheckout } from '@/lib/checkout';
@@ -158,7 +158,7 @@ export default function CompetitionDetailScreen() {
 
     <View style={{ gap: 40, marginTop: 40 }}>
       <View>
-        <SectionTitle aside={isFinal ? <Tag background={colors.volt} border={colors.ink}>Final</Tag> : <Tag border={colors.line} color={colors.ink2}>{t.status === 'PENDING_FUNDING' ? 'Draft' : 'Live'}</Tag>}>Leaderboard</SectionTitle>
+        <SectionTitle aside={isFinal ? <Tag background={colors.volt} border={colors.ink}>Final</Tag> : t.status === 'PENDING_FUNDING' ? <Tag border={colors.line} color={colors.ink2}>Draft</Tag> : <LiveTag />}>Leaderboard</SectionTitle>
         {standings.isLoading ? <Skeleton style={{ height: 192 }} />
           : standings.error ? <ErrorNotice error={standings.error} onRetry={() => void standings.refetch()} />
             : <Leaderboard rows={rows} currentUserId={user?.id} unit={unit} limit={showAll ? 200 : 10} metricLabel={scoreHeader(t)}
@@ -522,7 +522,7 @@ function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, n
             : isPaid && pendingEntryPayment ? <Button full variant="secondary" title="Payment in progress: check status" onPress={() => router.push('/payments/return')} />
               : isPaid ? <>
                 <Button full loading={checkout.isPending} title={checkout.isPending ? 'Opening Paystack…' : `Pay ${formatMoney(table.entryFeeKobo)} & enter`} onPress={() => checkout.mutate()} />
-                {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && <Button full variant="secondary" style={{ marginTop: 8 }} loading={enterWallet.isPending} title={enterWallet.isPending ? 'Entering…' : `Use wallet · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`} onPress={() => enterWallet.mutate()} />}
+                {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && <Button full variant="secondary" style={{ marginTop: 8 }} loading={enterWallet.isPending} title={enterWallet.isPending ? 'Entering…' : `Use your balance · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`} onPress={() => enterWallet.mutate()} />}
                 <Txt size={12} color="ink3" style={{ marginTop: 8 }}>You’ll pay securely on Paystack. Your seat is confirmed once we verify the payment.</Txt>
                 {checkout.error && <View style={{ marginTop: 16 }}>
                   {isApiError(checkout.error, 503) ? <Notice tone="warn" title="Paid entry is switched off">Paid competitions are temporarily unavailable. Nothing has been charged.</Notice>

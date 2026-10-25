@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import { ComponentRef, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
 import { useHeaderHeight } from 'expo-router/react-navigation';
-import { ActivityIndicator, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, FlatList, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeIn, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -169,7 +169,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
   const { error: voiceError, clearError: clearVoiceError } = voice;
   useEffect(() => {
     if (!voiceError) return;
-    toast({ tone: 'warn', message: voiceError });
+    toast({ tone: 'warn', message: voiceError, action: voiceError.includes('Settings') ? { label: 'Open Settings', run: () => void Linking.openSettings() } : undefined });
     clearVoiceError();
   }, [voiceError, clearVoiceError]);
 
@@ -273,8 +273,8 @@ function Banner({ tone, title, body, onCancel }: { tone: string; title: string; 
 
 /** Sent, then read: one tick, then two in the accent colour, drawn rather than typed so they sit crisply. */
 export function Ticks({ read, dark = false }: { read: boolean; dark?: boolean }) {
-  // On your own (ink) bubble read ticks are volt; in dark mode that bubble is cream, so orange instead.
-  const colour = read ? (dark ? (scheme === 'dark' ? colors.trackDeep : colors.volt) : colors.trackDeep) : dark ? colors.onInkMuted : colors.ink3;
+  // On your own ink bubble (light mode) read ticks are volt; elsewhere orange.
+  const colour = read ? (dark ? colors.volt : colors.trackDeep) : dark ? colors.onInkMuted : colors.ink3;
   return <Svg width={read ? 17 : 12} height={10} viewBox={read ? '0 0 17 10' : '0 0 12 10'} accessibilityLabel={read ? 'Read' : 'Sent'}>
     <Path d="M1 5.4 4.3 8.6 11 1.6" stroke={colour} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
     {read ? <Path d="M7.4 8.1 7.9 8.6 14.6 1.6" stroke={colour} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" /> : null}
@@ -357,7 +357,10 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
   const [menu, setMenu] = useState<Frame | null>(null);
   const lastTap = useRef(0);
   const mine = message.senderId === viewerId;
-  const dark = mine && !message.invitationId;
+  // Your own messages are an ink bubble in light mode. Inverted, that turned into a glaring cream block in
+  // dark mode, so there they're a raised grey instead, styled like any other bubble.
+  const dark = mine && !message.invitationId && scheme === 'light';
+  const raised = mine && scheme === 'dark';
   const ownReaction = message.reactions.find((item) => item.userId === viewerId)?.reaction;
   const react = useMutation({
     mutationFn: (reaction: Reaction | null) => (reaction ? post(`/messages/${message.id}/reaction`, { reaction }) : api(`/messages/${message.id}/reaction`, { method: 'DELETE' })),
@@ -387,16 +390,16 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
     bubble.current?.measureInWindow((x, y, width, height) => setMenu({ x, y, width, height }));
   }
 
-  const body = <View style={[styles.bubble, dark ? { backgroundColor: colors.ink } : mine ? { backgroundColor: colors.volt } : { backgroundColor: colors.card, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  const body = <View style={[styles.bubble, dark ? { backgroundColor: colors.ink } : raised ? { backgroundColor: MINE_DARK } : mine ? { backgroundColor: colors.volt } : { backgroundColor: colors.card, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
     mine
       ? { borderTopRightRadius: firstInGroup ? 20 : 6, borderBottomRightRadius: lastInGroup ? 20 : 6 }
       : { borderTopLeftRadius: firstInGroup ? 20 : 6, borderBottomLeftRadius: lastInGroup ? 20 : 6 },
     beingEdited && { borderWidth: 2, borderColor: colors.track }]}>
-    {message.replyToBody ? <View style={[styles.quote, { borderLeftColor: dark ? colors.volt : colors.track, backgroundColor: dark ? colors.onInkWash : 'rgba(18,18,18,0.05)' }]}>
+    {message.replyToBody ? <View style={[styles.quote, { borderLeftColor: dark ? colors.volt : colors.track, backgroundColor: dark ? colors.onInkWash : colors.inkWash }]}>
       <Txt size={12} weight="bold" color={dark ? 'paper' : 'ink'}>{message.replyToSenderId === viewerId ? 'You' : nameOf(message.replyToSenderId ?? '')}</Txt>
       <Txt size={12} numberOfLines={1} style={{ opacity: 0.75, color: dark ? colors.paper : colors.ink }}>{message.replyToBody}</Txt>
     </View> : null}
-    {message.activity && <SharedActivityCard activity={message.activity} unit={unit} dark={dark} mine={mine} />}
+    {message.activity && <SharedActivityCard activity={message.activity} unit={unit} dark={dark} raised={raised} mine={mine} />}
     {message.audioUrl && <VoiceNotePlayer id={message.id} src={message.audioUrl} seconds={message.audioSeconds ?? 0} dark={dark} sending={Boolean(message.pending)} />}
     {message.body ? <Txt size={16} leading={1.35} color={dark ? 'paper' : 'ink'} style={message.activity ? { marginTop: 6 } : undefined}>{message.body}</Txt> : null}
     {/* Time, edited and the ticks tucked into the bottom corner. */}
@@ -459,15 +462,15 @@ function VoiceNotePlayer({ id, src, seconds, dark, sending = false }: { id: stri
         {status.playing ? <PauseIcon size={15} color={dark ? colors.ink : colors.paper} /> : <PlayIcon size={15} color={dark ? colors.ink : colors.paper} />}
       </Pressable>}
     <View style={{ flex: 1, height: 32, flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      {bars.map((height, index) => <View key={index} style={{ flex: 1, height: `${height}%`, borderRadius: 2, backgroundColor: index / bars.length < progress ? (dark ? colors.volt : colors.track) : dark ? colors.onInkWash : 'rgba(18,18,18,0.2)' }} />)}
+      {bars.map((height, index) => <View key={index} style={{ flex: 1, height: `${height}%`, borderRadius: 2, backgroundColor: index / bars.length < progress ? (dark ? colors.volt : colors.track) : dark ? colors.onInkWash : scheme === 'dark' ? 'rgba(242,239,232,0.22)' : 'rgba(18,18,18,0.2)' }} />)}
     </View>
     <Txt size={12} num align="right" style={{ width: sending ? 56 : 36, color: dark ? colors.onInkMuted : colors.ink2 }}>{sending ? 'Sending…' : formatClock(status.playing || status.currentTime ? duration - status.currentTime : duration)}</Txt>
   </View>;
 }
 
 /** A walk, run or ride shared in a chat. Your own opens its activity page. */
-function SharedActivityCard({ activity, unit, dark, mine }: { activity: SharedActivity; unit: Unit; dark: boolean; mine: boolean }) {
-  return <Pressable disabled={!mine} onPress={() => router.push(`/activities/${activity.id}`)} style={[styles.shared, { backgroundColor: dark ? colors.onInkWash : colors.paper }]}>
+function SharedActivityCard({ activity, unit, dark, raised = false, mine }: { activity: SharedActivity; unit: Unit; dark: boolean; raised?: boolean; mine: boolean }) {
+  return <Pressable disabled={!mine} onPress={() => router.push(`/activities/${activity.id}`)} style={[styles.shared, { backgroundColor: dark ? colors.onInkWash : raised ? 'rgba(255,255,255,0.06)' : colors.paper }]}>
     <ActivityBadge type={activity.activityType} />
     <View style={{ flex: 1, minWidth: 0 }}>
       <Txt size={13} weight="bold" numberOfLines={1} color={dark ? 'paper' : 'ink'}>{activityName(activity.startedAt, activity.activityType)}</Txt>
@@ -537,6 +540,9 @@ export function VerifiedName({ name, verified, size = 16 }: { name: string; veri
     {verified ? <VerifiedTick size={size} /> : null}
   </View>;
 }
+
+/** Your own bubble in dark mode: a step up from the other side's card. */
+const MINE_DARK = '#2C2C30';
 
 const styles = StyleSheet.create({
   unread: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.bad, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
