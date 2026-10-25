@@ -4,7 +4,7 @@ import type { AvatarStyle, VerificationStatus } from '@jump/shared/types';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { ComponentRef, createContext, ReactNode, Ref, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -401,7 +401,7 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () =
       title: offline ? 'You’re offline' : disabled ? 'Not available right now' : undefined,
       message: error instanceof Error ? error.message : 'Something went wrong.',
       action: error instanceof Error && error.message.startsWith('Verify your identity')
-        ? { label: 'Verify now', run: () => router.push('/rewards') }
+        ? { label: 'Verify now', run: () => router.push('/identity' as Href) }
         : retry.current && !disabled ? { label: 'Retry', run: () => retry.current?.() } : undefined,
     });
   }, [error]);

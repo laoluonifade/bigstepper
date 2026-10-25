@@ -4,7 +4,8 @@ import { useEffect, useRef } from 'react';
 import { CheckIcon } from '../components/icons';
 import { CopyButton, cx, EmptyState, ErrorNotice, PageHeader } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
-import { useUser } from '../lib/auth';
+import { useAuth, useUser } from '../lib/auth';
+import { Private } from '../components/Shell';
 import { paymentCopy } from '../lib/copy';
 import { formatMoney, formatRelative } from '../lib/format';
 import { rememberTable } from '../lib/local';
@@ -16,12 +17,35 @@ import type { PaymentStatus } from '../lib/types';
  * Landing page after Paystack (or whenever the runner comes back). The browser redirect
  * proves nothing — we read the locally saved reference and ask the API for the truth.
  */
+const ON_PHONE = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+/** Where Paystack sends a phone back after paying from the app: the app confirms it, so go back there. */
+function BackToApp() {
+  return (
+    <div className="mx-auto max-w-md animate-rise py-10 text-center">
+      <h1 className="text-[28px] font-extrabold tracking-tight">Payment sent</h1>
+      <p className="mt-3 text-[15px] leading-relaxed text-ink-2">Head back to the Jump app. It checks with Paystack and confirms your payment by itself, usually within a minute.</p>
+      <a href="jump://payments/return" className="btn-primary mt-6 w-full">Open the Jump app</a>
+    </div>
+  );
+}
+
+/**
+ * Paystack's return page. Paying from the phone app happens in the phone's browser, which usually isn't
+ * signed in to the web: there, point back to the app instead of asking them to log in.
+ */
+export function PaymentReturnRoute() {
+  const { status } = useAuth();
+  if (ON_PHONE && status === 'signed-out') return <BackToApp />;
+  return <Private><PaymentReturnPage /></Private>;
+}
+
 export function PaymentReturnPage() {
   const payments = useSavedPayments();
   return (
     <div className="mx-auto max-w-2xl animate-rise">
       <PageHeader eyebrow="Payments" title="Payments" description="We confirm every payment directly with Paystack. This page updates on its own, so you can leave and come back." />
-      {payments.length === 0 ? (
+      {payments.length === 0 && ON_PHONE ? <BackToApp /> : payments.length === 0 ? (
         <EmptyState
           title="No payments on this device"
           action={
@@ -141,7 +165,7 @@ function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerif
           )}
           {succeeded && payment.purpose === 'WALLET_FUNDING' && (
             <Link to="/rewards" className="btn-primary btn-sm">
-              View balance
+              View rewards
             </Link>
           )}
           {(value === 'FAILED' || notFound) && payment.tableCode && (

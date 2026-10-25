@@ -207,7 +207,7 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () =
       message: error instanceof Error ? error.message : 'Something went wrong.',
       // The API asks for KYC before paid features; send people straight to it.
       action: error instanceof Error && error.message.startsWith('Verify your identity')
-        ? { label: 'Verify now', run: () => window.location.assign('/rewards#verify') }
+        ? { label: 'Verify now', run: () => window.location.assign('/identity') }
         : retry.current && !disabled ? { label: 'Retry', run: () => retry.current?.() } : undefined,
     });
   }, [error]);

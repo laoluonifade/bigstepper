@@ -26,12 +26,11 @@ import {
 import { api, isApiError, patch, post } from '../lib/api';
 import { useAuth, useUser } from '../lib/auth';
 import { AWARD_STATUS } from '../lib/copy';
-import { activityName, formatDate, formatDistanceNumber, formatDuration, formatMoney, formatNairaInput, formatPace, formatRelative, formatSpeed, nairaInputToKobo, shortId } from '../lib/format';
+import { activityName, formatDate, formatDistanceNumber, formatDuration, formatMoney, ordinal, formatPace, formatRelative, formatSpeed, shortId } from '../lib/format';
 import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
-import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useUnit, useWallet, useWalletTransactions } from '../lib/queries';
-import { savePayment } from '../lib/payments';
-import type { CheckoutResponse, CreatorProfile, Gender, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
+import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useUnit, useWallet } from '../lib/queries';
+import type { CreatorProfile, Gender, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
 import { COUNTRIES } from '../lib/countries';
 import { Modal } from '../components/Modal';
 import { toast } from '../lib/toast';
@@ -134,6 +133,10 @@ export function ProfileSettingsPage() {
             </span>
             <CopyButton value={`@${me.username}`} label="Copy" />
           </div>
+          <Link to="/identity" className={ROW}>
+            <span className="flex-1 text-[14px] font-semibold">Identity verification</span>
+            <ChevronRightIcon size={16} className="text-ink-3" />
+          </Link>
           <Link to="/forgot-password" className={ROW}>
             <span className="flex-1 text-[14px] font-semibold">Change password</span>
             <ChevronRightIcon size={16} className="text-ink-3" />
@@ -344,100 +347,99 @@ export function RewardsPage() {
   const kycRequired = kyc.data?.required ?? false;
   const canRequest = kycRequired ? kyc.data?.status === 'VERIFIED' : Boolean(recipient);
   const list = rewards.data ?? [];
-  const total = list.reduce((sum, award) => sum + Number(award.amountKobo), 0);
-  const paid = list.filter((award) => award.status === 'PAID').reduce((sum, award) => sum + Number(award.amountKobo), 0);
-
-  const requestPayout = useMutation({
-    mutationFn: (awardId: string) => post<{ riskHold?: boolean }>(`/me/rewards/${awardId}/payout`),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.rewards }),
+  const sum = (awards: PrizeAward[]) => awards.reduce((total, award) => total + Number(award.amountKobo), 0);
+  // Your rewards: the prize money you've won and not yet withdrawn.
+  const withdrawable = list.filter((award) => award.status === 'PENDING_APPROVAL' && !award.payoutRequested);
+  const onTheWay = sum(list.filter((award) => (award.status === 'PENDING_APPROVAL' && award.payoutRequested) || award.status === 'APPROVED' || award.status === 'PROCESSING'));
+  const paid = sum(list.filter((award) => award.status === 'PAID'));
+  const available = sum(withdrawable);
+  const withdraw = useMutation({
+    // One payout request per prize: Jump reviews and sends each.
+    mutationFn: async () => {
+      let riskHold = false;
+      for (const award of withdrawable) riskHold = (await post<{ riskHold?: boolean }>(`/me/rewards/${award.id}/payout`))?.riskHold || riskHold;
+      return { riskHold };
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: keys.rewards }),
   });
+  // Entry credit: money topped up before rewards replaced it. Still usable on paid entries.
+  const leftover = Number(useWallet().data?.balanceKobo ?? 0);
 
   return (
     <div className="animate-rise">
       <SubNav items={[...YOU_NAV]} />
-      <PageHeader eyebrow="You" title="Rewards" description="Prizes you’ve won, and your balance for entering paid competitions." />
-
-      <div className="panel-strong mb-8 grid grid-cols-2 divide-x divide-line">
-        <div className="p-5">
-          <p className="eyebrow">Total won</p>
-          <p className="score mt-2 text-[36px] sm:text-[44px]">{rewards.isLoading ? '–' : <CountUp value={total} format={(k) => formatMoney(Math.round(k))} />}</p>
-        </div>
-        <div className="p-5">
-          <p className="eyebrow">Paid out</p>
-          <p className="score mt-2 text-[36px] sm:text-[44px]">{rewards.isLoading ? '–' : <CountUp value={paid} format={(k) => formatMoney(Math.round(k))} />}</p>
-        </div>
-      </div>
+      <PageHeader eyebrow="You" title="Rewards" description="Prize money you’ve won. Withdraw it to your bank." />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section>
-          <SectionTitle>Prizes</SectionTitle>
-          <ErrorNotice error={rewards.error} onRetry={() => void rewards.refetch()} />
-          {requestPayout.error && (
-            <div className="mb-4">
-              {isApiError(requestPayout.error, 503) ? (
-                <Notice tone="warn" title="Payouts are switched off">
-                  Prize payouts aren’t enabled yet. Your prize is safe and will be claimable once they are.
-                </Notice>
-              ) : isApiError(requestPayout.error, 409) ? (
-                <Notice tone="neutral">{requestPayout.error.message}</Notice>
-              ) : (
-                <ErrorNotice error={requestPayout.error} />
-              )}
+          <div className="panel-strong p-5">
+            <p className="eyebrow">Your rewards</p>
+            <p className="score mt-2 text-[48px]">{rewards.isLoading ? '–' : <CountUp value={available} format={(k) => formatMoney(Math.round(k))} />}</p>
+            <p className="mt-1 text-[13px] text-ink-2">{available ? 'Prize money ready to withdraw.' : 'Win a prize and it lands here.'}</p>
+            <button type="button" className="btn-primary mt-5 w-full" disabled={!available || !canRequest || withdraw.isPending} onClick={() => withdraw.mutate()}>
+              {withdraw.isPending ? 'Requesting…' : `Withdraw${available ? ` ${formatMoney(available)}` : ''}`}
+            </button>
+            {available > 0 && !canRequest && (kycRequired
+              ? <Link to="/identity" className="btn-secondary mt-2 w-full">Verify your identity first</Link>
+              : <p className="mt-2 text-[12px] text-ink-3">Add your bank account first.</p>)}
+            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4">
+              <div><p className="text-[12px] text-ink-3">On its way</p><p className="num text-[15px] font-bold">{formatMoney(onTheWay)}</p></div>
+              <div><p className="text-[12px] text-ink-3">Paid out</p><p className="num text-[15px] font-bold">{formatMoney(paid)}</p></div>
+            </div>
+          </div>
+          {withdraw.error && (
+            <div className="mt-4">
+              {isApiError(withdraw.error, 503) ? <Notice tone="warn" title="Payouts are switched off">Prize payouts aren’t enabled yet. Your prize is safe and will be claimable once they are.</Notice>
+                : isApiError(withdraw.error, 409) ? <Notice tone="neutral">{withdraw.error.message}</Notice> : <ErrorNotice error={withdraw.error} />}
             </div>
           )}
-          {rewards.isLoading ? (
-            <Skeleton className="h-24" />
-          ) : list.length === 0 ? (
-            <EmptyState mark="₦0" title="No prizes yet">
-              Place in a paid or funded free competition and your prize shows up here.
-            </EmptyState>
-          ) : (
-            <ul className="stagger space-y-3">
-              {list.map((award) => {
-                const claimable = award.status === 'PENDING_APPROVAL';
-                return (
-                  <li key={award.id} className="flex flex-wrap items-center gap-4 rounded-md border-[1.5px] border-ink bg-card p-4">
-                    <div className="min-w-0 flex-1">
-                      <p className="score text-[30px]">{formatMoney(award.amountKobo)}</p>
-                      <p className="mt-1 text-[12px] text-ink-2">
-                        Place {award.place ?? 1} · Competition {shortId(award.tableId)} · {formatDate(award.createdAt, { year: 'numeric' })}
-                      </p>
-                    </div>
-                    <span className={cx('tag', award.status === 'PAID' ? 'border-ok/60 bg-ok-wash text-ok' : award.status === 'FAILED' || award.status === 'REVERSED' ? 'border-bad/60 bg-bad-wash text-bad' : 'border-ink bg-card')}>
-                      {AWARD_STATUS[award.status] ?? award.status}
-                    </span>
-                    {claimable && (
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        disabled={!canRequest || requestPayout.isPending}
-                        title={canRequest ? undefined : kycRequired ? 'Verify your identity first' : 'Add payout details first'}
-                        onClick={() => requestPayout.mutate(award.id)}
-                      >
-                        {requestPayout.isPending && requestPayout.variables === award.id ? 'Requesting…' : 'Request payout'}
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {requestPayout.isSuccess && (
-            <Notice tone="ok" className="mt-4" title="Payout requested">
-              {requestPayout.data?.riskHold
-                ? 'This one needs a closer review before it’s sent, which can take up to two working days. You’ll get a notification when it’s on its way.'
-                : 'Jump reviews every payout before sending it. You’ll get a notification when it’s on its way.'}
+          {withdraw.isSuccess && (
+            <Notice tone="ok" className="mt-4" title="Withdrawal requested">
+              {withdraw.data.riskHold ? 'This one needs a closer review before it’s sent, which can take up to two working days. You’ll get a notification when it’s on its way.' : 'Jump reviews every payout before sending it. You’ll get a notification when it’s on its way.'}
             </Notice>
           )}
-          <BalanceActivity />
+          {leftover > 0 && <p className="mt-3 text-[12px] leading-relaxed text-ink-3">You also have {formatMoney(leftover)} in entry credit. It can be used on paid competition entries, not withdrawn.</p>}
+
+          <div className="mt-10">
+            <SectionTitle>Prizes</SectionTitle>
+            <ErrorNotice error={rewards.error} onRetry={() => void rewards.refetch()} />
+            {rewards.isLoading ? <Skeleton className="h-24" /> : list.length === 0 ? (
+              <EmptyState mark="₦0" title="No prizes yet">Place in a paid or funded free competition and your prize shows up here.</EmptyState>
+            ) : (
+              <ul className="stagger space-y-3">
+                {list.map((award) => {
+                  const requested = award.status === 'PENDING_APPROVAL' && award.payoutRequested;
+                  return (
+                    <li key={award.id} className="flex flex-wrap items-center gap-4 rounded-md border-[1.5px] border-ink bg-card p-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="score text-[30px]">{formatMoney(award.amountKobo)}</p>
+                        <p className="mt-1 truncate text-[12px] text-ink-2">
+                          {ordinal(award.place ?? 1)} · {award.tableCode ? <Link to="/competitions/$code" params={{ code: award.tableCode }} className="underline">{award.tableTitle}</Link> : `Competition ${shortId(award.tableId)}`} · {formatDate(award.createdAt, { year: 'numeric' })}
+                        </p>
+                      </div>
+                      <span className={cx('tag', award.status === 'PAID' ? 'border-ok/60 bg-ok-wash text-ok' : award.status === 'FAILED' || award.status === 'REVERSED' ? 'border-bad/60 bg-bad-wash text-bad' : 'border-ink bg-card')}>
+                        {requested ? 'Requested' : award.status === 'PENDING_APPROVAL' ? 'Available' : AWARD_STATUS[award.status] ?? award.status}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </section>
 
         <section>
-          <SectionTitle>Balance</SectionTitle>
-          <EntryBalance />
-          <div className="mt-8" />
           <SectionTitle>Payout details</SectionTitle>
-          {kycRequired ? <div id="verify" className="scroll-mt-24"><KycPanel /></div> : recipient && !editing ? (
+          {kycRequired ? (
+            // Payouts go to the bank account you verified with: that's on its own page.
+            <Link to="/identity" className="flex items-center gap-3 rounded-md border border-line bg-card p-4 hover:border-ink">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-bold">Identity verification</span>
+                <span className="block text-[13px] text-ink-2">{kyc.data?.status === 'VERIFIED' ? 'Verified. Payouts go to your verified bank account.' : kyc.data?.status === 'PENDING' ? 'Checking your details…' : 'Needed before your first withdrawal.'}</span>
+              </span>
+              <ChevronRightIcon size={16} className="text-ink-3" />
+            </Link>
+          ) : recipient && !editing ? (
             <div className="rounded-md border border-line bg-card p-4">
               <p className="text-[15px] font-bold">{recipient.accountName}</p>
               <p className="num mt-1 text-[13px] text-ink-2">
@@ -446,9 +448,7 @@ export function RewardsPage() {
               {recipient.availableForPayoutAt && new Date(recipient.availableForPayoutAt) > new Date() && (
                 <p className="mt-3 text-[12px] font-semibold text-warn">Security hold until {formatDate(recipient.availableForPayoutAt, { year: 'numeric' })}</p>
               )}
-              <button type="button" className="btn-quiet btn-sm mt-4" onClick={() => setEditing(true)}>
-                Replace account
-              </button>
+              <button type="button" className="btn-quiet btn-sm mt-4" onClick={() => setEditing(true)}>Replace account</button>
             </div>
           ) : (
             <RecipientForm
@@ -459,17 +459,20 @@ export function RewardsPage() {
               onCancel={recipient ? () => setEditing(false) : undefined}
             />
           )}
-          {!kycRequired && <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
-            We only keep the account name, bank and last four digits. Jump reviews and approves every payout before it’s sent.
-          </p>}
-          {!kycRequired && (
-            <div id="verify" className="mt-8 scroll-mt-24">
-              <SectionTitle>Identity</SectionTitle>
-              <KycPanel />
-            </div>
-          )}
+          {!kycRequired && <p className="mt-4 text-[12px] leading-relaxed text-ink-3">We only keep the account name, bank and last four digits. Jump reviews and approves every payout before it’s sent.</p>}
         </section>
       </div>
+    </div>
+  );
+}
+
+/** Identity verification (BVN), on its own page: needed for payouts. */
+export function IdentityPage() {
+  return (
+    <div className="mx-auto max-w-xl animate-rise">
+      <SubNav items={[...YOU_NAV]} />
+      <PageHeader eyebrow="You" title="Identity verification" description="Confirm who you are once, so prize money can be paid to a bank account in your name." />
+      <KycPanel />
     </div>
   );
 }
@@ -576,83 +579,6 @@ function RecipientForm({ onSaved, onCancel }: { onSaved: (recipient: PayoutRecip
         )}
       </div>
     </form>
-  );
-}
-
-/** Money put in for entries: a closed loop, it can only be spent on competitions. */
-function EntryBalance() {
-  const wallet = useWallet();
-  const [amount, setAmount] = useState('');
-  const amountKobo = nairaInputToKobo(amount);
-  const fund = useMutation({
-    mutationFn: () => post<CheckoutResponse>('/wallet/fund', { amountKobo }),
-    onSuccess(response) {
-      savePayment({
-        reference: response.reference,
-        purpose: 'WALLET_FUNDING',
-        tableTitle: 'Entry balance top-up',
-        amountKobo,
-        createdAt: new Date().toISOString(),
-      });
-      window.location.assign(response.authorizationUrl);
-    },
-  });
-
-  return (
-    <div className="panel-strong p-5">
-      <p className="eyebrow">Balance for entries</p>
-      <p className="score mt-2 text-[48px]">{wallet.isLoading ? '–' : <CountUp value={Number(wallet.data?.balanceKobo ?? 0)} format={(k) => formatMoney(Math.round(k))} />}</p>
-      <p className="mt-2 text-[12px] leading-relaxed text-ink-3">Use it to enter paid competitions. It can’t be withdrawn or transferred.</p>
-      <form
-        className="mt-5 space-y-4 border-t border-line pt-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (amountKobo >= 10_000) fund.mutate();
-        }}
-      >
-        <Field label="Amount to add" hint="Minimum ₦100.">
-          {(props) => (
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold">₦</span>
-              <input {...props} className="field pl-8 num" type="text" inputMode="decimal" value={amount} onChange={(event) => setAmount(formatNairaInput(event.target.value))} />
-            </div>
-          )}
-        </Field>
-        <button className="btn-primary w-full" disabled={fund.isPending || amountKobo < 10_000}>
-          {fund.isPending ? 'Opening Paystack…' : 'Add funds'}
-        </button>
-        {fund.error && <ErrorNotice error={fund.error} />}
-      </form>
-    </div>
-  );
-}
-
-function BalanceActivity() {
-  const transactions = useWalletTransactions();
-  const items = transactions.data ?? [];
-  if (!transactions.isLoading && !transactions.error && items.length === 0) return null;
-  return (
-    <section className="mt-10">
-      <SectionTitle>Balance activity</SectionTitle>
-      <ErrorNotice error={transactions.error} onRetry={() => void transactions.refetch()} />
-      {transactions.isLoading ? (
-        <Skeleton className="h-36" />
-      ) : (
-        <ul className="stagger divide-y divide-line border-y border-line">
-          {items.map((item) => (
-            <li key={item.id} className="flex items-center gap-4 px-2 py-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-bold">{item.description}</p>
-                <p className="mt-1 text-[12px] text-ink-3">{formatDate(item.createdAt, { year: 'numeric' })} · balance {formatMoney(item.balanceAfterKobo)}</p>
-              </div>
-              <p className={cx('score text-[24px]', Number(item.amountKobo) < 0 ? 'text-bad' : 'text-ok')}>
-                {Number(item.amountKobo) > 0 ? '+' : '−'}{formatMoney(Math.abs(Number(item.amountKobo)))}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }
 

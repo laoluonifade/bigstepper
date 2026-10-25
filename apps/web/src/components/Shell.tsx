@@ -263,7 +263,7 @@ const TAB_PATHS: Record<string, string[]> = {
   Compete: ['/competitions', '/leaderboard', '/clubs'],
   Run: ['/run', '/runs'],
   Rant: ['/feed'],
-  You: ['/settings', '/activities', '/leagues', '/rewards', '/creator', '/notifications', '/payments'],
+  You: ['/settings', '/activities', '/leagues', '/rewards', '/identity', '/creator', '/notifications', '/payments'],
 };
 
 function useTabActive(label: string) {

@@ -101,7 +101,7 @@ function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerif
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 20 }}>
         {!copy.terminal && !notFound && <Button size="sm" variant="secondary" loading={verify.isPending} title={verify.isPending ? 'Checking Paystack…' : 'Check with Paystack'} onPress={() => verify.mutate()} />}
         {succeeded && payment.tableCode && <Button size="sm" title="Go to competition" onPress={openTable} />}
-        {succeeded && payment.purpose === 'WALLET_FUNDING' && <Button size="sm" title="View wallet" onPress={() => router.dismissTo('/wallet')} />}
+        {succeeded && payment.purpose === 'WALLET_FUNDING' && <Button size="sm" title="View rewards" onPress={() => router.dismissTo('/rewards')} />}
         {(value === 'FAILED' || notFound || !copy.terminal) && payment.tableCode && <Button size="sm" variant="secondary" title="Back to competition" onPress={openTable} />}
         <CopyButton value={payment.reference} label="Copy reference" />
         {(copy.terminal || notFound) && <Button size="sm" variant="quiet" title="Dismiss" onPress={() => dismissPayment(payment.reference)} />}

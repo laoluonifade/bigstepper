@@ -1553,7 +1553,7 @@ function EntryPanel({
             </button>
             {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && (
               <button type="button" className="btn-secondary mt-2 w-full" onClick={() => enterWallet.mutate()} disabled={enterWallet.isPending}>
-                {enterWallet.isPending ? 'Entering…' : `Use your balance · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`}
+                {enterWallet.isPending ? 'Entering…' : `Use entry credit · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`}
               </button>
             )}
             <p className="mt-2 text-[12px] text-ink-3">You’ll pay securely on Paystack. Your seat is confirmed once we verify the payment.</p>

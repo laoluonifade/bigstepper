@@ -209,7 +209,7 @@ export class AmlService {
     await this.dataSource.transaction(async (manager) => {
       await manager.query(`UPDATE "kyc_verifications" SET "status"='FAILED',"failureReason"=$2,"updatedAt"=now() WHERE "userId"=$1`, [row.userId, reason]);
       await this.audit(manager, null, 'KYC_FAILED', 'user', row.userId, { reason });
-      await this.notify(manager, row.userId, 'KYC_FAILED', 'Identity check didn’t pass', `${reason}. Check your details match your BVN and try again in Rewards.`);
+      await this.notify(manager, row.userId, 'KYC_FAILED', 'Identity check didn’t pass', `${reason}. Check your details match your BVN and try again under You → Identity verification.`);
     });
   }
 
@@ -256,7 +256,7 @@ export class AmlService {
   /** Unverified people stay on free challenges. */
   async assertVerified(userId: string, manager: EntityManager = this.dataSource.manager) {
     if (!(await this.isVerified(userId, manager))) {
-      throw new ForbiddenException({ statusCode: 403, code: 'KYC_REQUIRED', message: 'Verify your identity to use paid competitions and payouts. It takes a couple of minutes in Rewards.' });
+      throw new ForbiddenException({ statusCode: 403, code: 'KYC_REQUIRED', message: 'Verify your identity to use paid competitions and payouts. It takes a couple of minutes under You → Identity verification.' });
     }
   }
 
@@ -283,7 +283,7 @@ export class AmlService {
        WHERE "userId"=$1 AND "purpose"='WALLET_FUNDING' AND "status" IN ('SUCCEEDED','PENDING','INITIATED') AND "createdAt" >= now() - interval '24 hours'`, [userId],
     ) as Array<{ total: string }>;
     if (Number(row.total) + amountKobo > settings.maxWalletFundingPerDayKobo) {
-      throw new ConflictException(`You can add up to ${naira(settings.maxWalletFundingPerDayKobo)} a day to your balance`);
+      throw new ConflictException(`You can add up to ${naira(settings.maxWalletFundingPerDayKobo)} a day in entry credit`);
     }
   }
 
@@ -302,7 +302,7 @@ export class AmlService {
     const settings = await this.settings();
     const [recipient] = await manager.query(`SELECT "kycVerified" FROM "payout_recipients" WHERE "userId"=$1`, [userId]) as Array<{ kycVerified: boolean }>;
     if (settings.kycRequired && !recipient?.kycVerified) {
-      throw new ForbiddenException({ statusCode: 403, code: 'KYC_REQUIRED', message: 'Payouts only go to the bank account you verified. Verify your identity in Rewards first.' });
+      throw new ForbiddenException({ statusCode: 403, code: 'KYC_REQUIRED', message: 'Payouts only go to the bank account you verified. Verify your identity first, under You → Identity verification.' });
     }
     const risk = await this.riskOf(userId, manager);
     const limits = settings.withdrawalLimits[risk.level];
@@ -469,7 +469,8 @@ export class AmlService {
   }
 
   private async notify(manager: EntityManager, userId: string, type: string, title: string, body: string) {
-    await manager.query(`INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,'/rewards')`, [userId, type, title, body]);
+    // Identity checks open their own page; everything else here is about prizes and payouts.
+    await manager.query(`INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,$5)`, [userId, type, title, body, type.startsWith('KYC') ? '/identity' : '/rewards']);
   }
 
   async assertUser(userId: string) {

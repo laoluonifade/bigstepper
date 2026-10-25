@@ -39,7 +39,7 @@ export class AccountDeletionService {
             WHERE r."userId" = $1 AND t."type" <> 'free' AND t."status" NOT IN ('SETTLED','CANCELLED'))::integer AS "cashEntries"`,
       [userId],
     ) as Array<{ balance: string; unpaidPrizes: number; unpaidEarnings: number; clubs: number; hosting: number; cashEntries: number }>;
-    if (Number(row.balance) > 0) return 'You still have money in your balance for entries. Use it on a competition, or email start@startajump.com about it, then delete your account.';
+    if (Number(row.balance) > 0) return 'You still have entry credit. Use it on a competition, or email start@startajump.com about it, then delete your account.';
     if (row.unpaidPrizes > 0 || row.unpaidEarnings > 0) return 'You have prize money or earnings still being paid out. Delete your account once it has arrived.';
     if (row.clubs > 0) return 'You own a club with other members. Hand it over to another manager or close it first.';
     if (row.hosting > 0) return 'You’re hosting a competition that’s still running with other people in it. Wait until it ends.';

@@ -158,8 +158,8 @@ export class PaymentsService {
       if (table.capacity !== null && count >= table.capacity) throw new ConflictException('This competition is full');
       const wallets = await manager.query(`SELECT "id","balanceKobo","frozenAt" FROM "wallets" WHERE "userId"=$1 FOR UPDATE`, [userId]) as Array<{ id: string; balanceKobo: string; frozenAt: Date | null }>;
       const wallet = wallets[0];
-      if (wallet?.frozenAt) throw new ForbiddenException('Spending your balance is temporarily restricted; contact support');
-      if (!wallet || Number(wallet.balanceKobo) < table.entryFeeKobo) throw new ConflictException('There isn’t enough in your balance for this entry');
+      if (wallet?.frozenAt) throw new ForbiddenException('Spending your entry credit is temporarily restricted; contact support');
+      if (!wallet || Number(wallet.balanceKobo) < table.entryFeeKobo) throw new ConflictException('You don’t have enough entry credit for this entry');
       const balanceAfter = Number(wallet.balanceKobo) - table.entryFeeKobo;
       const reference = `jump-wallet-entry-${randomUUID()}`;
       await manager.query(`UPDATE "wallets" SET "balanceKobo"=$1,"updatedAt"=now() WHERE "id"=$2`, [balanceAfter, wallet.id]);
@@ -196,7 +196,15 @@ export class PaymentsService {
   }
 
   rewards(userId: string) {
-    return this.dataSource.query(`SELECT "id","tableId","place","grossPrizeKobo","platformFeeKobo","creatorCommissionKobo","amountKobo","currency","status","createdAt" FROM "prize_awards" WHERE "winnerUserId"=$1 ORDER BY "createdAt" DESC`, [userId]);
+    // With the competition's name, and whether a payout is already on its way (the award stays
+    // PENDING_APPROVAL until Jump approves it), so the app can show what's left to withdraw.
+    return this.dataSource.query(
+      `SELECT a."id",a."tableId",t."title" AS "tableTitle",t."code" AS "tableCode",a."place",a."grossPrizeKobo",a."platformFeeKobo",a."creatorCommissionKobo",a."amountKobo",a."currency",a."status",a."createdAt",
+              EXISTS (SELECT 1 FROM "payout_requests" p WHERE p."awardId"=a."id" AND p."status" <> 'REJECTED') AS "payoutRequested"
+       FROM "prize_awards" a LEFT JOIN "competition_tables" t ON t."id"=a."tableId"
+       WHERE a."winnerUserId"=$1 ORDER BY a."createdAt" DESC`,
+      [userId],
+    );
   }
 
   private bankCache: { at: number; banks: Array<{ code: string; name: string }> } | null = null;
@@ -669,7 +677,7 @@ export class PaymentsService {
       const balanceAfter = Number(wallets[0].balanceKobo) + locked.amountKobo;
       await manager.query(`UPDATE "wallets" SET "balanceKobo"=$1,"updatedAt"=now() WHERE "id"=$2`, [balanceAfter, wallets[0].id]);
       await manager.query(
-        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'FUNDING',$2,$3,$4,'Balance top-up') ON CONFLICT ("reference") DO NOTHING`,
+        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'FUNDING',$2,$3,$4,'Entry credit top-up') ON CONFLICT ("reference") DO NOTHING`,
         [wallets[0].id, locked.amountKobo, balanceAfter, locked.reference],
       );
       locked.status = 'SUCCEEDED';

@@ -618,7 +618,7 @@ function EntryPanel({ table, joined, joinedRank, entrants, faces, now }: { table
             : isPaid && pendingEntryPayment ? <Button full variant="secondary" title="Payment in progress: check status" onPress={() => router.push('/payments/return')} />
               : isPaid ? <>
                 <Button full loading={checkout.isPending} title={checkout.isPending ? 'Opening Paystack…' : `Pay ${formatMoney(table.entryFeeKobo)} & enter`} onPress={() => checkout.mutate()} />
-                {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && <Button full variant="secondary" style={{ marginTop: 8 }} loading={enterWallet.isPending} title={enterWallet.isPending ? 'Entering…' : `Use your balance · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`} onPress={() => enterWallet.mutate()} />}
+                {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && <Button full variant="secondary" style={{ marginTop: 8 }} loading={enterWallet.isPending} title={enterWallet.isPending ? 'Entering…' : `Use entry credit · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`} onPress={() => enterWallet.mutate()} />}
                 <Txt size={12} color="ink3" style={{ marginTop: 8 }}>You’ll pay securely on Paystack. Your seat is confirmed once we verify the payment.</Txt>
                 {checkout.error && <View style={{ marginTop: 16 }}>
                   {isApiError(checkout.error, 503) ? <Notice tone="warn" title="Paid entry is switched off">Paid competitions are temporarily unavailable. Nothing has been charged.</Notice>

@@ -138,6 +138,10 @@ export default function YouScreen() {
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>See your public profile</Txt>
           <ChevronRightIcon size={16} color={colors.ink3} />
         </Row>
+        <Row onPress={() => router.push('/identity' as Href)}>
+          <Txt size={14} weight="semibold" style={{ flex: 1 }}>Identity verification</Txt>
+          <ChevronRightIcon size={16} color={colors.ink3} />
+        </Row>
         <Row onPress={() => void openWeb('/forgot-password')}>
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>Change password</Txt>
           <ChevronRightIcon size={16} color={colors.ink3} />

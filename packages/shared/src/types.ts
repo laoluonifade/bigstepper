@@ -371,6 +371,11 @@ export interface PrizeAward {
   currency: string;
   status: string;
   createdAt: string;
+  /** The competition it was won in. */
+  tableTitle?: string | null;
+  tableCode?: string | null;
+  /** A payout has been requested and is waiting for Jump to send it. */
+  payoutRequested?: boolean;
 }
 
 export interface PayoutRecipient {

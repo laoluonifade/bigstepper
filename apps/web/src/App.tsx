@@ -98,11 +98,12 @@ const club = createRoute({
 const clubDashboard = createRoute({ getParentRoute: () => root, path: '/clubs/$id/dashboard', component: protectedPage(() => import('./pages/ClubDashboard'), 'ClubDashboardPage') });
 const prizes = createRoute({ getParentRoute: () => root, path: '/prizes', component: protectedPage(() => import('./pages/Prizes'), 'PrizesPage') });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(() => import('./pages/You'), 'RewardsPage') });
+const identity = createRoute({ getParentRoute: () => root, path: '/identity', component: protectedPage(() => import('./pages/You'), 'IdentityPage') });
 const wallet = createRoute({ getParentRoute: () => root, path: '/wallet', beforeLoad: () => { throw redirect({ to: '/rewards', hash: window.location.hash.slice(1) || undefined }); } });
 const creator = createRoute({ getParentRoute: () => root, path: '/creator', component: protectedPage(() => import('./pages/You'), 'CreatorPage') });
 const notifications = createRoute({ getParentRoute: () => root, path: '/notifications', component: protectedPage(() => import('./pages/You'), 'NotificationsPage') });
 const profile = createRoute({ getParentRoute: () => root, path: '/settings/profile', component: protectedPage(() => import('./pages/You'), 'ProfileSettingsPage') });
-const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: protectedPage(() => import('./pages/Payments'), 'PaymentReturnPage') });
+const paymentReturn = createRoute({ getParentRoute: () => root, path: '/payments/return', component: page(() => import('./pages/Payments'), 'PaymentReturnRoute') });
 
 function redirectSearch(search: Record<string, unknown>): { redirect?: string } {
   return typeof search.redirect === 'string' ? { redirect: search.redirect } : {};
@@ -117,7 +118,7 @@ const routeTree = root.addChildren([
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, welcome, leaderboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
-  leagues, league, clubs, club, clubChat, clubDashboard, prizes, rewards, wallet, creator, notifications, profile, paymentReturn,
+  leagues, league, clubs, club, clubChat, clubDashboard, prizes, rewards, identity, wallet, creator, notifications, profile, paymentReturn,
 ]);
 
 export const router = createRouter({
