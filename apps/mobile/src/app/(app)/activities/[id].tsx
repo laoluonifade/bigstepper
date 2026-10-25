@@ -7,7 +7,7 @@ import type { Activity, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 import { CheckIcon, FeedIcon, SendIcon, ShareIcon } from '@/components/icons';
 import { RouteMap } from '@/components/RunMap';
@@ -17,6 +17,7 @@ import { Button, Card, CountUp, ErrorNotice, Eyebrow, HardShadow, Loading, Meter
 import { api, isApiError, post } from '@/lib/api';
 import { keys, useProfile, useUnit } from '@/lib/queries';
 import { colors, display, radius, wideLabel } from '@/lib/theme';
+import { confirm } from '@/lib/dialog';
 
 export default function ActivityDetailScreen() {
   const { id, fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
@@ -188,10 +189,8 @@ function DeleteActivity({ activityId }: { activityId: string }) {
   });
   return <View style={{ marginTop: 40, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 24 }}>
     <ErrorNotice error={remove.error} />
-    <Pressable disabled={remove.isPending} hitSlop={8} onPress={() => Alert.alert('Delete this activity?', 'It’s removed for good, along with its distance in any active competitions and, for walks or runs, your league. This can’t be undone.', [
-      { text: 'Keep it', style: 'cancel' },
-      { text: 'Delete activity', style: 'destructive', onPress: () => remove.mutate() },
-    ])}>
+    <Pressable disabled={remove.isPending} hitSlop={8} onPress={() => void confirm({ title: 'Delete this activity?', message: 'It’s removed for good, along with its distance in any active competitions and, for walks or runs, your league. This can’t be undone.', cancelLabel: 'Keep it', confirmLabel: 'Delete activity', destructive: true })
+      .then((ok) => { if (ok) remove.mutate(); })}>
       <Txt size={13} weight="semibold" color="bad" style={{ textDecorationLine: 'underline' }}>{remove.isPending ? 'Deleting…' : 'Delete this activity'}</Txt>
     </Pressable>
   </View>;

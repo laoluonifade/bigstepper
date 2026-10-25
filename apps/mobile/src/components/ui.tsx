@@ -5,7 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { ComponentRef, ReactNode, Ref, useEffect, useRef, useState } from 'react';
+import { ComponentRef, createContext, ReactNode, Ref, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -135,9 +135,16 @@ export function LiveDot({ live, color = colors.track, size = 10 }: { live: boole
   </View>;
 }
 
-export function haptic(kind: 'tap' | 'success' | 'warning' = 'tap') {
-  if (kind === 'tap') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-  else void Haptics.notificationAsync(kind === 'success' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+/**
+ * The Taptic Engine vocabulary: `tap` for buttons, `select` for picking between options (and snapping),
+ * `medium`/`heavy` for weighty moments like pause or a countdown beat, `success`/`warning` for outcomes.
+ */
+export function haptic(kind: 'tap' | 'select' | 'medium' | 'heavy' | 'success' | 'warning' = 'tap') {
+  const done = () => undefined;
+  if (kind === 'select') void Haptics.selectionAsync().catch(done);
+  else if (kind === 'tap' || kind === 'medium' || kind === 'heavy') {
+    void Haptics.impactAsync(kind === 'tap' ? Haptics.ImpactFeedbackStyle.Light : kind === 'medium' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Heavy).catch(done);
+  } else void Haptics.notificationAsync(kind === 'success' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(done);
 }
 
 /* ───────────────────────── Surfaces ───────────────────────── */
@@ -192,6 +199,17 @@ const buttonColors: Record<ButtonVariant, { bg: string; fg: Color; border: strin
   danger: { bg: colors.card, fg: 'bad', border: colors.bad, borderWidth: 2, shadow: false },
 };
 
+/**
+ * Where a button that isn't `full` sits across its container. Buttons hug their label and sit at the
+ * start by default; inside `Centered` (empty states, prompts) they sit in the middle.
+ */
+const ButtonAlign = createContext<'flex-start' | 'center'>('flex-start');
+
+/** Centres buttons (and anything else) inside it. */
+export function Centered({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return <ButtonAlign.Provider value="center"><View style={[{ alignItems: 'center' }, style]}>{children}</View></ButtonAlign.Provider>;
+}
+
 export function Button({
   title,
   onPress,
@@ -218,6 +236,7 @@ export function Button({
   accessibilityLabel?: string;
 }) {
   const look = buttonColors[variant];
+  const align = useContext(ButtonAlign);
   const off = disabled || loading;
   const height = size === 'sm' ? 36 : size === 'lg' ? 56 : 46;
   return <Pressable
@@ -226,7 +245,7 @@ export function Button({
     accessibilityRole="button"
     accessibilityLabel={accessibilityLabel ?? title}
     accessibilityState={{ disabled: Boolean(off), busy: Boolean(loading) }}
-    style={[full ? { alignSelf: 'stretch' } : { alignSelf: 'flex-start' }, { opacity: off ? 0.45 : 1 }, style]}
+    style={[{ alignSelf: full ? 'stretch' : align }, { opacity: off ? 0.45 : 1 }, style]}
   >
     {({ pressed }) => {
       const face = <View style={[styles.button, { minHeight: height, paddingHorizontal: size === 'sm' ? 12 : 16, backgroundColor: look.bg, borderColor: look.border, borderWidth: look.borderWidth }, pressed && !look.shadow && { opacity: 0.8 }]}>
@@ -368,7 +387,7 @@ export function EmptyState({ mark, title, children, action }: { mark?: ReactNode
     {mark ? typeof mark === 'string' ? <Score size={44} color="ink3" style={{ textAlign: 'center', marginBottom: 12 }}>{mark}</Score> : <View style={{ alignItems: 'center', marginBottom: 12 }}>{mark}</View> : null}
     <Txt size={15} weight="extrabold" width="wide" upper align="center">{title}</Txt>
     {children ? typeof children === 'string' ? <Txt size={14} color="ink2" align="center" leading={1.55} style={{ marginTop: 8 }}>{children}</Txt> : <View style={{ marginTop: 8 }}>{children}</View> : null}
-    {action ? <View style={{ marginTop: 20, alignItems: 'center' }}>{action}</View> : null}
+    {action ? <Centered style={{ marginTop: 20 }}>{action}</Centered> : null}
   </View>;
 }
 

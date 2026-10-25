@@ -18,8 +18,16 @@ export const MAX_CYCLING_SPEED_MPS = 12.5;
 export const MIN_FOOT_SPEED_MPS = 0.4;
 /** Fixes are averaged with their neighbours this far either side, so random wobble cancels out. */
 export const SMOOTHING_SECONDS = 5;
-/** A move only counts once the smoothed position has shifted this far. */
+/** A move only counts once the smoothed position has shifted this far... */
 const MIN_STEP_METRES = 4;
+/**
+ * ...and half again further than the GPS's own stated error. Standing still, a phone's position wanders
+ * around inside its accuracy circle (±20–40 m indoors or between buildings), and those jumps look like walking.
+ * Real movement leaves the circle; nothing is lost, because distance is measured from the last counted point.
+ */
+const ACCURACY_FACTOR = 1.5;
+/** On foot, no step covers more than this; a segment needs at least distance ÷ this many steps to count. */
+const MAX_STRIDE_METRES = 3;
 /** Too-fast distance only flags a run when it's this much of the total, or at least this far. */
 const IMPLAUSIBLE_SHARE = 0.25;
 const IMPLAUSIBLE_MIN_METRES = 200;
@@ -30,6 +38,8 @@ export interface TrackPoint {
   longitude: number;
   accuracy: number | null;
   recordedAt: Date;
+  /** The phone's step total at this fix, when the pedometer is on. */
+  stepCount?: number | null;
 }
 
 export interface TrackMeasure {
@@ -48,6 +58,10 @@ interface Smoothed {
   lat: number;
   lon: number;
   at: number;
+  /** The fix's own accuracy (m). */
+  accuracy: number;
+  /** The latest step total known at this fix, if the pedometer is on. */
+  steps: number | null;
 }
 
 /**
@@ -57,7 +71,9 @@ interface Smoothed {
  */
 export function smoothTrack(points: TrackPoint[], trailing = false): Smoothed[] {
   const windowMs = SMOOTHING_SECONDS * 1000;
+  let steps: number | null = null;
   return points.map((point, index) => {
+    if (point.stepCount !== undefined && point.stepCount !== null) steps = point.stepCount;
     const at = point.recordedAt.getTime();
     let lat = 0;
     let lon = 0;
@@ -76,15 +92,18 @@ export function smoothTrack(points: TrackPoint[], trailing = false): Smoothed[] 
         weight += w;
       }
     }
-    return { lat: lat / weight, lon: lon / weight, at };
+    return { lat: lat / weight, lon: lon / weight, at, accuracy: point.accuracy ?? 10, steps };
   });
 }
 
 /**
  * Measures a GPS track the same way for totals and verification:
  * - fixes worse than ±50 m are ignored;
- * - positions are smoothed so wobble cancels, and a move only counts once it's at least 4 m;
+ * - positions are smoothed so wobble cancels, and a move only counts once it's at least 4 m and further
+ *   than the fixes' stated accuracy, so drift inside the accuracy circle never adds up;
  * - moves slower than walking pace (drift while standing still) never count;
+ * - on foot, with the pedometer on, a move only counts if steps were taken during it: GPS drifting
+ *   while you stand still has no steps behind it, and a shaken phone has no movement;
  * - a lone too-fast hop is a spike and is skipped; sustained too-fast travel (a car) flags the run.
  */
 export function measureTrack(points: TrackPoint[], options: { trailing?: boolean; activityType?: 'walk' | 'run' | 'cycle' } = {}): TrackMeasure {
@@ -107,7 +126,8 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
     const seconds = (point.at - anchor.at) / 1000;
     if (seconds <= 0) continue;
     const metres = haversineMetres(anchor.lat, anchor.lon, point.lat, point.lon);
-    if (metres < MIN_STEP_METRES) continue; // not far enough yet: keep measuring from the anchor
+    const needed = Math.max(MIN_STEP_METRES, Math.min(MAX_USABLE_ACCURACY_METRES, ACCURACY_FACTOR * (anchor.accuracy + point.accuracy) / 2));
+    if (metres < needed) continue; // not far enough yet: keep measuring from the anchor
     const speed = metres / seconds;
     if (speed > (options.activityType === 'cycle' ? MAX_CYCLING_SPEED_MPS : MAX_FOOT_SPEED_MPS)) {
       fastInARow += 1;
@@ -119,6 +139,12 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
       continue;
     }
     fastInARow = 0;
+    // On foot with the pedometer on: no steps, no distance. Keep the anchor, so steps that arrive a
+    // little late still count the move once they land.
+    if (options.activityType !== 'cycle' && anchor.steps !== null && point.steps !== null && (point.steps - anchor.steps) * MAX_STRIDE_METRES < metres) {
+      if (seconds > GAP_SECONDS) anchor = point;
+      continue;
+    }
     if (speed < MIN_FOOT_SPEED_MPS && seconds <= GAP_SECONDS) {
       anchor = point; // drift, not walking: move the anchor without counting it
       continue;

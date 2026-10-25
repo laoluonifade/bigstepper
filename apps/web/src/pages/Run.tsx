@@ -313,7 +313,7 @@ function Scoreboard() {
           {recorder.steps !== null && <Metric label="Steps" value={Math.round(recorder.steps).toLocaleString('en-GB')} />}
         </div>
         {(warning || showStillHint) && <p className="mt-3 text-[13px] leading-snug text-track-deep">
-          {warning ?? (activityName === 'cycle' ? 'No distance yet. Cycling needs a good outdoor GPS signal.' : 'No distance yet. Outdoors it counts once you’ve moved a few metres; indoors, steps count if you allowed motion.')}
+          {warning ?? (activityName === 'cycle' ? 'No distance yet. Cycling needs a good outdoor GPS signal.' : 'No distance yet. It counts once GPS sees you move a few metres outdoors.')}
         </p>}
 
         {confirming ? <div className="mt-5 animate-rise">

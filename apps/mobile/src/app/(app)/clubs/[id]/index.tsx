@@ -4,7 +4,7 @@ import type { Club, ClubMember, ClubRole, ClubStanding, CompetitionTable } from 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { ActionMenu } from '@/components/ActionMenu';
 import { ClubLogo } from '@/components/ClubLogo';
@@ -20,6 +20,7 @@ import { keys, useUnit } from '@/lib/queries';
 import { colors, fontFamily, GUTTER, mono, radius } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { pickPhoto, uploadPhoto } from '@/lib/upload';
+import { confirm } from '@/lib/dialog';
 
 type ClubTab = 'competitions' | 'leaderboard' | 'members' | 'invite';
 
@@ -137,10 +138,8 @@ export default function ClubScreen() {
       {tab === 'invite' && isManager(role) && <InvitePanel club={c} />}
     </View>
 
-    {member && role !== 'owner' && <Pressable style={{ alignSelf: 'center', marginTop: 48 }} disabled={leave.isPending} hitSlop={8} onPress={() => Alert.alert(`Leave ${c.name}?`, 'You’ll leave the club chat and stop being entered in its competitions. Competitions you’re already in keep you. You can join again later.', [
-      { text: 'Stay', style: 'cancel' },
-      { text: 'Leave club', style: 'destructive', onPress: () => leave.mutate() },
-    ])}><Txt size={13} weight="semibold" color="ink3">Leave club</Txt></Pressable>}
+    {member && role !== 'owner' && <Pressable style={{ alignSelf: 'center', marginTop: 48 }} disabled={leave.isPending} hitSlop={8} onPress={() => void confirm({ title: `Leave ${c.name}?`, message: 'You’ll leave the club chat and stop being entered in its competitions. Competitions you’re already in keep you. You can join again later.', cancelLabel: 'Stay', confirmLabel: 'Leave club', destructive: true })
+      .then((ok) => { if (ok) leave.mutate(); })}><Txt size={13} weight="semibold" color="ink3">Leave club</Txt></Pressable>}
 
     {editing && <EditClubSheet club={c} onClose={() => setEditing(false)} />}
   </Screen>;
@@ -279,7 +278,7 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
           ...(role === 'owner' && entry.role === 'admin' ? [{ label: 'Remove as manager', run: () => setRole.mutate({ userId: entry.userId, next: 'member' }) }] : []),
           ...(!isMe && entry.role !== 'owner' && (role === 'owner' || (role === 'admin' && entry.role === 'member')) ? [{
             label: 'Remove from club', danger: true,
-            run: () => Alert.alert(`Remove ${name}?`, `They’ll leave ${club.name} and its chat. They can join again with the invite link.`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: () => remove.mutate(entry.userId) }]),
+            run: () => void confirm({ title: `Remove ${name}?`, message: `They’ll leave ${club.name} and its chat. They can join again with the invite link.`, confirmLabel: 'Remove', destructive: true }).then((ok) => { if (ok) remove.mutate(entry.userId); }),
           }] : []),
         ];
         return <View key={entry.id} style={[styles.member, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
@@ -336,7 +335,7 @@ function InvitePanel({ club }: { club: Club }) {
         <Button size="sm" variant="secondary" title="Share" icon={<ShareIcon size={14} />} onPress={() => void Share.share({ title: club.name, message, url: link })} />
         <Button size="sm" variant="secondary" title="WhatsApp" onPress={() => void Linking.openURL(`https://wa.me/?text=${encodeURIComponent(message)}`)} />
       </View>
-      <Pressable style={{ marginTop: 12, alignSelf: 'flex-start' }} disabled={reset.isPending} onPress={() => Alert.alert('Make a new invite link?', 'The current link stops working for invite-only clubs. Anyone already in the club stays in.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Reset link', onPress: () => reset.mutate() }])}>
+      <Pressable style={{ marginTop: 12, alignSelf: 'flex-start' }} disabled={reset.isPending} onPress={() => void confirm({ title: 'Make a new invite link?', message: 'The current link stops working for invite-only clubs. Anyone already in the club stays in.', confirmLabel: 'Reset link' }).then((ok) => { if (ok) reset.mutate(); })}>
         <Txt size={12} weight="semibold" color="ink3">Reset link</Txt>
       </Pressable>
     </View>

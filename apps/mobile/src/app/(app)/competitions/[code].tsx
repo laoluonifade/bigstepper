@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { PrizeTerms } from '@/components/ClubPrizes';
 import { ChallengeMark, PhaseTag, TypeTag, cardTheme } from '@/components/competition';
@@ -25,6 +25,7 @@ import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '@/lib/paym
 import { keys, useFinalResult, useStandings, useUnit, useWallet } from '@/lib/queries';
 import { colors, display, mono, radius, score, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { confirm } from '@/lib/dialog';
 
 /** Whatever the board isn't ranked on: km for a steps race, steps for a distance one, both otherwise. */
 function otherMetrics(row: { creditedDistanceMetres: number; creditedSteps: number }, table: Pick<CompetitionTable, 'challengeType' | 'scoringMethod'>, unit: Unit) {
@@ -275,16 +276,12 @@ function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
     <Eyebrow style={{ marginBottom: 12 }}>Host tools</Eyebrow>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       {!over && <Button size="sm" variant="secondary" title="Edit details" icon={<EditIcon size={14} />} onPress={() => setEditing(true)} />}
-      {!over && free && <Button size="sm" variant="secondary" title="End now" disabled={endNow.isPending} onPress={() => Alert.alert('End it now?', 'Scoring closes immediately and the board as it stands is the final result. This can’t be undone.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'End now', style: 'destructive', onPress: () => endNow.mutate() },
-      ])} />}
+      {!over && free && <Button size="sm" variant="secondary" title="End now" disabled={endNow.isPending} onPress={() => void confirm({ title: 'End it now?', message: 'Scoring closes immediately and the board as it stands is the final result. This can’t be undone.', confirmLabel: 'End now', destructive: true })
+        .then((ok) => { if (ok) endNow.mutate(); })} />}
       {table.archivedAt
         ? <Button size="sm" variant="secondary" title="Unarchive" disabled={archive.isPending} onPress={() => archive.mutate(false)} />
-        : (over || (table.entrantCount ?? 0) <= 1) && <Button size="sm" variant="secondary" title="Archive" disabled={archive.isPending} onPress={() => Alert.alert('Archive this competition?', 'It comes off every list, yours included (find it under Compete → Mine → Archived). The page and its final board stay at the same link.', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Archive', onPress: () => archive.mutate(true) },
-        ])} />}
+        : (over || (table.entrantCount ?? 0) <= 1) && <Button size="sm" variant="secondary" title="Archive" disabled={archive.isPending} onPress={() => void confirm({ title: 'Archive this competition?', message: 'It comes off every list, yours included (find it under Compete → Mine → Archived). The page and its final board stay at the same link.', confirmLabel: 'Archive' })
+          .then((ok) => { if (ok) archive.mutate(true); })} />}
     </View>
     <Txt size={12} color="ink3" leading={1.5} style={{ marginTop: 12 }}>{over ? 'It’s over. Archive it to tidy it off your lists.' : free ? 'You can change the name, description and dates, or end it early.' : 'You can change the name and description. Prize competitions keep their dates.'}</Txt>
     <ErrorNotice error={endNow.error ?? archive.error} />
@@ -500,10 +497,8 @@ function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, n
           : <Txt size={13} style={{ marginTop: 12 }}>{table.status === 'PENDING_FUNDING' ? 'Only you can fund this fixed amount. It will not go live until Paystack confirms the payment.' : 'Your spot is already on the board. Your rank will appear when the standings load.'}</Txt>}
         {(canEnter(table, now) || competitionPhase(table, now) === 'entry-closed') && <Button full variant="dark" style={{ marginTop: 20 }} title="Record an activity" onPress={() => router.navigate('/run')} />}
         {fundingControl}
-        {canLeave && <Pressable style={{ marginTop: 16, alignSelf: 'center' }} hitSlop={8} disabled={leave.isPending} onPress={() => Alert.alert('Leave this competition?', 'Your place and score here are removed. You can rejoin while entry is open.', [
-          { text: 'Stay in', style: 'cancel' },
-          { text: 'Leave', style: 'destructive', onPress: () => leave.mutate() },
-        ])}>
+        {canLeave && <Pressable style={{ marginTop: 16, alignSelf: 'center' }} hitSlop={8} disabled={leave.isPending} onPress={() => void confirm({ title: 'Leave this competition?', message: 'Your place and score here are removed. You can rejoin while entry is open.', cancelLabel: 'Stay in', confirmLabel: 'Leave', destructive: true })
+          .then((ok) => { if (ok) leave.mutate(); })}>
           <Txt size={12} weight="bold" color="ink2" style={{ textDecorationLine: 'underline' }}>{leave.isPending ? 'Leaving…' : 'Leave competition'}</Txt>
         </Pressable>}
         <ErrorNotice error={leave.error} />

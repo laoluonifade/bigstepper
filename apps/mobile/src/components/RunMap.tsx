@@ -1,19 +1,24 @@
 import type { CameraRef, StyleSpecification } from '@maplibre/maplibre-react-native';
 import type { FeatureCollection } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleProp, StyleSheet, TurboModuleRegistry, View, ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleProp, StyleSheet, TurboModuleRegistry, View, ViewStyle } from 'react-native';
+import MapView, { Marker as NativeMarker, Polyline } from 'react-native-maps';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors } from '@/lib/theme';
 import { haptic } from './ui';
 
 /**
- * MapLibre is a native module Expo Go doesn't include, so it's only loaded in a real build. In Expo Go the
- * maps fall back to the route drawn on a grid (RouteSketch), and everything else works the same.
+ * MapLibre is a native module Expo Go doesn't include, so it's only loaded in a real build.
  */
 const MapLibre: typeof import('@maplibre/maplibre-react-native') | null = TurboModuleRegistry.get('MLRNCameraModule')
   ? require('@maplibre/maplibre-react-native')
   : null;
+/**
+ * iPhone gets Apple Maps, as the platform's own apps do. Android builds use MapLibre with the web's
+ * style; in Expo Go, where MapLibre isn't available, Android falls back to the platform map too.
+ */
+const PLATFORM_MAP = Platform.OS === 'ios' || !MapLibre;
 
 /** OpenFreeMap's light style: free, no key, quiet enough that the route stands out. Same as the web. */
 export const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
@@ -106,7 +111,7 @@ export function RunMap({ route, position, follow = true, style, zoom = 15, botto
   topInset?: number;
 }) {
   // Decided once per install (Expo Go or a real build), so the hooks below always run in the same order.
-  if (!MapLibre) return <RouteSketch route={route} position={position} style={style} />;
+  if (PLATFORM_MAP) return <PlatformLiveMap route={route} position={position} follow={follow} style={style} zoom={zoom} bottomInset={bottomInset} topInset={topInset} />;
   return <LiveMap route={route} position={position} follow={follow} style={style} zoom={zoom} bottomInset={bottomInset} topInset={topInset} />;
 }
 
@@ -146,7 +151,8 @@ function LiveMap({ route, position, follow, style, zoom, bottomInset, topInset }
 
 /** A finished route on a real map, fitted to its bounds. Not interactive, so it scrolls with the page. */
 export function RouteMap({ route, style, interactive = false }: { route: LatLng[]; style?: StyleProp<ViewStyle>; interactive?: boolean }) {
-  if (!MapLibre || route.length < 2) return <RouteSketch route={route} style={style} />;
+  if (route.length < 2) return <RouteSketch route={route} style={style} />;
+  if (PLATFORM_MAP) return <PlatformFittedMap route={route} style={style} interactive={interactive} />;
   return <FittedMap route={route} style={style} interactive={interactive} />;
 }
 
@@ -164,6 +170,71 @@ function FittedMap({ route, style, interactive }: { route: LatLng[]; style?: Sty
         <Layer id="finish-dot" type="circle" paint={{ 'circle-radius': 5, 'circle-color': colors.track, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 }} />
       </GeoJSONSource>
     </Map>
+  </View>;
+}
+
+/** Map zoom level to the span of a region, for the platform map (which works in regions, not zooms). */
+const spanFor = (zoom: number) => 360 / 2 ** zoom;
+const coordinate = ([latitude, longitude]: LatLng) => ({ latitude, longitude });
+
+/** The route on the platform map: a white casing under the orange line, a dark dot where it started. */
+function PlatformRoute({ route, width = 5 }: { route: LatLng[]; width?: number }) {
+  if (!route.length) return null;
+  const coordinates = route.map(coordinate);
+  return <>
+    {route.length >= 2 && <>
+      <Polyline coordinates={coordinates} strokeColor="#ffffff" strokeWidth={width + 4} lineCap="round" lineJoin="round" />
+      <Polyline coordinates={coordinates} strokeColor={colors.track} strokeWidth={width} lineCap="round" lineJoin="round" />
+    </>}
+    <NativeMarker coordinate={coordinates[0]} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}><View style={[styles.dot, { backgroundColor: colors.ink }]} /></NativeMarker>
+  </>;
+}
+
+/** The live map on Apple Maps (or Google in Android's Expo Go), with the system's own blue location dot. */
+function PlatformLiveMap({ route, position, follow, style, zoom, bottomInset, topInset }: { route: LatLng[]; position: LivePosition | null; follow: boolean; style?: StyleProp<ViewStyle>; zoom: number; bottomInset: number; topInset: number }) {
+  const map = useRef<MapView>(null);
+  const [following, setFollowing] = useState(follow);
+  const centred = useRef(false);
+
+  useEffect(() => {
+    if (!position || !following) return;
+    const center = { latitude: position.latitude, longitude: position.longitude };
+    if (!centred.current) {
+      centred.current = true;
+      map.current?.animateToRegion({ ...center, latitudeDelta: spanFor(zoom), longitudeDelta: spanFor(zoom) }, 0);
+    } else {
+      map.current?.animateCamera({ center }, { duration: 800 });
+    }
+  }, [position, following, zoom]);
+
+  const start = position ?? { latitude: FALLBACK_CENTRE[1], longitude: FALLBACK_CENTRE[0] };
+  return <View style={[styles.frame, style]}>
+    <MapView ref={map} style={StyleSheet.absoluteFill} userInterfaceStyle="light"
+      initialRegion={{ ...start, latitudeDelta: spanFor(position ? zoom : 11), longitudeDelta: spanFor(position ? zoom : 11) }}
+      showsUserLocation showsMyLocationButton={false} showsCompass={false} toolbarEnabled={false} pitchEnabled={false} rotateEnabled={false}
+      mapPadding={{ top: 0, right: 0, bottom: bottomInset, left: 0 }}
+      // A drag means "let me look around": stop following until they tap re-centre.
+      onPanDrag={() => { if (following) setFollowing(false); }}>
+      <PlatformRoute route={route} />
+    </MapView>
+    {!following && position && <Pressable onPress={() => { haptic(); centred.current = false; setFollowing(true); }} accessibilityRole="button" accessibilityLabel="Centre on my location"
+      style={({ pressed }) => [styles.recentre, { top: topInset + 8 }, pressed && { transform: [{ scale: 0.92 }] }]}>
+      <Svg width={20} height={20} viewBox="0 0 24 24" fill={HERE}><Path d="M21 3 3 10.5l7.2 2.3L12.5 20z" /></Svg>
+    </Pressable>}
+  </View>;
+}
+
+/** A finished route on the platform map, fitted to it once the map is ready. */
+function PlatformFittedMap({ route, style, interactive }: { route: LatLng[]; style?: StyleProp<ViewStyle>; interactive: boolean }) {
+  const map = useRef<MapView>(null);
+  const coordinates = route.map(coordinate);
+  return <View style={[styles.frame, style]} pointerEvents={interactive ? 'auto' : 'none'}>
+    <MapView ref={map} style={StyleSheet.absoluteFill} userInterfaceStyle="light" scrollEnabled={interactive} zoomEnabled={interactive} pitchEnabled={false} rotateEnabled={false}
+      toolbarEnabled={false} showsCompass={false}
+      onMapReady={() => map.current?.fitToCoordinates(coordinates, { edgePadding: { top: 32, right: 32, bottom: 32, left: 32 }, animated: false })}>
+      <PlatformRoute route={route} width={4} />
+      <NativeMarker coordinate={coordinates[coordinates.length - 1]} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}><View style={[styles.dot, { backgroundColor: colors.track }]} /></NativeMarker>
+    </MapView>
   </View>;
 }
 
@@ -205,6 +276,7 @@ const styles = StyleSheet.create({
   hereWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   halo: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: HERE },
   here: { width: 20, height: 20, borderRadius: 10, backgroundColor: HERE, borderWidth: 3, borderColor: '#fff', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
-  recentre: { position: 'absolute', right: 16, width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'rgba(251,250,246,0.9)', alignItems: 'center', justifyContent: 'center' },
+  recentre: { position: 'absolute', right: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: '#ffffff' },
   sketch: { overflow: 'hidden', backgroundColor: '#ece9e2' },
 });

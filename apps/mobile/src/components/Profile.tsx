@@ -4,11 +4,12 @@ import type { Connection, Profile, PublicProfile, PublicStats, Unit } from '@jum
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { ReactNode } from 'react';
-import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { api, WEB_URL } from '@/lib/api';
 import { keys } from '@/lib/queries';
 import { colors, display, radius, score, wideLabel } from '@/lib/theme';
 import { pickPhoto, uploadPhoto } from '@/lib/upload';
+import { ask, confirm } from '@/lib/dialog';
 import { CameraIcon, CheckIcon, PlusIcon, ShareIcon } from './icons';
 import { Avatar, Button, EmptyState, ErrorNotice, haptic, HardShadow, Skeleton, Txt, VerifiedTick } from './ui';
 
@@ -37,12 +38,14 @@ export function AvatarEditor({ profile, size = 84 }: { profile: Profile; size?: 
   const error = upload.error ?? remove.error;
   function change() {
     haptic();
-    Alert.alert(profile.avatarUrl ? 'Change profile photo' : 'Add a profile photo', undefined, [
-      { text: 'Take photo', onPress: () => upload.mutate(true) },
-      { text: 'Choose from library', onPress: () => upload.mutate(false) },
-      ...(profile.avatarUrl ? [{ text: 'Remove photo', style: 'destructive' as const, onPress: () => remove.mutate() }] : []),
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    void ask({
+      title: profile.avatarUrl ? 'Change profile photo' : 'Add a profile photo',
+      actions: [{ label: 'Take photo' }, { label: 'Choose from library' }, ...(profile.avatarUrl ? [{ label: 'Remove photo', style: 'destructive' as const }] : [])],
+    }).then((picked) => {
+      if (picked === 0) upload.mutate(true);
+      else if (picked === 1) upload.mutate(false);
+      else if (picked === 2) remove.mutate();
+    });
   }
   return <View>
     <Pressable onPress={change} disabled={busy} accessibilityRole="button" accessibilityLabel={profile.avatarUrl ? 'Change profile photo' : 'Add a profile photo'}>
@@ -178,7 +181,7 @@ export function FollowButton({ username, following, size = 'md', preview, style 
   return <View style={style}>
     <Button full size={size} variant={following ? 'secondary' : 'primary'} disabled={follow.isPending} icon={following ? <CheckIcon size={15} /> : <PlusIcon size={15} />} title={following ? 'Following' : 'Follow'}
       onPress={() => (following
-        ? Alert.alert(`Unfollow @${username}?`, undefined, [{ text: 'Cancel', style: 'cancel' }, { text: 'Unfollow', style: 'destructive', onPress: () => follow.mutate(false) }])
+        ? void confirm({ title: `Unfollow @${username}?`, confirmLabel: 'Unfollow', destructive: true }).then((ok) => { if (ok) follow.mutate(false); })
         : follow.mutate(true))} />
     {follow.error ? <Txt size={11} color="bad" style={{ marginTop: 4 }}>{follow.error.message}</Txt> : null}
   </View>;

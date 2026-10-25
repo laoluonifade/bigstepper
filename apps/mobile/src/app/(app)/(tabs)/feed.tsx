@@ -2,11 +2,12 @@ import { avatarStyleForGender } from '@jump/shared/avatars';
 import { activityName, formatDistance } from '@jump/shared/format';
 import { shownMetres } from '@jump/shared/progress';
 import type { Unit } from '@jump/shared/types';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { ActivityBadge, ActivityPicker } from '@/components/ActivityRow';
 import { PostCard, type FeedPost } from '@/components/feed';
 import { ActivityIcon, CameraIcon, CloseIcon, FeedIcon } from '@/components/icons';
@@ -18,6 +19,35 @@ import { useUser } from '@/lib/auth';
 import { useActivities, useProfile, useUnit, useUnreadMessages } from '@/lib/queries';
 import { colors, display, fontFamily, GUTTER, radius } from '@/lib/theme';
 import { pickPhoto, uploadPhoto, type PickedPhoto } from '@/lib/upload';
+
+/**
+ * Keeps Rant live while you're on it: every 10 seconds the newest page is fetched and merged in at the
+ * top, with fresh reaction and comment counts for what's already there. Older pages aren't refetched.
+ */
+function useLiveRants(ready: boolean) {
+  const queryClient = useQueryClient();
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
+  const latest = useQuery({
+    queryKey: ['feed', 'explore', 'latest'],
+    queryFn: () => api<FeedPost[]>('/feed?scope=explore&page=0'),
+    enabled: ready && focused,
+    refetchInterval: 10_000,
+  });
+  useEffect(() => {
+    const head = latest.data;
+    if (!head) return;
+    queryClient.setQueryData<InfiniteData<FeedPost[], number>>(['feed', 'explore'], (current) => {
+      if (!current?.pages.length) return current;
+      const fresh = new Set(head.map((item) => item.id));
+      const [first, ...rest] = current.pages;
+      return { ...current, pages: [[...head, ...first.filter((item) => !fresh.has(item.id))], ...rest] };
+    });
+  }, [latest.data, queryClient]);
+}
 
 export default function FeedScreen() {
   const user = useUser();
@@ -34,7 +64,12 @@ export default function FeedScreen() {
     mutationFn: (id: string) => api(`/feed/${id}`, { method: 'DELETE' }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['feed'] }),
   });
-  const posts = feed.data?.pages.flat() ?? [];
+  useLiveRants(feed.isSuccess);
+  // New posts slide pages along, so a post can turn up on two pages; show it once.
+  const posts = useMemo(() => {
+    const seen = new Set<string>();
+    return (feed.data?.pages.flat() ?? []).filter((item) => !seen.has(item.id) && Boolean(seen.add(item.id)));
+  }, [feed.data]);
 
   return <TabScreen refreshing={feed.isRefetching} onRefresh={() => void feed.refetch()}>
     <View style={{ marginBottom: 16 }}>
@@ -50,7 +85,9 @@ export default function FeedScreen() {
           <EmptyState mark={<FeedIcon size={30} color={colors.ink3} />} title="No rants yet" action={<Button variant="secondary" title="Find runners" onPress={() => router.push('/runners')} />}>Be the first: share how your last walk, run or ride went.</EmptyState>
         </View>
           : <View>
-            {posts.map((item) => <PostCard key={item.id} item={item} unit={unit} viewerId={user.id} onDelete={() => remove.mutate(item.id)} />)}
+            {posts.map((item) => <Animated.View key={item.id} entering={FadeIn.duration(260)} layout={LinearTransition.duration(260)}>
+              <PostCard item={item} unit={unit} viewerId={user.id} onDelete={() => remove.mutate(item.id)} />
+            </Animated.View>)}
             <ErrorNotice error={remove.error} />
             {feed.hasNextPage && <View style={{ padding: 12 }}><Button full variant="quiet" loading={feed.isFetchingNextPage} title={feed.isFetchingNextPage ? 'Loading…' : 'Show older posts'} onPress={() => void feed.fetchNextPage()} /></View>}
           </View>}

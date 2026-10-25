@@ -2,7 +2,7 @@ import type { AvatarStyle } from '@jump/shared/types';
 import { useQuery } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { UnreadBadge } from '@/components/chat';
+import { Ticks, UnreadBadge } from '@/components/chat';
 import { ClubLogo } from '@/components/ClubLogo';
 import { FeedIcon } from '@/components/icons';
 import { RantTabs } from '@/components/social';
@@ -12,7 +12,7 @@ import { useUser } from '@/lib/auth';
 import { useUnreadMessages } from '@/lib/queries';
 import { colors, fontFamily, GUTTER } from '@/lib/theme';
 
-type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; senderId: string; unreadCount: number };
+type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; senderId: string; unreadCount: number; readAt?: string | null };
 type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; unreadCount: number };
 type InboxRow = DirectRow | ClubRow;
 
@@ -41,7 +41,9 @@ export default function MessagesScreen() {
               </View>
               <Txt size={12} weight={row.unreadCount ? 'semibold' : 'regular'} color={row.unreadCount ? 'ink' : 'ink3'}>{when(row.createdAt)}</Txt>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              {/* Your message last: whether they've read it yet. */}
+              {row.type === 'direct' && row.senderId === user.id ? <Ticks read={Boolean(row.readAt)} /> : null}
               <Txt size={13} numberOfLines={1} weight={row.unreadCount ? 'semibold' : 'regular'} color={row.unreadCount ? 'ink' : 'ink2'} style={{ flex: 1 }}>
                 {row.type === 'club' ? `${row.senderId === user.id ? 'You' : row.senderName.split(' ')[0]}: ${preview(row)}` : preview(row)}
               </Txt>

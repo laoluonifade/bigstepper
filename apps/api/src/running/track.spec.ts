@@ -111,4 +111,50 @@ describe('measureTrack', () => {
     const final = measureTrack(points).distanceMetres;
     expect(Math.abs(live - final)).toBeLessThan(final * 0.1);
   });
+
+  describe('standing still on a phone that drifts', () => {
+    /** A position that wanders like Android's does indoors: a slow random walk, not independent wobble. */
+    function wander(seconds: number, accuracy: number, seed: number, stepCount: number | null = null): TrackPoint[] {
+      const rand = noise(seed);
+      let north = 0;
+      let east = 0;
+      return Array.from({ length: seconds + 1 }, (_, i) => {
+        north = Math.max(-accuracy, Math.min(accuracy, north + rand() * 6));
+        east = Math.max(-accuracy, Math.min(accuracy, east + rand() * 6));
+        return { latitude: LAT + north / M_PER_DEG_LAT, longitude: LON + east / M_PER_DEG_LON, accuracy, recordedAt: new Date(Date.UTC(2026, 9, 19, 7, 0, i)), stepCount };
+      });
+    }
+
+    it('adds almost nothing while the fix wanders around its accuracy circle', () => {
+      for (const seed of [1, 2, 3, 4, 5]) {
+        expect(measureTrack(wander(600, 25, seed)).distanceMetres).toBeLessThan(20);
+      }
+    });
+
+    it('adds nothing at all when the pedometer says you took no steps', () => {
+      for (const seed of [1, 2, 3]) expect(measureTrack(wander(600, 25, seed, 0)).distanceMetres).toBe(0);
+    });
+
+    it('ignores GPS that looks like walking when no steps were taken', () => {
+      const points = track(300, 1.4, { accuracy: 8 }).map((point) => ({ ...point, stepCount: 0 }));
+      expect(measureTrack(points).distanceMetres).toBe(0);
+    });
+
+    it('counts a real walk with the pedometer on', () => {
+      const points = track(300, 1.4, { accuracy: 8 }).map((point, i) => ({ ...point, stepCount: Math.floor(i * 1.8) }));
+      const result = measureTrack(points);
+      expect(result.distanceMetres).toBeGreaterThan(400);
+      expect(result.distanceMetres).toBeLessThan(440);
+    });
+
+    it('still counts a walk when step updates arrive in late batches', () => {
+      const points = track(300, 1.4, { accuracy: 8 }).map((point, i) => ({ ...point, stepCount: Math.floor(Math.floor(i / 10) * 10 * 1.8) }));
+      expect(measureTrack(points).distanceMetres).toBeGreaterThan(390);
+    });
+
+    it('never asks a ride for steps', () => {
+      const ride = track(300, 6, { accuracy: 8 }).map((point) => ({ ...point, stepCount: 0 }));
+      expect(measureTrack(ride, { activityType: 'cycle' }).distanceMetres).toBeGreaterThan(1700);
+    });
+  });
 });

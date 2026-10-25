@@ -5,13 +5,65 @@ import { DataSource } from 'typeorm';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../../jobs/jobs.module';
 import { Activity } from '../activity.entity';
 import { GpsSample } from '../gps-sample.entity';
-import { measureTrack, stepDistanceMetres } from '../track';
+import { measureTrack, type TrackMeasure } from '../track';
 import { RunningSession } from '../running-session.entity';
 import { refreshLeagueDistance } from '../../leagues/league-credits';
 import { creditActivities } from '../../tables/competition-credits';
 
 /** Faster than any human cadence (a sprint is about 4 steps/s); shaking a phone usually is. */
 const MAX_STEPS_PER_SECOND = 5.5;
+/** The shortest believable stride (a slow shuffle); the GPS route caps steps at distance ÷ this. */
+const MIN_STRIDE_METRES = 0.45;
+/** Slack for GPS under-measuring a short or twisty route before extra steps look like shaking. */
+const SHAKE_ALLOWANCE_STEPS = 150;
+
+/**
+ * Whether a recorded activity counts, and how many of its steps do.
+ *
+ * Like Strava, distance comes from GPS alone, and steps only count while the GPS shows you moving. A
+ * phone shaken in a hand or a pocket counts steps at a perfectly human rate, so steps can't stand in for
+ * distance; they're capped at what the route allows (no stride is shorter than about 0.45 m, so 20 m of
+ * GPS can't carry 3,000 steps), and far more steps than that is shaking, which flags the activity.
+ */
+export function judgeActivity(
+  track: Pick<TrackMeasure, 'distanceMetres' | 'confidence' | 'usableCount' | 'reasons'>,
+  samples: Array<Pick<GpsSample, 'stepCount' | 'recordedAt'>>,
+  activityType: 'walk' | 'run' | 'cycle',
+) {
+  const reasons = new Set(track.reasons);
+  // Steps come from the phone's motion sensors; check they only ever go up, at a human rate. The rate
+  // is judged over windows of at least 2 s, so a step total saved just after a GPS fix isn't misread.
+  let steps = 0;
+  const counted = samples.filter((sample) => sample.stepCount !== null);
+  let ref = counted[0];
+  for (let index = 1; index < counted.length; index += 1) {
+    const current = counted[index];
+    const addedSteps = current.stepCount! - ref.stepCount!;
+    if (addedSteps < 0) {
+      reasons.add('NON_MONOTONIC_STEPS');
+      ref = current;
+      continue;
+    }
+    const seconds = (current.recordedAt.getTime() - ref.recordedAt.getTime()) / 1000;
+    const last = index === counted.length - 1;
+    if (seconds < 2 && !last) continue;
+    if (seconds >= 2 && addedSteps / seconds > MAX_STEPS_PER_SECOND) reasons.add('IMPLAUSIBLE_STEP_RATE');
+    else steps += addedSteps;
+    ref = current;
+  }
+
+  const cycling = activityType === 'cycle';
+  const gpsOk = track.usableCount >= 2 && track.confidence >= 0.5 && track.distanceMetres > 0;
+  if (!gpsOk) reasons.add('NO_GPS_MOVEMENT');
+  const stepCap = Math.ceil(track.distanceMetres / MIN_STRIDE_METRES);
+  if (!cycling && steps > Math.max(stepCap * 2, stepCap + SHAKE_ALLOWANCE_STEPS)) reasons.add('STEPS_WITHOUT_MOVEMENT');
+  const tampered = ['IMPLAUSIBLE_SPEED', 'NON_MONOTONIC_STEPS', 'IMPLAUSIBLE_STEP_RATE', 'STEPS_WITHOUT_MOVEMENT'].some((reason) => reasons.has(reason));
+  return {
+    status: !tampered && gpsOk ? 'VERIFIED' as const : 'FLAGGED' as const,
+    validatedSteps: cycling ? 0 : Math.min(steps, stepCap),
+    reasons,
+  };
+}
 
 interface VerificationJob {
   activityId: string;
@@ -36,41 +88,13 @@ export class ActivityVerificationProcessor extends WorkerHost {
       order: { sequence: 'ASC' },
     });
     const track = measureTrack(samples, { activityType: activity.activityType });
-    const reasons = track.reasons;
+    const { status, validatedSteps, reasons } = judgeActivity(track, samples, activity.activityType);
     const validatedDistance = track.distanceMetres;
     const movingSeconds = track.movingSeconds;
     const confidence = track.confidence;
-
-    // Steps come from the phone's motion sensors; check they only ever go up, at a human rate. The rate
-    // is judged over windows of at least 2 s, so a step total saved just after a GPS fix isn't misread.
-    let validatedSteps = 0;
-    const counted = samples.filter((sample) => sample.stepCount !== null);
-    let ref = counted[0];
-    for (let index = 1; index < counted.length; index += 1) {
-      const current = counted[index];
-      const addedSteps = current.stepCount! - ref.stepCount!;
-      if (addedSteps < 0) {
-        reasons.add('NON_MONOTONIC_STEPS');
-        ref = current;
-        continue;
-      }
-      const seconds = (current.recordedAt.getTime() - ref.recordedAt.getTime()) / 1000;
-      const last = index === counted.length - 1;
-      if (seconds < 2 && !last) continue;
-      if (seconds >= 2 && addedSteps / seconds > MAX_STEPS_PER_SECOND) reasons.add('IMPLAUSIBLE_STEP_RATE');
-      else validatedSteps += addedSteps;
-      ref = current;
-    }
-
-    // Verified by GPS, or (indoors, where GPS sees nothing) by a believable step count. Any sign of
-    // faking — car-speed travel, steps going backwards or impossibly fast — flags the activity.
-    const tampered = reasons.has('IMPLAUSIBLE_SPEED') || reasons.has('NON_MONOTONIC_STEPS') || reasons.has('IMPLAUSIBLE_STEP_RATE');
-    const gpsOk = track.usableCount >= 2 && confidence >= 0.5;
     const cycling = activity.activityType === 'cycle';
-    const stepsOk = !cycling && validatedSteps > 0;
-    const status = !tampered && (cycling ? gpsOk && validatedDistance > 0 : gpsOk || stepsOk) ? 'VERIFIED' : 'FLAGGED';
-    if (cycling) validatedSteps = 0;
-    const stepDistance = stepDistanceMetres(validatedSteps, activity.activityType);
+    // Steps still count as steps; they no longer turn into distance.
+    const stepDistance = 0;
 
     await this.dataSource.transaction(async (manager) => {
       await manager.update(

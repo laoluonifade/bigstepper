@@ -62,10 +62,10 @@ export class MessagesService {
   private async directInbox(userId: string) {
     return this.dataSource.query(
       `WITH latest AS (
-         SELECT DISTINCT ON (peer) peer,"body","createdAt","senderId","kind"
+         SELECT DISTINCT ON (peer) peer,"body","createdAt","senderId","kind","readAt"
          FROM (
            SELECT CASE WHEN "senderId"=$1 THEN "recipientId" ELSE "senderId" END peer,
-                  "body","createdAt","senderId","id",
+                  "body","createdAt","senderId","id","readAt",
                   CASE WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
            FROM "direct_messages" WHERE ("senderId"=$1 OR "recipientId"=$1) AND "clubId" IS NULL
          ) m ORDER BY peer,"createdAt" DESC,"id" DESC
@@ -74,7 +74,7 @@ export class MessagesService {
          SELECT "senderId",COUNT(*)::integer "count" FROM "direct_messages"
          WHERE "recipientId"=$1 AND "readAt" IS NULL GROUP BY "senderId"
        )
-       SELECT l."body",l."kind",l."createdAt",l."senderId",p."username",p."displayName",p."avatarUrl",
+       SELECT l."body",l."kind",l."createdAt",l."senderId",l."readAt",p."username",p."displayName",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               COALESCE(u."count",0) "unreadCount"
        FROM latest l JOIN "profiles" p ON p."userId"=l.peer
@@ -121,7 +121,7 @@ export class MessagesService {
    */
   private async thread(where: string, params: unknown[]) {
     const messages = await this.dataSource.query(
-      `SELECT m."id",m."senderId",m."recipientId",m."clubId",m."body",m."createdAt",m."editedAt",m."audioUrl",m."audioSeconds",
+      `SELECT m."id",m."senderId",m."recipientId",m."clubId",m."body",m."createdAt",m."editedAt",m."readAt",m."audioUrl",m."audioSeconds",
               i."id" "invitationId",i."status" "invitationStatus",t."id" "tableId",t."code" "tableCode",
               t."title" "tableTitle",t."type" "tableType",t."status" "tableStatus",
               t."guaranteedPrizeKobo",t."entryFeeKobo",m."replyToId",reply."body" "replyToBody",

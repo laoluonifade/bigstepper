@@ -5,10 +5,11 @@ import { useMutation, useQueryClient, type InfiniteData, type QueryClient } from
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 import { api, post, WEB_URL } from '@/lib/api';
 import { colors, fontFamily, GUTTER, radius, score, wideLabel } from '@/lib/theme';
+import { confirm } from '@/lib/dialog';
 import { CommentIcon, CycleIcon, HeartIcon, RunIcon, SendIcon, ShareIcon, TrashIcon } from './icons';
 import { PhotoViewer, MentionText, ReactionPicker } from './social';
 import { Avatar, haptic, Txt, VerifiedTick } from './ui';
@@ -58,7 +59,7 @@ export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; u
         {item.verified ? <VerifiedTick size={16} /> : null}
         <Txt size={14} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>@{item.username}</Txt>
         <Txt size={14} color="ink3">· {shortAgo(item.createdAt)}</Txt>
-        {item.userId === viewerId && <Pressable onPress={() => Alert.alert('Delete this post?', undefined, [{ text: 'Keep', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: onDelete }])}
+        {item.userId === viewerId && <Pressable onPress={() => void confirm({ title: 'Delete this post?', cancelLabel: 'Keep', confirmLabel: 'Delete', destructive: true }).then((ok) => { if (ok) onDelete(); })}
           hitSlop={8} style={{ marginLeft: 'auto', padding: 4 }} accessibilityLabel="Delete post"><TrashIcon size={15} color={colors.ink3} /></Pressable>}
       </View>
       {item.body ? <View style={{ marginTop: 4 }}><MentionText text={item.body} /></View> : null}

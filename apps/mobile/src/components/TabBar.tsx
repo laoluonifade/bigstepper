@@ -1,7 +1,8 @@
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { usePathname } from 'expo-router';
 import { useEffect, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useRecorder } from '@/lib/recorder';
 import { colors, fontFamily } from '@/lib/theme';
@@ -62,6 +63,8 @@ export function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
   const locating = recorder.phase === 'locating';
 
   return <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]} accessibilityRole="tablist">
+    {/* No rule across the top: the bar lifts off the page with a soft shadow, frosted on iOS. */}
+    {Platform.OS === 'ios' ? <BlurView intensity={80} tint="systemChromeMaterialLight" style={styles.glass} /> : null}
     {state.routes.map((route, index) => {
       const active = state.index === index;
       const go = () => { haptic(); navigateToTab(route.key); };
@@ -69,7 +72,7 @@ export function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
         const start = onRun && !live;
         return <Pressable
           key={route.key}
-          onPress={start ? () => { haptic('success'); startListeners.forEach((listener) => listener()); } : go}
+          onPress={start ? () => { startListeners.forEach((listener) => listener()); } : go}
           disabled={start && locating}
           style={styles.tab}
           accessibilityRole="button"
@@ -93,7 +96,12 @@ export function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', alignItems: 'flex-end', borderTopWidth: 1.5, borderTopColor: colors.ink, backgroundColor: colors.paper, paddingHorizontal: 8, paddingTop: 6 },
+  bar: {
+    flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 8, paddingTop: 6,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(242,239,232,0.72)' : colors.paper,
+    shadowColor: colors.ink, shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: -4 }, elevation: 16,
+  },
+  glass: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   tab: { flex: 1, alignItems: 'center', gap: 2, paddingTop: 6, paddingBottom: 4 },
   activeBar: { position: 'absolute', top: -6, width: 32, height: 3, borderBottomLeftRadius: 2, borderBottomRightRadius: 2, backgroundColor: colors.track },
   iconPill: { width: 48, height: 32, borderRadius: 8 },

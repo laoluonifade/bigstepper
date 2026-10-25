@@ -8,7 +8,7 @@
  * Screens read it with `useRecorder()`, which has the same shape as the web hook.
  */
 import type { Activity, RunSession, SampleUploadResult } from '@jump/shared/types';
-import { MAX_USABLE_ACCURACY_METRES, measureTrack, stepDistanceMetres, type TrackPoint } from '@jump/shared/track';
+import { MAX_USABLE_ACCURACY_METRES, measureTrack, type TrackPoint } from '@jump/shared/track';
 import type { QueryClient } from '@tanstack/react-query';
 import { isRunningInExpoGo } from 'expo';
 import * as Location from 'expo-location';
@@ -96,7 +96,7 @@ function onFixes(locations: Location.LocationObject[]) {
     const accuracy = fix.coords.accuracy ?? 999;
     lastFixTime = fix.timestamp;
     // Same rule the server verifies with (trailing-only, as the future isn't known yet).
-    fixes.push({ latitude, longitude, accuracy, recordedAt: new Date(fix.timestamp) });
+    fixes.push({ latitude, longitude, accuracy, recordedAt: new Date(fix.timestamp), stepCount: motionAllowed ? totalSteps() : null });
     if (accuracy <= MAX_USABLE_ACCURACY_METRES) route.push([latitude, longitude]);
     else gpsError = `Weak GPS (±${Math.round(accuracy)} m). Head outdoors with open sky. Weak fixes don’t count.`;
     lastFix = { latitude, longitude, accuracy: Math.round(accuracy * 10) / 10 };
@@ -475,13 +475,11 @@ const subscribe = (listener: () => void) => {
 
 export function useRecorder() {
   const current = useSyncExternalStore(subscribe, () => state);
-  // Indoors GPS sees nothing; steps × stride is the honest estimate there.
-  const stepMetres = current.steps ? stepDistanceMetres(current.steps, current.session?.activityType ?? 'walk') : 0;
-  const measured = Math.max(current.uploadedMetres, current.localMetres);
+  // Distance is GPS alone, as the server counts it: steps are shown as steps, never turned into distance,
+  // because a shaken phone counts steps too.
   return {
     ...current,
-    distanceMetres: Math.max(measured, stepMetres),
-    distanceFromSteps: stepMetres > measured,
+    distanceMetres: Math.max(current.uploadedMetres, current.localMetres),
     ...actions,
   };
 }

@@ -1,7 +1,8 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert, Linking } from 'react-native';
+import { Linking } from 'react-native';
 import { api } from './api';
+import { confirm } from './dialog';
 
 export type PickedPhoto = { uri: string; width: number; height: number };
 
@@ -12,10 +13,8 @@ export type PickedPhoto = { uri: string; width: number; height: number };
 export async function pickPhoto({ camera = false, maxSide = 800, square = false }: { camera?: boolean; maxSide?: number; square?: boolean } = {}): Promise<PickedPhoto | null> {
   const permission = camera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
-    Alert.alert(camera ? 'Camera access is off' : 'Photo access is off', `Allow Jump to use your ${camera ? 'camera' : 'photos'} in Settings to add a picture.`, [
-      { text: 'Not now', style: 'cancel' },
-      { text: 'Open Settings', onPress: () => void Linking.openSettings() },
-    ]);
+    void confirm({ title: camera ? 'Camera access is off' : 'Photo access is off', message: `Allow Jump to use your ${camera ? 'camera' : 'photos'} in Settings to add a picture.`, cancelLabel: 'Not now', confirmLabel: 'Open Settings' })
+      .then((ok) => { if (ok) void Linking.openSettings(); });
     return null;
   }
   const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1, allowsEditing: square, ...(square ? { aspect: [1, 1] as [number, number] } : {}) };

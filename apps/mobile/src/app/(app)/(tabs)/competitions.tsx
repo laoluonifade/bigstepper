@@ -3,7 +3,7 @@ import type { ChallengeType } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CompetitionPreviewCard, openCompetition } from '@/components/competition';
 import { ArrowRightIcon, CloseIcon, PlayIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon } from '@/components/icons';
 import { TabScreen } from '@/components/Shell';
@@ -13,6 +13,7 @@ import { api, post } from '@/lib/api';
 import { useDiscover, useUnit, type DiscoverView } from '@/lib/queries';
 import { colors, fontFamily, radius } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { confirm } from '@/lib/dialog';
 
 type TypeFilter = 'all' | 'free' | 'sponsored' | 'paid';
 
@@ -172,10 +173,8 @@ function DraftsSheet({ open, onOpenChange, drafts }: { open: boolean; onOpenChan
       if (drafts.length <= 1) onOpenChange(false);
     },
   });
-  const confirmDiscard = (draft: DraftTable) => Alert.alert(`Discard ${draft.title}?`, 'This can’t be undone.', [
-    { text: 'Keep', style: 'cancel' },
-    { text: 'Discard', style: 'destructive', onPress: () => discard.mutate(draft.id) },
-  ]);
+  const confirmDiscard = (draft: DraftTable) => void confirm({ title: `Discard ${draft.title}?`, message: 'This can’t be undone.', cancelLabel: 'Keep', confirmLabel: 'Discard', destructive: true })
+    .then((ok) => { if (ok) discard.mutate(draft.id); });
 
   return <Sheet open={open} onOpenChange={onOpenChange} title="Drafts" description="Nobody can join these until they’re live.">
     <ErrorNotice error={discard.error} />

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BOOT_INTRO_MS, BootScreen } from '@/components/BootScreen';
+import { DialogHost } from '@/components/DialogHost';
 import { Toaster } from '@/components/Toaster';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { detachRecorder, restoreRecorder } from '@/lib/recorder';
@@ -58,6 +59,7 @@ export default function RootLayout() {
           {/* A font that fails to load falls back to the system face rather than blocking the app. */}
           <Routes fontsReady={fontsReady || Boolean(fontError)} />
           <Toaster />
+          <DialogHost />
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { createContext, ReactNode, useContext, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Avatar, Button, ErrorNotice, haptic, HardShadow, Screen, Skeleton, Txt, VerifiedTick } from '@/components/ui';
+import { Avatar, Button, Centered, ErrorNotice, haptic, HardShadow, Screen, Skeleton, Txt, VerifiedTick } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useProfile, useUnit } from '@/lib/queries';
 import { colors, GUTTER, radius, score } from '@/lib/theme';
@@ -122,9 +122,9 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
         <Text style={{ fontSize: 36, textAlign: 'center' }}>{global ? '🌍' : country ? flag(country) : '🏁'}</Text>
         <Txt size={15} weight="bold" align="center" style={{ marginTop: 12 }}>The top spot is open</Txt>
         <Txt size={13} color="ink3" align="center" style={{ marginTop: 4 }}>{`A verified ${activity === 'cycle' ? 'ride' : 'run or walk'} puts you on this board.`}</Txt>
-        <View style={{ alignItems: 'center', marginTop: 16 }}>
+        <Centered style={{ marginTop: 16 }}>
           {guest ? <Button variant="dark" title="Join free and take it" onPress={() => router.push('/register')} /> : <Button variant="dark" title="Start a run" onPress={() => router.navigate('/run')} />}
-        </View>
+        </Centered>
       </View>
         : <View style={{ gap: 12, marginTop: 16 }}>
           <Podium rows={data.rows.slice(0, 3)} unit={unit} showFlag={global} />

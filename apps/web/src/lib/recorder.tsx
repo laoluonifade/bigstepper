@@ -10,7 +10,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { api, isApiError, post } from './api';
 import { describeGeoError, getCurrentPosition } from './geo';
 import { requestMotionPermission, startPedometer, type Pedometer } from './pedometer';
-import { MAX_USABLE_ACCURACY_METRES, measureTrack, stepDistanceMetres, TrackPoint } from './track';
+import { MAX_USABLE_ACCURACY_METRES, measureTrack, TrackPoint } from './track';
 import { keys } from './queries';
 import {
   acknowledge,
@@ -197,7 +197,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       if (position.timestamp <= lastFixTimeRef.current) return;
       lastFixTimeRef.current = position.timestamp;
       // Same rule the server verifies with (trailing-only, as the future isn't known yet).
-      fixesRef.current.push({ latitude, longitude, accuracy: acc, recordedAt: new Date(position.timestamp) });
+      fixesRef.current.push({ latitude, longitude, accuracy: acc, recordedAt: new Date(position.timestamp), stepCount: motionAllowedRef.current ? stepsRef.current : null });
       if (acc <= MAX_USABLE_ACCURACY_METRES) setRoute((current) => [...current, [latitude, longitude]]);
       setLocalMetres(measureTrack(fixesRef.current, { trailing: true, activityType: activityTypeRef.current }).distanceMetres);
       if (acc > MAX_USABLE_ACCURACY_METRES) setGpsError(`Weak GPS (±${Math.round(acc)} m). Head outdoors with open sky. Weak fixes don’t count.`);
@@ -515,16 +515,14 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
     }
   }, [reset, startWatch, stopWatch]);
 
-  // Indoors GPS sees nothing; steps × stride is the honest estimate there.
-  const stepMetres = steps ? stepDistanceMetres(steps, session?.activityType ?? 'walk') : 0;
-
   const value = useMemo<RecorderState>(
     () => ({
       phase,
       session,
-      distanceMetres: Math.max(uploadedMetres, localMetres, stepMetres),
+      // GPS alone, as the server counts it: a shaken phone counts steps too, so steps never become distance.
+      distanceMetres: Math.max(uploadedMetres, localMetres),
       steps,
-      distanceFromSteps: stepMetres > Math.max(uploadedMetres, localMetres),
+      distanceFromSteps: false,
       uploadedMetres,
       pendingCount,
       connection,
@@ -542,7 +540,7 @@ export function RecorderProvider({ user, children }: { user: User; children: Rea
       retryRestore: () => setRestoreAttempt((n) => n + 1),
       clearError: () => setError(null),
     }),
-    [accuracy, connection, discard, error, finish, gpsError, stepMetres, steps, lastFixAt, localMetres, pause, pendingCount, phase, position, resume, route, session, start, uploadedMetres],
+    [accuracy, connection, discard, error, finish, gpsError, steps, lastFixAt, localMetres, pause, pendingCount, phase, position, resume, route, session, start, uploadedMetres],
   );
 
   return <RecorderContext.Provider value={value}>{children}</RecorderContext.Provider>;
