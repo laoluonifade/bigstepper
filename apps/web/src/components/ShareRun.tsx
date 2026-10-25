@@ -246,7 +246,7 @@ export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, rout
   ctx.fillText('STARTAJUMP.COM', pad, h - pad + 4);
   ctx.textAlign = 'right';
   ctx.fillStyle = TRACK;
-  ctx.fillText('EVERY STEP COUNTS.', w - pad, h - pad + 4);
+  ctx.fillText('MOVE. COMPETE. WIN.', w - pad, h - pad + 4);
   ctx.textAlign = 'left';
 }
 

@@ -24,11 +24,11 @@ export function AuthLayout() {
         </Link>
         <div>
           <p className="display text-[clamp(44px,5.4vw,76px)]">
-            <span className="reveal-line"><span>Every</span></span>
-            <span className="reveal-line"><span className="[animation-delay:90ms]">metre</span></span>
+            <span className="reveal-line"><span>Move.</span></span>
+            <span className="reveal-line"><span className="[animation-delay:90ms]">Compete.</span></span>
             <span className="reveal-line">
               <span className="[animation-delay:180ms]">
-                <span className="bg-volt px-2 text-ink">counts.</span>
+                <span className="bg-volt px-2 text-ink">Win.</span>
               </span>
             </span>
           </p>

@@ -1,5 +1,5 @@
 import { StravaSyncBar } from '../pages/Strava';
-import { LEGAL_LINKS } from '../legal/links';
+import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
 import { Link, Outlet, useLocation, type LinkProps } from '@tanstack/react-router';
 import { NavigationProgress, PagePending } from './RouteStates';
 import { ReactNode } from 'react';
@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { onboardingSkipped } from '../lib/onboarding';
 import { movingSeconds, RecorderProvider, START_ACTIVITY_EVENT, useRecorder } from '../lib/recorder';
-import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, RunIcon, SearchIcon, SettingsIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon } from './icons';
+import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, RunIcon, SearchIcon, SettingsIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon, InstagramIcon, XLogoIcon } from './icons';
 import { cx, LiveDot, Redirect, useNow } from './ui';
 import { QuickPanelsProvider, useQuickPanels } from './QuickPanels';
 
@@ -33,7 +33,7 @@ export function Private({ children }: { children: ReactNode }) {
 }
 
 /** Auth screens bring their own full-screen layout and logo, so no site header around them. */
-const AUTH_PATHS = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password'];
+const AUTH_PATHS = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/brands/preview'];
 
 export function AppShell() {
   return <><NavigationProgress /><Shell /></>;
@@ -83,7 +83,18 @@ function PublicShell() {
             {LEGAL_LINKS.map((link) => <Link key={link.to} to={link.to} className="font-medium text-ink-2 hover:text-ink">{link.label}</Link>)}
             <a href="mailto:start@startajump.com" className="font-medium text-ink-2 hover:text-ink">Contact</a>
           </nav>
-          <p>© {new Date().getFullYear()} Voyatech Limited</p>
+          <div className="flex items-center gap-4">
+            {/* Jump on social media. */}
+            <nav aria-label="Jump on social media" className="flex gap-2">
+              {SOCIAL_LINKS.map((link) => (
+                <a key={link.href} href={link.href} target="_blank" rel="noreferrer noopener" aria-label={link.label} title={link.label}
+                  className="grid h-9 w-9 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink hover:text-ink">
+                  {link.href.includes('instagram') ? <InstagramIcon size={17} /> : <XLogoIcon size={15} />}
+                </a>
+              ))}
+            </nav>
+            <p>© {new Date().getFullYear()} Voyatech Limited</p>
+          </div>
         </div>
       </footer>
     </div>

@@ -89,7 +89,7 @@ function RunCard({ activity, unit, route, format }: { activity: Activity; unit: 
     </View>
     <View style={{ position: 'absolute', left: pad, right: pad, bottom: pad - 2, flexDirection: 'row', justifyContent: 'space-between' }}>
       <Text style={styles.footer}>STARTAJUMP.COM</Text>
-      <Text style={[styles.footer, { color: colors.track }]}>EVERY STEP COUNTS.</Text>
+      <Text style={[styles.footer, { color: colors.track }]}>MOVE. COMPETE. WIN.</Text>
     </View>
   </View>;
 }

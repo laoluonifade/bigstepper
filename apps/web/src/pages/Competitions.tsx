@@ -1047,7 +1047,7 @@ async function uploadBanner(tableId: string, file: File) {
 }
 
 /** The poster at the top of an invite: the challenge's colour, its one big number and its mark. */
-function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+export function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
   // The host's banner fills the card; the same details sit on top of it, over a dark fade so they
   // read on any photo.
   const banner = table.bannerUrl;
@@ -1589,7 +1589,7 @@ function EntryPanel({
 }
 
 /** The headline of the join box: what's at stake, GoFundMe-style. */
-function Stakes({ table }: { table: CompetitionTable }) {
+export function Stakes({ table }: { table: CompetitionTable }) {
   const money = (kobo: number) => formatMoney(kobo).replace(/\.00$/, '');
   const prizePot = table.type === 'sponsored' ? (table.fundedPrizeKobo || table.guaranteedPrizeKobo) : table.guaranteedPrizeKobo;
   if (prizePot) {
@@ -1620,7 +1620,7 @@ function Stakes({ table }: { table: CompetitionTable }) {
   );
 }
 
-function TimeLeft({ table, now }: { table: CompetitionTable; now: number }) {
+export function TimeLeft({ table, now }: { table: CompetitionTable; now: number }) {
   const phase = competitionPhase(table, now);
   const start = new Date(table.startsAt ?? table.createdAt).getTime();
   const end = table.scoringClosesAt ? new Date(table.scoringClosesAt).getTime() : null;
@@ -1646,7 +1646,7 @@ function TimeLeft({ table, now }: { table: CompetitionTable; now: number }) {
   );
 }
 
-function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; count: number; capacity: number | null }) {
+export function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; count: number; capacity: number | null }) {
   const shown = faces.slice(0, 5);
   const first = shown.map((face) => face.name.split(' ')[0]);
   const line =
