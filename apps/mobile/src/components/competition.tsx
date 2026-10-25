@@ -3,6 +3,7 @@ import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '@j
 import { activityLabel, formatScore, metricOf, towardLeader, winsLabel } from '@jump/shared/scoring';
 import type { AvatarStyle, ChallengeType, CompetitionTable, Unit } from '@jump/shared/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { ReactNode, useId, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -59,9 +60,9 @@ export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; 
 }
 
 export function TypeTag({ table }: { table: CompetitionTable }) {
-  if (table.type === 'paid') return <Tag color={colors.paper} background={colors.ink} border={colors.ink}>{`Paid · ${formatMoney(table.entryFeeKobo)}`}</Tag>;
-  if (table.type === 'sponsored') return <Tag background={colors.volt} border={colors.ink}>Free · funded prize</Tag>;
-  return <Tag border={colors.ink}>Free</Tag>;
+  if (table.type === 'paid') return <Tag color={colors.paper} background={colors.ink} border={colors.edge}>{`Paid · ${formatMoney(table.entryFeeKobo)}`}</Tag>;
+  if (table.type === 'sponsored') return <Tag background={colors.volt} border={colors.edge}>Free · funded prize</Tag>;
+  return <Tag border={colors.edge}>Free</Tag>;
 }
 
 export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number }) {
@@ -72,7 +73,7 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
     : phase === 'entry-closed'
       ? { color: colors.warn, background: colors.warnWash, border: 'rgba(154,98,0,0.6)' }
       : phase === 'final'
-        ? { color: colors.ink, background: colors.volt, border: colors.ink }
+        ? { color: colors.onAccent, background: colors.volt, border: colors.edge }
         : { color: colors.ink2, background: colors.card, border: colors.line };
   const label = phase === 'upcoming' ? 'Upcoming' : phase === 'open' ? 'Open' : phase === 'entry-closed' ? 'Entry closed' : phase === 'scoring-closed' ? (table.type === 'free' ? 'Ended' : 'Closed') : phase === 'final' ? 'Final' : 'Pending';
   return <Tag {...look}>
@@ -165,6 +166,8 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
 
   return <Pressable onPress={() => openCompetition(table.code)} accessibilityRole="button" accessibilityLabel={`Open ${table.title}`}
     style={({ pressed }) => [styles.preview, pressed && { opacity: 0.85 }]}>
+    {/* The host's banner, when there is one: a slim strip across the top; the card below is unchanged. */}
+    {table.bannerUrl ? <Image source={{ uri: table.bannerUrl }} style={styles.previewBanner} contentFit="cover" transition={150} accessible={false} /> : null}
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
       <ChallengeMark type={table.challengeType} code={table.code} size={40} />
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -332,18 +335,19 @@ const styles = StyleSheet.create({
   rowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   prize: { borderRadius: radius.md, paddingHorizontal: 8, paddingVertical: 2 },
-  preview: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14 },
+  preview: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14, overflow: 'hidden' },
+  previewBanner: { marginHorizontal: -16, marginTop: -16, marginBottom: 14, aspectRatio: 3, backgroundColor: colors.inkWash },
   track: { height: 32, marginTop: 12, justifyContent: 'center' },
   trackLine: { height: 2, borderRadius: 1, backgroundColor: 'rgba(18,18,18,0.07)' },
   finish: { position: 'absolute', top: 6, bottom: 6, borderLeftWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.25)' },
-  inPill: { borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.ink, paddingHorizontal: 12, paddingVertical: 4 },
+  inPill: { borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 12, paddingVertical: 4 },
   joinPill: { height: 36, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 20, justifyContent: 'center' },
-  trending: { width: 230, minHeight: 150, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  trending: { width: 230, minHeight: 150, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   band: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 },
   bandSmall: { fontFamily: fontFamily('bold'), fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', opacity: 0.75, marginTop: 4 },
-  card: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  card: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   progress: { height: 6, borderRadius: 3, backgroundColor: colors.inkFaint, marginTop: 16 },
   cardFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingHorizontal: 16, paddingVertical: 10 },
-  stop: { position: 'absolute', width: 14, height: 14, marginLeft: -7, borderWidth: 2, borderColor: colors.ink },
-  now: { position: 'absolute', width: 20, height: 20, marginLeft: -10, borderRadius: 10, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.track },
+  stop: { position: 'absolute', width: 14, height: 14, marginLeft: -7, borderWidth: 2, borderColor: colors.edge },
+  now: { position: 'absolute', width: 20, height: 20, marginLeft: -10, borderRadius: 10, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.track },
 });

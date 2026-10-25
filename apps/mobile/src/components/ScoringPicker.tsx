@@ -72,6 +72,6 @@ export function ScoringPicker({ draft, onChange, unit, prizes, error }: { draft:
 }
 
 const styles = StyleSheet.create({
-  toggle: { height: 36, justifyContent: 'center', borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 12 },
+  toggle: { height: 36, justifyContent: 'center', borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12 },
   qualifying: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12 },
 });

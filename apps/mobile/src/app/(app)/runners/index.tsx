@@ -42,7 +42,7 @@ export default function RunnersScreen() {
 }
 
 const styles = StyleSheet.create({
-  search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.white, paddingHorizontal: 12 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.white, paddingHorizontal: 12 },
   input: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
 });

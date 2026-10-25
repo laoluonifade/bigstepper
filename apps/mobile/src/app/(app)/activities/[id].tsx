@@ -143,7 +143,7 @@ export default function ActivityDetailScreen() {
 }
 
 function Action({ label, icon, onPress, disabled }: { label: string; icon: ReactNode; onPress: () => void; disabled?: boolean }) {
-  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [styles.action, disabled && { opacity: 0.4 }, pressed && { borderColor: colors.ink }]}>
+  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [styles.action, disabled && { opacity: 0.4 }, pressed && { borderColor: colors.edge }]}>
     {icon}<Txt size={14} weight="semibold">{label}</Txt>
   </Pressable>;
 }
@@ -215,9 +215,9 @@ function ReviewRequest({ activityId }: { activityId: string }) {
 
 const styles = StyleSheet.create({
   action: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.full, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
-  counts: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.volt, paddingHorizontal: 20, paddingVertical: 16 },
+  counts: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.volt, paddingHorizontal: 20, paddingVertical: 16 },
   countsIcon: { width: 40, height: 40, borderRadius: radius.sm, backgroundColor: colors.onAccent, alignItems: 'center', justifyContent: 'center' },
-  map: { height: 220, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, marginBottom: 16 },
+  map: { height: 220, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, marginBottom: 16 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 20, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 20 },
   cell: { width: '50%', paddingRight: 12 },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingHorizontal: 20, paddingVertical: 14 },

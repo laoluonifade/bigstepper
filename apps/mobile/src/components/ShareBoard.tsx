@@ -87,7 +87,7 @@ function BoardCard({ board, scopeLabel, filter, unit, showFlags }: { board: Boar
 function BoardLine({ row, unit, leader, showFlags, divider }: { row: Row; unit: Unit; leader: number; showFlags: boolean; divider?: boolean }) {
   return <View style={[styles.line, divider && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(18,18,18,0.12)' }, row.isMe && { backgroundColor: 'rgba(228,255,58,0.55)' }]}>
     <Text style={styles.lineRank}>{row.rank}</Text>
-    <View style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.ink }}><Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={17} round /></View>
+    <View style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.edge }}><Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={17} round /></View>
     <View style={{ flex: 1, minWidth: 0 }}>
       <Text style={styles.lineName} numberOfLines={1}>{`${row.isMe ? 'You' : row.displayName}${showFlags && row.countryCode ? ` ${flag(row.countryCode)}` : ''}`}</Text>
       <View style={styles.gap}><View style={{ height: '100%', borderRadius: 2, backgroundColor: 'rgba(18,18,18,0.7)', width: `${leader ? Math.max(3, (row.metres / leader) * 100) : 0}%` }} /></View>

@@ -37,19 +37,20 @@ export function RankBadge({ rank, size = 'md' }: { rank: number; size?: 'md' | '
   const metal = PODIUM[rank];
   const px = size === 'lg' ? 48 : 34;
   if (!metal) return <View style={{ minWidth: size === 'lg' ? 48 : 32, height: size === 'lg' ? 48 : 32, alignItems: 'center', justifyContent: 'center' }}><Text style={score(size === 'lg' ? 28 : 18)}>{rank}</Text></View>;
+  // A medal is an object: same metal, outline and ribbon in both themes (ink is cream in dark mode).
   return <View style={{ width: px, height: px, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={rank === 1 ? '1st, winning' : ordinal(rank)}>
     <Svg viewBox="0 0 32 32" width={px} height={px} style={StyleSheet.absoluteFill}>
       <Defs>
         <LinearGradient id={`${id}-m`} x1="0" y1="0" x2="0.5" y2="1"><Stop offset="0" stopColor={metal.light} /><Stop offset="1" stopColor={metal.base} /></LinearGradient>
       </Defs>
       {rank === 1
-        ? <Path d="M9.5 9.5V2.5l3.3 3L16 .8l3.2 4.7 3.3-3v7z" fill={colors.volt} stroke={colors.ink} strokeWidth="1.4" strokeLinejoin="round" />
-        : <Path d="M10 1h4.5l3 8.5h-4.5zM22 1h-4.5l-3 8.5h4.5z" fill={colors.ink} />}
-      <Circle cx="17.2" cy="20.2" r="10.8" fill={colors.ink} />
-      <Circle cx="16" cy="19" r="10.8" fill={`url(#${id}-m)`} stroke={colors.ink} strokeWidth="1.8" />
+        ? <Path d="M9.5 9.5V2.5l3.3 3L16 .8l3.2 4.7 3.3-3v7z" fill={colors.volt} stroke={brand.ink} strokeWidth="1.4" strokeLinejoin="round" />
+        : <Path d="M10 1h4.5l3 8.5h-4.5zM22 1h-4.5l-3 8.5h4.5z" fill={brand.ink} />}
+      <Circle cx="17.2" cy="20.2" r="10.8" fill={brand.ink} />
+      <Circle cx="16" cy="19" r="10.8" fill={`url(#${id}-m)`} stroke={brand.ink} strokeWidth="1.8" />
       <Circle cx="16" cy="19" r="7.6" fill="none" stroke="#fff" strokeOpacity="0.5" strokeWidth="1.1" />
     </Svg>
-    <Text style={[score(size === 'lg' ? 21 : 15), { transform: [{ translateY: (px * 3) / 32 }] }]}>{rank}</Text>
+    <Text style={[score(size === 'lg' ? 21 : 15), { color: brand.ink, transform: [{ translateY: (px * 3) / 32 }] }]}>{rank}</Text>
   </View>;
 }
 
@@ -102,8 +103,8 @@ function Row({ row, isMe, unit, formatScore, last }: { row: LeaderboardRow; isMe
 }
 
 const styles = StyleSheet.create({
-  board: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
-  head: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1.5, borderBottomColor: colors.ink, paddingVertical: 8 },
+  board: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
+  head: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1.5, borderBottomColor: colors.edge, paddingVertical: 8 },
   headText: { fontFamily: fontFamily('bold'), fontSize: 10.5, letterSpacing: 1.26, textTransform: 'uppercase', color: colors.ink2 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   rowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },

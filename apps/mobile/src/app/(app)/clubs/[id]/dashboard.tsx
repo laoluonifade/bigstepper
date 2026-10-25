@@ -203,7 +203,7 @@ function RepeatSheet({ code, title, clubRef, onClose }: { code: string; title: s
       <Txt size={14} color="ink2"><Txt size={14} weight="bold">{title}</Txt> becomes edition 1. Each new edition copies its rules, branding and prizes, with its own dates, leaderboard and winners.</Txt>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         {(['weekly', 'monthly'] as const).map((value) => <Pressable key={value} onPress={() => { haptic(); setCadence(value); }} accessibilityRole="radio" accessibilityState={{ checked: cadence === value }}
-          style={[styles.choice, cadence === value && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
+          style={[styles.choice, cadence === value && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
           <Txt size={14} weight="bold" color={cadence === value ? 'paper' : 'ink'}>{value === 'weekly' ? 'Every week' : 'Every month'}</Txt>
         </Pressable>)}
       </View>
@@ -447,7 +447,7 @@ const styles = StyleSheet.create({
   tabs: { marginTop: 28, flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, marginHorizontal: -GUTTER, paddingHorizontal: GUTTER },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   count: { minWidth: 18, borderRadius: radius.full, backgroundColor: colors.track, paddingHorizontal: 6, alignItems: 'center' },
-  list: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  list: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   choice: { flex: 1, height: 44, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

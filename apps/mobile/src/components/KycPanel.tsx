@@ -175,8 +175,8 @@ function KycForm({ banks, banksLoading, initial, onCancel, onDone }: { banks: Ba
 }
 
 const styles = StyleSheet.create({
-  panel: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 16 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.white, paddingHorizontal: 12 },
+  panel: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 16 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.white, paddingHorizontal: 12 },
   searchInput: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
   bank: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: GUTTER + 4, paddingVertical: 12 },
   checking: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12 },

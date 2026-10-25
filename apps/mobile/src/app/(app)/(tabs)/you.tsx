@@ -341,7 +341,7 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
 const styles = StyleSheet.create({
   socials: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 14 },
   social: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
-  group: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  group: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingHorizontal: GUTTER, paddingVertical: 10 },
   badge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.track, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   logout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: radius['2xl'], paddingVertical: 12 },

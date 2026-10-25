@@ -118,13 +118,13 @@ export function OptionSheet<T extends string>({ open, onOpenChange, title, descr
         const active = option.value === value;
         return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: active, disabled: option.disabled }} disabled={option.disabled}
           onPress={() => { haptic(); onChange(option.value); onOpenChange(false); }}
-          style={({ pressed }) => [styles.option, active && { borderColor: colors.ink, backgroundColor: 'rgba(228,255,58,0.4)' }, option.disabled && { opacity: 0.45 }, pressed && { opacity: 0.7 }]}>
+          style={({ pressed }) => [styles.option, active && { borderColor: colors.edge, backgroundColor: 'rgba(228,255,58,0.4)' }, option.disabled && { opacity: 0.45 }, pressed && { opacity: 0.7 }]}>
           {option.icon}
           <View style={{ flex: 1 }}>
             <Txt size={15} weight="bold">{option.label}</Txt>
             {option.detail ? <Txt size={13} color="ink2" leading={1.35} style={{ marginTop: 2 }}>{option.detail}</Txt> : null}
           </View>
-          <View style={[styles.radio, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>{active ? <View style={styles.radioDot} /> : null}</View>
+          <View style={[styles.radio, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>{active ? <View style={styles.radioDot} /> : null}</View>
         </Pressable>;
       })}
     </View>
@@ -133,12 +133,12 @@ export function OptionSheet<T extends string>({ open, onOpenChange, title, descr
 
 const styles = StyleSheet.create({
   anchor: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, borderTopWidth: 2, borderColor: colors.ink, overflow: 'hidden' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, borderTopWidth: 2, borderColor: colors.edge, overflow: 'hidden' },
   handle: { alignSelf: 'center', width: 44, height: 6, borderRadius: 3, backgroundColor: 'rgba(18,18,18,0.15)', marginTop: 10, marginBottom: 4 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: GUTTER + 4, paddingTop: 8, paddingBottom: 12 },
   close: { padding: 6, marginRight: -6, borderRadius: radius.md },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, backgroundColor: colors.card, paddingHorizontal: GUTTER + 4, paddingTop: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, padding: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, padding: 16 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.white, padding: 14 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.ink3, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.paper },

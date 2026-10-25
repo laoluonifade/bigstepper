@@ -421,21 +421,21 @@ function EditClubSheet({ club, onClose }: { club: Club; onClose: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  hero: { borderRadius: 24, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  hero: { borderRadius: 24, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   heroLogo: { marginTop: -40, alignSelf: 'flex-start', borderRadius: radius.xl + 3, borderWidth: 3, borderColor: colors.card },
   invitePill: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 46, borderRadius: radius.full, backgroundColor: colors.inkWash },
-  square: { width: 46, height: 46, borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  square: { width: 46, height: 46, borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 12, paddingVertical: 6 },
   people: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 },
-  dashboard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'rgba(228,255,58,0.6)', paddingHorizontal: 16, paddingVertical: 12 },
+  dashboard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: 'rgba(228,255,58,0.6)', paddingHorizontal: 16, paddingVertical: 12 },
   tabs: { marginTop: 32, flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, marginHorizontal: -GUTTER, paddingHorizontal: GUTTER },
   tab: { paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  list: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  list: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   past: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
   member: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
   role: { borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 2 },
-  panel: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 20 },
+  panel: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 20 },
   code: { marginTop: 12, borderRadius: radius.lg, backgroundColor: 'rgba(18,18,18,0.05)', paddingHorizontal: 12, paddingVertical: 8, fontFamily: mono, fontSize: 12, color: colors.ink2 },
-  swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: colors.edge, alignItems: 'center', justifyContent: 'center' },
   lock: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 12 },
 });

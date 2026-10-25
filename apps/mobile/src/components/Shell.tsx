@@ -80,6 +80,6 @@ function PendingPaymentsBar() {
 
 const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: GUTTER, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, backgroundColor: colors.paper },
-  liveBar: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24 },
-  paymentBar: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.warnWash, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24 },
+  liveBar: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24 },
+  paymentBar: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.warnWash, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24 },
 });

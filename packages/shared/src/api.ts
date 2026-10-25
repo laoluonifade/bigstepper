@@ -49,6 +49,8 @@ interface ClientConfig {
   clearToken: () => void;
   /** A stable id for this install, sent so the API can spot several accounts on one device. */
   getDeviceId?: () => string | null;
+  /** Sends requests that carry files (FormData), where the platform's `fetch` can't. Defaults to `fetch`. */
+  uploadFetch?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
 /** One fetch wrapper for web and mobile, so both handle errors and expired sessions the same way. */
@@ -62,7 +64,7 @@ export function createApiClient(config: ClientConfig) {
     const form = typeof FormData !== 'undefined' && options.body instanceof FormData ? options.body : null;
     let response: Response;
     try {
-      response = await fetch(`${baseUrl}${path}`, {
+      response = await (form && config.uploadFetch ? config.uploadFetch : fetch)(`${baseUrl}${path}`, {
         method: options.method ?? 'GET',
         signal: options.signal,
         headers: {
@@ -75,7 +77,9 @@ export function createApiClient(config: ClientConfig) {
       });
     } catch (error) {
       if ((error as { name?: string } | null)?.name === 'AbortError') throw error;
-      throw new ApiError(0, FALLBACK_MESSAGES[0]);
+      // What actually failed (a dropped connection, an unreadable upload file…), for debugging; the
+      // runner just sees the friendly message.
+      throw Object.assign(new ApiError(0, FALLBACK_MESSAGES[0]), { cause: error, path: `${options.method ?? 'GET'} ${path}` });
     }
 
     if (!response.ok) {

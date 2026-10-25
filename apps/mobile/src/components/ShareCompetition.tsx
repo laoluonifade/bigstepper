@@ -68,7 +68,7 @@ function CompetitionCard({ data, format, avatars }: { data: CompetitionCardData;
             <View style={[styles.medal, { width: 20 * k, height: 20 * k, backgroundColor: row.rank === 1 ? '#FFD34E' : row.rank === 2 ? '#C9CFD6' : row.rank === 3 ? '#E0A06A' : 'rgba(18,18,18,0.08)' }]}>
               <Text style={{ fontFamily: fontFamily('black'), fontSize: 10.5 * k, color: colors.ink }}>{row.rank}</Text>
             </View>
-            <View style={{ borderRadius: 30, borderWidth: 1, borderColor: colors.ink }}><Avatar name={person?.name ?? row.name} src={person?.url} avatarStyle={person?.style} size={story ? 23 : 18} round /></View>
+            <View style={{ borderRadius: 30, borderWidth: 1, borderColor: colors.edge }}><Avatar name={person?.name ?? row.name} src={person?.url} avatarStyle={person?.style} size={story ? 23 : 18} round /></View>
             <Text style={[styles.boardName, { fontSize: 12 * k }]} numberOfLines={1}>{mine ? 'You' : row.name.split(' ')[0]}</Text>
             <Text style={[styles.boardName, { fontSize: 12 * k, flex: 0 }]}>{row.score}</Text>
           </View>;
@@ -147,8 +147,8 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
 }
 
 const styles = StyleSheet.create({
-  format: { flex: 1, borderRadius: 12, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 8 },
-  preview: { borderRadius: 12, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.ink, overflow: 'hidden' },
+  format: { flex: 1, borderRadius: 12, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 8 },
+  preview: { borderRadius: 12, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.ink, overflow: 'hidden' },
   callout: { borderRadius: 999, backgroundColor: colors.volt, paddingHorizontal: 11, justifyContent: 'center' },
   calloutText: { fontFamily: fontFamily('black', 'wide'), color: colors.ink },
   kind: { fontFamily: fontFamily('extrabold', 'wide'), color: 'rgba(242,239,232,0.65)' },
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
   boardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 8, paddingHorizontal: 8 },
   medal: { borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   boardName: { flex: 1, fontFamily: fontFamily('extrabold'), color: colors.ink },
-  cta: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.volt, paddingHorizontal: 16 },
+  cta: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.volt, paddingHorizontal: 16 },
   ctaLabel: { fontFamily: fontFamily('black', 'wide'), color: colors.ink },
   code: { fontFamily: mono.replace('Regular', 'SemiBold'), color: colors.ink, marginTop: 2 },
   arrow: { borderRadius: 40, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },

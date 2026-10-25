@@ -15,7 +15,7 @@ export function PickerField({ label, optional, hint, error, value, placeholder, 
   return <View>
     {label ? <FieldLabel label={label} optional={optional} /> : null}
     <Pressable onPress={() => { haptic(); onPress(); }} accessibilityRole="button" accessibilityLabel={label ?? placeholder} accessibilityHint={value ?? undefined}
-      style={({ pressed }) => [styles.field, error ? { borderColor: colors.bad } : null, pressed && { borderColor: colors.ink }]}>
+      style={({ pressed }) => [styles.field, error ? { borderColor: colors.bad } : null, pressed && { borderColor: colors.edge }]}>
       {leading}
       <Text numberOfLines={1} style={[styles.value, !value && { color: colors.ink3 }]}>{value ?? placeholder}</Text>
       <ChevronDownIcon size={16} color={colors.ink3} />
@@ -95,7 +95,7 @@ export function PhoneField({ label, optional, hint, value, onChange, defaultCoun
 
   return <View>
     {label ? <FieldLabel label={label} optional={optional} /> : null}
-    <View style={[styles.field, { paddingHorizontal: 0 }, focused && { borderColor: colors.ink }]}>
+    <View style={[styles.field, { paddingHorizontal: 0 }, focused && { borderColor: colors.edge }]}>
       <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`Country code ${countryName(country)} +${dialCode(country)}`}
         style={({ pressed }) => [styles.dial, pressed && { backgroundColor: colors.inkWash }]}>
         <Text style={{ fontSize: 19 }}>{flag(country)}</Text>
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   field: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.white, paddingHorizontal: 14, overflow: 'hidden' },
   value: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
   dial: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'stretch', paddingHorizontal: 12, borderRightWidth: 1.5, borderRightColor: colors.line },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.white, paddingHorizontal: 12 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.white, paddingHorizontal: 12 },
   searchInput: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
   country: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: GUTTER + 4, paddingVertical: 12 },
 });

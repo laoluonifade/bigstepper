@@ -150,6 +150,14 @@ export class CompetitionTable {
   @Column({ type: 'varchar', length: 600, nullable: true })
   prizeEligibilityNote: string | null;
 
+  /** The host's own banner image, shown instead of the generated card. Optional. */
+  @Column({ type: 'varchar', length: 600, nullable: true })
+  bannerUrl: string | null;
+
+  /** Deleted by its host: cancelled and hidden everywhere, its link included. */
+  @Column({ type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
+
   /** Days a winner has to send delivery details before the prize passes to the next eligible finisher. */
   @Column({ type: 'integer', default: 14 })
   prizeClaimDays: number;

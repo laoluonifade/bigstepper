@@ -43,6 +43,6 @@ export default function WelcomeScreen() {
 
 const styles = StyleSheet.create({
   empty: { borderRadius: radius['2xl'], borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.3)', paddingHorizontal: 16, paddingVertical: 32 },
-  own: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12 },
+  own: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12 },
   start: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 14, paddingVertical: 8 },
 });

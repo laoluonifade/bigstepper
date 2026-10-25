@@ -266,7 +266,7 @@ function StreakDots({ activities, now }: { activities: Activity[]; now: number }
   }, [activities, now]);
   return <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }} accessibilityLabel="Last seven days">
     {days.map((day, index) => <View key={index} style={{ alignItems: 'center', gap: 4 }}>
-      <View style={[styles.streakDay, day.moved ? { backgroundColor: colors.track } : day.today ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.ink } : { backgroundColor: colors.inkWash }]}>
+      <View style={[styles.streakDay, day.moved ? { backgroundColor: colors.track } : day.today ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.edge } : { backgroundColor: colors.inkWash }]}>
         <FlameIcon size={14} color={day.moved ? colors.paper : day.today ? colors.inkFaint : colors.inkFaint} />
       </View>
       <Txt size={10} weight="bold" color={day.today ? 'ink' : 'ink3'}>{day.label}</Txt>
@@ -289,7 +289,7 @@ function LeagueSummary({ unit }: { unit: Unit }) {
     {leagues.isLoading || mine.isLoading ? <Skeleton style={{ height: 96 }} />
       : !active ? <EmptyState title="No active season">The next league season hasn’t started yet.</EmptyState>
         : !membership ? <EmptyState title={active.name}>You’re not placed in this season’s league yet.</EmptyState>
-          : <Pressable onPress={() => router.push(`/leagues/${active.id}`)} style={({ pressed }) => [styles.league, pressed && { borderColor: colors.ink }]} accessibilityRole="button">
+          : <Pressable onPress={() => router.push(`/leagues/${active.id}`)} style={({ pressed }) => [styles.league, pressed && { borderColor: colors.edge }]} accessibilityRole="button">
             <DivisionBadge division={division} size="lg" />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Eyebrow>{active.name}</Eyebrow>
@@ -305,7 +305,7 @@ function LeagueSummary({ unit }: { unit: Unit }) {
 
 const styles = StyleSheet.create({
   trainingHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 48, marginBottom: 16 },
-  goal: { height: 36, justifyContent: 'center', borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 16 },
+  goal: { height: 36, justifyContent: 'center', borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 16 },
   totals: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16, marginTop: 20 },
   total: { width: '50%', paddingRight: 12 },
   streakDay: { width: 28, height: 28, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },

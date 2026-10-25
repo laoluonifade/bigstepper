@@ -1,6 +1,7 @@
 import { createApiClient } from '@jump/shared/api';
 import { Storage } from './kv';
 import { clearToken, getToken } from './token';
+import { xhrFetch } from './xhr';
 
 export { ApiError, isApiError, normalizeErrorMessage } from '@jump/shared/api';
 
@@ -23,6 +24,7 @@ const client = createApiClient({
   getToken,
   clearToken,
   getDeviceId,
+  uploadFetch: xhrFetch,
 });
 
 export const API_URL = client.baseUrl;

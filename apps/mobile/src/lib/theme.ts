@@ -34,6 +34,9 @@ const LIGHT = {
   inkWash: 'rgba(18,18,18,0.06)',
   inkFaint: 'rgba(18,18,18,0.10)',
   scrim: 'rgba(18,18,18,0.5)',
+  /** Strong outlines (cards, buttons, tags) and the hard offset shadow under them. */
+  edge: '#121212',
+  shadow: '#121212',
 };
 
 export type Palette = typeof LIGHT;
@@ -71,6 +74,10 @@ const DARK: Palette = {
   inkWash: 'rgba(242,239,232,0.07)',
   inkFaint: 'rgba(242,239,232,0.12)',
   scrim: 'rgba(0,0,0,0.6)',
+  // A cream outline and a cream offset shadow read as a glaring second layer on a dark page, so dark
+  // mode keeps the shapes but draws them quietly.
+  edge: 'rgba(242,239,232,0.2)',
+  shadow: '#2A2A2E',
 };
 
 export type ThemePreference = 'system' | 'light' | 'dark';

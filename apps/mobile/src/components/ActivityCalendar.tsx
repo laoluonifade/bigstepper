@@ -60,7 +60,7 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
           const moved = (day?.activities ?? 0) > 0;
           const value = metric === 'steps' ? (day?.steps ?? 0) : Number(day?.distanceMetres ?? 0);
           return <View key={date} style={styles.cell}>
-            <View style={[styles.day, moved ? { backgroundColor: colors.track } : { backgroundColor: 'rgba(18,18,18,0.035)' }, date === todayKey && { borderWidth: 2, borderColor: colors.ink }]}
+            <View style={[styles.day, moved ? { backgroundColor: colors.track } : { backgroundColor: 'rgba(18,18,18,0.035)' }, date === todayKey && { borderWidth: 2, borderColor: colors.edge }]}
               accessibilityLabel={moved ? `${date}: ${day!.activities} ${day!.activities === 1 ? 'activity' : 'activities'}, ${metric === 'steps' ? `${value} steps` : formatDistance(value, unit)}` : `${date}: rest day`}>
               <Text style={[styles.dayNumber, moved ? { color: colors.paper } : { color: colors.ink3, fontFamily: fontFamily('medium') }]}>{dayNumber}</Text>
               {moved && <Text numberOfLines={1} style={styles.dayValue}>{value > 0 ? (metric === 'steps' ? compact(value) : formatDistanceNumber(value, unit)) : '•'}</Text>}
@@ -86,5 +86,5 @@ const styles = StyleSheet.create({
   day: { width: '100%', aspectRatio: 1, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 1 },
   dayNumber: { fontFamily: fontFamily('bold'), fontSize: 12, fontVariant: ['tabular-nums'] },
   dayValue: { fontFamily: fontFamily('semibold'), fontSize: 9.5, color: colors.paper, opacity: 0.9, fontVariant: ['tabular-nums'] },
-  monthButton: { width: 36, height: 36, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  monthButton: { width: 36, height: 36, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
 });

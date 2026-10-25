@@ -121,7 +121,7 @@ export function PageHeader({
 /** A green light that breathes, so a board that's live looks it. */
 export function LiveTag({ label = 'Live' }: { label?: string }) {
   return (
-    <span className="tag shrink-0 gap-2 border-ok/50 bg-ok-wash text-ok">
+    <span className="inline-flex shrink-0 items-center gap-2 self-center text-[10.5px] font-bold uppercase tracking-[0.08em] text-ok">
       <span className="relative flex h-2 w-2">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22C55E] opacity-60" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-[#22C55E]" />

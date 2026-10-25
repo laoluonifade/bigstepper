@@ -112,7 +112,7 @@ function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerif
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radius.md, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  card: { borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottomWidth: 2, borderBottomColor: colors.ink, paddingHorizontal: 20, paddingVertical: 12 },
   facts: { flexDirection: 'row', gap: 16, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 },
 });

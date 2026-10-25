@@ -47,7 +47,7 @@ export function PrivacyChoice({ value, onChange }: { value: 'open' | 'invite'; o
     <View style={{ flexDirection: 'row', gap: 8 }} accessibilityRole="radiogroup">
       {([['open', 'Open', 'Anyone with the page can join.'], ['invite', 'Invite-only', 'Only people with your invite link.']] as const).map(([option, title, body]) => {
         const active = value === option;
-        return <Pressable key={option} onPress={() => { haptic(); onChange(option); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.choice, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
+        return <Pressable key={option} onPress={() => { haptic(); onChange(option); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.choice, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
           <Txt size={13} weight="bold" color={active ? 'paper' : 'ink'}>{title}</Txt>
           <Txt size={12} leading={1.35} style={{ marginTop: 2, color: active ? colors.onInkMuted : colors.ink2 }}>{body}</Txt>
         </Pressable>;
@@ -58,6 +58,6 @@ export function PrivacyChoice({ value, onChange }: { value: 'open' | 'invite'; o
 
 const styles = StyleSheet.create({
   choice: { flex: 1, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 12 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 12 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 12 },
   accent: { width: 6, height: 48, borderRadius: 3 },
 });

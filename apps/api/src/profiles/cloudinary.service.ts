@@ -39,6 +39,16 @@ export class CloudinaryService implements OnModuleInit {
     return result.secure_url.replace('/image/upload/', '/image/upload/c_pad,b_white,w_320,h_320,q_auto,f_auto/');
   }
 
+  /** A competition's banner: one per competition, overwritten in place, cropped to 2:1. */
+  async uploadCompetitionBanner(tableId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
+    const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/competitions/${tableId}/banner`, overwrite: 'true', invalidate: 'true' }, file);
+    return result.secure_url.replace('/image/upload/', '/image/upload/c_fill,g_auto,w_1600,h_800,q_auto,f_auto/');
+  }
+
+  async removeCompetitionBanner(tableId: string) {
+    await this.call('destroy', { public_id: `jump/competitions/${tableId}/banner`, invalidate: 'true' });
+  }
+
   async removeClubLogo(clubId: string) {
     await this.call('destroy', { public_id: `jump/clubs/${clubId}/logo`, invalidate: 'true' });
   }

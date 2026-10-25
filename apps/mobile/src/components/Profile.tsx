@@ -211,12 +211,12 @@ export function ConnectionList({ username, direction }: { username: string; dire
 const styles = StyleSheet.create({
   // Volt with a dark icon in both themes, ringed in the page colour so it lifts off the photo.
   camera: { position: 'absolute', right: -6, bottom: -6, width: 32, height: 32, borderRadius: 16, borderWidth: 2.5, borderColor: colors.paper, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
-  hero: { borderRadius: radius.md, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.card, padding: 20 },
+  hero: { borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, padding: 20 },
   count: { flex: 1, alignItems: 'center', borderRadius: radius.md, paddingVertical: 4 },
   stats: { marginTop: 20, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper },
   split: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.inkFaint },
   tabs: { flexDirection: 'row', borderBottomWidth: 1.5, borderBottomColor: colors.line },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 3, borderBottomColor: 'transparent', marginBottom: -1.5 },
-  square: { width: 44, height: 36, borderRadius: radius.base, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  square: { width: 44, height: 36, borderRadius: radius.base, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   connection: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, paddingVertical: 12 },
 });

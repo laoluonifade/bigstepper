@@ -72,6 +72,6 @@ function CreateClubSheet({ open, onOpenChange }: { open: boolean; onOpenChange: 
 }
 
 const styles = StyleSheet.create({
-  lookup: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 12, marginTop: 32 },
+  lookup: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12, marginTop: 32 },
   lookupInput: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
 });

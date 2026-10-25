@@ -182,6 +182,8 @@ export interface CompetitionTable {
   communityId: string | null;
   platformFeeBps: number;
   creatorCommissionBps: number;
+  /** The host's own banner image, shown instead of the generated card. */
+  bannerUrl?: string | null;
   creatorId: string;
   creator?: { id: string; displayName: string | null; username?: string | null; avatarUrl?: string | null; avatarStyle?: AvatarStyle; verified?: boolean } | null;
   /** Runners who have joined (list and detail responses). */

@@ -11,13 +11,13 @@ import { CameraIcon, CheckIcon, LinkIcon, PlusIcon, ShareIcon } from './icons';
 import { Avatar, cx, EmptyState, ErrorNotice, Skeleton, VerifiedTick } from './ui';
 
 /**
- * Shrinks a photo to at most 800px before upload (phone photos are 3–12 MB). Falls back to the
- * original file when the browser can't decode it (e.g. HEIC on desktop Chrome) — the API accepts both.
+ * Shrinks a photo to at most `maxSide` (800px) before upload (phone photos are 3–12 MB). Falls back to
+ * the original file when the browser can't decode it (e.g. HEIC on desktop Chrome) — the API accepts both.
  */
-export async function prepare(file: File): Promise<Blob> {
+export async function prepare(file: File, maxSide = 800): Promise<Blob> {
   try {
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 800 / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);

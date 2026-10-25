@@ -15,7 +15,9 @@ const emit = () => listeners.forEach((listener) => listener());
 export function ask(input: { title: string; message?: string; actions: DialogAction[]; cancelLabel?: string }): Promise<number | null> {
   current?.resolve(null);
   return new Promise((resolve) => {
-    current = { id: nextId++, cancelLabel: 'Cancel', ...input, resolve };
+    // `?? 'Cancel'`, not a default before the spread: confirm() passes `cancelLabel: undefined`, which
+    // would otherwise blank the button.
+    current = { id: nextId++, ...input, cancelLabel: input.cancelLabel ?? 'Cancel', resolve };
     emit();
   });
 }

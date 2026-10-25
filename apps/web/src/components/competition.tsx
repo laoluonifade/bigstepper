@@ -158,7 +158,9 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
     },
   });
 
-  return <article className="group relative rounded-2xl border-[1.5px] border-ink bg-card px-4 pb-3.5 pt-4 transition-shadow hover:shadow-hard-sm">
+  return <article className="group relative overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card px-4 pb-3.5 pt-4 transition-shadow hover:shadow-hard-sm">
+    {/* The host's banner, when there is one: a slim strip across the top; the card below is unchanged. */}
+    {table.bannerUrl && <img src={table.bannerUrl} alt="" loading="lazy" className="-mx-4 -mt-4 mb-3.5 block aspect-[3/1] w-[calc(100%+2rem)] max-w-none bg-ink/5 object-cover" />}
     <Link to="/competitions/$code" params={{ code: table.code }} className="absolute inset-0 rounded-2xl" aria-label={`Open ${table.title}`} />
 
     <div className="flex items-start gap-3">

@@ -11,6 +11,7 @@ import { TableRegistration } from './table-registration.entity';
 import { ACTIVITY_RULES, METRICS, ScoringMethod } from './competition-rules';
 import { scoringColumns } from './scoring-columns';
 import { CloudinaryService } from '../profiles/cloudinary.service';
+import { AVATAR_TYPES } from '../profiles/profiles.service';
 import { announceToFollowers, assertClubCanHost, assertCountryEligible, canManageTable, checkClubPrizes, nextStart, prizeColumns, savePrizes, templateOf, UNPUBLISHED } from './club-challenges';
 import { RANK_ORDER } from './scoring-engine';
 import { CreateCreatorPaidChallengeDto } from '../admin/paid-table.dto';
@@ -551,6 +552,87 @@ export class TablesService {
    * The host tidies a competition away: off every list (theirs included, except Archived), still at
    * its link. Only once it's over, or if nobody else ever joined. Undo by unarchiving.
    */
+  /**
+   * Why the host can't delete this competition, or null when they can. Free competitions always can;
+   * any other only while no money is attached to it: no payment (an entry fee, prize funding or a
+   * contribution, even one still being confirmed), no entry paid from someone's balance, and no prize
+   * awarded.
+   */
+  async deletionBlocker(table: CompetitionTable, manager: EntityManager = this.dataSource.manager): Promise<string | null> {
+    if (table.type === 'free') return null;
+    const [row] = await manager.query(
+      `SELECT
+         EXISTS (SELECT 1 FROM "payment_intents" WHERE "tableId"=$1 AND "status" NOT IN ('INITIATED','FAILED')) AS "paid",
+         EXISTS (SELECT 1 FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2) AS "entered",
+         EXISTS (SELECT 1 FROM "prize_awards" WHERE "tableId"=$1) AS "awarded"`,
+      [table.id, table.creatorId],
+    ) as Array<{ paid: boolean; entered: boolean; awarded: boolean }>;
+    if (row.paid || row.awarded || (table.type === 'paid' && row.entered)) {
+      return 'Money has been paid into this competition, so it can’t be deleted. You can end or archive it instead, or contact Jump support.';
+    }
+    return null;
+  }
+
+  /** For the Delete button: whether it can go, and if not, why. */
+  async deletionCheck(tableId: string, userId: string) {
+    const table = await this.tables.findOne({ where: { id: tableId } });
+    if (!table || table.deletedAt) throw new NotFoundException('Competition not found');
+    if (table.creatorId !== userId && !(await canManageTable(this.dataSource.manager, table, userId))) throw new ForbiddenException('Only the host can delete this competition');
+    const reason = await this.deletionBlocker(table);
+    return { canDelete: !reason, reason };
+  }
+
+  async remove(tableId: string, userId: string) {
+    const entrants = await this.dataSource.transaction(async (manager) => {
+      const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
+      if (!table || table.deletedAt) throw new NotFoundException('Competition not found');
+      if (table.creatorId !== userId && !(await canManageTable(manager, table, userId))) throw new ForbiddenException('Only the host can delete this competition');
+      const reason = await this.deletionBlocker(table, manager);
+      if (reason) throw new ConflictException(reason);
+      const others = await manager.query(`SELECT "userId" FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`, [tableId, userId]) as Array<{ userId: string }>;
+      table.status = 'CANCELLED';
+      table.deletedAt = new Date();
+      await manager.save(table);
+      await manager.query(`UPDATE "challenge_invitations" SET "status"='DECLINED',"respondedAt"=now() WHERE "tableId"=$1 AND "status"='PENDING'`, [tableId]);
+      return { title: table.title, others: others.map((row) => row.userId) };
+    });
+    // Everyone who was in it hears why it vanished from their list.
+    if (entrants.others.length) {
+      await this.dataSource.query(
+        `INSERT INTO "notifications" ("userId","type","title","body","link")
+         SELECT unnest($1::uuid[]),'COMPETITION_DELETED',$2,'The host deleted it. Your activities still count everywhere else.','/competitions'`,
+        [entrants.others, `${entrants.title} was deleted`],
+      ).catch(() => undefined);
+    }
+    return { deleted: true };
+  }
+
+  /** The host (or club managers) set or remove the competition's banner image. */
+  async setBanner(tableId: string, userId: string, file: { buffer: Buffer; mimetype: string } | undefined) {
+    const table = await this.editableTable(tableId, userId);
+    if (!file) throw new BadRequestException('Choose an image to upload');
+    if (!AVATAR_TYPES.includes(file.mimetype)) throw new BadRequestException('Use a JPG, PNG, WebP or HEIC image');
+    table.bannerUrl = await this.cloudinary.uploadCompetitionBanner(table.id, file);
+    await this.tables.save(table);
+    return { bannerUrl: table.bannerUrl };
+  }
+
+  async removeBanner(tableId: string, userId: string) {
+    const table = await this.editableTable(tableId, userId);
+    if (table.bannerUrl) await this.cloudinary.removeCompetitionBanner(table.id).catch(() => undefined);
+    table.bannerUrl = null;
+    await this.tables.save(table);
+    return { bannerUrl: null };
+  }
+
+  private async editableTable(tableId: string, userId: string) {
+    const table = await this.tables.findOne({ where: { id: tableId } });
+    if (!table) throw new NotFoundException('Competition not found');
+    if (!(await canManageTable(this.dataSource.manager, table, userId))) throw new ForbiddenException('Only the host or the club’s managers can edit this competition');
+    if (table.status === 'SETTLED' || table.status === 'CANCELLED') throw new ConflictException('This competition is finished and can’t be changed');
+    return table;
+  }
+
   async archive(tableId: string, userId: string, archived: boolean) {
     const table = await this.tables.findOne({ where: { id: tableId } });
     if (!table) throw new NotFoundException('Competition not found');
@@ -606,7 +688,7 @@ export class TablesService {
       where: { code: code.toUpperCase() },
       relations: { creator: true },
     });
-    if (!table) throw new NotFoundException('Competition not found');
+    if (!table || table.deletedAt) throw new NotFoundException('Competition not found');
     const manageable = Boolean(viewerId && await canManageTable(this.dataSource.manager, table, viewerId));
     if (UNPUBLISHED.includes(table.status) && !manageable) throw new NotFoundException('Competition not found');
     const [presented] = await this.present([table]);

@@ -78,7 +78,7 @@ export function CompetitionSearch() {
     </View>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
       {CHIPS.map((chip) => <Pressable key={chip.label} onPress={() => router.navigate({ pathname: '/competitions', params: chip.activity === 'all' ? {} : { activity: chip.activity } })}
-        style={({ pressed }) => [styles.chip, pressed && { borderColor: colors.ink }]}>
+        style={({ pressed }) => [styles.chip, pressed && { borderColor: colors.edge }]}>
         <Txt size={13} weight="semibold" color="ink2">{chip.label}</Txt>
       </Pressable>)}
     </View>
@@ -377,21 +377,21 @@ export function ChallengeSomeone() {
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  card: { borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   sectionHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 10 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 14 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 14 },
   searchInput: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
   chip: { height: 32, justifyContent: 'center', borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14 },
   raceRow: { paddingHorizontal: 14, paddingVertical: 12 },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   miniTrack: { marginLeft: 48, marginTop: 8, height: 4, borderRadius: 2, backgroundColor: 'rgba(18,18,18,0.07)', overflow: 'hidden' },
   compact: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
-  smallButton: { height: 32, justifyContent: 'center', borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.ink, paddingHorizontal: 12 },
+  smallButton: { height: 32, justifyContent: 'center', borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 12 },
   darkButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.base, backgroundColor: colors.ink },
   plus: { width: 40, height: 40, borderRadius: radius.lg, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
   hero: { borderRadius: 24, backgroundColor: brand.ink, padding: 20, overflow: 'hidden' },
   heroKicker: { fontFamily: fontFamily('bold'), fontSize: 11, letterSpacing: 1.54, textTransform: 'uppercase', color: colors.volt },
   lane: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   heroButton: { marginTop: 20, height: 48, borderRadius: radius.full, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
-  who: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  who: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
 });

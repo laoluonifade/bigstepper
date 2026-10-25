@@ -67,7 +67,7 @@ export default function CompetitionsScreen() {
       </Pressable>
     </View>
     <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-      {([['Leaderboard', '/leaderboard'], ['Clubs', '/clubs'], ['Prizes', '/prizes']] as const).map(([label, href]) => <Pressable key={href} onPress={() => router.push(href)} style={({ pressed }) => [styles.subNav, pressed && { borderColor: colors.ink }]} accessibilityRole="link">
+      {([['Leaderboard', '/leaderboard'], ['Clubs', '/clubs'], ['Prizes', '/prizes']] as const).map(([label, href]) => <Pressable key={href} onPress={() => router.push(href)} style={({ pressed }) => [styles.subNav, pressed && { borderColor: colors.edge }]} accessibilityRole="link">
         <Txt size={13} weight="semibold">{label}</Txt><ArrowRightIcon size={13} />
       </Pressable>)}
     </View>
@@ -80,7 +80,7 @@ export default function CompetitionsScreen() {
     </Pressable>
 
     <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
-    {drafts.length > 0 && <Pressable onPress={() => setDraftsOpen(true)} style={({ pressed }) => [styles.drafts, pressed && { borderColor: colors.ink }]} accessibilityRole="button">
+    {drafts.length > 0 && <Pressable onPress={() => setDraftsOpen(true)} style={({ pressed }) => [styles.drafts, pressed && { borderColor: colors.edge }]} accessibilityRole="button">
       <View style={styles.draftCount}><Txt size={12} weight="bold" color="paper" num>{drafts.length}</Txt></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Txt size={14} weight="semibold">{drafts.length === 1 ? 'Draft' : 'Drafts'} not live yet</Txt>
@@ -156,7 +156,7 @@ export default function CompetitionsScreen() {
 
 function FilterOption({ label, active, onPress, width }: { label: string; active: boolean; onPress: () => void; width: `${number}%` }) {
   return <Pressable onPress={() => { haptic(); onPress(); }} accessibilityRole="radio" accessibilityState={{ checked: active }}
-    style={[styles.filterOption, { width }, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
+    style={[styles.filterOption, { width }, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
     <Txt size={14} weight="semibold" color={active ? 'paper' : 'ink'} numberOfLines={1}>{label}</Txt>
   </Pressable>;
 }
@@ -199,17 +199,17 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   create: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 16 },
   subNav: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 32, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 12 },
-  record: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'rgba(228,255,58,0.6)', paddingVertical: 8, paddingLeft: 8, paddingRight: 12, marginBottom: 16 },
-  recordIcon: { width: 28, height: 28, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.track, alignItems: 'center', justifyContent: 'center' },
+  record: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: 'rgba(228,255,58,0.6)', paddingVertical: 8, paddingLeft: 8, paddingRight: 12, marginBottom: 16 },
+  recordIcon: { width: 28, height: 28, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.track, alignItems: 'center', justifyContent: 'center' },
   drafts: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.4)', paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
   draftCount: { minWidth: 28, height: 28, borderRadius: 14, backgroundColor: colors.ink, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 14 },
+  search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 14 },
   searchInput: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
-  filterButton: { width: 46, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  filterButton: { width: 46, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   filterBadge: { position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: colors.paper, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   tabs: { flexDirection: 'row', marginTop: 16, borderRadius: radius.xl, backgroundColor: colors.inkWash, padding: 4 },
   tab: { flex: 1, height: 36, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
-  tabActive: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.ink },
+  tabActive: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.edge },
   tabText: { fontFamily: fontFamily('semibold'), fontSize: 13, color: colors.ink2 },
   pill: { height: 32, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 14, justifyContent: 'center' },
   activeFilter: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 28, borderRadius: radius.full, backgroundColor: 'rgba(18,18,18,0.07)', paddingHorizontal: 10 },

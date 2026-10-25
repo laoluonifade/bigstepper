@@ -36,7 +36,7 @@ export default function LeagueScreen() {
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -GUTTER, marginBottom: 20, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: GUTTER }} accessibilityRole="tablist">
       {divisions.map((division) => {
         const active = division.id === divisionId;
-        return <Pressable key={division.id} onPress={() => { haptic(); setPicked(division.id); }} accessibilityRole="tab" accessibilityState={{ selected: active }} style={[styles.division, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
+        return <Pressable key={division.id} onPress={() => { haptic(); setPicked(division.id); }} accessibilityRole="tab" accessibilityState={{ selected: active }} style={[styles.division, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
           <DivisionBadge division={division} />
           <Txt size={13} weight="bold" color={active ? 'paper' : 'ink'}>{division.name}</Txt>
           {division.id === myDivisionId ? <Txt size={10} weight="bold" upper tracking={0.1} color="volt" style={!active ? { color: colors.trackDeep } : undefined}>You</Txt> : null}

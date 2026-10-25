@@ -2,29 +2,31 @@ import { canEnter, challengeHeadline, competitionPhase, prizeSplit } from '@jump
 import { joinConflictCopy } from '@jump/shared/copy';
 import { countryName } from '@jump/shared/countries';
 import { formatCountdown, formatDate, formatDateTime, formatDistance, formatMoney, formatNairaInput, fromLocalInput, nairaInputToKobo, ordinal, toLocalInput } from '@jump/shared/format';
-import { activityLabel, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '@jump/shared/scoring';
+import { activityLabel, formatGap, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '@jump/shared/scoring';
 import type { CheckoutResponse, CompetitionTable, StandingRow, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { PrizeTerms } from '@/components/ClubPrizes';
 import { ChallengeMark, PhaseTag, TypeTag, cardTheme } from '@/components/competition';
+import { ActionMenu, type MenuAction } from '@/components/ActionMenu';
 import { DateTimePicker } from '@/components/DateTimePicker';
-import { CheckIcon, EditIcon, LockIcon, ShareIcon } from '@/components/icons';
-import { Leaderboard, RankBadge, type LeaderboardRow } from '@/components/Leaderboard';
+import { ChevronRightIcon, EditIcon, LockIcon, ShareIcon } from '@/components/icons';
+import { Leaderboard, type LeaderboardRow } from '@/components/Leaderboard';
 import { ShareCompetitionSheet } from '@/components/ShareCompetition';
 import { Sheet } from '@/components/Sheet';
-import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, haptic, HardShadow, LiveTag, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow } from '@/components/ui';
+import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, Footer, haptic, HardShadow, LiveTag, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow } from '@/components/ui';
 import { api, isApiError, patch, post, WEB_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { openCheckout } from '@/lib/checkout';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '@/lib/payments';
 import { keys, useFinalResult, useStandings, useUnit, useWallet } from '@/lib/queries';
-import { colors, display, mono, radius, score, wideLabel } from '@/lib/theme';
+import { brand, colors, display, fontFamily, mono, radius, scheme, score, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { pickPhoto, uploadPhoto } from '@/lib/upload';
 import { confirm } from '@/lib/dialog';
 import { AccentSurface } from '@/lib/surface';
 
@@ -34,11 +36,6 @@ function otherMetrics(row: { creditedDistanceMetres: number; creditedSteps: numb
   const km = shown !== 'distance' && row.creditedDistanceMetres > 0 ? formatDistance(row.creditedDistanceMetres, unit) : null;
   const steps = shown !== 'steps' && table.challengeType !== 'CYCLING' && row.creditedSteps > 0 ? `${row.creditedSteps.toLocaleString('en-GB')} steps` : null;
   return [km, steps].filter(Boolean).join(' · ') || null;
-}
-
-function scoreText(row: { score: number | null }, table: CompetitionTable, unit: Unit) {
-  if (!hasScored(table.scoringMethod, row.score)) return metricOf(table.scoringMethod).aggregate === 'fastest' ? 'Not finished' : 'No score yet';
-  return formatScore(table, row.score, unit) ?? '';
 }
 
 /** Settled boards from before scores were stored: the old per-method totals. */
@@ -68,6 +65,20 @@ export default function CompetitionDetailScreen() {
     enabled: Boolean(table.data?.id && user),
   });
   const me = standings.data?.find((row) => row.userId === user?.id);
+  const queryClient = useQueryClient();
+  const leave = useMutation({
+    mutationFn: () => post(`/tables/${table.data!.id}/leave`),
+    async onSuccess() {
+      toast({ tone: 'ok', message: `You left ${table.data!.title}.` });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: keys.standings(table.data!.id) }),
+        queryClient.invalidateQueries({ queryKey: ['table-registration', table.data!.id, user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] }),
+        queryClient.invalidateQueries({ queryKey: keys.table(table.data!.code) }),
+      ]);
+    },
+    onError: (error) => toast({ tone: 'bad', message: error.message }),
+  });
   const [showAll, setShowAll] = useState(false);
 
   const rows: LeaderboardRow[] = useMemo(() => {
@@ -120,8 +131,19 @@ export default function CompetitionDetailScreen() {
   const unpublished = t.status === 'DRAFT' || t.status === 'SCHEDULED';
   const hostName = t.creator?.displayName ?? 'A Jump runner';
   const entrants = Math.max(standings.data?.length ?? 0, t.entrantCount ?? 0);
+  const canLeave = Boolean(registration.data?.joined) && t.type !== 'paid' && t.status !== 'SETTLED' && (!t.scoringClosesAt || new Date(t.scoringClosesAt).getTime() > now);
+  const menu: MenuAction[] = [
+    ...(canLeave ? [{
+      label: 'Leave competition', danger: true,
+      run: () => void confirm({ title: 'Leave this competition?', message: 'Your place and score here are removed. You can rejoin while entry is open.', cancelLabel: 'Stay in', confirmLabel: 'Leave', destructive: true })
+        .then((ok) => { if (ok) leave.mutate(); }),
+    }] : []),
+  ];
 
-  return <Screen refreshing={table.isRefetching} onRefresh={refresh}>
+  // While you're in and it's live, where you stand stays pinned at the bottom, however long the board.
+  const racing = Boolean(registration.data?.joined) && ['open', 'entry-closed'].includes(competitionPhase(t, now));
+  return <Screen refreshing={table.isRefetching} onRefresh={refresh}
+    footer={racing ? <Footer style={{ borderTopWidth: 0, paddingTop: 8 }}><YourRace table={t} rows={standings.data ?? []} viewerId={user?.id} unit={unit} now={now} /></Footer> : undefined}>
     {/* The page has its own big title; the header stays clear (the code lives on the share card). */}
     <Stack.Screen options={{ title: '' }} />
     {created === '1' && <Notice tone="ok" title="Competition created" style={{ marginBottom: 24 }}>
@@ -138,27 +160,27 @@ export default function CompetitionDetailScreen() {
     <ChallengeCover table={t} unit={unit} now={now} />
     {t.visibility === 'private' && <View style={styles.private}><LockIcon size={12} color={colors.paper} /><Text style={[wideLabel(11, 0.08), { color: colors.paper }]}>Private · invite only</Text></View>}
     <Text style={[display(32), { marginTop: t.visibility === 'private' ? 12 : 20 }]}>{t.title}</Text>
-    <Pressable disabled={!t.creator?.username} onPress={() => router.push(`/runners/${t.creator!.username}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 }}>
-      <Avatar name={hostName} src={t.creator?.avatarUrl} avatarStyle={t.creator?.avatarStyle} size={40} round />
-      <View style={{ flex: 1 }}>
-        <Txt size={14} leading={1.35}><Txt size={14} weight="bold">{hostName}</Txt>{isHost ? ' · you’re hosting' : me ? ' is hosting' : ' invited you to join'}</Txt>
-        <Txt size={12} color="ink3">Created {formatDate(t.createdAt, { year: 'numeric' })}</Txt>
-      </View>
-    </Pressable>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 }}>
+      <Pressable disabled={!t.creator?.username} onPress={() => router.push(`/runners/${t.creator!.username}`)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Avatar name={hostName} src={t.creator?.avatarUrl} avatarStyle={t.creator?.avatarStyle} size={40} round />
+        <View style={{ flex: 1 }}>
+          <Txt size={14} leading={1.35}><Txt size={14} weight="bold">{hostName}</Txt>{isHost ? ' · you’re hosting' : me ? ' is hosting' : ' invited you to join'}</Txt>
+          <Txt size={12} color="ink3">Created {formatDate(t.createdAt, { year: 'numeric' })}</Txt>
+        </View>
+      </Pressable>
+      {menu.length > 0 && <ActionMenu label="Competition options" actions={menu} />}
+    </View>
     {t.description ? <Txt size={15} leading={1.55} style={{ marginTop: 16 }}>{t.description}</Txt> : null}
     {t.club && <Pressable onPress={() => router.push(`/clubs/${t.club!.slug}`)} style={({ pressed }) => [styles.club, pressed && { opacity: 0.8 }]} accessibilityRole="link">
       {t.club.logoUrl ? <Image source={{ uri: t.club.logoUrl }} style={styles.clubLogo} /> : <View style={[styles.clubLogo, { backgroundColor: t.club.accentColor, alignItems: 'center', justifyContent: 'center' }]}><Txt size={13} weight="extrabold">{t.club.name.charAt(0)}</Txt></View>}
       <Txt size={13} numberOfLines={1} style={{ flexShrink: 1 }}><Txt size={13} weight="bold">{t.club.name}</Txt>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</Txt>
     </Pressable>}
 
-    <View style={{ gap: 16, marginTop: 24 }}>
-      {!unpublished && <EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={entrants} faces={rows} now={now} />}
-      {!CLOSED_STATUSES.includes(t.status) && <ShareBox table={t} rows={standings.data ?? []} viewerId={user?.id} unit={unit} />}
-    </View>
+    {!unpublished && <View style={{ marginTop: 24 }}><EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} entrants={entrants} faces={rows} now={now} /></View>}
 
-    <View style={{ gap: 40, marginTop: 40 }}>
+    <View style={{ gap: 40, marginTop: 32 }}>
       <View>
-        <SectionTitle aside={isFinal ? <Tag background={colors.volt} border={colors.ink}>Final</Tag> : t.status === 'PENDING_FUNDING' ? <Tag border={colors.line} color={colors.ink2}>Draft</Tag> : <LiveTag />}>Leaderboard</SectionTitle>
+        <SectionTitle aside={isFinal ? <Tag background={colors.volt} border={colors.edge}>Final</Tag> : t.status === 'PENDING_FUNDING' ? <Tag border={colors.line} color={colors.ink2}>Draft</Tag> : <LiveTag />}>Leaderboard</SectionTitle>
         {standings.isLoading ? <Skeleton style={{ height: 192 }} />
           : standings.error ? <ErrorNotice error={standings.error} onRetry={() => void standings.refetch()} />
             : <Leaderboard rows={rows} currentUserId={user?.id} unit={unit} limit={showAll ? 200 : 10} metricLabel={scoreHeader(t)}
@@ -166,6 +188,7 @@ export default function CompetitionDetailScreen() {
               empty={<EmptyState title="Nobody’s on the board yet">{`Join now and your first verified ${({ RUN: 'run', WALK: 'walk', CYCLING: 'ride', DISTANCE: 'run, walk or ride' } as Record<string, string>)[t.challengeType] ?? 'activity'} puts you on top.`}</EmptyState>} />}
         {rows.length > 10 && <Button full variant="quiet" style={{ marginTop: 12 }} title={showAll ? 'Show top 10' : `See all ${rows.length} runners`} onPress={() => setShowAll((value) => !value)} />}
       </View>
+      {!CLOSED_STATUSES.includes(t.status) && <ShareBox table={t} rows={standings.data ?? []} viewerId={user?.id} unit={unit} />}
       {t.productPrizes && <PrizeTerms terms={t.productPrizes} clubName={t.club?.name} />}
       {!me && !isHost && <HowItWorks table={t} unit={unit} />}
       <KeyDates table={t} now={now} />
@@ -174,6 +197,41 @@ export default function CompetitionDetailScreen() {
       {isHost && t.status === 'OPEN_FOR_ENTRY' && <InvitationsPanel table={t} />}
     </View>
   </Screen>;
+}
+
+/**
+ * Under the board, for runners in it while it's live: where you stand against the person just ahead
+ * (or how far you lead), how long is left, and Go to record straight away.
+ */
+function YourRace({ table, rows, viewerId, unit, now }: { table: CompetitionTable; rows: StandingRow[]; viewerId?: string; unit: Unit; now: number }) {
+  const method = table.scoringMethod;
+  const valueOf = (row?: StandingRow) => (row && hasScored(method, row.score) ? Number(row.score) : null);
+  const me = rows.find((row) => row.userId === viewerId);
+  const mine = valueOf(me);
+  const ahead = me && me.rank > 1 ? rows.find((row) => row.rank === me.rank - 1) : undefined;
+  const behind = me ? rows.find((row) => row.rank === me.rank + 1) : undefined;
+  const first = (name?: string) => (name ?? 'them').split(' ')[0];
+  const ends = table.scoringClosesAt ? `${formatCountdown(table.scoringClosesAt, now)} to go` : 'no end date';
+  const noun = ({ RUN: 'run', WALK: 'walk', CYCLING: 'ride' } as Record<string, string>)[table.challengeType] ?? 'activity';
+  const bold = (text: string) => <Txt size={14} weight="bold" style={{ color: brand.paper }}>{text}</Txt>;
+  const line = !me || mine === null
+    ? <>Your first {noun} puts you on the board, {ends}.</>
+    : me.rank === 1
+      ? valueOf(behind) !== null ? <>Leading {first(behind!.displayName)} by {bold(formatGap(table, valueOf(behind)!, mine, unit) ?? '')}, {ends}. Keep the gap.</> : <>Out in front, {ends}. Keep it that way.</>
+      : ahead && valueOf(ahead) !== null ? <>{bold(formatGap(table, mine, valueOf(ahead)!, unit) ?? '')} behind {first(ahead.displayName)} for {ordinal(ahead.rank)}, {ends}.</>
+        : <>{ends}. Every {noun} counts.</>;
+  // Always dark, like the home board; a hairline edge keeps it from melting into a dark page.
+  return <View style={[styles.race, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>
+    <View style={{ alignItems: 'center', minWidth: 52 }}>
+      <Text style={[score(30), { color: brand.paper, lineHeight: 32 }]}>{me && mine !== null ? ordinal(me.rank) : '–'}</Text>
+      <Txt size={11} style={{ color: brand.onInkMuted }}>{`of ${rows.length}`}</Txt>
+    </View>
+    <Txt size={14} leading={1.4} style={{ flex: 1, color: brand.onInkMuted }}>{line}</Txt>
+    <Pressable onPress={() => { haptic('medium'); router.navigate('/run'); }} accessibilityRole="button" accessibilityLabel={`Record a ${noun}`} hitSlop={6}
+      style={({ pressed }) => [styles.raceGo, pressed && { transform: [{ scale: 0.94 }], opacity: 0.9 }]}>
+      <Text style={[wideLabel(13, 0.06), { color: brand.ink, fontFamily: fontFamily('extrabold', 'wide') }]}>Go</Text>
+    </Pressable>
+  </View>;
 }
 
 /** A club competition that isn't public yet: open it now, or manage it from the club dashboard. */
@@ -199,21 +257,34 @@ function DraftPanel({ table }: { table: CompetitionTable }) {
 
 /** The poster at the top of an invite: the competition's colour, its one big number and its mark. */
 function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
-  const theme = cardTheme(table);
+  // The host's banner fills the card; the same details sit on top of it, over a dark fade so they
+  // read on any photo.
+  const banner = table.bannerUrl;
+  const theme = banner ? { band: brand.ink, text: brand.paper } : cardTheme(table);
   const hero = challengeHeadline(table, unit);
-  return <View style={[styles.cover, { backgroundColor: theme.band }]}>
-    <Svg style={StyleSheet.absoluteFill} viewBox="0 0 400 200" preserveAspectRatio="none" opacity={0.13}>
+  return <View style={[styles.cover, { backgroundColor: theme.band }, banner && styles.bannerCover]}>
+    {banner ? <>
+      <Image source={{ uri: banner }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} accessibilityLabel={`${table.title} banner`} />
+      <Svg style={StyleSheet.absoluteFill} viewBox="0 0 10 10" preserveAspectRatio="none">
+        <Defs><LinearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#000" stopOpacity="0.35" />
+          <Stop offset="0.4" stopColor="#000" stopOpacity="0.05" />
+          <Stop offset="1" stopColor="#000" stopOpacity="0.75" />
+        </LinearGradient></Defs>
+        <Rect width="10" height="10" fill="url(#fade)" />
+      </Svg>
+    </> : <Svg style={StyleSheet.absoluteFill} viewBox="0 0 400 200" preserveAspectRatio="none" opacity={0.13}>
       {[0, 1, 2, 3, 4, 5].map((lane) => <Path key={lane} d={`M-20 ${200 - lane * 26}C120 ${180 - lane * 30} 240 ${120 - lane * 22} 420 ${60 - lane * 18}`} fill="none" stroke={theme.text} strokeWidth="3" />)}
-    </Svg>
+    </Svg>}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
       <TypeTag table={table} />
       <Tag background={colors.paper}>{activityLabel(table.challengeType)}</Tag>
       <PhaseTag table={table} now={now} />
     </View>
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginTop: 40 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginTop: banner ? 16 : 40 }}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} adjustsFontSizeToFit style={[score(64), { color: theme.text, textTransform: 'uppercase', lineHeight: 60 }]}>{hero.big}</Text>
-        <Text style={[wideLabel(12, 0.14), { color: theme.text, opacity: 0.75, marginTop: 8, fontFamily: 'Archivo-Bold' }]}>{hero.small}</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={[score(64), { color: theme.text, textTransform: 'uppercase', lineHeight: 60 }, banner && styles.onPhoto]}>{hero.big}</Text>
+        <Text style={[wideLabel(12, 0.14), { color: theme.text, opacity: banner ? 0.9 : 0.75, marginTop: 8, fontFamily: 'Archivo-Bold' }, banner && styles.onPhoto]}>{hero.small}</Text>
       </View>
       <ChallengeMark type={table.challengeType} code={table.code} size={64} />
     </View>
@@ -270,25 +341,66 @@ function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
     mutationFn: () => patch(`/tables/${table.id}`, { endNow: true }),
     async onSuccess() { await refresh(); toast({ tone: 'ok', message: 'Ended. The board is final for a free competition.' }); },
   });
+  // Free competitions can always go; others only while no money is attached (the API decides).
+  const deletion = useQuery({ queryKey: ['table-deletion', table.id], queryFn: () => api<{ canDelete: boolean; reason: string | null }>(`/tables/${table.id}/deletion`) });
+  const remove = useMutation({
+    mutationFn: () => api(`/tables/${table.id}`, { method: 'DELETE' }),
+    async onSuccess() {
+      await queryClient.invalidateQueries({ queryKey: ['tables'] });
+      toast({ tone: 'ok', message: 'Competition deleted.' });
+      router.replace('/competitions');
+    },
+  });
+  const others = Math.max(0, (table.entrantCount ?? 0) - 1);
+  const banner = useMutation({
+    mutationFn: async (action: 'set' | 'remove') => {
+      if (action === 'remove') return api(`/tables/${table.id}/banner`, { method: 'DELETE' });
+      const photo = await pickPhoto({ maxSide: 1600 });
+      return photo ? uploadPhoto(`/tables/${table.id}/banner`, photo, { name: 'banner.jpg' }) : null;
+    },
+    async onSuccess(result, action) {
+      if (action === 'set' && !result) return;
+      await refresh();
+      toast({ tone: 'ok', message: action === 'remove' ? 'Banner removed.' : 'Banner updated.' });
+    },
+  });
   const archive = useMutation({
     mutationFn: (archived: boolean) => post(`/tables/${table.id}/archive`, { archived }),
     async onSuccess(_, archived) { await refresh(); toast({ tone: 'ok', message: archived ? 'Archived. It’s off your lists; the link still works.' : 'Back on your lists.' }); },
   });
-  return <Card style={{ padding: 20 }}>
-    <Eyebrow style={{ marginBottom: 12 }}>Host tools</Eyebrow>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {!over && <Button size="sm" variant="secondary" title="Edit details" icon={<EditIcon size={14} />} onPress={() => setEditing(true)} />}
-      {!over && free && <Button size="sm" variant="secondary" title="End now" disabled={endNow.isPending} onPress={() => void confirm({ title: 'End it now?', message: 'Scoring closes immediately and the board as it stands is the final result. This can’t be undone.', confirmLabel: 'End now', destructive: true })
-        .then((ok) => { if (ok) endNow.mutate(); })} />}
-      {table.archivedAt
-        ? <Button size="sm" variant="secondary" title="Unarchive" disabled={archive.isPending} onPress={() => archive.mutate(false)} />
-        : (over || (table.entrantCount ?? 0) <= 1) && <Button size="sm" variant="secondary" title="Archive" disabled={archive.isPending} onPress={() => void confirm({ title: 'Archive this competition?', message: 'It comes off every list, yours included (find it under Compete → Mine → Archived). The page and its final board stay at the same link.', confirmLabel: 'Archive' })
-          .then((ok) => { if (ok) archive.mutate(true); })} />}
-    </View>
-    <Txt size={12} color="ink3" leading={1.5} style={{ marginTop: 12 }}>{over ? 'It’s over. Archive it to tidy it off your lists.' : free ? 'You can change the name, description and dates, or end it early.' : 'You can change the name and description. Prize competitions keep their dates.'}</Txt>
-    <ErrorNotice error={endNow.error ?? archive.error} />
+  const askEndNow = () => void confirm({ title: 'End it now?', message: 'Scoring closes immediately and the board as it stands is the final result. This can’t be undone.', confirmLabel: 'End now', destructive: true })
+    .then((ok) => { if (ok) endNow.mutate(); });
+  const askArchive = () => void confirm({ title: 'Archive this competition?', message: 'It comes off every list, yours included (find it under Compete → Mine → Archived). The page and its final board stay at the same link.', confirmLabel: 'Archive' })
+    .then((ok) => { if (ok) archive.mutate(true); });
+  const askDelete = () => void confirm({ title: 'Delete this competition?', message: `It disappears for everyone, its board and link included. ${others ? `The ${others === 1 ? 'person' : `${others} people`} in it will be told. ` : ''}This can’t be undone.`, cancelLabel: 'Keep it', confirmLabel: 'Delete', destructive: true })
+    .then((ok) => { if (ok) remove.mutate(); });
+  const rows = [
+    !over && { label: 'Edit details', hint: free ? 'Name, description and dates' : 'Name and description. Prize competitions keep their dates.', run: () => setEditing(true) },
+    !over && { label: banner.isPending ? 'Uploading banner…' : table.bannerUrl ? 'Change banner' : 'Add banner', hint: 'Replaces the coloured card at the top. Wide images (2:1) work best.', run: () => banner.mutate('set'), busy: banner.isPending },
+    !over && table.bannerUrl && { label: 'Remove banner', hint: 'Back to the coloured card', run: () => banner.mutate('remove'), busy: banner.isPending },
+    !over && free && { label: 'End now', hint: 'Close scoring now. The board becomes final.', run: askEndNow, busy: endNow.isPending },
+    table.archivedAt
+      ? { label: 'Unarchive', hint: 'Put it back on your lists', run: () => archive.mutate(false), busy: archive.isPending }
+      : (over || (table.entrantCount ?? 0) <= 1) && { label: 'Archive', hint: 'Off every list. The link keeps working.', run: askArchive, busy: archive.isPending },
+    deletion.data?.canDelete && { label: remove.isPending ? 'Deleting…' : 'Delete competition', hint: 'Gone for everyone, link included', run: askDelete, busy: remove.isPending, danger: true },
+  ].filter(Boolean) as Array<{ label: string; hint: string; run: () => void; busy?: boolean; danger?: boolean }>;
+
+  return <View>
+    <SectionTitle>Host tools</SectionTitle>
+    <Card padded={false}>
+      {rows.map((row, index) => <Pressable key={row.label} onPress={() => { haptic(); row.run(); }} disabled={row.busy} accessibilityRole="button"
+        style={({ pressed }) => [styles.hostRow, index > 0 && styles.hostRowLine, pressed && { backgroundColor: colors.inkWash }, row.busy && { opacity: 0.5 }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt size={15} weight="semibold" color={row.danger ? 'bad' : 'ink'}>{row.label}</Txt>
+          <Txt size={12} color="ink3" style={{ marginTop: 2 }}>{row.hint}</Txt>
+        </View>
+        <ChevronRightIcon size={16} color={row.danger ? colors.bad : colors.ink3} />
+      </Pressable>)}
+    </Card>
+    {over && <Txt size={12} color="ink3" leading={1.5} style={{ marginTop: 8 }}>It’s over. Archive it to tidy it off your lists.</Txt>}
+    <ErrorNotice error={endNow.error ?? archive.error ?? banner.error ?? remove.error} />
     <EditCompetitionSheet open={editing} onOpenChange={setEditing} table={table} now={now} onSaved={refresh} />
-  </Card>;
+  </View>;
 }
 
 function EditCompetitionSheet({ open, onOpenChange, table, now, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; table: CompetitionTable; now: number; onSaved: () => Promise<unknown> }) {
@@ -418,7 +530,7 @@ function InvitationsPanel({ table }: { table: CompetitionTable }) {
   </Card>;
 }
 
-function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, now }: { table: CompetitionTable; joined?: boolean; joinedRank?: number; joinedScore?: string; entrants: number; faces: LeaderboardRow[]; now: number }) {
+function EntryPanel({ table, joined, joinedRank, entrants, faces, now }: { table: CompetitionTable; joined?: boolean; joinedRank?: number; entrants: number; faces: LeaderboardRow[]; now: number }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const wallet = useWallet();
@@ -437,10 +549,6 @@ function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, n
     queryClient.invalidateQueries({ queryKey: keys.table(table.code) }),
   ]);
 
-  const leave = useMutation({
-    mutationFn: () => post(`/tables/${table.id}/leave`),
-    async onSuccess() { toast({ tone: 'ok', message: `You left ${table.title}.` }); await refreshEntry(); },
-  });
   const join = useMutation({
     mutationFn: () => post(`/tables/${table.id}/register-free`),
     async onSuccess() { haptic('success'); await refreshEntry(); },
@@ -480,32 +588,17 @@ function EntryPanel({ table, joined, joinedRank, joinedScore, entrants, faces, n
     <ErrorNotice error={fundPrize.error} />
   </View> : null;
 
+  // Already in (or hosting): your place is on the leaderboard below and Leave is in the ⋯ menu by the
+  // host, so only what still needs doing shows here: funding a draft, or chipping into the prize.
   if (joined || joinedRank !== undefined || user?.id === table.creatorId) {
-    const canLeave = joined && table.type !== 'paid' && table.status !== 'SETTLED' && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now);
-    return <HardShadow radius={radius.xl}>
+    if (table.status === 'PENDING_FUNDING') return <HardShadow radius={radius.xl}>
       <View style={[styles.entry, { backgroundColor: colors.volt }]}><AccentSurface.Provider value>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {table.status !== 'PENDING_FUNDING' && <CheckIcon size={16} />}
-          <Txt size={12} weight="bold" upper tracking={0.12}>{table.status === 'PENDING_FUNDING' ? 'Draft · funding needed' : user?.id === table.creatorId ? 'You’re hosting and already joined' : 'You’re in'}</Txt>
-        </View>
-        {joinedRank !== undefined && table.status !== 'PENDING_FUNDING'
-          ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 16 }}>
-            <RankBadge rank={joinedRank} size="lg" />
-            <View>
-              <Text style={[wideLabel(20, 0), { fontFamily: 'ArchivoWide-Black', color: colors.onAccent }]}>{ordinal(joinedRank)} place</Text>
-              <Txt size={13} num style={{ marginTop: 4 }}>{`${joinedScore ?? 'No score yet'} · of ${entrants}`}</Txt>
-            </View>
-          </View>
-          : <Txt size={13} style={{ marginTop: 12 }}>{table.status === 'PENDING_FUNDING' ? 'Only you can fund this fixed amount. It will not go live until Paystack confirms the payment.' : 'Your spot is already on the board. Your rank will appear when the standings load.'}</Txt>}
-        {(canEnter(table, now) || competitionPhase(table, now) === 'entry-closed') && <Button full variant="dark" style={{ marginTop: 20 }} title="Record an activity" onPress={() => router.navigate('/run')} />}
+        <Txt size={12} weight="bold" upper tracking={0.12}>Draft · funding needed</Txt>
+        <Txt size={13} style={{ marginTop: 12 }}>Only you can fund this fixed amount. It will not go live until Paystack confirms the payment.</Txt>
         {fundingControl}
-        {canLeave && <Pressable style={{ marginTop: 16, alignSelf: 'center' }} hitSlop={8} disabled={leave.isPending} onPress={() => void confirm({ title: 'Leave this competition?', message: 'Your place and score here are removed. You can rejoin while entry is open.', cancelLabel: 'Stay in', confirmLabel: 'Leave', destructive: true })
-          .then((ok) => { if (ok) leave.mutate(); })}>
-          <Txt size={12} weight="bold" color="ink2" style={{ textDecorationLine: 'underline' }}>{leave.isPending ? 'Leaving…' : 'Leave competition'}</Txt>
-        </Pressable>}
-        <ErrorNotice error={leave.error} />
       </AccentSurface.Provider></View>
     </HardShadow>;
+    return fundingControl ? <Card style={{ padding: 20 }}>{fundingControl}</Card> : null;
   }
 
   const isPaid = table.type === 'paid';
@@ -595,17 +688,24 @@ function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; count: num
 
 const styles = StyleSheet.create({
   private: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 20, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 12, paddingVertical: 4 },
-  club: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-start', maxWidth: '100%', marginTop: 16, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingVertical: 6, paddingLeft: 6, paddingRight: 16 },
+  club: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-start', maxWidth: '100%', marginTop: 16, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingVertical: 6, paddingLeft: 6, paddingRight: 16 },
   clubLogo: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.white },
-  cover: { borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, overflow: 'hidden' },
+  // At least the banner's own 2:1 shape, so the picture isn't cropped to a strip.
+  race: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 20, backgroundColor: brand.ink, paddingVertical: 14, paddingLeft: 16, paddingRight: 12 },
+  raceGo: { width: 56, height: 56, borderRadius: 28, backgroundColor: brand.volt, alignItems: 'center', justifyContent: 'center' },
+  hostRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, minHeight: 60 },
+  hostRowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  bannerCover: { aspectRatio: 2, justifyContent: 'space-between' },
+  onPhoto: { textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  cover: { borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, overflow: 'hidden' },
   step: { borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, padding: 16 },
   stepNumber: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dates: { borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
   date: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingHorizontal: 16, paddingVertical: 12 },
-  dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: colors.ink },
+  dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: colors.edge },
   invite: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 8 },
-  entry: { borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 20 },
+  entry: { borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 20 },
   funding: { marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 },
   timeBar: { height: 8, borderRadius: 4, backgroundColor: colors.inkFaint, overflow: 'hidden' },
   faces: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 },

@@ -33,7 +33,7 @@ export function Toaster() {
 
 const styles = StyleSheet.create({
   stack: { position: 'absolute', left: GUTTER, right: GUTTER, gap: 8, zIndex: 100 },
-  toast: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: radius.md, borderWidth: 2, borderLeftWidth: 5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 12 },
+  toast: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: radius.md, borderWidth: 2, borderLeftWidth: 5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 12 },
   title: { fontFamily: fontFamily('bold'), fontSize: 14, lineHeight: 19, color: colors.ink },
   message: { fontFamily: fontFamily('regular'), fontSize: 14, lineHeight: 19, color: colors.ink2 },
   action: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 11, letterSpacing: 0.6, color: colors.ink, textDecorationLine: 'underline', paddingTop: 2 },

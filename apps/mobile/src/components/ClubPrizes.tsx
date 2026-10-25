@@ -83,7 +83,7 @@ export function PrizeEditor({ clubSlug, value, onChange }: { clubSlug: string; v
         </View>;
       })}
     </View>
-    {value.prizes.length < 20 && <Pressable onPress={() => set('prizes', [...value.prizes, { position: value.prizes.length + 1, kind: 'product', productName: '', quantity: 1 }])} style={({ pressed }) => [styles.addPrize, pressed && { borderColor: colors.ink }]} accessibilityRole="button">
+    {value.prizes.length < 20 && <Pressable onPress={() => set('prizes', [...value.prizes, { position: value.prizes.length + 1, kind: 'product', productName: '', quantity: 1 }])} style={({ pressed }) => [styles.addPrize, pressed && { borderColor: colors.edge }]} accessibilityRole="button">
       <PlusIcon size={16} color={colors.ink2} /><Txt size={14} weight="bold" color="ink2">Add another prize</Txt>
     </Pressable>}
 
@@ -93,7 +93,7 @@ export function PrizeEditor({ clubSlug, value, onChange }: { clubSlug: string; v
       <View style={{ gap: 8 }} accessibilityRole="radiogroup">
         {([['top', 'Top finishers', 'Prizes go down the final leaderboard, in order.'], ['draw', 'Random draw', 'Everyone who qualifies has an equal chance. The draw is recorded.']] as const).map(([option, title, body]) => {
           const active = value.selection === option;
-          return <Pressable key={option} onPress={() => { haptic(); set('selection', option); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.choice, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
+          return <Pressable key={option} onPress={() => { haptic(); set('selection', option); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.choice, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
             <Txt size={13} weight="bold" color={active ? 'paper' : 'ink'}>{title}</Txt>
             <Txt size={12} leading={1.35} style={{ marginTop: 2, color: active ? colors.onInkMuted : colors.ink2 }}>{body}</Txt>
           </Pressable>;
@@ -174,21 +174,21 @@ export function PrizeTerms({ terms, clubName }: { terms: ClubPrizeTerms; clubNam
 }
 
 const styles = StyleSheet.create({
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingLeft: 10, paddingRight: 4 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingLeft: 10, paddingRight: 4 },
   chipClose: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  prize: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  prize: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   prizeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, backgroundColor: 'rgba(18,18,18,0.03)', paddingHorizontal: 16, paddingVertical: 10, minHeight: 44 },
   iconRound: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: -8 },
   kinds: { flexDirection: 'row', borderRadius: radius.xl, backgroundColor: colors.inkWash, padding: 4 },
   kind: { flex: 1, height: 36, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
-  kindActive: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.ink },
+  kindActive: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.edge },
   stepper: { flexDirection: 'row', alignItems: 'center', height: 50, borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.white },
   step: { width: 44, height: '100%', alignItems: 'center', justifyContent: 'center' },
   stepValue: { flex: 1, textAlign: 'center', fontFamily: fontFamily('bold'), fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
   addPrize: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 48, borderRadius: radius['2xl'], borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.4)' },
   choice: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 12 },
   photo: { width: 50, height: 50, borderRadius: radius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.4)', backgroundColor: colors.paper, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  term: { flexDirection: 'row', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 12 },
+  term: { flexDirection: 'row', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 12 },
   termArt: { width: 64, height: 64, borderRadius: radius.lg },
   winners: { marginTop: 16, borderRadius: radius.xl, backgroundColor: colors.okWash, padding: 12 },
 });

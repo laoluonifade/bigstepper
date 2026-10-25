@@ -144,7 +144,7 @@ export function ShareRunSheet({ open, onOpenChange, activity, unit }: { open: bo
 }
 
 const styles = StyleSheet.create({
-  preview: { borderRadius: 6, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.ink, overflow: 'hidden' },
+  preview: { borderRadius: 6, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.ink, overflow: 'hidden' },
   date: { fontFamily: fontFamily('semibold'), fontSize: 10, color: 'rgba(242,239,232,0.6)' },
   name: { flex: 1, fontFamily: fontFamily('bold', 'wide'), fontSize: 10, color: 'rgba(242,239,232,0.6)' },
   verified: { borderRadius: 2, backgroundColor: colors.volt, paddingHorizontal: 7, paddingVertical: 4 },

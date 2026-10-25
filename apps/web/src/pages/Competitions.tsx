@@ -30,6 +30,7 @@ import {
 } from '../components/ui';
 import { DateTimePicker } from '../components/DateTimePicker';
 import { api, isApiError, patch, post } from '../lib/api';
+import { prepare } from '../components/Profile';
 import { useAuth } from '../lib/auth';
 import { joinConflictCopy } from '../lib/copy';
 import {
@@ -328,6 +329,9 @@ export function NewCompetitionPage() {
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState(preset?.title ?? '');
   const [description, setDescription] = useState('');
+  const [banner, setBanner] = useState<File | null>(null);
+  const bannerPreview = useMemo(() => (banner ? URL.createObjectURL(banner) : null), [banner]);
+  useEffect(() => () => { if (bannerPreview) URL.revokeObjectURL(bannerPreview); }, [bannerPreview]);
   const [scoring, setScoring] = useState<ScoringDraft>(() => {
     const draft = draftFor(preset?.challengeType ?? 'RUN', preset?.scoringMethod ?? 'FARTHEST_DISTANCE');
     return preset?.targetKm ? { ...draft, target: String(preset.targetKm) } : draft;
@@ -436,6 +440,11 @@ export function NewCompetitionPage() {
         ...(!draftOnCreate && invitePhones.length ? { invitePhones } : {}),
       }),
     async onSuccess(table) {
+      if (banner) {
+        await uploadBanner(table.id, banner).catch(() => {
+          toast({ tone: 'warn', message: 'Created, but the banner didn’t upload. Add it from Host tools on the competition page.' });
+        });
+      }
       // A runner on Jump is invited by username once the competition exists.
       if (headToHead && opponent?.kind === 'runner' && table.status === 'OPEN_FOR_ENTRY') {
         await post(`/tables/${table.id}/invitations`, { username: opponent.username }).catch((error: unknown) => {
@@ -571,6 +580,24 @@ export function NewCompetitionPage() {
               />
             )}
           </Field>
+          <div>
+            <p className="mb-2 text-[13px] font-bold">Banner <span className="font-normal text-ink-3">Optional</span></p>
+            {bannerPreview ? (
+              <div className="space-y-2">
+                <img src={bannerPreview} alt="Banner preview" className="aspect-[2/1] w-full rounded-lg object-cover" />
+                <div className="flex gap-2">
+                  <label className="btn-secondary btn-sm cursor-pointer">Change<input type="file" accept="image/*" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) setBanner(file); }} /></label>
+                  <button type="button" className="btn-quiet btn-sm" onClick={() => setBanner(null)}>Remove</button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-[1.5px] border-dashed border-line p-5 text-center hover:border-ink">
+                <span className="text-[14px] font-bold">Add a banner image</span>
+                <span className="text-[12px] text-ink-3">Shown at the top instead of the coloured card. Wide images (2:1) work best.</span>
+                <input type="file" accept="image/*" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) setBanner(file); }} />
+              </label>
+            )}
+          </div>
 
           <ScoringPicker
             draft={scoring}
@@ -1011,26 +1038,44 @@ function DraftPanel({ table }: { table: CompetitionTable }) {
   </Notice>;
 }
 
+/** Uploads a competition's banner, scaled to at most 2000px. */
+async function uploadBanner(tableId: string, file: File) {
+  const form = new FormData();
+  const blob = await prepare(file, 2000);
+  form.append('file', blob, blob === file ? file.name : 'banner.jpg');
+  return api<{ bannerUrl: string }>(`/tables/${tableId}/banner`, { method: 'POST', body: form });
+}
+
 /** The poster at the top of an invite: the challenge's colour, its one big number and its mark. */
 function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+  // The host's banner fills the card; the same details sit on top of it, over a dark fade so they
+  // read on any photo.
+  const banner = table.bannerUrl;
   const theme = cardTheme(table);
   const hero = challengeHeadline(table, unit);
   return (
-    <div className={cx('relative overflow-hidden rounded-xl border-[1.5px] border-ink px-5 pb-6 pt-4 sm:px-7 sm:pb-8', theme.band)}>
-      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.13]" preserveAspectRatio="none" viewBox="0 0 400 200" aria-hidden="true">
-        {[0, 1, 2, 3, 4, 5].map((lane) => (
-          <path key={lane} d={`M-20 ${200 - lane * 26}C120 ${180 - lane * 30} 240 ${120 - lane * 22} 420 ${60 - lane * 18}`} fill="none" stroke="currentColor" strokeWidth="3" />
-        ))}
-      </svg>
+    <div className={cx('relative overflow-hidden rounded-xl border-[1.5px] border-ink px-5 pb-6 pt-4 sm:px-7 sm:pb-8', banner ? 'flex aspect-[2/1] flex-col justify-between bg-ink text-paper' : theme.band)}>
+      {banner ? (
+        <>
+          <img src={banner} alt={`${table.title} banner`} className="absolute inset-0 h-full w-full object-cover" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-black/5 to-black/75" aria-hidden="true" />
+        </>
+      ) : (
+        <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.13]" preserveAspectRatio="none" viewBox="0 0 400 200" aria-hidden="true">
+          {[0, 1, 2, 3, 4, 5].map((lane) => (
+            <path key={lane} d={`M-20 ${200 - lane * 26}C120 ${180 - lane * 30} 240 ${120 - lane * 22} 420 ${60 - lane * 18}`} fill="none" stroke="currentColor" strokeWidth="3" />
+          ))}
+        </svg>
+      )}
       <div className="relative flex flex-wrap items-center gap-1.5">
         <TypeTag table={table} />
         <span className="tag bg-paper text-ink">{activityLabel(table.challengeType)}</span>
         <PhaseTag table={table} now={now} />
       </div>
-      <div className="relative mt-10 flex items-end justify-between gap-4 sm:mt-14">
+      <div className={cx('relative flex items-end justify-between gap-4', banner ? 'mt-4 [text-shadow:0_1px_6px_rgba(0,0,0,0.45)]' : 'mt-10 sm:mt-14')}>
         <div className="min-w-0">
           <p className="score whitespace-nowrap text-[clamp(44px,13vw,88px)] uppercase leading-[0.85]">{hero.big}</p>
-          <p className="mt-2 text-[12px] font-bold uppercase tracking-[0.14em] opacity-75">{hero.small}</p>
+          <p className={cx('mt-2 text-[12px] font-bold uppercase tracking-[0.14em]', banner ? 'opacity-90' : 'opacity-75')}>{hero.small}</p>
         </div>
         <ChallengeMark type={table.challengeType} code={table.code} size={64} />
       </div>
@@ -1107,11 +1152,32 @@ function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
     mutationFn: (archived: boolean) => post(`/tables/${table.id}/archive`, { archived }),
     async onSuccess(_, archived) { await refresh(); toast({ tone: 'ok', message: archived ? 'Archived. It’s off your lists; the link still works.' : 'Back on your lists.' }); },
   });
+  // Free competitions can always go; others only while no money is attached (the API decides).
+  const navigate = useNavigate();
+  const deletion = useQuery({ queryKey: ['table-deletion', table.id], queryFn: () => api<{ canDelete: boolean; reason: string | null }>(`/tables/${table.id}/deletion`) });
+  const remove = useMutation({
+    mutationFn: () => api(`/tables/${table.id}`, { method: 'DELETE' }),
+    async onSuccess() {
+      await queryClient.invalidateQueries({ queryKey: ['tables'] });
+      toast({ tone: 'ok', message: 'Competition deleted.' });
+      void navigate({ to: '/competitions' });
+    },
+  });
+  const others = Math.max(0, (table.entrantCount ?? 0) - 1);
+  const banner = useMutation({
+    mutationFn: (file: File | null) => (file ? uploadBanner(table.id, file) : api(`/tables/${table.id}/banner`, { method: 'DELETE' })),
+    async onSuccess(_, file) { await refresh(); toast({ tone: 'ok', message: file ? 'Banner updated.' : 'Banner removed.' }); },
+  });
   return <section className="panel p-5">
     {confirm.dialog}
     <p className="eyebrow mb-3">Host tools</p>
     <div className="flex flex-wrap gap-2">
       {!over && <button type="button" className="btn-secondary btn-sm" onClick={() => setEditing(true)}><EditIcon size={14} /> Edit details</button>}
+      {!over && <label className={cx('btn-secondary btn-sm cursor-pointer', banner.isPending && 'pointer-events-none opacity-50')}>
+        {banner.isPending ? 'Uploading…' : table.bannerUrl ? 'Change banner' : 'Add banner'}
+        <input type="file" accept="image/*" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) banner.mutate(file); }} />
+      </label>}
+      {!over && table.bannerUrl && <button type="button" className="btn-quiet btn-sm" disabled={banner.isPending} onClick={() => banner.mutate(null)}>Remove banner</button>}
       {!over && free && <button type="button" className="btn-secondary btn-sm" disabled={endNow.isPending} onClick={() => confirm.ask({
         title: 'End it now?',
         body: 'Scoring closes immediately and the board as it stands is the final result. This can’t be undone.',
@@ -1131,7 +1197,15 @@ function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
     <p className="mt-3 text-[12px] leading-relaxed text-ink-3">
       {over ? 'It’s over. Archive it to tidy it off your lists.' : free ? 'You can change the name, description and dates, or end it early.' : 'You can change the name and description. Prize competitions keep their dates.'}
     </p>
-    <ErrorNotice error={endNow.error ?? archive.error} />
+    {deletion.data?.canDelete && <button type="button" className="btn-danger btn-sm mt-3" disabled={remove.isPending} onClick={() => confirm.ask({
+      title: 'Delete this competition?',
+      body: `It disappears for everyone, its board and link included. ${others ? `The ${others === 1 ? 'person' : `${others} people`} in it will be told. ` : ''}This can’t be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => remove.mutate(),
+    })}>{remove.isPending ? 'Deleting…' : 'Delete competition'}</button>}
+    {!over && <p className="mt-1.5 text-[12px] leading-relaxed text-ink-3">A banner is optional. It replaces the coloured card at the top; wide images (2:1) work best.</p>}
+    <ErrorNotice error={endNow.error ?? archive.error ?? banner.error ?? remove.error} />
     {editing && <EditCompetitionSheet table={table} now={now} onClose={() => setEditing(false)} onSaved={refresh} />}
   </section>;
 }

@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { AVATAR_MAX_BYTES } from '../profiles/profiles.service';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
@@ -42,6 +44,33 @@ export class TablesController {
   @UseGuards(JwtAuthGuard)
   update(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string, @Body() body: UpdateTableDto) {
     return this.tablesService.update(tableId, user.id, body);
+  }
+
+  @Get(':id/deletion')
+  @UseGuards(JwtAuthGuard)
+  deletion(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
+    return this.tablesService.deletionCheck(tableId, user.id);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
+    return this.tablesService.remove(tableId, user.id);
+  }
+
+  @Post(':id/banner')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: AVATAR_MAX_BYTES, files: 1 } }))
+  setBanner(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string, @UploadedFile() file?: { buffer: Buffer; mimetype: string }) {
+    return this.tablesService.setBanner(tableId, user.id, file);
+  }
+
+  @Delete(':id/banner')
+  @UseGuards(JwtAuthGuard)
+  removeBanner(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
+    return this.tablesService.removeBanner(tableId, user.id);
   }
 
   @Post(':id/archive')

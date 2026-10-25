@@ -87,9 +87,9 @@ function Choice({ title, body, onPress, mark }: { title: string; body: string; o
 }
 
 const styles = StyleSheet.create({
-  search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 48, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.white, paddingHorizontal: 14 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 48, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.white, paddingHorizontal: 14 },
   input: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
-  choice: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 12 },
+  choice: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 12 },
   mark: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
   list: { borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   person: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10 },

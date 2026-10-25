@@ -154,12 +154,13 @@ function ReadyScreen() {
 
   // Room at the bottom so the circles clear the tab bar's raised Start button.
   const picker = <View style={{ paddingTop: 6, paddingBottom: 40 }}>
-    <View style={{ flexDirection: 'row', justifyContent: 'space-evenly' }} accessibilityRole="radiogroup" accessibilityLabel="Activity type">
+    <View style={{ flexDirection: 'row', justifyContent: 'space-evenly' }} accessibilityLabel="Start an activity">
       {ACTIVITY_CHOICES.map(({ value, label, icon: Icon, fill, iconOn }) => {
         const active = activityType === value;
         // Glass circles: the picked one is tinted in its colour; on iOS 26 they also react to your touch.
-        return <Pressable key={value} style={{ alignItems: 'center', gap: 12 }} onPress={() => { if (!active) { haptic('select'); setActivityType(value); } }}
-          accessibilityRole="radio" accessibilityState={{ checked: active }} accessibilityLabel={label}>
+        // Tapping one starts it: it becomes the activity and the countdown opens, like the tab bar's Start.
+        return <Pressable key={value} style={{ alignItems: 'center', gap: 12 }} onPress={() => { haptic('medium'); setActivityType(value); setStarting(true); }}
+          accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={`Start a ${nounFor(value)}`}>
           {({ pressed }) => <>
             <Glass interactive tint={active ? fill : undefined} solid={active ? fill : colors.inkWash} style={[styles.choice, pressed && !LIQUID_GLASS && { transform: [{ scale: 0.95 }] }]}>
               <Icon size={44} color={active ? iconOn : colors.ink} />

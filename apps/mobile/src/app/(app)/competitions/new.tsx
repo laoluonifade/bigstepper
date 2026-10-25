@@ -21,6 +21,8 @@ import { api, post } from '@/lib/api';
 import { keys, useCreator, useUnit } from '@/lib/queries';
 import { colors, radius, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { pickPhoto, uploadPhoto, type PickedPhoto } from '@/lib/upload';
+import { Image } from 'expo-image';
 
 /** "2 prizes · 4 winners · top finishers" for the prizes row. */
 function prizeSummary(draft: PrizeDraft) {
@@ -67,6 +69,7 @@ export default function NewCompetitionScreen() {
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState(preset?.title ?? '');
   const [description, setDescription] = useState('');
+  const [banner, setBanner] = useState<PickedPhoto | null>(null);
   const [scoring, setScoring] = useState<ScoringDraft>(() => {
     const draft = draftFor(preset?.challengeType ?? 'RUN', preset?.scoringMethod ?? 'FARTHEST_DISTANCE');
     return preset?.targetKm ? { ...draft, target: String(preset.targetKm) } : draft;
@@ -173,6 +176,12 @@ export default function NewCompetitionScreen() {
       ...(!draftOnCreate && invitePhones.length ? { invitePhones } : {}),
     }),
     async onSuccess(table) {
+      if (banner) {
+        await uploadPhoto(`/tables/${table.id}/banner`, banner, { name: 'banner.jpg' }).catch((error: unknown) => {
+          if (__DEV__) console.warn('Banner upload failed:', String((error as { cause?: unknown }).cause ?? error));
+          toast({ tone: 'warn', message: 'Created, but the banner didn’t upload. Add it from Host tools on the competition page.' });
+        });
+      }
       // A runner on Jump is invited by username once the competition exists.
       if (headToHead && opponent?.kind === 'runner' && table.status === 'OPEN_FOR_ENTRY') {
         await post(`/tables/${table.id}/invitations`, { username: opponent.username }).catch((error: unknown) => {
@@ -253,6 +262,22 @@ export default function NewCompetitionScreen() {
         <TextField label="What’s it about?" optional hint={`${280 - description.length} characters left`} multiline maxLength={280} value={description} onChangeText={setDescription} style={{ minHeight: 76 }}
           placeholder="e.g. Our run club’s month of miles. Every Saturday long run counts, slowest finisher buys the smoothies." />
 
+        <View>
+          <FieldLabel label="Banner" optional />
+          {banner
+            ? <View style={{ gap: 8 }}>
+              <Image source={{ uri: banner.uri }} style={styles.bannerPreview} contentFit="cover" />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Button size="sm" variant="secondary" title="Change" onPress={() => void pickPhoto({ maxSide: 1600 }).then((photo) => photo && setBanner(photo))} />
+                <Button size="sm" variant="quiet" title="Remove" onPress={() => setBanner(null)} />
+              </View>
+            </View>
+            : <Pressable onPress={() => void pickPhoto({ maxSide: 1600 }).then((photo) => photo && setBanner(photo))} style={({ pressed }) => [styles.bannerPick, pressed && { opacity: 0.7 }]} accessibilityRole="button">
+              <Txt size={14} weight="bold">Add a banner image</Txt>
+              <Txt size={12} color="ink3">Shown at the top instead of the coloured card. Wide images (2:1) work best.</Txt>
+            </Pressable>}
+        </View>
+
         <ScoringPicker draft={scoring} unit={unit} prizes={mode !== 'free'} error={errors.target} onChange={(next) => { if (next.challengeType === 'CYCLING') setMode('free'); setScoring(next); }} />
 
         <View>
@@ -314,7 +339,7 @@ export default function NewCompetitionScreen() {
           <SectionTitle style={{ marginBottom: 0 }}>Who competes</SectionTitle>
           {(Object.keys(FORMATS) as CompetitionFormat[]).map((value) => {
             const active = format === value;
-            return <Pressable key={value} onPress={() => { haptic(); setFormat(value); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.format, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
+            return <Pressable key={value} onPress={() => { haptic(); setFormat(value); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.format, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
               <Text style={[wideLabel(13, 0), active && { color: colors.paper }]}>{FORMATS[value].label}</Text>
               <Txt size={12} leading={1.35} style={{ marginTop: 4, color: active ? colors.onInkMuted : colors.ink2 }}>{FORMATS[value].summary}</Txt>
             </Pressable>;
@@ -358,7 +383,7 @@ export default function NewCompetitionScreen() {
         <View style={{ gap: 8 }} accessibilityRole="radiogroup" accessibilityLabel="When it opens">
           {([['now', 'Publish now', 'Opens as soon as you create it.'], ['schedule', 'Schedule', 'Opens at the time you pick.'], ['draft', 'Save as draft', 'Only your club’s managers see it.']] as const).map(([value, label, body]) => {
             const active = publish === value;
-            return <Pressable key={value} onPress={() => { haptic(); setPublish(value); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.publish, active && { borderColor: colors.ink, backgroundColor: colors.ink }]}>
+            return <Pressable key={value} onPress={() => { haptic(); setPublish(value); }} accessibilityRole="radio" accessibilityState={{ checked: active }} style={[styles.publish, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
               <View style={[styles.radio, active && { borderColor: colors.paper }]}>{active ? <View style={styles.radioDot} /> : null}</View>
               <View style={{ flex: 1 }}>
                 <Txt size={14} weight="bold" color={active ? 'paper' : 'ink'}>{label}</Txt>
@@ -435,16 +460,18 @@ function PrizeBreakdown({ potKobo, shares }: { potKobo: number; shares: number[]
 }
 
 const styles = StyleSheet.create({
-  mode: { minHeight: 92, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 12 },
+  bannerPreview: { width: '100%', aspectRatio: 2, borderRadius: radius.lg, backgroundColor: colors.inkWash },
+  bannerPick: { borderRadius: radius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, padding: 18, alignItems: 'center', gap: 4 },
+  mode: { minHeight: 92, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 12 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  toggle: { height: 36, justifyContent: 'center', borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, paddingHorizontal: 12 },
+  toggle: { height: 36, justifyContent: 'center', borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12 },
   format: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 14 },
   publish: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 14 },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: 'rgba(18,18,18,0.3)', alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.paper },
   repeat: { flexDirection: 'row', borderRadius: radius.xl, backgroundColor: colors.inkWash, padding: 4 },
   repeatOption: { flex: 1, height: 40, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
-  repeatActive: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.ink },
+  repeatActive: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.edge },
   autoPublish: { marginTop: 16, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, padding: 14 },
   breakdown: { borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper, padding: 16 },
   breakdownRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, paddingVertical: 8 },

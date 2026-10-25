@@ -8,6 +8,8 @@ import { router } from 'expo-router';
 import { ComponentRef, createContext, ReactNode, Ref, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -27,7 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, SvgXml } from 'react-native-svg';
 import { isApiError } from '@/lib/api';
 import { AccentSurface, useTextColor } from '@/lib/surface';
-import { colors, eyebrow, fontFamily, GUTTER, radius, score, wideLabel, type Color, type Weight, type Width } from '@/lib/theme';
+import { brand, colors, eyebrow, fontFamily, GUTTER, radius, score, wideLabel, type Color, type Weight, type Width } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, InfoIcon } from './icons';
 
@@ -155,7 +157,7 @@ export function haptic(kind: 'tap' | 'select' | 'medium' | 'heavy' | 'success' |
  * The web's `shadow-hard`: a solid ink block offset behind the element. Drawn as a view because native
  * shadows blur (iOS) or can't be offset (Android). `pressed` slides the element onto it.
  */
-export function HardShadow({ children, offset = 3, pressed = false, radius: r = radius.base, style, color = colors.ink }: { children: ReactNode; offset?: number; pressed?: boolean; radius?: number; style?: StyleProp<ViewStyle>; color?: string }) {
+export function HardShadow({ children, offset = 3, pressed = false, radius: r = radius.base, style, color = colors.shadow }: { children: ReactNode; offset?: number; pressed?: boolean; radius?: number; style?: StyleProp<ViewStyle>; color?: string }) {
   return <View style={[{ paddingRight: offset, paddingBottom: offset }, style]}>
     <View style={{ position: 'absolute', left: offset, top: offset, right: 0, bottom: 0, borderRadius: r, backgroundColor: color, opacity: pressed ? 0 : 1 }} />
     <View style={pressed ? { transform: [{ translateX: offset }, { translateY: offset }] } : undefined}>{children}</View>
@@ -172,11 +174,11 @@ export function Card({ variant = 'panel', children, style, padded = true }: { va
 
 const cardVariants: Record<CardVariant, ViewStyle> = {
   panel: { borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
-  strong: { borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.card },
-  hard: { borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.card },
+  strong: { borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card },
+  hard: { borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card },
   dashed: { borderWidth: 1.5, borderColor: 'rgba(138,133,123,0.6)', borderStyle: 'dashed', backgroundColor: 'transparent' },
-  ink: { borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.ink },
-  volt: { borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.volt },
+  ink: { borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.ink },
+  volt: { borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.volt },
 };
 
 export function Divider({ style, strong }: { style?: StyleProp<ViewStyle>; strong?: boolean }) {
@@ -194,13 +196,15 @@ export type ButtonVariant = 'primary' | 'secondary' | 'dark' | 'quiet' | 'danger
 
 const buttonColors: Record<ButtonVariant, { bg: string; fg: Color; border: string; borderWidth: number; shadow: boolean }> = {
   // Orange and volt keep dark text in both themes.
-  primary: { bg: colors.track, fg: 'onAccent', border: colors.ink, borderWidth: 2, shadow: true },
-  secondary: { bg: colors.card, fg: 'ink', border: colors.ink, borderWidth: 2, shadow: true },
-  volt: { bg: colors.volt, fg: 'onAccent', border: colors.ink, borderWidth: 2, shadow: true },
+  primary: { bg: colors.track, fg: 'onAccent', border: colors.edge, borderWidth: 2, shadow: true },
+  secondary: { bg: colors.card, fg: 'ink', border: colors.edge, borderWidth: 2, shadow: true },
+  volt: { bg: colors.volt, fg: 'onAccent', border: colors.edge, borderWidth: 2, shadow: true },
   dark: { bg: colors.ink, fg: 'paper', border: colors.ink, borderWidth: 2, shadow: false },
   quiet: { bg: 'transparent', fg: 'ink', border: colors.line, borderWidth: 1, shadow: false },
   danger: { bg: colors.card, fg: 'bad', border: colors.bad, borderWidth: 2, shadow: false },
 };
+
+const ACCENT_DARK_BUTTON = { ...buttonColors.dark, bg: brand.ink, border: brand.ink };
 
 /**
  * Where a button that isn't `full` sits across its container. Buttons hug their label and sit at the
@@ -238,7 +242,10 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
 }) {
-  const look = buttonColors[variant];
+  const onAccent = useContext(AccentSurface);
+  // A dark button on volt or orange stays dark in both themes (in dark mode `ink` is cream).
+  const look = variant === 'dark' && onAccent ? ACCENT_DARK_BUTTON : buttonColors[variant];
+  const label = variant === 'dark' && onAccent ? brand.paper : colors[look.fg];
   const align = useContext(ButtonAlign);
   const off = disabled || loading;
   const height = size === 'sm' ? 36 : size === 'lg' ? 56 : 46;
@@ -252,8 +259,8 @@ export function Button({
   >
     {({ pressed }) => {
       const face = <View style={[styles.button, { minHeight: height, paddingHorizontal: size === 'sm' ? 12 : 16, backgroundColor: look.bg, borderColor: look.border, borderWidth: look.borderWidth }, pressed && !look.shadow && { opacity: 0.8 }]}>
-        {loading ? <ActivityIndicator color={colors[look.fg]} size="small" /> : icon}
-        <Text numberOfLines={1} style={[wideLabel(size === 'sm' ? 11 : 13, 0.04), { fontFamily: fontFamily('bold', 'wide'), color: colors[look.fg] }]}>{title}</Text>
+        {loading ? <ActivityIndicator color={label} size="small" /> : icon}
+        <Text numberOfLines={1} style={[wideLabel(size === 'sm' ? 11 : 13, 0.04), { fontFamily: fontFamily('bold', 'wide'), color: label }]}>{title}</Text>
         {iconRight}
       </View>;
       return look.shadow ? <HardShadow pressed={pressed && !off}>{face}</HardShadow> : face;
@@ -330,11 +337,14 @@ export const BottomBarInset = createContext(0);
 export function Screen({ ref, children, refreshing, onRefresh, padded = true, contentStyle, footer }: { ref?: Ref<ComponentRef<typeof ScrollView>>; children: ReactNode; refreshing?: boolean; onRefresh?: () => void; padded?: boolean; contentStyle?: StyleProp<ViewStyle>; footer?: ReactNode }) {
   const pulling = usePullToRefresh(Boolean(refreshing));
   const barInset = useContext(BottomBarInset);
-  return <View style={{ flex: 1, backgroundColor: colors.paper }}>
+  // The keyboard must never cover the field you're typing in: iOS insets the scroll view and scrolls the
+  // focused field into view; Android (edge-to-edge, so the window doesn't resize) gets padding instead.
+  return <KeyboardAvoidingView behavior={Platform.OS === 'android' ? 'padding' : undefined} enabled={Platform.OS === 'android'} style={{ flex: 1, backgroundColor: colors.paper }}>
     <ScrollView
       ref={ref}
       style={{ flex: 1 }}
       contentInsetAdjustmentBehavior="automatic"
+      automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       contentContainerStyle={[padded && { paddingHorizontal: GUTTER, paddingTop: 16, paddingBottom: 48 }, contentStyle]}
@@ -344,7 +354,7 @@ export function Screen({ ref, children, refreshing, onRefresh, padded = true, co
       {barInset ? <View style={{ height: barInset }} /> : null}
     </ScrollView>
     {footer}
-  </View>;
+  </KeyboardAvoidingView>;
 }
 
 /** A bar pinned under a screen (a form's submit, a chat composer), above the home indicator. */
@@ -358,7 +368,7 @@ export function Footer({ children, style }: { children: ReactNode; style?: Style
 type Tone = 'info' | 'ok' | 'warn' | 'bad' | 'neutral';
 
 const toneStyles: Record<Tone, { border: string; bg: string; icon: string }> = {
-  info: { border: colors.ink, bg: colors.card, icon: colors.ink },
+  info: { border: colors.edge, bg: colors.card, icon: colors.ink },
   ok: { border: colors.ok, bg: colors.okWash, icon: colors.ok },
   warn: { border: colors.warn, bg: colors.warnWash, icon: colors.warn },
   bad: { border: colors.bad, bg: colors.badWash, icon: colors.bad },
@@ -384,6 +394,7 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () =
   useEffect(() => {
     if (!error) return;
     const offline = isApiError(error, 0);
+    if (offline && __DEV__) console.warn('Request failed before reaching Jump:', (error as { path?: string }).path, String((error as { cause?: unknown }).cause));
     const disabled = isApiError(error, 503);
     toast({
       tone: disabled ? 'warn' : 'bad',
@@ -433,7 +444,9 @@ export function EmptyState({ mark, title, children, action }: { mark?: ReactNode
 
 /* ───────────────────────── Data display ───────────────────────── */
 
-export function Tag({ children, color = colors.ink, background = colors.card, border = 'rgba(18,18,18,0.8)', style }: { children: ReactNode; color?: string; background?: string; border?: string; style?: StyleProp<ViewStyle> }) {
+export function Tag({ children, color: wanted = colors.ink, background = colors.card, border = colors.edge, style }: { children: ReactNode; color?: string; background?: string; border?: string; style?: StyleProp<ViewStyle> }) {
+  // Ink on volt or orange is cream in dark mode; text there stays dark.
+  const color = wanted === colors.ink && (background === colors.volt || background === colors.track) ? colors.onAccent : wanted;
   return <View style={[styles.tag, { backgroundColor: background, borderColor: border }, style]}>
     {/* Uppercased here, not with textTransform: iOS sizes the text before transforming it, which clipped "LIVE" to "LIV". */}
     {typeof children === 'string' ? <Text style={[styles.tagText, { color }]} numberOfLines={1}>{children.toUpperCase()}</Text> : children}
@@ -444,7 +457,8 @@ export function Tag({ children, color = colors.ink, background = colors.card, bo
 const LIVE_GREEN = '#22C55E';
 
 export function LiveTag({ label = 'Live' }: { label?: string }) {
-  return <View style={[styles.tag, styles.liveTag]}>
+  // No box: just the light and the word, centred on the heading beside it (not on its rule).
+  return <View style={styles.liveTag}>
     <LiveDot live color={LIVE_GREEN} size={8} />
     <Text style={[styles.tagText, { color: colors.ok }]} numberOfLines={1}>{label.toUpperCase()}</Text>
   </View>;
@@ -584,7 +598,7 @@ export function Chips<T extends string>({ value, options, onChange, label }: { v
     {options.map((option) => {
       const active = option.value === value;
       return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => { haptic(); onChange(option.value); }}
-        style={[styles.chip, active && { backgroundColor: colors.ink, borderColor: colors.ink }]}>
+        style={[styles.chip, active && { backgroundColor: colors.ink, borderColor: colors.edge }]}>
         <Text style={[{ fontFamily: fontFamily('bold'), fontSize: 13, color: active ? colors.paper : colors.ink }]}>{option.label}</Text>
       </Pressable>;
     })}
@@ -631,13 +645,13 @@ const styles = StyleSheet.create({
   empty: { borderRadius: radius.md, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(138,133,123,0.6)', paddingHorizontal: 24, paddingVertical: 40 },
   tag: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', flexShrink: 0, height: 24, borderRadius: radius.sm, borderWidth: 1, paddingHorizontal: 8 },
   tagText: { fontFamily: fontFamily('bold'), fontSize: 10.5, letterSpacing: 0.84 },
-  liveTag: { gap: 7, flexShrink: 0, backgroundColor: colors.okWash, borderColor: 'rgba(34,197,94,0.55)' },
+  liveTag: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center', gap: 7, flexShrink: 0 },
   keyValue: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, paddingVertical: 10 },
   label: { fontFamily: fontFamily('semibold'), fontSize: 13, color: colors.ink, marginBottom: 6 },
   field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 50, borderRadius: radius.base, borderWidth: 1.5, backgroundColor: colors.white, paddingHorizontal: 14 },
   input: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink, paddingVertical: 12 },
   reveal: { paddingLeft: 8, paddingVertical: 8 },
-  segmented: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, flexGrow: 0 },
+  segmented: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, flexGrow: 0 },
   segment: { alignItems: 'center', justifyContent: 'center', borderRadius: radius.base },
   chip: { height: 36, justifyContent: 'center', borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: GUTTER, paddingVertical: 12, minHeight: 56 },

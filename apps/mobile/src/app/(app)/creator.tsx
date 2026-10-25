@@ -66,7 +66,7 @@ export default function CreatorScreen() {
               <Txt size={12} color="ink2" style={{ marginTop: 4 }}>{`5% of ${formatMoney(earning.grossPrizeKobo)} · ${formatDate(earning.createdAt, { year: 'numeric' })}`}</Txt>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 8 }}>
-              <Tag border={colors.ink}>{earning.status}</Tag>
+              <Tag border={colors.edge}>{earning.status}</Tag>
               {earning.status === 'EARNED' && <Button size="sm" title="Request payout" disabled={payout.isPending} onPress={() => payout.mutate(earning.id)} />}
             </View>
           </View>)}</View>}
@@ -77,5 +77,5 @@ export default function CreatorScreen() {
 }
 
 const styles = StyleSheet.create({
-  earning: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.card, padding: 16 },
+  earning: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 16 },
 });
