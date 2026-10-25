@@ -7,7 +7,7 @@
  *
  * Screens read it with `useRecorder()`, which has the same shape as the web hook.
  */
-import type { Activity, RunSession, SampleUploadResult } from '@jump/shared/types';
+import type { Activity, Profile, RunSession, SampleUploadResult } from '@jump/shared/types';
 import { MAX_USABLE_ACCURACY_METRES, measureTrack, type TrackPoint } from '@jump/shared/track';
 import type { QueryClient } from '@tanstack/react-query';
 import { isRunningInExpoGo } from 'expo';
@@ -15,13 +15,18 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import * as TaskManager from 'expo-task-manager';
 import { useSyncExternalStore } from 'react';
+import { router } from 'expo-router';
 import { AppState } from 'react-native';
 import { api, isApiError, post } from './api';
+import { syncLiveActivity } from './liveActivity';
 import { keys } from './queries';
 import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, getActiveRun, pendingSamples, setActiveRun } from './run-buffer';
+import { Storage } from './kv';
 import { colors } from './theme';
+import { toast } from './toast';
 
-export type RecorderPhase = 'restoring' | 'unavailable' | 'idle' | 'locating' | 'recording' | 'paused' | 'finishing' | 'blocked';
+/** `saved`: finished with no signal; it's on the phone and submits itself once Jump can be reached. */
+export type RecorderPhase = 'restoring' | 'unavailable' | 'idle' | 'locating' | 'recording' | 'paused' | 'finishing' | 'saved' | 'blocked';
 export type Connection = 'online' | 'offline';
 export type ActivityKind = 'walk' | 'run' | 'cycle';
 
@@ -59,7 +64,17 @@ const listeners = new Set<() => void>();
 
 function set(changes: Partial<State>) {
   state = { ...state, ...changes };
+  // Kept on the phone, so a run can carry on after an app restart with no signal.
+  if (changes.session) rememberSession(changes.session);
   listeners.forEach((listener) => listener());
+  // The lock screen and Dynamic Island follow every change, even with the app in the background.
+  syncLiveActivity({
+    phase: state.phase,
+    session: state.session,
+    metres: Math.max(state.localMetres, state.uploadedMetres),
+    movingSeconds: movingSeconds(state.session, Date.now()),
+    unit: queryClient?.getQueryData<Profile>(keys.profile)?.preferredUnit ?? 'km',
+  });
 }
 
 // Everything below is the run in progress, kept outside React so the background task can use it.
@@ -204,6 +219,126 @@ function checkpointSteps() {
   appendSamples(runId, [{ ...lastFix, stepCount: totalSteps(), recordedAt: new Date().toISOString() }]);
 }
 
+/* ───────────────────────── No signal ───────────────────────── */
+
+/**
+ * With no signal mid-run, pause, resume and finish still work: they're noted here with the moment they
+ * happened, the screen updates at once, and `sync()` replays them, in order and with those times, once
+ * Jump can be reached again. GPS points were already safe in the run buffer.
+ */
+type Moment = { type: 'pause' | 'resume' | 'finish'; at: string };
+const MOMENTS_KEY = (id: string) => `jump_run_moments:${id}`;
+const SESSION_KEY = (id: string) => `jump_run_session:${id}`;
+const SYNC_INTERVAL_MS = 15_000;
+let syncTimer: ReturnType<typeof setInterval> | null = null;
+let syncJob: Promise<void> | null = null;
+
+function queuedMoments(id: string): Moment[] {
+  try { return JSON.parse(Storage.getItemSync(MOMENTS_KEY(id)) ?? '[]') as Moment[]; } catch { return []; }
+}
+function setQueuedMoments(id: string, moments: Moment[]) {
+  try {
+    if (moments.length) Storage.setItemSync(MOMENTS_KEY(id), JSON.stringify(moments));
+    else Storage.removeItemSync(MOMENTS_KEY(id));
+  } catch { /* storage unavailable: best effort */ }
+}
+function rememberSession(session: RunSession) {
+  try { Storage.setItemSync(SESSION_KEY(session.id), JSON.stringify(session)); } catch { /* fine */ }
+}
+function recalledSession(id: string): RunSession | null {
+  try { const raw = Storage.getItemSync(SESSION_KEY(id)); return raw ? JSON.parse(raw) as RunSession : null; } catch { return null; }
+}
+const noSignal = (error: unknown) => isApiError(error, 0);
+
+/** The session as it stands after moments the server hasn't heard about yet, and the phase they leave. */
+function applyMoments(session: RunSession, moments: Moment[]): { session: RunSession; phase: RecorderPhase } {
+  let current = session;
+  let phase: RecorderPhase = session.status === 'PAUSED' ? 'paused' : 'recording';
+  for (const moment of moments) {
+    if (moment.type === 'pause' && current.status !== 'PAUSED') {
+      current = { ...current, status: 'PAUSED', pausedAt: moment.at };
+      phase = 'paused';
+    } else if (moment.type === 'resume' && current.pausedAt) {
+      const paused = Math.max(0, Math.floor((new Date(moment.at).getTime() - new Date(current.pausedAt).getTime()) / 1000));
+      current = { ...current, status: 'RUNNING', pausedAt: null, pausedSeconds: current.pausedSeconds + paused };
+      phase = 'recording';
+    } else if (moment.type === 'finish') {
+      current = current.pausedAt ? current : { ...current, pausedAt: moment.at };
+      phase = 'saved';
+    }
+  }
+  return { session: current, phase };
+}
+
+function queueMoment(id: string, moment: Moment) {
+  const moments = [...queuedMoments(id), moment];
+  setQueuedMoments(id, moments);
+  if (state.session) set({ session: applyMoments(state.session, [moment]).session, connection: 'offline' });
+  startSyncing();
+}
+
+function startSyncing() {
+  syncTimer ??= setInterval(() => void sync(), SYNC_INTERVAL_MS);
+}
+function stopSyncing() {
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = null;
+}
+
+/**
+ * Back in signal: upload the GPS points, then tell the server about each pause, resume and finish, in
+ * order, with the moment it really happened. Quietly waits if there's still no signal.
+ */
+function sync(): Promise<void> {
+  const id = runId;
+  if (!id) { stopSyncing(); return Promise.resolve(); }
+  if (queuedMoments(id).length === 0) { stopSyncing(); return Promise.resolve(); }
+  if (syncJob) return syncJob;
+  syncJob = (async () => {
+    try {
+      let server = await api<RunSession>(`/runs/${id}`);
+      let moments = queuedMoments(id);
+      // Points are only accepted while the server has the run going: if it last heard "paused", the
+      // resume that followed goes first.
+      if (server.status === 'PAUSED' && moments[0]?.type === 'resume') {
+        server = await post<RunSession>(`/runs/${id}/resume`, { at: moments[0].at });
+        moments = moments.slice(1);
+        setQueuedMoments(id, moments);
+      }
+      if (server.status === 'RUNNING' && !(await flush())) return;
+      for (const moment of moments) {
+        if (moment.type === 'finish') {
+          // A last step checkpoint may have been saved while paused: open it up briefly to take it.
+          if (server.status === 'PAUSED' && countPending(id) > 0) {
+            server = await post<RunSession>(`/runs/${id}/resume`, { at: moment.at });
+            if (!(await flush())) return;
+          }
+          const activity = await post<Activity>(`/runs/${id}/finish`, { at: moment.at });
+          setQueuedMoments(id, []);
+          await reset();
+          set({ phase: 'idle', connection: 'online' });
+          queryClient?.setQueryData(keys.activity(activity.id), activity);
+          void queryClient?.invalidateQueries({ queryKey: keys.activities });
+          toast({ tone: 'ok', title: 'Back in signal', message: `Your ${activity.activityType === 'cycle' ? 'ride' : activity.activityType} is submitted and being checked.`, action: { label: 'View', run: () => router.push(`/activities/${activity.id}`) } });
+          return;
+        }
+        server = await post<RunSession>(`/runs/${id}/${moment.type}`, { at: moment.at });
+        setQueuedMoments(id, queuedMoments(id).slice(1));
+      }
+      set({ session: server, connection: 'online' });
+      stopSyncing();
+      if (server.status === 'RUNNING') void flush();
+    } catch (error) {
+      if (noSignal(error)) set({ connection: 'offline' });
+      else if (error instanceof Error) set({ error: error.message });
+    } finally {
+      syncJob = null;
+      if (runId === id) set({ pendingCount: countPending(id) });
+    }
+  })();
+  return syncJob;
+}
+
 /* ───────────────────────── Upload ───────────────────────── */
 
 /** Upload everything buffered for the run. Resolves `true` when nothing is left. */
@@ -230,8 +365,12 @@ function flush(): Promise<boolean> {
       if (isApiError(error, 0)) set({ connection: 'offline' });
       else if (isApiError(error, 400)) {
         // The server only accepts samples while RUNNING — resync our view of the session.
-        const fresh = await api<RunSession>(`/runs/${id}`).catch(() => null);
-        if (fresh) set({ session: fresh });
+        // With moments from a no-signal stretch still to replay, the phone's view stands: sync sorts it.
+        if (queuedMoments(id).length) void sync();
+        else {
+          const fresh = await api<RunSession>(`/runs/${id}`).catch(() => null);
+          if (fresh) set({ session: fresh });
+        }
       } else if (error instanceof Error) set({ error: error.message });
       return false;
     } finally {
@@ -245,6 +384,7 @@ function flush(): Promise<boolean> {
 // Coming back to the app is a good moment to send whatever the background task buffered.
 AppState.addEventListener('change', (next) => {
   if (next === 'active' && state.phase === 'recording') void flush();
+  if (next === 'active') void sync();
 });
 
 /* ───────────────────────── Lifecycle ───────────────────────── */
@@ -267,7 +407,12 @@ async function reset() {
   stepsBefore = 0;
   stepsNow = 0;
   clearActiveRun();
-  if (id) clearRun(id);
+  stopSyncing();
+  if (id) {
+    clearRun(id);
+    setQueuedMoments(id, []);
+    try { Storage.removeItemSync(SESSION_KEY(id)); } catch { /* fine */ }
+  }
   set({ session: null, uploadedMetres: 0, localMetres: 0, steps: null, pendingCount: 0, accuracy: null, lastFixAt: null, route: [], position: null });
 }
 
@@ -290,6 +435,16 @@ export async function restoreRecorder(forUser: string, client: QueryClient, forc
     set({ pendingCount: countPending(run.id) });
     motionAllowed = run.activityType !== 'cycle' && (await Pedometer.getPermissionsAsync().then((permission) => permission.granted).catch(() => false));
     if (motionAllowed) set({ steps: totalSteps() });
+    // Moments from a stretch with no signal that the server hasn't heard yet: the phone's view wins.
+    const moments = queuedMoments(run.id);
+    if (moments.length && ['RUNNING', 'PAUSED'].includes(run.status)) {
+      const local = applyMoments(run, moments);
+      set({ session: local.session, phase: local.phase });
+      if (local.phase === 'recording') await startWatching();
+      startSyncing();
+      void sync();
+      return;
+    }
     if (run.status === 'RUNNING') {
       set({ phase: 'recording' });
       await startWatching();
@@ -302,6 +457,17 @@ export async function restoreRecorder(forUser: string, client: QueryClient, forc
       set({ phase: 'idle' });
     }
   } catch (error) {
+    // No signal on reopening mid-run: carry on from what the phone remembers instead of stopping.
+    const remembered = pointer ? recalledSession(pointer.runId) : null;
+    if (noSignal(error) && remembered) {
+      adopt(remembered);
+      const local = applyMoments(remembered, queuedMoments(remembered.id));
+      motionAllowed = remembered.activityType !== 'cycle' && (await Pedometer.getPermissionsAsync().then((permission) => permission.granted).catch(() => false));
+      set({ session: local.session, phase: local.phase, connection: 'offline', pendingCount: countPending(remembered.id), ...(motionAllowed ? { steps: totalSteps() } : {}) });
+      if (local.phase === 'recording') await startWatching();
+      startSyncing();
+      return;
+    }
     if (isApiError(error, 404)) {
       if (pointer) clearRun(pointer.runId);
       await reset();
@@ -370,28 +536,49 @@ async function pause() {
   const id = runId;
   if (!id) return;
   set({ error: null, phase: 'paused' });
+  const at = new Date().toISOString();
   checkpointSteps();
   await stopWatching();
-  await flush();
-  try {
-    set({ session: await post<RunSession>(`/runs/${id}/pause`) });
-  } catch (error) {
-    set({ error: error instanceof Error ? error.message : 'Couldn’t pause.', phase: 'recording' });
-    await startWatching();
+  // Only straight to the server when nothing's waiting to be replayed first (order matters).
+  if (queuedMoments(id).length === 0) {
+    await flush();
+    try {
+      set({ session: await post<RunSession>(`/runs/${id}/pause`, { at }) });
+      return;
+    } catch (error) {
+      if (!noSignal(error)) {
+        set({ error: error instanceof Error ? error.message : 'Couldn’t pause.', phase: 'recording' });
+        await startWatching();
+        return;
+      }
+    }
   }
+  // No signal: paused on the phone; the server hears (with this time) when it's back.
+  queueMoment(id, { type: 'pause', at });
 }
 
 async function resume() {
   const id = runId;
   if (!id) return;
   set({ error: null });
-  try {
-    set({ session: await post<RunSession>(`/runs/${id}/resume`), phase: 'recording' });
-    await startWatching();
-    void flush();
-  } catch (error) {
-    set({ error: error instanceof Error ? error.message : 'Couldn’t resume.' });
+  const at = new Date().toISOString();
+  if (queuedMoments(id).length === 0) {
+    try {
+      set({ session: await post<RunSession>(`/runs/${id}/resume`, { at }), phase: 'recording' });
+      await startWatching();
+      void flush();
+      return;
+    } catch (error) {
+      if (!noSignal(error)) {
+        set({ error: error instanceof Error ? error.message : 'Couldn’t resume.' });
+        return;
+      }
+    }
   }
+  // No signal: carry on recording; points wait on the phone and the resume is replayed later.
+  queueMoment(id, { type: 'resume', at });
+  set({ phase: 'recording' });
+  await startWatching();
 }
 
 async function finish(): Promise<Activity | null> {
@@ -400,6 +587,9 @@ async function finish(): Promise<Activity | null> {
   set({ error: null, phase: 'finishing' });
   checkpointSteps();
   await stopWatching();
+  const at = new Date().toISOString();
+  // With earlier offline moments still to replay, this one joins the queue behind them.
+  if (queuedMoments(id).length > 0) return finishOffline(id, at);
   let status = state.session?.status;
   try {
     if (countPending(id) > 0) {
@@ -410,22 +600,32 @@ async function finish(): Promise<Activity | null> {
         status = resumed.status;
       }
       if (!(await flush())) {
+        // No signal: finish on the phone; it submits itself once Jump can be reached.
+        if (state.connection === 'offline') return finishOffline(id, at);
         const left = countPending(id);
         throw new Error(`${left} GPS ${left === 1 ? 'point is' : 'points are'} still waiting to upload. Check your connection and press finish again.`);
       }
     }
-    const activity = await post<Activity>(`/runs/${id}/finish`);
+    const activity = await post<Activity>(`/runs/${id}/finish`, { at });
     await reset();
     set({ phase: 'idle' });
     queryClient?.setQueryData(keys.activity(activity.id), activity);
     void queryClient?.invalidateQueries({ queryKey: keys.activities });
     return activity;
   } catch (error) {
+    if (noSignal(error)) return finishOffline(id, at);
     const backTo = status === 'PAUSED' ? 'paused' : 'recording';
     set({ error: error instanceof Error ? error.message : 'Couldn’t finish your activity.', phase: backTo });
     if (backTo === 'recording') await startWatching();
     return null;
   }
+}
+
+/** Finished with no signal: saved on the phone, submitted by `sync()` when Jump can be reached. */
+function finishOffline(id: string, at: string): null {
+  queueMoment(id, { type: 'finish', at });
+  set({ phase: 'saved' });
+  return null;
 }
 
 /** Throw the current run away: nothing is saved or submitted. */
@@ -460,6 +660,8 @@ const actions = {
   resume,
   finish,
   discard,
+  /** Try submitting what was saved with no signal now, instead of waiting for the next attempt. */
+  syncNow: () => void sync(),
   retryRestore: () => {
     if (userId && queryClient) void restoreRecorder(userId, queryClient, true);
   },

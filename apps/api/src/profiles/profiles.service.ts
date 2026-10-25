@@ -1,3 +1,4 @@
+import { trophiesFor } from '../tables/trophies';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
@@ -74,6 +75,17 @@ export class ProfilesService {
     if (profile.avatarUrl) await this.cloudinary.removeAvatar(userId);
     profile.avatarUrl = null;
     return this.profiles.save(profile);
+  }
+
+  /** Your trophy cabinet: podium finishes, newest first, with win and podium counts. */
+  myTrophies(userId: string) {
+    return trophiesFor(this.dataSource.manager, userId);
+  }
+
+  /** Someone else's, by their handle. */
+  async trophies(username: string) {
+    const profile = await this.byUsername(username);
+    return trophiesFor(this.dataSource.manager, profile.userId);
   }
 
   private async byUsername(username: string) {

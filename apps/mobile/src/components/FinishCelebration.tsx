@@ -2,106 +2,129 @@ import { formatDistanceNumber, formatDuration, formatPace, formatSpeed } from '@
 import { shownMetres } from '@jump/shared/progress';
 import type { Activity, Unit } from '@jump/shared/types';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing, FadeIn, FadeInDown, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSequence, withSpring, withTiming, ZoomIn,
+  Easing, FadeIn, FadeInDown, SlideInDown, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Path } from 'react-native-svg';
-// Always dark, in either theme, like the live workout it follows.
-import { brand as colors, display, fontFamily, score, wideLabel } from '@/lib/theme';
-import { CheckIcon } from './icons';
+// A paper bib: the brand's paper and ink in either theme.
+import { brand as colors, fontFamily, score, wideLabel } from '@/lib/theme';
 import { haptic } from './ui';
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const DONE: Record<Activity['activityType'], string> = { run: 'Run done.', walk: 'Walk done.', cycle: 'Ride done.' };
+const KIND: Record<Activity['activityType'], string> = { run: 'Run', walk: 'Walk', cycle: 'Ride' };
 const CONFETTI = [colors.track, colors.volt, colors.paper, '#FF9A6B', colors.volt];
 
 /**
- * The moment after Finish: the route draws itself while the distance counts up under your thumb (a
- * light tick per tenth), lands with a thud and a burst, then the numbers and the verdict arrive, each
- * with its own tap.
+ * The finisher's bib. After Finish, a race bib slides up: your distance is the bib number (counting up
+ * with a tick per tenth), time, pace and steps sit on tear-off stubs, and then the verdict is stamped
+ * across it like a rubber stamp, with a thud. Jump's own moment, not another fitness-app summary.
  */
-export function FinishCelebration({ activity, route, unit, onShare, onClose }: {
-  activity: Activity; route: Array<[number, number]>; unit: Unit; onShare: () => void; onClose: () => void;
+export function FinishCelebration({ activity, unit, onShare, onClose }: {
+  activity: Activity; route?: Array<[number, number]>; unit: Unit; onShare: () => void; onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const metres = shownMetres(activity);
   const { shown, landed } = useCountWithTicks(metres, unit, reduced);
-  const pop = useSharedValue(1);
   const moving = activity.movingSeconds || activity.elapsedSeconds;
   const cycle = activity.activityType === 'cycle';
-  const stats = [
+  const finished = new Date(activity.finishedAt);
+  const stubs = [
     { label: 'Time', value: formatDuration(moving) },
-    { label: cycle ? 'Avg speed' : `Pace /${unit}`, value: (cycle ? formatSpeed(metres, moving, unit) : formatPace(metres, moving, unit)) ?? '–' },
+    { label: cycle ? 'Speed' : `Pace /${unit}`, value: ((cycle ? formatSpeed(metres, moving, unit) : formatPace(metres, moving, unit)) ?? '–').replace(/ (km|mi)\/h$/, '') },
     cycle
       ? { label: 'Elapsed', value: formatDuration(activity.elapsedSeconds) }
       : { label: 'Steps', value: (activity.validatedSteps || activity.recordedSteps).toLocaleString('en-GB') },
   ];
 
-  useEffect(() => {
-    if (!landed) return;
-    pop.value = withSequence(withTiming(1.12, { duration: 110 }), withSpring(1, { damping: 7, stiffness: 180 }));
-    // The stats arrive one by one, a light tap each.
-    const timers = stats.map((_, index) => setTimeout(() => haptic('tap'), 380 + index * 140));
-    return () => timers.forEach(clearTimeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [landed]);
-
-  // The verdict gets its own moment once the count has landed.
-  const status = activity.verificationStatus;
-  const announced = useRef<string | null>(null);
-  useEffect(() => {
-    if (!landed || status === 'PENDING_VERIFICATION' || announced.current === status) return;
-    announced.current = status;
-    const timer = setTimeout(() => haptic(status === 'VERIFIED' ? 'success' : 'warning'), 900);
-    return () => clearTimeout(timer);
-  }, [landed, status]);
-
-  const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
-
   return <Modal visible transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
-    <View style={[styles.screen, { paddingTop: insets.top + 20, paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
-      <View style={styles.glow} pointerEvents="none" />
-      <Animated.Text entering={FadeInDown.duration(380)} style={styles.kicker}>{new Date(activity.finishedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {formatDuration(moving)}</Animated.Text>
-      <Animated.Text entering={FadeInDown.delay(80).duration(380)} style={[display(40), styles.headline]}>{DONE[activity.activityType] ?? 'Done.'}</Animated.Text>
+    <View style={[styles.screen, { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+      <Animated.Text entering={FadeInDown.duration(360)} style={[wideLabel(12, 0.14), styles.kicker]}>
+        {`${KIND[activity.activityType]} finished · ${finished.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+      </Animated.Text>
 
-      <RouteTrace route={route} reduced={reduced} />
-
-      <View style={styles.hero}>
-        {landed && !reduced && <Burst />}
-        <Animated.View style={[styles.distance, popStyle]}>
-          <Text style={[score(96), styles.distanceNumber]} accessibilityLabel={`${formatDistanceNumber(metres, unit)} ${unit}`}>{formatDistanceNumber(shown, unit)}</Text>
-          <Text style={styles.unit}>{unit}</Text>
+      <View style={{ flex: 1, justifyContent: 'center', alignSelf: 'stretch' }}>
+        <Animated.View entering={reduced ? FadeIn : SlideInDown.springify().damping(15).stiffness(120)}>
+          {/* The bib, with its hard shadow. */}
+          <View style={styles.shadow} />
+          <View style={styles.bib}>
+            <View style={styles.band}>
+              <Text style={[wideLabel(11, 0.12), styles.bandText]}>{`Jump · ${KIND[activity.activityType]} finisher`}</Text>
+              <Text style={[wideLabel(11, 0.08), styles.bandText]}>{finished.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Text>
+            </View>
+            <View style={styles.body}>
+              {[styles.pinTL, styles.pinTR, styles.pinBL, styles.pinBR].map((pin, index) => <View key={index} style={[styles.pin, pin]} />)}
+              <Text style={[wideLabel(10, 0.16), styles.label]}>{`Distance · ${unit}`}</Text>
+              <Text style={styles.number} adjustsFontSizeToFit numberOfLines={1} accessibilityLabel={`${formatDistanceNumber(metres, unit)} ${unit}`}>
+                {formatDistanceNumber(shown, unit)}
+              </Text>
+              {landed && <Stamp status={activity.verificationStatus} reduced={reduced} />}
+            </View>
+            <View style={styles.perforation}>
+              <View style={[styles.notch, { left: -12 }]} />
+              <View style={styles.tear} />
+              <View style={[styles.notch, { right: -12 }]} />
+            </View>
+            <View style={styles.stubs}>
+              {stubs.map((stub, index) => <View key={stub.label} style={[styles.stubCell, index > 0 && styles.stubDivider]}>
+                <Text style={[score(24), { color: colors.ink }]} numberOfLines={1} adjustsFontSizeToFit>{stub.value}</Text>
+                <Text style={[wideLabel(9, 0.14), styles.label, { marginTop: 4 }]}>{stub.label}</Text>
+              </View>)}
+            </View>
+          </View>
         </Animated.View>
       </View>
 
-      <View style={styles.stats}>
-        {stats.map((stat, index) => landed
-          ? <Animated.View key={stat.label} entering={FadeInDown.delay(380 + index * 140).springify().damping(14)} style={styles.stat}>
-            <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{stat.value}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-          </Animated.View>
-          : <View key={stat.label} style={[styles.stat, { opacity: 0 }]} />)}
-      </View>
-
-      <View style={styles.verdictSlot}>
-        {landed && <Verdict status={status} />}
-      </View>
-
-      <View style={{ flex: 1 }} />
-      {landed && <Animated.View entering={FadeIn.delay(700)} style={styles.actions}>
+      {landed && <Animated.View entering={FadeIn.delay(900)} style={{ alignSelf: 'stretch', gap: 10 }}>
         <Pressable onPress={() => { haptic('medium'); onShare(); }} style={({ pressed }) => [styles.share, pressed && styles.pressed]} accessibilityRole="button">
-          <Text style={styles.shareText}>Share it</Text>
+          <Text style={[wideLabel(14, 0.06), { color: colors.volt, fontFamily: fontFamily('extrabold', 'wide') }]}>Share it</Text>
         </Pressable>
         <Pressable onPress={() => { haptic(); onClose(); }} style={({ pressed }) => [styles.done, pressed && styles.pressed]} accessibilityRole="button">
-          <Text style={styles.doneText}>See details</Text>
+          <Text style={[wideLabel(13, 0.06), { color: colors.ink, fontFamily: fontFamily('bold', 'wide') }]}>See details</Text>
         </Pressable>
       </Animated.View>}
     </View>
   </Modal>;
+}
+
+/**
+ * The verdict, stamped across the bib: it slams down from above with a thud. Verified is Jump orange;
+ * still checking is a faint pencil-grey "Checking"; a flag is ink "Needs a look". When the check finishes
+ * while you're watching, the new stamp lands over it.
+ */
+function Stamp({ status, reduced }: { status: Activity['verificationStatus']; reduced: boolean }) {
+  const look = status === 'VERIFIED' ? { text: 'Verified', color: colors.track, opacity: 1 }
+    : status === 'PENDING_VERIFICATION' ? { text: 'Checking…', color: colors.ink3, opacity: 0.75 }
+      : { text: 'Needs a look', color: colors.ink, opacity: 0.9 };
+  const scale = useSharedValue(reduced ? 1 : 2.4);
+  const fade = useSharedValue(reduced ? look.opacity : 0);
+  const announced = useRef<string | null>(null);
+  useEffect(() => {
+    if (announced.current === status) return;
+    announced.current = status;
+    const delay = status === 'PENDING_VERIFICATION' ? 500 : 650;
+    if (!reduced) {
+      scale.value = 2.4;
+      fade.value = 0;
+      const timer = setTimeout(() => {
+        scale.value = withSpring(1, { damping: 11, stiffness: 260 });
+        fade.value = withTiming(look.opacity, { duration: 120 });
+      }, delay);
+      const thud = setTimeout(() => {
+        haptic('heavy');
+        if (status !== 'PENDING_VERIFICATION') setTimeout(() => haptic(status === 'VERIFIED' ? 'success' : 'warning'), 120);
+      }, delay + 140);
+      return () => { clearTimeout(timer); clearTimeout(thud); };
+    }
+    if (status !== 'PENDING_VERIFICATION') haptic(status === 'VERIFIED' ? 'success' : 'warning');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+  const style = useAnimatedStyle(() => ({ opacity: fade.value, transform: [{ rotate: '-11deg' }, { scale: scale.value }] }));
+  return <Animated.View pointerEvents="none" style={[styles.stamp, { borderColor: look.color }, style]}>
+    <View style={[styles.stampInner, { borderColor: look.color }]}>
+      <Text style={[wideLabel(22, 0.08), { color: look.color, fontFamily: 'ArchivoWide-Black' }]}>{look.text}</Text>
+    </View>
+  </Animated.View>;
 }
 
 /** Counts from zero to the distance, ticking the phone once per tenth, and lands with a thud. */
@@ -146,52 +169,8 @@ function useCountWithTicks(metres: number, unit: Unit, reduced: boolean) {
   return { shown, landed };
 }
 
-/** The route, drawn as one stroke from start to finish. */
-function RouteTrace({ route, reduced }: { route: Array<[number, number]>; reduced: boolean }) {
-  const { width } = useWindowDimensions();
-  const box = { width: width - 48, height: 150 };
-  const shape = useMemo(() => tracePath(route, box.width, box.height), [route, box.width, box.height]);
-  const draw = useSharedValue(reduced ? 1 : 0);
-  useEffect(() => {
-    if (!shape || reduced) return;
-    draw.value = withDelay(150, withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.cubic) }));
-  }, [shape, reduced, draw]);
-  const stroke = useAnimatedProps(() => ({ strokeDashoffset: (shape?.length ?? 0) * (1 - draw.value) }));
-  const end = useAnimatedProps(() => ({ opacity: draw.value > 0.98 ? 1 : 0 }));
-  if (!shape) return <View style={{ height: 24 }} />;
-  return <Svg width={box.width} height={box.height} style={{ marginVertical: 12 }}>
-    <Path d={shape.d} stroke="rgba(242,239,232,0.1)" strokeWidth={6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    <AnimatedPath d={shape.d} stroke={colors.track} strokeWidth={4} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray={shape.length} animatedProps={stroke} />
-    <Circle cx={shape.start[0]} cy={shape.start[1]} r={5} fill={colors.paper} />
-    <AnimatedCircle cx={shape.end[0]} cy={shape.end[1]} r={7} fill={colors.volt} stroke={colors.ink} strokeWidth={2} animatedProps={end} />
-  </Svg>;
-}
-
-function tracePath(route: Array<[number, number]>, width: number, height: number) {
-  if (route.length < 2) return null;
-  const every = Math.ceil(route.length / 400);
-  const points = route.filter((_, index) => index % every === 0 || index === route.length - 1);
-  const midLat = points.reduce((sum, [lat]) => sum + lat, 0) / points.length;
-  const squash = Math.cos((midLat * Math.PI) / 180);
-  const xs = points.map(([, lng]) => lng * squash);
-  const ys = points.map(([lat]) => -lat);
-  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  const pad = 10;
-  const scale = Math.min((width - pad * 2) / Math.max(maxX - minX, 1e-9), (height - pad * 2) / Math.max(maxY - minY, 1e-9));
-  const offsetX = (width - (maxX - minX) * scale) / 2;
-  const offsetY = (height - (maxY - minY) * scale) / 2;
-  const projected = xs.map((x, index) => [offsetX + (x - minX) * scale, offsetY + (ys[index] - minY) * scale] as [number, number]);
-  let length = 0;
-  for (let index = 1; index < projected.length; index += 1) {
-    length += Math.hypot(projected[index][0] - projected[index - 1][0], projected[index][1] - projected[index - 1][1]);
-  }
-  if (length < 1) return null;
-  const d = projected.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-  return { d, length, start: projected[0], end: projected[projected.length - 1] };
-}
-
 /** Confetti thrown out of the number as it lands, falling away under a little gravity. */
-function Burst() {
+export function Burst() {
   const pieces = useMemo(() => Array.from({ length: 34 }, (_, index) => ({
     angle: (index / 34) * Math.PI * 2 + Math.random() * 0.4,
     distance: 110 + Math.random() * 120,
@@ -224,43 +203,28 @@ function Piece({ piece, progress }: { piece: { angle: number; distance: number; 
   return <Animated.View style={[{ position: 'absolute', width: piece.size, height: piece.round ? piece.size : piece.size * 0.45, borderRadius: piece.round ? piece.size / 2 : 1, backgroundColor: piece.color }, style]} />;
 }
 
-function Verdict({ status }: { status: Activity['verificationStatus'] }) {
-  if (status === 'PENDING_VERIFICATION') {
-    return <Animated.View entering={FadeIn.delay(700)} style={styles.checking}>
-      <ActivityIndicator size="small" color={colors.paper} />
-      <Text style={styles.checkingText}>Checking your route…</Text>
-    </Animated.View>;
-  }
-  const ok = status === 'VERIFIED';
-  return <Animated.View key={status} entering={ZoomIn.delay(900).springify().damping(10)} style={[styles.verdict, !ok && styles.verdictWarn]}>
-    {ok && <CheckIcon size={18} color={colors.ink} />}
-    <Text style={[wideLabel(13, 0.04), { color: ok ? colors.ink : colors.paper }]}>{ok ? 'Verified · it counts' : 'Needs a closer look'}</Text>
-  </Animated.View>;
-}
-
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink, paddingHorizontal: 24, alignItems: 'center' },
-  glow: { position: 'absolute', top: -180, width: 520, height: 520, borderRadius: 260, backgroundColor: colors.track, opacity: 0.16 },
-  kicker: { fontFamily: fontFamily('semibold'), fontSize: 14, color: 'rgba(242,239,232,0.6)' },
-  headline: { color: colors.paper, marginTop: 4 },
-  hero: { alignItems: 'center', justifyContent: 'center', minHeight: 120 },
+  screen: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: 22, alignItems: 'center' },
+  kicker: { color: colors.ink2, fontFamily: fontFamily('bold', 'wide') },
+  shadow: { position: 'absolute', top: 6, left: 6, right: -6, bottom: -6, borderRadius: 22, backgroundColor: colors.ink },
+  bib: { borderRadius: 22, borderWidth: 2.5, borderColor: colors.ink, backgroundColor: colors.card, overflow: 'hidden' },
+  band: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.track, borderBottomWidth: 2.5, borderBottomColor: colors.ink, paddingHorizontal: 16, paddingVertical: 11 },
+  bandText: { color: colors.ink, fontFamily: fontFamily('extrabold', 'wide') },
+  body: { alignItems: 'center', paddingHorizontal: 26, paddingTop: 26, paddingBottom: 22 },
+  label: { color: colors.ink2, fontFamily: fontFamily('bold', 'wide'), textAlign: 'center' },
+  number: { fontFamily: 'ArchivoWide-Black', fontSize: 104, lineHeight: 112, letterSpacing: -4, color: colors.ink, marginTop: 4 },
+  pin: { position: 'absolute', width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.paper },
+  pinTL: { top: 12, left: 12 }, pinTR: { top: 12, right: 12 }, pinBL: { bottom: 12, left: 12 }, pinBR: { bottom: 12, right: 12 },
+  stamp: { position: 'absolute', top: '42%', alignSelf: 'center', borderWidth: 3, borderRadius: 10, padding: 3 },
+  stampInner: { borderWidth: 1.5, borderRadius: 7, paddingHorizontal: 14, paddingVertical: 6 },
+  perforation: { height: 24, justifyContent: 'center' },
+  tear: { marginHorizontal: 18, borderTopWidth: 2, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.35)' },
+  notch: { position: 'absolute', top: 0, width: 24, height: 24, borderRadius: 12, borderWidth: 2.5, borderColor: colors.ink, backgroundColor: colors.paper },
+  stubs: { flexDirection: 'row', paddingHorizontal: 8, paddingTop: 4, paddingBottom: 18 },
+  stubCell: { flex: 1, alignItems: 'center', paddingHorizontal: 6 },
+  stubDivider: { borderLeftWidth: 2, borderStyle: 'dashed', borderLeftColor: 'rgba(18,18,18,0.25)' },
+  share: { height: 58, borderRadius: 12, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  done: { height: 52, borderRadius: 12, borderWidth: 2, borderColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  pressed: { transform: [{ scale: 0.98 }], opacity: 0.9 },
   burst: { position: 'absolute', top: '50%', left: '50%', width: 0, height: 0, alignItems: 'center', justifyContent: 'center' },
-  distance: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  distanceNumber: { color: colors.volt, lineHeight: 104 },
-  unit: { fontFamily: fontFamily('bold'), fontSize: 22, color: colors.paper },
-  stats: { flexDirection: 'row', alignSelf: 'stretch', gap: 10, marginTop: 20 },
-  stat: { flex: 1, borderRadius: 18, backgroundColor: 'rgba(242,239,232,0.08)', paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center', minHeight: 70 },
-  statValue: { fontFamily: fontFamily('bold'), fontSize: 20, color: colors.paper },
-  statLabel: { fontFamily: fontFamily('semibold'), fontSize: 12, color: 'rgba(242,239,232,0.55)', marginTop: 4 },
-  verdictSlot: { height: 44, marginTop: 22, justifyContent: 'center' },
-  checking: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  checkingText: { fontFamily: fontFamily('semibold'), fontSize: 15, color: 'rgba(242,239,232,0.75)' },
-  verdict: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.volt, borderRadius: 22, paddingHorizontal: 18, height: 44 },
-  verdictWarn: { backgroundColor: 'rgba(242,239,232,0.14)' },
-  actions: { alignSelf: 'stretch', gap: 10 },
-  share: { height: 58, borderRadius: 29, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
-  shareText: { fontFamily: fontFamily('bold'), fontSize: 17, color: colors.ink },
-  done: { height: 54, borderRadius: 27, backgroundColor: 'rgba(242,239,232,0.12)', alignItems: 'center', justifyContent: 'center' },
-  doneText: { fontFamily: fontFamily('semibold'), fontSize: 16, color: colors.paper },
-  pressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
 });

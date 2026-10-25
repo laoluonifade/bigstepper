@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { MailService } from '../mail/mail.service';
-import { passwordResetEmail, verificationEmail } from '../mail/templates';
+import { passwordResetEmail, verificationEmail, welcomeEmail } from '../mail/templates';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -94,6 +94,8 @@ export class AuthService {
     this.mail.sendInBackground(
       verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', verificationToken)),
     );
+    // And a hello from the founder, as a personal note (not for placeholder addresses).
+    if (!user.email.endsWith('.invalid')) this.mail.sendInBackground(welcomeEmail({ address: user.email, name: user.displayName }));
     return {
       ...response,
       ...(this.config.get('NODE_ENV') === 'development' ? { developmentVerificationToken: verificationToken } : {}),

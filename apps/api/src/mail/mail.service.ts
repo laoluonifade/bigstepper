@@ -7,6 +7,10 @@ export interface MailMessage {
   subject: string;
   html: string;
   text: string;
+  /** Sender name shown in the inbox; the address stays Jump's. Defaults to ZEPTOMAIL_FROM_NAME. */
+  fromName?: string;
+  /** Where replies go, when not the sending address (a personal note people can answer). */
+  replyTo?: string;
 }
 
 /**
@@ -86,7 +90,8 @@ export class MailService implements OnModuleInit {
     });
     // Zoho only sends as the signed-in mailbox, so the sender is that address.
     await this.smtp.sendMail({
-      from: { address: this.smtpUser, name: this.config.get<string>('ZEPTOMAIL_FROM_NAME') || 'Jump' },
+      from: { address: this.smtpUser, name: message.fromName ?? (this.config.get<string>('ZEPTOMAIL_FROM_NAME') || 'Jump') },
+      ...(message.replyTo ? { replyTo: message.replyTo } : {}),
       to: message.to.name ? { address: message.to.address, name: message.to.name } : message.to.address,
       subject: message.subject,
       html: message.html,
@@ -104,7 +109,8 @@ export class MailService implements OnModuleInit {
         Authorization: `Zoho-enczapikey ${apiKey}`,
       },
       body: JSON.stringify({
-        from: { address: this.config.get('ZEPTOMAIL_FROM_ADDRESS'), name: this.config.get('ZEPTOMAIL_FROM_NAME') },
+        from: { address: this.config.get('ZEPTOMAIL_FROM_ADDRESS'), name: message.fromName ?? this.config.get('ZEPTOMAIL_FROM_NAME') },
+        ...(message.replyTo ? { reply_to: [{ address: message.replyTo }] } : {}),
         to: [{ email_address: { address: message.to.address, ...(message.to.name ? { name: message.to.name } : {}) } }],
         subject: message.subject,
         htmlbody: message.html,

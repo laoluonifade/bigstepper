@@ -290,9 +290,32 @@ export class ChallengeStudioService {
               (SELECT count(*) FROM (SELECT "userId" FROM e GROUP BY "userId" HAVING count(DISTINCT "tableId") > 1) x)::integer AS "repeatParticipants",
               (SELECT count(*) FROM e)::integer AS "entries",
               (SELECT count(*) FILTER (WHERE "completed") FROM e)::integer AS "completions",
-              (SELECT count(*) FROM "competition_tables" WHERE "communityId" = $1 AND "status" NOT IN ('DRAFT','SCHEDULED','CANCELLED'))::integer AS "competitions"`,
+              (SELECT count(*) FROM "competition_tables" WHERE "communityId" = $1 AND "status" NOT IN ('DRAFT','SCHEDULED','CANCELLED'))::integer AS "challenges"`,
       [clubId],
     );
+    // Reach and activity over the last 30 days: views of the club page and its competitions, who viewed
+    // (signed in, or visitors arriving from shared links), shares, joins, and how much members moved.
+    const [reach] = await this.dataSource.query(
+      `WITH e AS (${entrants}),
+       ev AS (SELECT * FROM "engagement_events" WHERE "clubId" = $1 AND "createdAt" > now() - interval '30 days')
+       SELECT (SELECT count(*) FROM ev WHERE "type" = 'view')::integer AS "views",
+              (SELECT count(DISTINCT COALESCE("viewerId"::text, "anonKey")) FROM ev WHERE "type" = 'view')::integer AS "uniqueViewers",
+              (SELECT count(*) FROM ev WHERE "type" = 'view' AND "viewerId" IS NULL)::integer AS "linkVisits",
+              (SELECT count(*) FROM ev WHERE "type" = 'view' AND "tableId" IS NOT NULL)::integer AS "competitionViews",
+              (SELECT count(*) FROM ev WHERE "type" = 'share')::integer AS "shares",
+              (SELECT COALESCE(jsonb_object_agg("channel", n), '{}'::jsonb) FROM (SELECT "channel", count(*)::integer n FROM ev WHERE "type" = 'share' GROUP BY "channel") c) AS "sharesByChannel",
+              (SELECT count(*) FROM e WHERE "joinedAt" > now() - interval '30 days')::integer AS "joins",
+              (SELECT COALESCE(round(sum(a."validatedDistanceMetres") / 1000.0, 1), 0) FROM "activities" a
+                 JOIN "club_memberships" m ON m."userId" = a."userId" AND m."clubId" = $1
+                 WHERE a."verificationStatus" = 'VERIFIED' AND a."startedAt" > now() - interval '30 days')::float8 AS "memberKm",
+              (SELECT count(DISTINCT a."userId") FROM "activities" a
+                 JOIN "club_memberships" m ON m."userId" = a."userId" AND m."clubId" = $1
+                 WHERE a."verificationStatus" = 'VERIFIED' AND a."startedAt" > now() - interval '7 days')::integer AS "activeMembers7d",
+              (SELECT array_agg(n ORDER BY d) FROM (
+                 SELECT d::date AS d, (SELECT count(*) FROM ev WHERE "type" = 'view' AND ev."createdAt"::date = d::date)::integer AS n
+                 FROM generate_series(now()::date - 13, now()::date, interval '1 day') d) days) AS "dailyViews"`,
+      [clubId],
+    ) as Array<Record<string, unknown>>;
     const challenges = await this.dataSource.query(
       `WITH e AS (${entrants})
        SELECT t."id", t."code", t."title", t."status", t."type", t."challengeType", t."publishAt", t."startsAt", t."scoringClosesAt", t."capacity",
@@ -343,6 +366,7 @@ export class ChallengeStudioService {
     return {
       club: { slug: info.slug, name: info.name, suspendedAt: info.suspendedAt, suspendedReason: info.suspendedReason, ...planOf(info.plan, info.planRenewsAt) },
       totals,
+      reach,
       challenges,
       winners,
       series,

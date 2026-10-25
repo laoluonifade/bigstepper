@@ -30,7 +30,11 @@ function clubShareLink(club: Club) {
   return club.privacy === 'invite' && club.inviteCode ? `${base}?invite=${club.inviteCode}` : base;
 }
 
-const shareClub = (club: Club) => void Share.share({ title: club.name, message: `Join ${club.name} on Jump: ${clubShareLink(club)}`, url: clubShareLink(club) });
+const shareClub = (club: Club) => {
+  // Counted for the club's dashboard.
+  void post(`/clubs/${club.slug}/shared`, { channel: 'other' }).catch(() => undefined);
+  void Share.share({ title: club.name, message: `Join ${club.name} on Jump: ${clubShareLink(club)}`, url: clubShareLink(club) });
+};
 
 /** Club page. A valid invite link joins the runner on arrival. */
 export default function ClubScreen() {

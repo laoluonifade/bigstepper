@@ -1,3 +1,4 @@
+import { recordShare, recordView } from './engagement';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -113,8 +114,9 @@ export class ClubsService {
    * The club page, for anyone with the link (members of invite-only clubs see the same). Members also get
    * the invite code; a visitor learns whether the invite in their link is valid.
    */
-  async get(clubRef: string, viewerId?: string | null, invite?: string) {
+  async get(clubRef: string, viewerId?: string | null, invite?: string, visitor?: string | null) {
     const club = await this.find(clubRef);
+    void recordView(this.dataSource.manager, { clubId: club.id, viewerId, anonKey: visitor });
     const role = await this.roleOf(club.id, viewerId);
     const [counts] = await this.dataSource.query(
       `SELECT (SELECT count(*) FROM "club_memberships" WHERE "clubId" = $1)::integer AS "memberCount",
@@ -174,6 +176,13 @@ export class ClubsService {
     if (input.chatLocked !== undefined) club.chatLocked = input.chatLocked;
     await this.clubs.save(club);
     return this.get(club.id, actorId);
+  }
+
+  /** Someone shared the club's page. */
+  async shared(clubRef: string, viewerId: string, channel: string) {
+    const club = await this.find(clubRef);
+    await recordShare(this.dataSource.manager, { clubId: club.id, viewerId, channel });
+    return { ok: true };
   }
 
   async setLogo(actorId: string, clubRef: string, file: { buffer: Buffer; mimetype: string } | undefined) {

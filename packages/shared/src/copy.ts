@@ -10,8 +10,24 @@ export const VERIFICATION_REASONS: Record<string, { title: string; detail: strin
     detail: 'Your phone stopped sending location for more than two minutes at least once. Keep the app open and the screen on while you run.',
   },
   IMPLAUSIBLE_SPEED: {
-    title: 'Faster than running pace',
-    detail: 'Part of the route moved faster than 8 m/s. That usually means a vehicle, a bike, or a GPS jump.',
+    title: 'Travelled at vehicle speed',
+    detail: 'For more than 30 seconds the route moved faster than anyone can on foot (or a bike, for rides). That usually means a car or a bus.',
+  },
+  NO_GPS_MOVEMENT: {
+    title: 'No route we could measure',
+    detail: 'There wasn’t enough clear GPS to see you move. Try again outdoors with a clear view of the sky.',
+  },
+  STEPS_WITHOUT_MOVEMENT: {
+    title: 'More steps than the distance',
+    detail: 'Your phone counted more steps than the measured route needs, so steps were capped to match the distance. Your distance is unaffected.',
+  },
+  IMPLAUSIBLE_STEP_RATE: {
+    title: 'Some steps left out',
+    detail: 'A burst of steps came in faster than anyone can walk or run, so those were left out. Your distance is unaffected.',
+  },
+  NON_MONOTONIC_STEPS: {
+    title: 'Step counter restarted',
+    detail: 'Your phone’s step counter restarted during the activity. Steps carried on from where it left off.',
   },
   NON_MONOTONIC_TIME: {
     title: 'Points out of order',

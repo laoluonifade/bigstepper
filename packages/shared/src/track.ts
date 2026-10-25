@@ -32,6 +32,36 @@ const MAX_STRIDE_METRES = 3;
 const IMPLAUSIBLE_SHARE = 0.25;
 const IMPLAUSIBLE_MIN_METRES = 200;
 const GAP_SECONDS = 120;
+/** Too fast for this long (a car, a bus) flags the activity; shorter bursts are GPS glitches, just skipped. */
+const SUSTAINED_FAST_SECONDS = 30;
+
+/**
+ * Phones hold the step count back while the app is in the background (screen locked) and hand it over
+ * in one go when it comes back. That frozen stretch would read as "moving with no steps", so its GPS
+ * distance wouldn't count. Spread each late jump evenly back over the frozen fixes before it, as if the
+ * steps had arrived live. Counts that never move again (really standing still) are left alone.
+ */
+export function backfillSteps<T extends { recordedAt: Date; stepCount?: number | null }>(points: T[]): T[] {
+  const out = points.map((point) => ({ ...point }));
+  let changeIndex = -1; // where the current value first appeared
+  for (let index = 0; index < out.length; index += 1) {
+    const steps = out[index].stepCount;
+    if (steps === null || steps === undefined) continue;
+    if (changeIndex < 0) { changeIndex = index; continue; }
+    const from = out[changeIndex].stepCount!;
+    if (steps === from) continue;
+    if (steps > from) {
+      const t0 = out[changeIndex].recordedAt.getTime();
+      const span = out[index].recordedAt.getTime() - t0;
+      for (let k = changeIndex + 1; k < index; k += 1) {
+        if (out[k].stepCount !== from || span <= 0) continue;
+        out[k].stepCount = from + Math.floor(((steps - from) * (out[k].recordedAt.getTime() - t0)) / span);
+      }
+    }
+    changeIndex = index;
+  }
+  return out;
+}
 
 export interface TrackPoint {
   latitude: number;
@@ -104,12 +134,13 @@ export function smoothTrack(points: TrackPoint[], trailing = false): Smoothed[] 
  * - moves slower than walking pace (drift while standing still) never count;
  * - on foot, with the pedometer on, a move only counts if steps were taken during it: GPS drifting
  *   while you stand still has no steps behind it, and a shaken phone has no movement;
- * - a lone too-fast hop is a spike and is skipped; sustained too-fast travel (a car) flags the run;
+ * - steps the phone held back while in the background are spread back over that stretch first;
+ * - too-fast hops are skipped; only sustained too-fast travel (30 s or more, a car) flags the run;
  * - a jump across a gap in tracking (no fixes for over two minutes) isn't counted.
  */
 export function measureTrack(points: TrackPoint[], options: { trailing?: boolean; activityType?: 'walk' | 'run' | 'cycle' } = {}): TrackMeasure {
   const reasons = new Set<string>();
-  const usable = points
+  const usable = backfillSteps(points)
     .filter((point) => point.accuracy === null || point.accuracy <= MAX_USABLE_ACCURACY_METRES)
     .filter((point, index, all) => index === 0 || point.recordedAt.getTime() > all[index - 1].recordedAt.getTime());
   if (usable.length < points.length && points.some((p) => p.accuracy !== null && p.accuracy > MAX_USABLE_ACCURACY_METRES)) {
@@ -121,6 +152,14 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
   let moving = 0;
   let implausible = 0;
   let fastInARow = 0;
+  // The current run of too-fast hops: when it started, and the distance it covered.
+  let fastSince = 0;
+  let fastMetres = 0;
+  const endFastRun = (at: number) => {
+    if (fastInARow >= 2 && (at - fastSince) / 1000 >= SUSTAINED_FAST_SECONDS) implausible += fastMetres;
+    fastInARow = 0;
+    fastMetres = 0;
+  };
   let anchor = track[0];
   for (let index = 1; index < track.length; index += 1) {
     const point = track[index];
@@ -128,8 +167,8 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
     // way between, so the jump isn't counted. Measuring carries on from where it picked up.
     if ((point.at - track[index - 1].at) / 1000 > GAP_SECONDS) {
       reasons.add('GPS_GAP');
+      endFastRun(track[index - 1].at);
       anchor = point;
-      fastInARow = 0;
       continue;
     }
     const seconds = (point.at - anchor.at) / 1000;
@@ -139,15 +178,17 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
     if (metres < needed) continue; // not far enough yet: keep measuring from the anchor
     const speed = metres / seconds;
     if (speed > (options.activityType === 'cycle' ? MAX_CYCLING_SPEED_MPS : MAX_FOOT_SPEED_MPS)) {
+      if (fastInARow === 0) fastSince = anchor.at;
       fastInARow += 1;
-      // One too-fast hop is a GPS spike: skip it. Two or more in a row is real non-foot travel.
+      // A too-fast hop is skipped, never counted. Only a sustained run of them (a car) is held against
+      // the activity; a few seconds of GPS jumping about when it first locks on is not.
       if (fastInARow >= 2) {
-        implausible += metres;
+        fastMetres += metres;
         anchor = point;
       }
       continue;
     }
-    fastInARow = 0;
+    endFastRun(point.at);
     // On foot with the pedometer on: no steps, no distance. Keep the anchor, so steps that arrive a
     // little late still count the move once they land.
     if (options.activityType !== 'cycle' && anchor.steps !== null && point.steps !== null && (point.steps - anchor.steps) * MAX_STRIDE_METRES < metres) {
@@ -164,6 +205,7 @@ export function measureTrack(points: TrackPoint[], options: { trailing?: boolean
     anchor = point;
   }
 
+  if (track.length) endFastRun(track[track.length - 1].at);
   if (implausible >= IMPLAUSIBLE_MIN_METRES && implausible >= (distance + implausible) * IMPLAUSIBLE_SHARE) {
     reasons.add('IMPLAUSIBLE_SPEED');
   }

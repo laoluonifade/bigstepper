@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { formatDateTime, formatDistance, formatDuration } from '@jump/shared/format';
-import { api, patch } from '../api';
+import { api, patch, post } from '../api';
 import { EmptyState, ErrorNotice, PageHeader, Skeleton } from '../ui';
 import { toast } from '../toast';
 
@@ -21,10 +21,28 @@ export function ReviewsPage() {
   const reviews = useQuery({ queryKey: ['admin', 'reviews'], queryFn: () => api<Review[]>('/admin/verification/reviews') });
   return <>
     <PageHeader eyebrow="Activities" title="Activity reviews" description="Flagged walks, runs and rides whose owners asked for a review. Approving puts them on boards; rejecting keeps them off." />
+    <RecheckFlagged />
     <ErrorNotice error={reviews.error} onRetry={() => void reviews.refetch()} />
     {reviews.isLoading ? <Skeleton className="h-48 rounded-2xl" /> : !reviews.data?.length ? <EmptyState title="Nothing to review">Every flagged activity has been decided.</EmptyState>
       : <ul className="space-y-3">{reviews.data.map((review) => <li key={review.id}><ReviewCard review={review} /></li>)}</ul>}
   </>;
+}
+
+/** After the checks improve: run recently flagged activities through them again. Ones that now pass are credited. */
+function RecheckFlagged() {
+  const queryClient = useQueryClient();
+  const recheck = useMutation({
+    mutationFn: () => post<{ queued: number }>('/admin/verification/recheck'),
+    onSuccess({ queued }) {
+      toast({ tone: 'ok', message: queued ? `Re-checking ${queued} flagged ${queued === 1 ? 'activity' : 'activities'}. Ones that pass are verified and credited.` : 'No flagged activities from the last 60 days.' });
+      setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['admin', 'reviews'] }), 5000);
+    },
+  });
+  return <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card p-4">
+    <p className="min-w-0 flex-1 text-[14px] text-ink-2"><b className="text-ink">Re-check flagged activities.</b> Runs every flagged Jump recording from the last 60 days through the current checks. Ones that pass are verified, credited and their owners told; the rest stay flagged without another message.</p>
+    <button type="button" className="btn-primary btn-sm" disabled={recheck.isPending} onClick={() => recheck.mutate()}>{recheck.isPending ? 'Queuing…' : 'Re-check flagged'}</button>
+    <ErrorNotice error={recheck.error} />
+  </div>;
 }
 
 function ReviewCard({ review }: { review: Review }) {

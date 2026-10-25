@@ -39,6 +39,33 @@ export function verificationEmail(to: { address: string; name?: string }, url: s
   };
 }
 
+/**
+ * The founder's hello, sent when someone signs up. Deliberately a plain personal note, not a branded
+ * template, and replies go to a real inbox.
+ */
+export function welcomeEmail(to: { address: string; name?: string }): MailMessage {
+  const paragraphs = [
+    'Hey!',
+    'I’m glad you signed up to join our community! ❤️',
+    'I’m Laolu, founder of Jump, and I’m happy to have you here.',
+    'We’re building something exciting, and since you’re here early, I’d love for you to be part of the journey. You can join challenges, compete with people around the world, climb leaderboards, and eventually meet people you probably wouldn’t have met otherwise, all through something as simple as walking or running.',
+    'If you have any issues, questions, or ideas on how we can make Jump better, just hit reply. I read the replies myself, and I’d love to hear from you!',
+    'See you on the Jump,',
+  ];
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;color:#121212;max-width:560px">
+${paragraphs.map((p) => `<p style="margin:0 0 16px">${p}</p>`).join('\n')}
+<p style="margin:0">Laolu<br><span style="color:#55524B">Founder, Jump</span></p>
+</div>`;
+  return {
+    to,
+    subject: 'Welcome to Jump ❤️',
+    html,
+    text: `${paragraphs.join('\n\n')}\n\nLaolu\nFounder, Jump`,
+    fromName: 'Laolu from Jump',
+    replyTo: 'start@startajump.com',
+  };
+}
+
 export function passwordResetEmail(to: { address: string; name?: string }, url: string): MailMessage {
   const intro = 'Someone (hopefully you) asked to reset the password on your Jump account.';
   const footnote = 'This link expires in 1 hour and signs you out everywhere once used. If you didn’t ask for this, ignore this email. Your password won’t change.';

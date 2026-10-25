@@ -124,6 +124,8 @@ export function listenForPush(queryClient: QueryClient) {
       void queryClient.invalidateQueries({ queryKey: ['messages'] });
       // A message for an open chat: fetch it now rather than at the next poll.
       if (sameChat(notification.request.content.data?.link)) void queryClient.invalidateQueries({ queryKey: ['club-chat'] });
+      // A podium finish: fetch trophies now, so the "you won" moment shows straight away.
+      if (notification.request.content.data?.type === 'PODIUM') void queryClient.invalidateQueries({ queryKey: ['trophies'] });
     });
     return () => { if (timer) clearTimeout(timer); timers.forEach(clearTimeout); tapped.remove(); received.remove(); };
   } catch {

@@ -41,6 +41,15 @@ export default function RunScreen() {
     case 'paused':
     case 'finishing':
       return <Scoreboard />;
+    case 'saved':
+      // Finished with no signal: it's on the phone and submits itself once Jump can be reached.
+      return <Screen>
+        <PageHeader eyebrow="No signal" title="Saved on your phone" description="Your activity is finished and every GPS point is safe here. It submits itself as soon as you’re back in signal; you don’t need to keep Jump open." />
+        <Notice tone="neutral" title={recorder.pendingCount ? `${recorder.pendingCount} GPS ${recorder.pendingCount === 1 ? 'point' : 'points'} waiting` : 'Waiting for signal'}>
+          Your time and distance are kept exactly as you recorded them, pauses included.
+        </Notice>
+        <Button title="Try now" variant="secondary" style={{ marginTop: 24 }} onPress={recorder.syncNow} />
+      </Screen>;
     default:
       return <ReadyScreen />;
   }

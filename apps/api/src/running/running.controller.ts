@@ -3,6 +3,7 @@ import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AddSamplesDto } from './dto/add-samples.dto';
 import { RunningService } from './running.service';
+import { RunMomentDto } from './dto/run-moment.dto';
 import { StartRunDto } from './dto/start-run.dto';
 
 @Controller('runs')
@@ -33,8 +34,9 @@ export class RunningController {
   finish(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) sessionId: string,
+    @Body() body?: RunMomentDto,
   ) {
-    return this.runningService.finish(user.id, sessionId);
+    return this.runningService.finish(user.id, sessionId, body?.at);
   }
 
   /** Throw away a run that hasn't been finished: nothing is saved or submitted. */
@@ -50,16 +52,18 @@ export class RunningController {
   pause(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) sessionId: string,
+    @Body() body?: RunMomentDto,
   ) {
-    return this.runningService.pause(user.id, sessionId);
+    return this.runningService.pause(user.id, sessionId, body?.at);
   }
 
   @Post(':id/resume')
   resume(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) sessionId: string,
+    @Body() body?: RunMomentDto,
   ) {
-    return this.runningService.resume(user.id, sessionId);
+    return this.runningService.resume(user.id, sessionId, body?.at);
   }
 
   @Get(':id')

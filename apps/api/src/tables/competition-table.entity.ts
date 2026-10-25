@@ -154,6 +154,10 @@ export class CompetitionTable {
   @Column({ type: 'varchar', length: 600, nullable: true })
   bannerUrl: string | null;
 
+  /** When its top three were told they placed (the "you won" push). */
+  @Column({ type: 'timestamptz', nullable: true })
+  podiumAnnouncedAt: Date | null;
+
   /** Deleted by its host: cancelled and hidden everywhere, its link included. */
   @Column({ type: 'timestamptz', nullable: true })
   deletedAt: Date | null;

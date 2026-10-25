@@ -976,7 +976,10 @@ export function CompetitionDetailPage() {
 
         <div className="min-w-0 space-y-10 lg:col-start-1 lg:row-start-2">
           <section>
-            <SectionTitle aside={isFinal ? <span className="tag border-ink bg-volt">Final</span> : t.status === 'PENDING_FUNDING' ? <span className="tag border-line bg-card text-ink-2">Draft</span> : <LiveTag />}>
+            <SectionTitle aside={isFinal ? <span className="tag border-ink bg-volt">Final</span> : t.status === 'PENDING_FUNDING' ? <span className="tag border-line bg-card text-ink-2">Draft</span>
+              // Only a race that's actually on pulses; one that has ended (or not started) says so instead.
+              : ['scoring-closed', 'final'].includes(competitionPhase(t, now)) ? <span className="tag border-line bg-card text-ink-2">Ended</span>
+                : competitionPhase(t, now) === 'upcoming' ? <span className="tag border-line bg-card text-ink-2">Starts soon</span> : <LiveTag />}>
               Leaderboard
             </SectionTitle>
             {standings.isLoading ? (

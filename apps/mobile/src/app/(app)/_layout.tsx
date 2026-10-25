@@ -6,6 +6,7 @@ import { onboardingSkipped, ONBOARDING_REQUIRED_SINCE } from '@/lib/onboarding';
 import { useNotifications, useProfile } from '@/lib/queries';
 import { setAppBadge } from '@/lib/push';
 import { StandingNudge } from '@/components/StandingNudge';
+import { TrophyCelebration } from '@/components/Trophies';
 import { colors, fontFamily } from '@/lib/theme';
 
 /** Screens a runner can use before joining their first competition: the ways into one, and account basics. */
@@ -52,5 +53,7 @@ export default function AppLayout() {
   </Stack>
   {/* A few seconds after opening the app: where you stand in one of your races. */}
   <StandingNudge />
+  {/* A new podium finish: the medal drops in, once. */}
+  <TrophyCelebration />
   </>;
 }

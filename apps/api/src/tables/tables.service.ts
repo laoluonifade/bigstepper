@@ -1,3 +1,4 @@
+import { recordShare, recordView } from '../clubs/engagement';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { creditActivities, retotal } from './competition-credits';
 import { enrolClubMembers } from './club-competitions';
@@ -579,6 +580,14 @@ export class TablesService {
     return null;
   }
 
+  /** Someone shared this competition. */
+  async shared(tableId: string, viewerId: string, channel: string) {
+    const table = await this.tables.findOne({ where: { id: tableId } });
+    if (!table || table.deletedAt) throw new NotFoundException('Competition not found');
+    await recordShare(this.dataSource.manager, { clubId: table.communityId, tableId: table.id, viewerId, channel });
+    return { ok: true };
+  }
+
   /** For the Delete button: whether it can go, and if not, why. */
   async deletionCheck(tableId: string, userId: string) {
     const table = await this.tables.findOne({ where: { id: tableId } });
@@ -689,7 +698,7 @@ export class TablesService {
   }
 
   /** Drafts and scheduled challenges are only visible to the people who can manage them. */
-  async getByCode(code: string, viewerId?: string | null) {
+  async getByCode(code: string, viewerId?: string | null, visitor?: string | null) {
     const table = await this.tables.findOne({
       where: { code: code.toUpperCase() },
       relations: { creator: true },
@@ -697,6 +706,7 @@ export class TablesService {
     if (!table || table.deletedAt) throw new NotFoundException('Competition not found');
     const manageable = Boolean(viewerId && await canManageTable(this.dataSource.manager, table, viewerId));
     if (UNPUBLISHED.includes(table.status) && !manageable) throw new NotFoundException('Competition not found');
+    if (!manageable) void recordView(this.dataSource.manager, { clubId: table.communityId, tableId: table.id, viewerId, anonKey: visitor });
     const [presented] = await this.present([table]);
     const productPrizes = table.prizeFulfilment ? await this.clubPrizes(table, manageable) : null;
     const [club] = table.communityId ? await this.dataSource.query(

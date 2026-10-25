@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { anonKey, type ViewRequest } from '../clubs/engagement';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AVATAR_MAX_BYTES } from '../profiles/profiles.service';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
@@ -57,6 +58,14 @@ export class TablesController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {
     return this.tablesService.remove(tableId, user.id);
+  }
+
+  /** Counts a share of the competition (card, WhatsApp, X, copied link), for the host's numbers. */
+  @Post(':id/shared')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  shared(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string, @Body() body: { channel?: string }) {
+    return this.tablesService.shared(tableId, user.id, String(body?.channel ?? 'other'));
   }
 
   @Post(':id/banner')
@@ -156,8 +165,8 @@ export class TablesController {
 
   @Get(':code')
   @UseGuards(OptionalJwtAuthGuard)
-  getByCode(@Param('code') code: string, @CurrentUser() viewer: AuthenticatedUser | null) {
-    return this.tablesService.getByCode(code, viewer?.id);
+  getByCode(@Param('code') code: string, @CurrentUser() viewer: AuthenticatedUser | null, @Req() req: ViewRequest) {
+    return this.tablesService.getByCode(code, viewer?.id, viewer ? null : anonKey(req.ip, String(req.headers['user-agent'] ?? '')));
   }
 
   @Get(':id/result/final')

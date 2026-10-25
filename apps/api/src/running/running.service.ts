@@ -10,6 +10,19 @@ import { RunningSession } from './running-session.entity';
 import { Activity } from './activity.entity';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 
+/**
+ * When a pause, resume or finish happened. Normally now; done offline, the phone sends the moment it
+ * really happened when it reconnects. Kept honest: never in the future, never before `floor` (the start,
+ * or the pause being ended), and nothing older than a day.
+ */
+export function momentOf(at: string | undefined, floor: Date, now = new Date()) {
+  if (!at) return now;
+  const moment = new Date(at);
+  if (Number.isNaN(moment.getTime())) return now;
+  const earliest = Math.max(floor.getTime(), now.getTime() - 24 * 60 * 60 * 1000);
+  return new Date(Math.min(now.getTime(), Math.max(earliest, moment.getTime())));
+}
+
 @Injectable()
 export class RunningService {
   constructor(
@@ -96,7 +109,7 @@ export class RunningService {
     });
   }
 
-  async finish(userId: string, sessionId: string) {
+  async finish(userId: string, sessionId: string, at?: string) {
     const activity = await this.dataSource.transaction(async (manager) => {
       const session = await manager.findOne(RunningSession, {
         where: { id: sessionId, userId },
@@ -110,7 +123,7 @@ export class RunningService {
         throw new BadRequestException('This run cannot be finished');
       }
 
-      const finishedAt = new Date();
+      const finishedAt = momentOf(at, session.pausedAt ?? session.startedAt);
       if (session.status === 'PAUSED' && session.pausedAt) {
         session.pausedSeconds += Math.max(0, Math.floor((finishedAt.getTime() - session.pausedAt.getTime()) / 1000));
       }
@@ -145,20 +158,21 @@ export class RunningService {
     return activity;
   }
 
-  async pause(userId: string, sessionId: string) {
+  async pause(userId: string, sessionId: string, at?: string) {
     const session = await this.get(userId, sessionId);
     if (session.status !== 'RUNNING') throw new BadRequestException('Only a running session can be paused');
     session.status = 'PAUSED';
-    session.pausedAt = new Date();
+    session.pausedAt = momentOf(at, session.startedAt);
     return this.sessions.save(session);
   }
 
-  async resume(userId: string, sessionId: string) {
+  async resume(userId: string, sessionId: string, at?: string) {
     const session = await this.get(userId, sessionId);
     if (session.status !== 'PAUSED' || !session.pausedAt) {
       throw new BadRequestException('Only a paused session can be resumed');
     }
-    session.pausedSeconds += Math.max(0, Math.floor((Date.now() - session.pausedAt.getTime()) / 1000));
+    const resumedAt = momentOf(at, session.pausedAt);
+    session.pausedSeconds += Math.max(0, Math.floor((resumedAt.getTime() - session.pausedAt.getTime()) / 1000));
     session.pausedAt = null;
     session.status = 'RUNNING';
     return this.sessions.save(session);

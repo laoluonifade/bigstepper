@@ -5,14 +5,14 @@ import type { ClubClaim, ClubDashboard, ClubSeries, CompetitionTable } from '@ju
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { CountriesField, PrizeEditor } from '@/components/ClubPrizes';
 import { DateTimePicker } from '@/components/DateTimePicker';
 import { PlusIcon } from '@/components/icons';
 import { Sheet } from '@/components/Sheet';
-import { Button, EmptyState, ErrorNotice, Eyebrow, haptic, HardShadow, Loading, Notice, Screen, Skeleton, TextField, Txt } from '@/components/ui';
+import { Button, EmptyState, ErrorNotice, Eyebrow, haptic, HardShadow, Loading, Notice, Screen, SectionTitle, Skeleton, TextField, Txt } from '@/components/ui';
 import { api, isApiError, patch, post } from '@/lib/api';
-import { colors, GUTTER, radius } from '@/lib/theme';
+import { brand, colors, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
 type Tab = 'competitions' | 'series' | 'prizes' | 'results' | 'performance';
@@ -65,15 +65,17 @@ export default function ClubDashboardScreen() {
 
   return <Screen refreshing={dashboard.isRefetching} onRefresh={() => void dashboard.refetch()}>
     <Stack.Screen options={{ title: 'Dashboard' }} />
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Eyebrow>{`Club dashboard · ${d.club.label} plan`}</Eyebrow>
-        <Txt size={24} weight="extrabold" numberOfLines={1} style={{ marginTop: 2 }}>{d.club.name}</Txt>
-      </View>
-      {!d.club.suspendedAt && <Button size="sm" title="New competition" icon={<PlusIcon size={15} />} onPress={() => router.push({ pathname: '/competitions/new', params: { club: d.club.slug } })} />}
+    {/* The club's name gets the full width; the action sits under it. */}
+    <View style={{ marginBottom: 24 }}>
+      <Eyebrow>{`Club dashboard · ${d.club.label} plan`}</Eyebrow>
+      <Txt size={26} weight="extrabold" numberOfLines={2} leading={1.15} style={{ marginTop: 4 }}>{d.club.name}</Txt>
+      {!d.club.suspendedAt && <Button size="sm" title="New competition" icon={<PlusIcon size={15} />} style={{ marginTop: 14 }} onPress={() => router.push({ pathname: '/competitions/new', params: { club: d.club.slug } })} />}
     </View>
     {d.club.suspendedAt && <Notice tone="bad" title="Suspended by Jump" style={{ marginBottom: 20 }}>{`${d.club.suspendedReason ?? 'This club can’t run competitions right now.'} Contact Jump support to resolve it.`}</Notice>}
 
+    {d.reach && <Reach reach={d.reach} />}
+
+    <SectionTitle>Community</SectionTitle>
     <View style={styles.stats}>
       <Stat label="Followers" value={t.followers} hint={`+${t.newFollowers30d} in 30 days`} />
       <Stat label="Members" value={t.members} hint="in the club" />
@@ -98,6 +100,39 @@ export default function ClubDashboardScreen() {
       {tab === 'performance' && <Performance monthly={d.monthly} competitions={d.challenges} />}
     </View>
   </Screen>;
+}
+
+const CHANNEL_LABEL: Record<string, string> = { whatsapp: 'WhatsApp', card: 'Share card', x: 'X', link: 'Copied link', other: 'Other' };
+
+/** The last 30 days, for a club or a brand: who saw it, who shared it, who joined, how much members moved. */
+function Reach({ reach }: { reach: NonNullable<ClubDashboard['reach']> }) {
+  const peak = Math.max(1, ...reach.dailyViews);
+  const rate = reach.uniqueViewers ? `${Math.round((reach.joins / reach.uniqueViewers) * 100)}%` : '–';
+  const channels = Object.entries(reach.sharesByChannel).sort((a, b) => b[1] - a[1]);
+  return <View style={{ marginBottom: 32 }}>
+    <SectionTitle aside="30 days">Reach</SectionTitle>
+    <View style={[styles.reachHero, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+        <View>
+          <Txt size={12} weight="semibold" style={{ color: brand.onInkMuted }}>Views</Txt>
+          <Text style={[score(44), { color: brand.volt, lineHeight: 46 }]}>{reach.views.toLocaleString('en-GB')}</Text>
+          <Txt size={12} style={{ color: brand.onInkMuted }}>{`${reach.uniqueViewers.toLocaleString('en-GB')} people · ${reach.competitionViews.toLocaleString('en-GB')} on competitions`}</Txt>
+        </View>
+        {/* Views per day, last 14 days. */}
+        <View style={styles.bars} accessibilityLabel={`Views per day over the last 14 days, up to ${peak}`}>
+          {reach.dailyViews.map((count, index) => <View key={index} style={[styles.bar, { height: Math.max(3, (count / peak) * 48), opacity: index === reach.dailyViews.length - 1 ? 1 : 0.7 }]} />)}
+        </View>
+      </View>
+    </View>
+    <View style={[styles.stats, { marginTop: 10 }]}>
+      <Stat label="Shared-link visits" value={reach.linkVisits} hint="people not signed in" />
+      <Stat label="Shares" value={reach.shares} hint={channels.length ? channels.slice(0, 2).map(([channel, n]) => `${CHANNEL_LABEL[channel] ?? channel} ${n}`).join(' · ') : 'card, WhatsApp, X, links'} />
+      <Stat label="Joins" value={reach.joins} hint="new entries" />
+      <Stat label="View → join" value={rate} hint="of people who viewed" />
+      <Stat label="Km by members" value={reach.memberKm.toLocaleString('en-GB')} hint="verified, 30 days" />
+      <Stat label="Active members" value={reach.activeMembers7d} hint="moved this week" />
+    </View>
+  </View>;
 }
 
 function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint: string }) {
@@ -443,6 +478,9 @@ function Performance({ monthly, competitions }: { monthly: ClubDashboard['monthl
 
 const styles = StyleSheet.create({
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  reachHero: { borderRadius: radius.xl, backgroundColor: brand.ink, padding: 16 },
+  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 48 },
+  bar: { width: 7, borderRadius: 2, backgroundColor: brand.volt },
   stat: { width: '48%', flexGrow: 1, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 12 },
   tabs: { marginTop: 28, flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, marginHorizontal: -GUTTER, paddingHorizontal: GUTTER },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },

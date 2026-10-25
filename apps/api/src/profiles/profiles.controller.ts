@@ -25,6 +25,12 @@ export class ProfilesController {
   }
 
   /** Whether the account can be deleted right now, and if not, what to sort out first. */
+  @Get('me/trophies')
+  @UseGuards(JwtAuthGuard)
+  myTrophies(@CurrentUser() user: AuthenticatedUser) {
+    return this.profilesService.myTrophies(user.id);
+  }
+
   @Get('me/deletion')
   @UseGuards(JwtAuthGuard)
   async deletionCheck(@CurrentUser() user: AuthenticatedUser) {
@@ -66,6 +72,12 @@ export class ProfilesController {
   @UseGuards(OptionalJwtAuthGuard)
   getPublic(@Param('username') username: string, @CurrentUser() viewer: AuthenticatedUser | null) {
     return this.profilesService.getPublic(username, viewer?.id);
+  }
+
+  /** Someone's trophy cabinet: podium finishes in finished competitions. Public, like their profile. */
+  @Get('users/:username/trophies')
+  trophies(@Param('username') username: string) {
+    return this.profilesService.trophies(username);
   }
 
   @Get('users/:username/followers')

@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { PUSH_NOTIFICATIONS_QUEUE } from '../jobs/jobs.module';
 import { RANK_ORDER } from '../tables/scoring-engine';
 import { boostMessage, pickBoosts, StandingRow } from './standing-boost';
+import { claimPodiumsToAnnounce } from '../tables/trophies';
 
 type Pending = { id: string; userId: string; type: string; title: string; body: string; link: string | null; createdAt: Date; readAt?: Date | null };
 type ExpoMessage = { to: string; title: string; body: string; sound: 'default'; badge: number; channelId: string; data: { id: string; link: string | null; type: string } };
@@ -39,11 +40,36 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
   async onModuleInit() {
     await this.queue.upsertJobScheduler('push-notifications', { every: 5_000 }, { name: 'send-push' });
     await this.queue.upsertJobScheduler('standing-boost', { every: 15 * 60_000 }, { name: 'standing-boost' });
+    await this.queue.upsertJobScheduler('podium-announce', { every: 10 * 60_000 }, { name: 'podium-announce' });
   }
 
   async process(job: Job): Promise<void> {
     if (job.name === 'send-push') await this.sendPending();
     if (job.name === 'standing-boost') await this.queueStandingBoosts();
+    if (job.name === 'podium-announce') await this.announcePodiums();
+  }
+
+  /**
+   * A competition just finished: its top three hear they placed ("🥇 You won Move with Tee"), once. It's
+   * a notification, so the push goes out with the sweep; the app opens the celebration from it.
+   */
+  async announcePodiums() {
+    const podium = await claimPodiumsToAnnounce(this.dataSource.manager);
+    if (!podium.length) return 0;
+    const medal = ['🥇', '🥈', '🥉'];
+    const rows = podium.map((row) => ({
+      userId: row.userId,
+      title: row.rank === 1 ? `${medal[0]} You won ${row.title}` : `${medal[row.rank - 1]} ${row.rank === 2 ? '2nd' : '3rd'} in ${row.title}`,
+      body: row.rank === 1 ? 'First place. It’s in your trophy cabinet now. Tap to see the final board.' : 'You made the podium. It’s in your trophy cabinet now. Tap to see the final board.',
+      link: `/competitions/${row.code}`,
+    }));
+    await this.dataSource.query(
+      `INSERT INTO "notifications" ("userId","type","title","body","link")
+       SELECT x."userId", 'PODIUM', x."title", x."body", x."link" FROM jsonb_to_recordset($1::jsonb) AS x("userId" uuid, "title" text, "body" text, "link" text)`,
+      [JSON.stringify(rows)],
+    );
+    this.logger.log(`Announced ${rows.length} podium finishes`);
+    return rows.length;
   }
 
   /**

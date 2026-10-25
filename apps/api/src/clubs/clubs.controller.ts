@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { anonKey, type ViewRequest } from './engagement';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { IsOptional, IsString, IsUUID, Length } from 'class-validator';
@@ -39,8 +40,16 @@ export class ClubsController {
   /** Public: the club page, so an invite link works before signing up. */
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
-  get(@Param('id') id: string, @CurrentUser() viewer: AuthenticatedUser | null, @Query('invite') invite?: string) {
-    return this.clubsService.get(id, viewer?.id, invite);
+  get(@Param('id') id: string, @CurrentUser() viewer: AuthenticatedUser | null, @Req() req: ViewRequest, @Query('invite') invite?: string) {
+    return this.clubsService.get(id, viewer?.id, invite, viewer ? null : anonKey(req.ip, String(req.headers['user-agent'] ?? '')));
+  }
+
+  /** Counts a share of the club page, for its dashboard. */
+  @Post(':id/shared')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  shared(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { channel?: string }) {
+    return this.clubsService.shared(id, user.id, String(body?.channel ?? 'other'));
   }
 
   @Patch(':id')

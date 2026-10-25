@@ -16,6 +16,8 @@ const MAX_STEPS_PER_SECOND = 5.5;
 const MIN_STRIDE_METRES = 0.45;
 /** Slack for GPS under-measuring a short or twisty route before extra steps look like shaking. */
 const SHAKE_ALLOWANCE_STEPS = 150;
+/** At least this share of fixes must be accurate enough to use (cities and tall buildings knock some out). */
+const MIN_GPS_CONFIDENCE = 0.35;
 
 /**
  * Whether a recorded activity counts, and how many of its steps do.
@@ -31,19 +33,20 @@ export function judgeActivity(
   activityType: 'walk' | 'run' | 'cycle',
 ) {
   const reasons = new Set(track.reasons);
-  // Steps come from the phone's motion sensors; check they only ever go up, at a human rate. The rate
-  // is judged over windows of at least 2 s, so a step total saved just after a GPS fix isn't misread.
+  // Steps come from the phone's motion sensors. They're a bonus that's capped by the distance, never a
+  // way to gain, so step quirks are handled, not held against the activity:
+  // - a count that goes down (the counter restarted after a pause or an app restart) just carries on;
+  // - a burst the phone held back while in the background is judged over the time since the count last
+  //   moved, not the second it arrived in, and anything truly faster than a human is left out;
+  // - more steps than the distance allows are simply capped below.
   let steps = 0;
   const counted = samples.filter((sample) => sample.stepCount !== null);
   let ref = counted[0];
   for (let index = 1; index < counted.length; index += 1) {
     const current = counted[index];
     const addedSteps = current.stepCount! - ref.stepCount!;
-    if (addedSteps < 0) {
-      reasons.add('NON_MONOTONIC_STEPS');
-      ref = current;
-      continue;
-    }
+    if (addedSteps < 0) { ref = current; continue; }
+    if (addedSteps === 0) continue; // nothing new: keep timing from when it last moved
     const seconds = (current.recordedAt.getTime() - ref.recordedAt.getTime()) / 1000;
     const last = index === counted.length - 1;
     if (seconds < 2 && !last) continue;
@@ -53,11 +56,12 @@ export function judgeActivity(
   }
 
   const cycling = activityType === 'cycle';
-  const gpsOk = track.usableCount >= 2 && track.confidence >= 0.5 && track.distanceMetres > 0;
+  const gpsOk = track.usableCount >= 2 && track.confidence >= MIN_GPS_CONFIDENCE && track.distanceMetres > 0;
   if (!gpsOk) reasons.add('NO_GPS_MOVEMENT');
   const stepCap = Math.ceil(track.distanceMetres / MIN_STRIDE_METRES);
   if (!cycling && steps > Math.max(stepCap * 2, stepCap + SHAKE_ALLOWANCE_STEPS)) reasons.add('STEPS_WITHOUT_MOVEMENT');
-  const tampered = ['IMPLAUSIBLE_SPEED', 'NON_MONOTONIC_STEPS', 'IMPLAUSIBLE_STEP_RATE', 'STEPS_WITHOUT_MOVEMENT'].some((reason) => reasons.has(reason));
+  // Only travel no person could do on foot (or a bike) for a sustained stretch is held against it.
+  const tampered = reasons.has('IMPLAUSIBLE_SPEED');
   return {
     status: !tampered && gpsOk ? 'VERIFIED' as const : 'FLAGGED' as const,
     validatedSteps: cycling ? 0 : Math.min(steps, stepCap),
@@ -67,6 +71,8 @@ export function judgeActivity(
 
 interface VerificationJob {
   activityId: string;
+  /** A re-check of an already-flagged activity after the rules changed: only good news is announced. */
+  recheck?: boolean;
 }
 
 @Injectable()
@@ -125,7 +131,11 @@ export class ActivityVerificationProcessor extends WorkerHost {
            WHERE c."activityId"=$1`, [activity.id, activity.userId, activity.activityType],
         );
       }
-      await manager.query(
+      // A re-check that passes also settles any review the runner asked for.
+      if (job.data.recheck && status === 'VERIFIED') {
+        await manager.query(`UPDATE "activity_verification_reviews" SET "status"='APPROVED' WHERE "activityId"=$1 AND "status"='PENDING'`, [activity.id]);
+      }
+      if (!(job.data.recheck && status !== 'VERIFIED')) await manager.query(
         `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,$5)`,
         [activity.userId, status === 'VERIFIED' ? 'ACTIVITY_VERIFIED' : 'ACTIVITY_REVIEW',
           status === 'VERIFIED' ? `Your ${activity.activityType} is verified` : `Your ${activity.activityType} needs review`,

@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, IsNull } from 'typeorm';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Notification } from './notification.entity';
@@ -34,6 +34,13 @@ export class NotificationsController {
   async removePushToken(@CurrentUser() user: AuthenticatedUser, @Body() body: { token?: unknown }) {
     if (typeof body.token === 'string') await this.dataSource.query(`DELETE FROM "push_tokens" WHERE "token"=$1 AND "userId"=$2`, [body.token, user.id]);
     return { removed: true };
+  }
+
+  /** Opening the notifications list reads them all: the bell and the app badge clear. */
+  @Post('read-all')
+  async readAll(@CurrentUser() user: AuthenticatedUser) {
+    await this.notifications.update({ userId: user.id, readAt: IsNull() }, { readAt: new Date() });
+    return { success: true };
   }
 
   @Patch(':id/read')

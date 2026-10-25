@@ -289,6 +289,13 @@ export interface ClubSeries {
 export interface ClubDashboard {
   club: { slug: string; name: string; suspendedAt: string | null; suspendedReason: string | null; plan: 'free' | 'pro'; label: string; liveChallenges: number; activeSeries: number; promotion: boolean; advancedAnalytics: boolean };
   totals: { followers: number; members: number; newFollowers30d: number; participants: number; repeatParticipants: number; entries: number; completions: number; challenges: number };
+  /** Last 30 days: views of the club page and its competitions, shares, joins and members' activity. */
+  reach?: {
+    views: number; uniqueViewers: number; linkVisits: number; competitionViews: number; shares: number;
+    sharesByChannel: Record<string, number>; joins: number; memberKm: number; activeMembers7d: number;
+    /** Views per day, oldest first, for the last 14 days. */
+    dailyViews: number[];
+  };
   challenges: Array<{
     id: string; code: string; title: string; status: string; type: string; challengeType: ChallengeType; publishAt: string | null; startsAt: string | null; scoringClosesAt: string | null;
     capacity: number | null; seriesId: string | null; edition: number | null; hasPrizes: boolean; prizesFinalizedAt: string | null; archivedAt: string | null; promotedUntil: string | null;

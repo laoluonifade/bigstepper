@@ -7,7 +7,7 @@ import { ComponentRef, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
-import { WEB_URL } from '@/lib/api';
+import { WEB_URL, post } from '@/lib/api';
 // Share pictures look the same whoever posts them, so they use the brand palette, not the theme's.
 import { brand as colors, colors as theme, fontFamily, mono, radius } from '@/lib/theme';
 import { CopyIcon, JumpLogo, LinkIcon, ShareIcon } from './icons';
@@ -95,6 +95,8 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
   const [busy, setBusy] = useState(false);
   const card = useRef<ComponentRef<typeof View>>(null);
   const url = `${WEB_URL}/competitions/${table.code}`;
+  // Counted for the host's numbers (views and shares on the club dashboard). Fire and forget.
+  const track = (channel: string) => void post(`/tables/${table.id}/shared`, { channel }).catch(() => undefined);
   const data = useMemo(() => competitionCardData(table, rows, viewerId, unit, Date.now(), `${WEB_URL.replace(/^https?:\/\//, '')}/competitions/${table.code}`), [table, rows, viewerId, unit]);
   const avatars = useMemo(() => new Map(rows.map((row) => [row.userId, { name: row.displayName, url: row.avatarUrl ?? null, style: row.avatarStyle }])), [rows]);
   const mine = rows.find((row) => row.userId === viewerId);
@@ -109,7 +111,7 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
     setStatus(null);
     try {
       const uri = await captureRef(card, { format: 'png', quality: 1, width: 1080, height: Math.round((1080 * h) / w), result: 'tmpfile' });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: table.title, UTI: 'public.png' });
+      if (await Sharing.isAvailableAsync()) { track('card'); await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: table.title, UTI: 'public.png' }); }
       else setStatus('Sharing isn’t available on this phone.');
     } catch {
       setStatus('Couldn’t make the card. Try again.');
@@ -136,19 +138,19 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
     </View>
     <Button full title={busy ? 'Making your card…' : 'Share card'} icon={<ShareIcon size={16} />} loading={busy} style={{ marginTop: 16 }} onPress={() => void share()} />
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-      <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="WhatsApp" onPress={() => void Linking.openURL(`https://wa.me/?text=${encodeURIComponent(`${caption} ${url}`)}`)} />
-      <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="X" onPress={() => void Linking.openURL(`https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(url)}`)} />
+      <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="WhatsApp" onPress={() => { track('whatsapp'); void Linking.openURL(`https://wa.me/?text=${encodeURIComponent(`${caption} ${url}`)}`); }} />
+      <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="X" onPress={() => { track('x'); void Linking.openURL(`https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(url)}`); }} />
     </View>
     {/* The link itself, on show, with a big Copy: what an Instagram link sticker or a group chat needs. */}
     <View style={styles.linkBox}>
       <LinkIcon size={16} color={theme.ink2} />
       <Text numberOfLines={1} style={styles.linkText}>{url.replace(/^https?:\/\//, '')}</Text>
-      <Pressable onPress={() => void Clipboard.setStringAsync(url).then(() => { haptic('success'); setStatus('Link copied. Paste it in a link sticker or a chat.'); })}
+      <Pressable onPress={() => void Clipboard.setStringAsync(url).then(() => { track('link'); haptic('success'); setStatus('Link copied. Paste it in a link sticker or a chat.'); })}
         style={({ pressed }) => [styles.copyLink, pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] }]} accessibilityRole="button" accessibilityLabel="Copy link">
         <CopyIcon size={14} color={colors.ink} /><Text style={styles.copyLinkText}>COPY LINK</Text>
       </Pressable>
     </View>
-    <Pressable onPress={() => void Clipboard.setStringAsync(`${caption} ${url}`).then(() => { haptic('success'); setStatus('Caption and link copied.'); })} hitSlop={8} style={{ alignSelf: 'center', marginTop: 10 }} accessibilityRole="button">
+    <Pressable onPress={() => void Clipboard.setStringAsync(`${caption} ${url}`).then(() => { track('link'); haptic('success'); setStatus('Caption and link copied.'); })} hitSlop={8} style={{ alignSelf: 'center', marginTop: 10 }} accessibilityRole="button">
       <Txt size={13} weight="semibold" color="ink2" style={{ textDecorationLine: 'underline' }}>Copy with a caption instead</Txt>
     </Pressable>
     <Txt size={status ? 13 : 12} color={status ? 'ink2' : 'ink3'} align="center" style={{ marginTop: 8 }}>{status ?? 'On Instagram, add a link sticker to your story so people can tap straight in.'}</Txt>

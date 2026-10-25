@@ -72,6 +72,14 @@ describe('measureTrack', () => {
     expect(result.distanceMetres).toBeLessThan(700);
   });
 
+  it('does not flag GPS jumping about for a few seconds as it locks on', () => {
+    const points = track(300, 1.4, { accuracy: 8 });
+    for (let i = 2; i <= 7; i += 1) points[i] = { ...points[i], latitude: points[i].latitude + 350 / M_PER_DEG_LAT, longitude: points[i].longitude + (i % 2 ? 80 : -80) / M_PER_DEG_LON };
+    const result = measureTrack(points);
+    expect(result.reasons.has('IMPLAUSIBLE_SPEED')).toBe(false);
+    expect(result.distanceMetres).toBeLessThan(500);
+  });
+
   it('flags a sustained car-speed segment', () => {
     const walk = track(120, 1.4);
     const drive = track(120, 15, { start: 121, northOffset: 1.4 * 121 });
@@ -150,6 +158,17 @@ describe('measureTrack', () => {
     it('still counts a walk when step updates arrive in late batches', () => {
       const points = track(300, 1.4, { accuracy: 8 }).map((point, i) => ({ ...point, stepCount: Math.floor(Math.floor(i / 10) * 10 * 1.8) }));
       expect(measureTrack(points).distanceMetres).toBeGreaterThan(390);
+    });
+
+    it('counts a locked-screen walk whose steps only arrive when the app comes back', () => {
+      // 10 minutes at 1.4 m/s; the step count freezes for 8 of them, then catches up in one go.
+      const points = track(600, 1.4, { accuracy: 8 }).map((point, i) => ({ ...point, stepCount: i < 60 || i >= 540 ? Math.floor(i * 1.8) : Math.floor(60 * 1.8) }));
+      expect(measureTrack(points).distanceMetres).toBeGreaterThan(760);
+    });
+
+    it('still counts nothing when the steps never come (really standing still)', () => {
+      const points = track(300, 1.4, { accuracy: 8 }).map((point, i) => ({ ...point, stepCount: Math.min(i, 20) }));
+      expect(measureTrack(points).distanceMetres).toBeLessThan(80);
     });
 
     it('never asks a ride for steps', () => {

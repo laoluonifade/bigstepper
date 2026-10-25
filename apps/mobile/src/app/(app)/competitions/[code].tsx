@@ -183,7 +183,10 @@ export default function CompetitionDetailScreen() {
 
     <View style={{ gap: 40, marginTop: 32 }}>
       <View>
-        <SectionTitle aside={isFinal ? <Tag background={colors.volt} border={colors.edge}>Final</Tag> : t.status === 'PENDING_FUNDING' ? <Tag border={colors.line} color={colors.ink2}>Draft</Tag> : <LiveTag />}>Leaderboard</SectionTitle>
+        <SectionTitle aside={isFinal ? <Tag background={colors.volt} border={colors.edge}>Final</Tag> : t.status === 'PENDING_FUNDING' ? <Tag border={colors.line} color={colors.ink2}>Draft</Tag>
+          // Only a race that's actually on pulses; one that has ended (or not started) says so instead.
+          : ['scoring-closed', 'final'].includes(competitionPhase(t, now)) ? <Tag border={colors.line} color={colors.ink2}>Ended</Tag>
+            : competitionPhase(t, now) === 'upcoming' ? <Tag border={colors.line} color={colors.ink2}>Starts soon</Tag> : <LiveTag />}>Leaderboard</SectionTitle>
         {standings.isLoading ? <Skeleton style={{ height: 192 }} />
           : standings.error ? <ErrorNotice error={standings.error} onRetry={() => void standings.refetch()} />
             : <Leaderboard rows={rows} currentUserId={user?.id} unit={unit} limit={showAll ? 200 : 10} metricLabel={scoreHeader(t)}

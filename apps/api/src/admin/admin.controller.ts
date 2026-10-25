@@ -46,6 +46,12 @@ export class AdminController {
     return this.adminService.pendingReviews();
   }
 
+  /** Re-run the (updated) checks on recently flagged activities. */
+  @Post('verification/recheck')
+  recheck(@CurrentUser() user: AuthenticatedUser) {
+    return this.adminService.recheckFlagged(user.id);
+  }
+
   @Patch('verification/reviews/:id')
   resolveReview(
     @CurrentUser() user: AuthenticatedUser,

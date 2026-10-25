@@ -23,11 +23,33 @@ describe('judgeActivity', () => {
     expect(verdict.validatedSteps).toBe(1440);
   });
 
-  it('flags a short walk padded with thousands of shaken steps', () => {
+  it('caps a short walk padded with thousands of shaken steps, without flagging the real walk', () => {
     const verdict = judgeActivity(track(50), samples(120, 12), 'walk');
-    expect(verdict.status).toBe('FLAGGED');
+    expect(verdict.status).toBe('VERIFIED');
     expect(verdict.reasons.has('STEPS_WITHOUT_MOVEMENT')).toBe(true);
+    // Shaking gains nothing: steps are capped to what 50 m allows.
     expect(verdict.validatedSteps).toBe(Math.ceil(50 / 0.45));
+  });
+
+  it('does not flag steps the phone held back while the screen was locked', () => {
+    // 5 minutes frozen at 200, then 600 steps arrive in one go when the app comes back.
+    const held = [
+      ...Array.from({ length: 61 }, (_, i) => ({ stepCount: 200, recordedAt: new Date(START + i * 5000) })),
+      { stepCount: 800, recordedAt: new Date(START + 301_000) },
+    ];
+    const verdict = judgeActivity(track(450), [{ stepCount: 0, recordedAt: new Date(START - 120_000) }, ...held], 'walk');
+    expect(verdict.status).toBe('VERIFIED');
+    expect(verdict.reasons.has('IMPLAUSIBLE_STEP_RATE')).toBe(false);
+    expect(verdict.validatedSteps).toBe(800);
+  });
+
+  it('carries on after the step counter restarts (pause, app restart)', () => {
+    const before = samples(30, 10);
+    const after = samples(30, 10).map((sample) => ({ ...sample, recordedAt: new Date(sample.recordedAt.getTime() + 160_000) }));
+    const verdict = judgeActivity(track(800), [...before, ...after], 'walk');
+    expect(verdict.status).toBe('VERIFIED');
+    expect(verdict.reasons.has('NON_MONOTONIC_STEPS')).toBe(false);
+    expect(verdict.validatedSteps).toBe(600);
   });
 
   it('caps steps a little over what the route allows without flagging', () => {

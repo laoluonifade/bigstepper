@@ -1,3 +1,6 @@
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { refreshLeagueDistance } from '../leagues/league-credits';
 import { creditActivities, rescore, uncreditActivity } from '../tables/competition-credits';
@@ -30,7 +33,38 @@ export class AdminService {
     private readonly paymentsService: PaymentsService,
     private readonly adminAuth: AdminAuthService,
     private readonly awardsService: PrizeAwardsService,
+    @InjectQueue(ACTIVITY_VERIFICATION_QUEUE) private readonly verificationQueue: Queue,
   ) {}
+
+  /**
+   * After the verification rules change: put flagged Jump recordings from the last `days` back through
+   * the checks. Ones that now pass are verified, credited and announced; the rest stay flagged, quietly.
+   * Activities an admin already decided aren't touched (they aren't FLAGGED any more).
+   */
+  async recheckFlagged(actorUserId: string, days = 60) {
+    const ids = await this.dataSource.transaction(async (manager) => {
+      const rows = await manager.query(
+        `UPDATE "activities" SET "verificationStatus"='PENDING_VERIFICATION'
+         WHERE "verificationStatus"='FLAGGED' AND "source"='jump' AND "startedAt" > now() - make_interval(days => $1::int)
+           AND "runningSessionId" IS NOT NULL
+         RETURNING "id"`,
+        [days],
+      ) as [Array<{ id: string }>, number];
+      const list = rows[0].map((row) => row.id);
+      await manager.query(
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'ACTIVITIES_RECHECKED','activity','flagged',$2)`,
+        [actorUserId, JSON.stringify({ days, count: list.length })],
+      );
+      return list;
+    });
+    // A fresh job id each time: an earlier verification job for the same activity may still be in Redis.
+    const stamp = Date.now();
+    await Promise.all(ids.map((activityId) => this.verificationQueue.add(
+      'verify-activity', { activityId, recheck: true },
+      { jobId: `recheck-${activityId}-${stamp}`, attempts: 5, backoff: { type: 'exponential', delay: 1_000 } },
+    )));
+    return { queued: ids.length };
+  }
 
   /* ───────── Club moderation and prizes ───────── */
 

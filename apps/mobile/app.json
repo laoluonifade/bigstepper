@@ -94,7 +94,8 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#FF4D12"
         }
-      ]
+      ],
+      "expo-widgets"
     ],
     "experiments": {
       "typedRoutes": true,

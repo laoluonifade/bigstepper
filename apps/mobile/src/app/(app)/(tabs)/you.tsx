@@ -5,15 +5,17 @@ import type { Gender, Profile, PublicProfile, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
 import { ReactNode, useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
-import { ActivityIcon, BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, LadderIcon, LogoutIcon, UserIcon, UsersIcon, WalletIcon, XLogoIcon } from '@/components/icons';
+import * as Clipboard from 'expo-clipboard';
+import { Linking, Pressable, Share, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIcon, BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, LadderIcon, LogoutIcon, SendIcon, UserIcon, UsersIcon, WalletIcon, XLogoIcon } from '@/components/icons';
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
 import { AvatarEditor, ProfileHero, ProfileStats, ShareProfileButton } from '@/components/Profile';
 import { TabScreen } from '@/components/Shell';
 import { OptionSheet, Sheet } from '@/components/Sheet';
 import { StravaConnection } from '@/components/strava';
+import { TrophyCabinet } from '@/components/Trophies';
 import { Button, CopyButton, ErrorNotice, haptic, Loading, Notice, Segmented, Skeleton, TextField, Txt } from '@/components/ui';
-import { api, patch } from '@/lib/api';
+import { api, patch, WEB_URL } from '@/lib/api';
 import { useAuth, useUser } from '@/lib/auth';
 import { openWeb } from '@/lib/links';
 import { unregisterForPush } from '@/lib/push';
@@ -40,7 +42,7 @@ export default function YouScreen() {
   const stats = useMemo(() => profileStats(activities.data ?? []), [activities.data]);
   // Follower counts come from the public profile.
   const social = useQuery({ queryKey: ['runner', profile.data?.username ?? ''], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(profile.data!.username)}`), enabled: Boolean(profile.data?.username) });
-  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | 'delete' | null>(null);
+  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | 'delete' | 'invite' | null>(null);
   const soundsOn = useSoundsEnabled();
   // What's picked shows straight away, even before the restart that applies it.
   const [chosenTheme, setChosenTheme] = useState<ThemePreference>(themePreference);
@@ -78,6 +80,9 @@ export default function YouScreen() {
       <StravaConnection />
     </ProfileHero>
 
+    {/* Podium finishes, a medal each. */}
+    <View style={{ marginTop: 28 }}><TrophyCabinet own /></View>
+
     <View style={{ gap: 28, marginTop: 32 }}>
       <Group>
         {sections.map((item) => <Row key={item.label} onPress={() => router.push(item.href)}>
@@ -86,6 +91,11 @@ export default function YouScreen() {
           {item.badge ? <View style={styles.badge}><Txt size={11} weight="bold" num>{item.badge > 9 ? '9+' : item.badge}</Txt></View> : null}
           <ChevronRightIcon size={16} color={colors.ink3} />
         </Row>)}
+        <Row onPress={() => setSheet('invite')}>
+          <View style={{ width: 24, alignItems: 'center' }}><SendIcon size={17} /></View>
+          <Txt size={15} weight="semibold" style={{ flex: 1 }}>Invite friends</Txt>
+          <ChevronRightIcon size={16} color={colors.ink3} />
+        </Row>
       </Group>
 
       <Group title="Preferences">
@@ -171,6 +181,7 @@ export default function YouScreen() {
     {sheet === 'personal' && <PersonalSheet profile={me} onClose={() => setSheet(null)} />}
     {sheet === 'email' && <EmailSheet profile={me} onClose={() => setSheet(null)} />}
     {sheet === 'delete' && <DeleteAccountSheet onClose={() => setSheet(null)} />}
+    {sheet === 'invite' && <InviteSheet username={me.username} onClose={() => setSheet(null)} />}
     <OptionSheet<ThemePreference> open={sheet === 'appearance'} onOpenChange={(open) => { if (!open) setSheet(null); }} title="Appearance" value={chosenTheme}
       description="Jump restarts for a second to switch."
       options={[
@@ -342,7 +353,31 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
   </View>;
 }
 
+/** Bring friends in: WhatsApp, the phone's share menu, or a copied link to your profile (so they can follow you). */
+function InviteSheet({ username, onClose }: { username: string; onClose: () => void }) {
+  const link = `${WEB_URL}/runners/${username}`;
+  const message = `I’m racing on Jump: walks, runs and rides, all GPS-verified. Join me and let’s see who moves more 👀 ${link}`;
+  const options = [
+    { label: 'Send on WhatsApp', body: 'Pick a chat or a group', run: () => void Linking.openURL(`https://wa.me/?text=${encodeURIComponent(message)}`) },
+    { label: 'Share link…', body: 'Instagram, X, Messages and more', run: () => void Share.share({ message, url: link }) },
+    { label: 'Copy link', body: link.replace(/^https?:\/\//, ''), run: () => void Clipboard.setStringAsync(message).then(() => toast({ tone: 'ok', message: 'Invite copied. Paste it anywhere.' })) },
+  ];
+  return <Sheet open onOpenChange={(open) => !open && onClose()} title="Invite friends" description="Jump’s better with your people. They join free and can follow you straight away.">
+    <View style={{ gap: 8 }}>
+      {options.map((option) => <Pressable key={option.label} onPress={() => { haptic(); option.run(); onClose(); }} accessibilityRole="button"
+        style={({ pressed }) => [styles.inviteRow, pressed && { backgroundColor: colors.inkWash }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt size={15} weight="bold">{option.label}</Txt>
+          <Txt size={12} color="ink3" numberOfLines={1} style={{ marginTop: 2 }}>{option.body}</Txt>
+        </View>
+        <ChevronRightIcon size={16} color={colors.ink3} />
+      </Pressable>)}
+    </View>
+  </Sheet>;
+}
+
 const styles = StyleSheet.create({
+  inviteRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 12 },
   socials: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 14 },
   social: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   group: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },

@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LockIcon, RunIcon } from '@/components/icons';
 import { OptionSheet } from '@/components/Sheet';
 import { ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '@/components/Profile';
+import { TrophyCabinet } from '@/components/Trophies';
 import { Avatar, Button, EmptyState, ErrorNotice, Loading, Screen, Txt } from '@/components/ui';
 import { api, isApiError, post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -63,6 +64,9 @@ export default function RunnerScreen() {
       {data.followsMe && !isMe ? <Txt size={12} weight="semibold" color="ink2" style={{ marginTop: 12 }}>Follows you</Txt> : null}
       <ProfileStats stats={data.stats} unit={unit} />
     </ProfileHero>
+
+    {/* Their podium finishes; hidden when they have none yet. */}
+    <View style={{ marginTop: 24 }}><TrophyCabinet username={data.username} own={isMe} /></View>
 
     <View style={{ marginTop: 24, marginBottom: 20 }}>
       <ProfileTabs<Tab> value={tab} onChange={setTab} tabs={[{ value: 'activity', label: 'Activity' }, { value: 'followers', label: 'Followers' }, { value: 'following', label: 'Following' }]} />

@@ -52,7 +52,7 @@ export function BrandsPage() {
     { value: s?.runners, label: 'Runners & walkers', body: 'Moving, recording, competing.' },
     { value: s?.countries, label: 'Countries', body: 'And counting.' },
     { value: s?.verifiedKm, label: 'Verified km', body: 'Every one GPS-checked.' },
-    { value: s?.participants, label: 'Competitors', body: 'Have raced on Jump.' },
+    { value: s?.competitions, label: 'Competitions', body: 'Run on Jump so far.' },
   ];
 
   return (
@@ -95,7 +95,7 @@ export function BrandsPage() {
             ))}
           </div>
         )}
-        {s && <p className="mt-6 text-[12px] text-paper/45">Live from Jump · {thousands(s.activities)} verified activities · {thousands(s.competitions)} competitions run</p>}
+        {s && <p className="mt-6 text-[12px] text-paper/45">Live from Jump · {thousands(s.activities)} verified activities · {thousands(s.participants)} people have competed</p>}
       </section>
 
       {/* Markets */}
