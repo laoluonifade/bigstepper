@@ -9,8 +9,8 @@ import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { WEB_URL } from '@/lib/api';
 // Share pictures look the same whoever posts them, so they use the brand palette, not the theme's.
-import { brand as colors, fontFamily, mono } from '@/lib/theme';
-import { CopyIcon, JumpLogo, ShareIcon } from './icons';
+import { brand as colors, colors as theme, fontFamily, mono, radius } from '@/lib/theme';
+import { CopyIcon, JumpLogo, LinkIcon, ShareIcon } from './icons';
 import { Sheet } from './Sheet';
 import { Avatar, Button, haptic, Txt } from './ui';
 
@@ -139,14 +139,28 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
       <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="WhatsApp" onPress={() => void Linking.openURL(`https://wa.me/?text=${encodeURIComponent(`${caption} ${url}`)}`)} />
       <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="X" onPress={() => void Linking.openURL(`https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(url)}`)} />
     </View>
-    <Pressable onPress={() => void Clipboard.setStringAsync(`${caption} ${url}`).then(() => { haptic('success'); setStatus('Caption and link copied.'); })} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 }} accessibilityRole="button">
-      <CopyIcon size={14} color={colors.ink2} /><Txt size={13} weight="semibold" color="ink2">Copy caption and link</Txt>
+    {/* The link itself, on show, with a big Copy: what an Instagram link sticker or a group chat needs. */}
+    <View style={styles.linkBox}>
+      <LinkIcon size={16} color={theme.ink2} />
+      <Text numberOfLines={1} style={styles.linkText}>{url.replace(/^https?:\/\//, '')}</Text>
+      <Pressable onPress={() => void Clipboard.setStringAsync(url).then(() => { haptic('success'); setStatus('Link copied. Paste it in a link sticker or a chat.'); })}
+        style={({ pressed }) => [styles.copyLink, pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] }]} accessibilityRole="button" accessibilityLabel="Copy link">
+        <CopyIcon size={14} color={colors.ink} /><Text style={styles.copyLinkText}>COPY LINK</Text>
+      </Pressable>
+    </View>
+    <Pressable onPress={() => void Clipboard.setStringAsync(`${caption} ${url}`).then(() => { haptic('success'); setStatus('Caption and link copied.'); })} hitSlop={8} style={{ alignSelf: 'center', marginTop: 10 }} accessibilityRole="button">
+      <Txt size={13} weight="semibold" color="ink2" style={{ textDecorationLine: 'underline' }}>Copy with a caption instead</Txt>
     </Pressable>
     <Txt size={status ? 13 : 12} color={status ? 'ink2' : 'ink3'} align="center" style={{ marginTop: 8 }}>{status ?? 'On Instagram, add a link sticker to your story so people can tap straight in.'}</Txt>
   </Sheet>;
 }
 
 const styles = StyleSheet.create({
+  // On the sheet, so in the runner's theme; the Copy button is volt in both.
+  linkBox: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, borderRadius: radius.lg, borderWidth: 1.5, borderColor: theme.edge, backgroundColor: theme.card, paddingLeft: 14, paddingRight: 6, height: 52 },
+  linkText: { flex: 1, fontFamily: mono, fontSize: 13, color: theme.ink },
+  copyLink: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, borderRadius: radius.md, backgroundColor: colors.volt, paddingHorizontal: 12 },
+  copyLinkText: { fontFamily: fontFamily('bold', 'wide'), fontSize: 11, letterSpacing: 0.6, color: colors.ink },
   format: { flex: 1, borderRadius: 12, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 8 },
   preview: { borderRadius: 12, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.ink, overflow: 'hidden' },
   callout: { borderRadius: 999, backgroundColor: colors.volt, paddingHorizontal: 11, justifyContent: 'center' },

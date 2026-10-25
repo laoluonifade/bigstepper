@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { onboardingSkipped, ONBOARDING_REQUIRED_SINCE } from '@/lib/onboarding';
 import { useNotifications, useProfile } from '@/lib/queries';
 import { setAppBadge } from '@/lib/push';
+import { StandingNudge } from '@/components/StandingNudge';
 import { colors, fontFamily } from '@/lib/theme';
 
 /** Screens a runner can use before joining their first competition: the ways into one, and account basics. */
@@ -32,7 +33,8 @@ export default function AppLayout() {
   // The app icon's badge follows the unread count as notifications are read here.
   const unread = useNotifications().data?.filter((item) => !item.readAt).length;
   useEffect(() => { if (unread !== undefined) setAppBadge(unread); }, [unread]);
-  return <Stack screenOptions={{
+  return <>
+  <Stack screenOptions={{
     headerStyle: { backgroundColor: colors.paper },
     headerShadowVisible: false,
     headerTintColor: colors.ink,
@@ -47,5 +49,8 @@ export default function AppLayout() {
     <Stack.Screen name="clubs/[id]/chat" options={{ title: 'Club chat' }} />
     <Stack.Screen name="competitions/new" options={{ title: 'New competition', presentation: 'modal' }} />
     <Stack.Screen name="payments/return" options={{ title: 'Payment', presentation: 'modal' }} />
-  </Stack>;
+  </Stack>
+  {/* A few seconds after opening the app: where you stand in one of your races. */}
+  <StandingNudge />
+  </>;
 }

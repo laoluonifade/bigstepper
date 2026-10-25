@@ -103,6 +103,13 @@ export class MessagesService {
        WHERE "senderId"=$1 AND "recipientId"=$2 AND "readAt" IS NULL`,
       [runner.userId, userId],
     );
+    // Reading the chat reads its notifications too, so the bell (and any push not yet sent) drops them.
+    await this.dataSource.query(
+      `UPDATE "notifications" SET "readAt"=now()
+       WHERE "userId"=$1 AND "readAt" IS NULL AND "type" IN ('DIRECT_MESSAGE','MESSAGE_REACTION')
+         AND "link" = '/messages/' || (SELECT "username" FROM "profiles" WHERE "userId"=$2)`,
+      [userId, runner.userId],
+    );
     return { read: true };
   }
 

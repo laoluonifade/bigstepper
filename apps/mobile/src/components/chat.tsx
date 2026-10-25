@@ -5,8 +5,8 @@ import type { Activity, AvatarStyle, CheckoutResponse, Unit } from '@jump/shared
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Clipboard from 'expo-clipboard';
-import { router } from 'expo-router';
-import { ComponentRef, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { ComponentRef, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { ActivityIndicator, FlatList, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
@@ -14,6 +14,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeIn, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import { setOpenChat } from '@/lib/push';
 import { api, patch, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { openCheckout } from '@/lib/checkout';
@@ -99,12 +100,23 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
   const [pickingActivity, setPickingActivity] = useState(false);
   const stashedDraft = useRef<{ body: string; replyTo: Message | null }>({ body: '', replyTo: null });
   const composer = useRef<TextFieldRef>(null);
-  const conversation = useQuery({ queryKey, queryFn: () => api<T>(path), refetchInterval: group ? 10_000 : 15_000 });
+  // Near real time while you're in the chat (polls stop when the app is in the background).
+  const conversation = useQuery({ queryKey, queryFn: () => api<T>(path), refetchInterval: group ? 5_000 : 3_000 });
+  // While this chat is on screen, its own notifications don't banner or buzz.
+  useFocusEffect(useCallback(() => {
+    setOpenChat(path);
+    return () => setOpenChat(null);
+  }, [path]));
   useEffect(() => { if (conversation.data) onData?.(conversation.data); }, [conversation.data, onData]);
 
   const read = useMutation({
     mutationFn: () => post(`${path}/read`),
-    onSuccess() { void queryClient.invalidateQueries({ queryKey: keys.messagesUnread }); void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] }); },
+    onSuccess() {
+      void queryClient.invalidateQueries({ queryKey: keys.messagesUnread });
+      void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] });
+      // The API reads this chat's notifications too: refresh the bell.
+      void queryClient.invalidateQueries({ queryKey: keys.notifications });
+    },
   });
   const newestIncomingId = [...(conversation.data?.messages ?? [])].reverse().find((message) => message.senderId !== user.id)?.id;
   const markRead = read.mutate;

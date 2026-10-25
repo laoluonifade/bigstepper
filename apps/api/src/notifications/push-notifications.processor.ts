@@ -4,8 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { PUSH_NOTIFICATIONS_QUEUE } from '../jobs/jobs.module';
+import { RANK_ORDER } from '../tables/scoring-engine';
+import { boostMessage, pickBoosts, StandingRow } from './standing-boost';
 
-type Pending = { id: string; userId: string; type: string; title: string; body: string; link: string | null; createdAt: Date };
+type Pending = { id: string; userId: string; type: string; title: string; body: string; link: string | null; createdAt: Date; readAt?: Date | null };
 type ExpoMessage = { to: string; title: string; body: string; sound: 'default'; badge: number; channelId: string; data: { id: string; link: string | null; type: string } };
 type ExpoTicket = { status: 'ok' | 'error'; id?: string; message?: string; details?: { error?: string } };
 
@@ -14,6 +16,9 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const STALE_MINUTES = 30;
 /** Messages arrive on their own channel so runners can mute chat without muting results. */
 const CHANNEL_FOR: Record<string, string> = { DIRECT_MESSAGE: 'messages', MESSAGE_REACTION: 'messages' };
+/** The daily "where you stand" push goes out from this hour, Lagos time, and not after BOOST_UNTIL. */
+const BOOST_FROM = 17;
+const BOOST_UNTIL = 21;
 
 /**
  * Sends every new in-app notification to the runner's phones as a push, through Expo's push service
@@ -33,10 +38,57 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
 
   async onModuleInit() {
     await this.queue.upsertJobScheduler('push-notifications', { every: 5_000 }, { name: 'send-push' });
+    await this.queue.upsertJobScheduler('standing-boost', { every: 15 * 60_000 }, { name: 'standing-boost' });
   }
 
   async process(job: Job): Promise<void> {
     if (job.name === 'send-push') await this.sendPending();
+    if (job.name === 'standing-boost') await this.queueStandingBoosts();
+  }
+
+  /**
+   * Once a day, early evening in Lagos: each runner in a live competition with someone else hears
+   * where they stand in their tightest race ("0.40 km behind Ada for 2nd"). One a day, however many
+   * competitions they're in. It's written as a notification, so the sweep above sends the push.
+   */
+  async queueStandingBoosts(now = new Date()) {
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', hour12: false }).format(now));
+    if (hour < BOOST_FROM || hour >= BOOST_UNTIL) return 0;
+    const rows = await this.dataSource.query(
+      `WITH live AS (
+         SELECT t."id", t."code", t."title", t."scoringMethod", t."challengeType" FROM "competition_tables" t
+         WHERE t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED') AND t."deletedAt" IS NULL AND t."archivedAt" IS NULL
+           AND COALESCE(t."startsAt", t."createdAt") <= now() AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now())
+       ), ranked AS (
+         SELECT r."tableId", r."userId", r."score",
+                row_number() OVER (PARTITION BY r."tableId" ORDER BY ${RANK_ORDER})::integer AS "rank",
+                count(*) OVER (PARTITION BY r."tableId")::integer AS "entrants"
+         FROM "table_registrations" r WHERE r."tableId" IN (SELECT "id" FROM live)
+       )
+       SELECT me."userId", l."id" AS "tableId", l."code", l."title", l."scoringMethod", l."challengeType", me."rank", me."entrants",
+              me."score"::float8 AS "score", a."score"::float8 AS "aheadScore", pa."displayName" AS "aheadName",
+              b."score"::float8 AS "behindScore", pb."displayName" AS "behindName"
+       FROM ranked me JOIN live l ON l."id" = me."tableId"
+       JOIN "users" u ON u."id" = me."userId" AND u."deletedAt" IS NULL
+       LEFT JOIN ranked a ON a."tableId" = me."tableId" AND a."rank" = me."rank" - 1
+       LEFT JOIN "profiles" pa ON pa."userId" = a."userId"
+       LEFT JOIN ranked b ON b."tableId" = me."tableId" AND b."rank" = me."rank" + 1
+       LEFT JOIN "profiles" pb ON pb."userId" = b."userId"
+       WHERE me."entrants" > 1
+         AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId" = me."userId" AND n."type" = 'STANDING_BOOST'
+           AND (n."createdAt" AT TIME ZONE 'Africa/Lagos')::date = (now() AT TIME ZONE 'Africa/Lagos')::date)`,
+    ) as StandingRow[];
+    const boosts = pickBoosts(rows).map(boostMessage);
+    if (!boosts.length) return 0;
+    // Push only: marked emailed already, so the email digest leaves them out.
+    await this.dataSource.query(
+      `INSERT INTO "notifications" ("userId","type","title","body","link","emailProcessedAt")
+       SELECT x."userId", 'STANDING_BOOST', x."title", x."body", x."link", now()
+       FROM jsonb_to_recordset($1::jsonb) AS x("userId" uuid, "title" text, "body" text, "link" text)`,
+      [JSON.stringify(boosts)],
+    );
+    this.logger.log(`Queued ${boosts.length} standing boosts`);
+    return boosts.length;
   }
 
   private async sendPending() {
@@ -51,13 +103,14 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
        ), claimed AS (
          UPDATE "notifications" n SET "pushClaimedAt"=now()
          FROM pending WHERE n."id"=pending."id"
-         RETURNING n."id",n."userId",n."type",n."title",n."body",n."link",n."createdAt"
+         RETURNING n."id",n."userId",n."type",n."title",n."body",n."link",n."createdAt",n."readAt"
        )
        SELECT * FROM claimed`,
     ) as Pending[];
     if (!rows.length) return;
 
-    const fresh = rows.filter((row) => Date.now() - new Date(row.createdAt).getTime() < STALE_MINUTES * 60_000);
+    // Already read (you opened the chat before the push went out): no buzz. Stale ones neither.
+    const fresh = rows.filter((row) => !row.readAt && Date.now() - new Date(row.createdAt).getTime() < STALE_MINUTES * 60_000);
     const userIds = [...new Set(fresh.map((row) => row.userId))];
     const [tokens, unread] = userIds.length ? await Promise.all([
       this.dataSource.query(`SELECT "token","userId" FROM "push_tokens" WHERE "userId"=ANY($1::uuid[])`, [userIds]) as Promise<Array<{ token: string; userId: string }>>,

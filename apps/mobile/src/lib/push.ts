@@ -24,10 +24,21 @@ const Notifications: typeof NotificationsModule | null = (() => {
   }
 })();
 
-// A notification that arrives while Jump is open still shows as a banner, with its sound.
+/** The chat on screen (its link, e.g. "/messages/ada"), set by the chat while it's open. */
+let openChat: string | null = null;
+export function setOpenChat(link: string | null) {
+  openChat = link;
+}
+const sameChat = (link: unknown) => typeof link === 'string' && openChat !== null && link.toLowerCase() === openChat.toLowerCase();
+
+// A notification that arrives while Jump is open still shows as a banner, with its sound, unless it's
+// about the chat you're reading: that message is already appearing in front of you.
 try {
   Notifications?.setNotificationHandler({
-    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: true }),
+    handleNotification: async (notification) => {
+      const quiet = sameChat(notification.request.content.data?.link);
+      return { shouldShowBanner: !quiet, shouldShowList: !quiet, shouldPlaySound: !quiet, shouldSetBadge: true };
+    },
   });
 } catch { /* no native side after all */ }
 
@@ -107,10 +118,12 @@ export function listenForPush(queryClient: QueryClient) {
     const launched = Notifications.getLastNotificationResponse();
     const timer = launched ? setTimeout(() => open(launched), 300) : null;
     const tapped = Notifications.addNotificationResponseReceivedListener(open);
-    const received = Notifications.addNotificationReceivedListener(() => {
+    const received = Notifications.addNotificationReceivedListener((notification) => {
       // Same keys as lib/queries (not imported: queries → auth → push would be a cycle).
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      void queryClient.invalidateQueries({ queryKey: ['messages', 'unread'] });
+      void queryClient.invalidateQueries({ queryKey: ['messages'] });
+      // A message for an open chat: fetch it now rather than at the next poll.
+      if (sameChat(notification.request.content.data?.link)) void queryClient.invalidateQueries({ queryKey: ['club-chat'] });
     });
     return () => { if (timer) clearTimeout(timer); timers.forEach(clearTimeout); tapped.remove(); received.remove(); };
   } catch {

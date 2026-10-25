@@ -22,6 +22,8 @@ export type MyCompetition = {
   id: string; code: string; title: string; type: string; challengeType: ChallengeType; scoringMethod: ScoringMethod; targetDistanceMetres: number | null;
   status: string; startsAt: string | null; scoringClosesAt: string | null; visibility: string; hosting: boolean; joined: boolean;
   entrants: number; myRank: number | null; myScore: number | null; leaderScore: number | null;
+  /** The runners either side of you on the board. */
+  aheadScore: number | null; aheadName: string | null; behindScore: number | null; behindName: string | null;
 };
 
 export function useMyCompetitions() {
@@ -93,6 +95,7 @@ function standingLine(table: MyCompetition, unit: Unit) {
   if (!hasScored(table.scoringMethod, mine)) return 'No score yet';
   if (table.myRank === 1) return table.entrants > 1 ? 'Leading' : 'On top';
   if (leader === null) return '';
+  if (leader === mine) return 'Level with the leader';
   return `${formatGap(table, mine!, leader, unit)} behind`;
 }
 
@@ -310,8 +313,10 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   const line = !joined
     ? <>{bold(`${race.entrants} ${race.entrants === 1 ? 'runner' : 'runners'}`)} in, {ends}. Join and your next run counts.</>
     : myScore === null ? <>Your first run puts you on the board, {ends}.</>
-      : me?.rank === 1 ? (runnerUp !== null ? <>Leading by {bold(formatGap(race, runnerUp, myScore, unit))}, {ends}. Keep the gap.</> : <>Out in front, {ends}. Invite rivals to chase you.</>)
-        : <>{bold(gapToLeader)} behind {firstName(leader.displayName)} with {ends}.</>;
+      : me?.rank === 1 ? (runnerUp === myScore ? <>Level with {firstName(rows[1].displayName)}, {ends}. One more run takes it.</>
+        : runnerUp !== null ? <>Leading by {bold(formatGap(race, runnerUp, myScore, unit))}, {ends}. Keep the gap.</> : <>Out in front, {ends}. Invite rivals to chase you.</>)
+        : leaderScore === myScore ? <>Level with {firstName(leader.displayName)} at the top, {ends}.</>
+          : <>{bold(gapToLeader)} behind {firstName(leader.displayName)} with {ends}.</>;
 
   // Always dark, in either theme: drawn in the brand palette, with a hairline edge on a dark page.
   return <View style={[styles.hero, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>

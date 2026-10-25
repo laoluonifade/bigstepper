@@ -217,8 +217,11 @@ function YourRace({ table, rows, viewerId, unit, now }: { table: CompetitionTabl
   const line = !me || mine === null
     ? <>Your first {noun} puts you on the board, {ends}.</>
     : me.rank === 1
-      ? valueOf(behind) !== null ? <>Leading {first(behind!.displayName)} by {bold(formatGap(table, valueOf(behind)!, mine, unit) ?? '')}, {ends}. Keep the gap.</> : <>Out in front, {ends}. Keep it that way.</>
-      : ahead && valueOf(ahead) !== null ? <>{bold(formatGap(table, mine, valueOf(ahead)!, unit) ?? '')} behind {first(ahead.displayName)} for {ordinal(ahead.rank)}, {ends}.</>
+      // A tie reads as level, never "by 0 days".
+      ? valueOf(behind) === mine ? <>Level with {first(behind!.displayName)}, {ends}. One more {noun} takes it.</>
+        : valueOf(behind) !== null ? <>Leading {first(behind!.displayName)} by {bold(formatGap(table, valueOf(behind)!, mine, unit) ?? '')}, {ends}. Keep the gap.</> : <>Out in front, {ends}. Keep it that way.</>
+      : ahead && valueOf(ahead) === mine ? <>Level with {first(ahead.displayName)}, {ends}. One {noun} breaks the tie.</>
+        : ahead && valueOf(ahead) !== null ? <>{bold(formatGap(table, mine, valueOf(ahead)!, unit) ?? '')} behind {first(ahead.displayName)} for {ordinal(ahead.rank)}, {ends}.</>
         : <>{ends}. Every {noun} counts.</>;
   // Always dark, like the home board; a hairline edge keeps it from melting into a dark page.
   return <View style={[styles.race, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>

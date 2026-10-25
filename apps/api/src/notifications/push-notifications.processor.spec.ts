@@ -59,6 +59,15 @@ describe('PushNotificationsProcessor', () => {
     expect(query.mock.calls.some(([sql]) => String(sql).includes('"pushProcessedAt"=now()'))).toBe(true);
   });
 
+  it('skips one already read (the chat was opened before the push went out)', async () => {
+    const { processor, query } = setup([{ id: 'n1', userId: 'u1', type: 'DIRECT_MESSAGE', title: 'x', body: 'y', link: '/messages/ada', createdAt: now(), readAt: now() }], [{ token: 'ExponentPushToken[a]', userId: 'u1' }]);
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await processor.process(job);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('"pushProcessedAt"=now()'))).toBe(true);
+  });
+
   it('leaves notifications claimed (to retry) when Expo is unreachable', async () => {
     const { processor, query } = setup([{ id: 'n1', userId: 'u1', type: 'X', title: 'x', body: 'y', link: null, createdAt: now() }], [{ token: 'ExponentPushToken[a]', userId: 'u1' }]);
     global.fetch = jest.fn(async () => ({ ok: false, status: 503, text: async () => 'down' })) as unknown as typeof fetch;

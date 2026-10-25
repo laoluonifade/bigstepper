@@ -238,9 +238,14 @@ export class TablesService {
               COALESCE((SELECT max(x."entrants") FROM ranked x WHERE x."tableId" = t."id"), 0) AS "entrants",
               t."targetSteps", t."targetSeconds", t."targetSessions", t."dailyTarget",
               me."rank" AS "myRank", me."score" AS "myScore",
-              (SELECT x."score" FROM ranked x WHERE x."tableId" = t."id" AND x."rank" = 1) AS "leaderScore"
+              (SELECT x."score" FROM ranked x WHERE x."tableId" = t."id" AND x."rank" = 1) AS "leaderScore",
+              -- The runners either side of you, for "0.4 km behind Ada" / "leading Tunde by 1 km".
+              ahead."score" AS "aheadScore", (SELECT p."displayName" FROM "profiles" p WHERE p."userId" = ahead."userId") AS "aheadName",
+              behind."score" AS "behindScore", (SELECT p."displayName" FROM "profiles" p WHERE p."userId" = behind."userId") AS "behindName"
        FROM mine m JOIN "competition_tables" t ON t."id" = m."id"
        LEFT JOIN ranked me ON me."tableId" = t."id" AND me."userId" = $1
+       LEFT JOIN ranked ahead ON ahead."tableId" = t."id" AND ahead."rank" = me."rank" - 1
+       LEFT JOIN ranked behind ON behind."tableId" = t."id" AND behind."rank" = me."rank" + 1
        ORDER BY CASE WHEN m."hosting" AND t."status"='PENDING_FUNDING' THEN 0
                      WHEN t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED') THEN 1 ELSE 2 END,
                 t."scoringClosesAt" ASC NULLS LAST, m."since" DESC
@@ -253,6 +258,7 @@ export class TablesService {
       status: string; startsAt: string | null; scoringClosesAt: string | null; visibility: string; guaranteedPrizeKobo: number | null; createdAt: string;
       hosting: boolean; joined: boolean;
       entrants: number; myRank: number | null; myScore: number | null; leaderScore: number | null;
+      aheadScore: number | null; aheadName: string | null; behindScore: number | null; behindName: string | null;
     }>;
   }
 
