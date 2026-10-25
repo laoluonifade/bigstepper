@@ -10,6 +10,7 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.startajump.app",
+      "buildNumber": "19",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -24,6 +25,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.startajump.app",
+      "versionCode": 5,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -32,7 +34,9 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.ACTIVITY_RECOGNITION"
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -109,8 +113,26 @@
         }
       },
       "eas": {
-        "projectId": "d968b130-3ea0-44f2-8001-cb55319c4544"
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ExpoWidgetsTarget",
+                  "bundleIdentifier": "com.startajump.app.ExpoWidgetsTarget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.startajump.app"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "5c15a0b0-4dc0-4479-8608-855e3b15bfa5"
       }
-    }
+    },
+    "owner": "ayomicoderrs"
   }
 }
