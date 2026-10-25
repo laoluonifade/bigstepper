@@ -11,7 +11,7 @@ import { Sheet } from '@/components/Sheet';
 import { Button, EmptyState, ErrorNotice, haptic, Skeleton, Txt, useNow } from '@/components/ui';
 import { api, post } from '@/lib/api';
 import { useDiscover, useUnit, type DiscoverView } from '@/lib/queries';
-import { colors, fontFamily, radius } from '@/lib/theme';
+import { colors, fontFamily, radius, scheme, voltWash } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { confirm } from '@/lib/dialog';
 
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   create: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 16 },
   subNav: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 32, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 12 },
-  record: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: 'rgba(228,255,58,0.6)', paddingVertical: 8, paddingLeft: 8, paddingRight: 12, marginBottom: 16 },
+  record: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.lg, borderWidth: 1.5, borderColor: scheme === 'dark' ? colors.volt : colors.edge, backgroundColor: voltWash(0.6), paddingVertical: 8, paddingLeft: 8, paddingRight: 12, marginBottom: 16 },
   recordIcon: { width: 28, height: 28, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.track, alignItems: 'center', justifyContent: 'center' },
   drafts: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.4)', paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
   draftCount: { minWidth: 28, height: 28, borderRadius: 14, backgroundColor: colors.ink, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },

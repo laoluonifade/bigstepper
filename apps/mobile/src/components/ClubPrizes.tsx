@@ -155,7 +155,7 @@ export function PrizeTerms({ terms, clubName }: { terms: ClubPrizeTerms; clubNam
         const from = place;
         place += prize.quantity;
         return <View key={prize.position} style={styles.term}>
-          {prize.imageUrl ? <Image source={{ uri: prize.imageUrl }} style={styles.termArt} contentFit="cover" /> : <View style={[styles.termArt, { backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' }]}><Txt size={22} weight="black">{terms.selection === 'draw' ? '★' : String(from)}</Txt></View>}
+          {prize.imageUrl ? <Image source={{ uri: prize.imageUrl }} style={styles.termArt} contentFit="cover" /> : <View style={[styles.termArt, { backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' }]}><Txt size={22} weight="black" color="onAccent">{terms.selection === 'draw' ? '★' : String(from)}</Txt></View>}
           <View style={{ flex: 1, minWidth: 0 }}>
             <Txt size={11} weight="extrabold" upper tracking={0.08} color="ink3">{`${terms.selection === 'draw' ? `${prize.quantity} ${prize.quantity === 1 ? 'winner' : 'winners'} by draw` : prize.quantity > 1 ? `Places ${from}–${from + prize.quantity - 1}` : `Place ${from}`} · ${PRIZE_KIND[prize.kind].label}`}</Txt>
             <Txt size={15} weight="bold" leading={1.3}>{prize.productName}</Txt>

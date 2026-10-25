@@ -55,7 +55,8 @@ export function RankBadge({ rank, size = 'md' }: { rank: number; size?: 'md' | '
 }
 
 export function Leaderboard({ rows, currentUserId, unit, limit = 50, empty, metricLabel = 'Distance', formatScore }: {
-  rows: LeaderboardRow[]; currentUserId?: string; unit: Unit; limit?: number; empty?: ReactNode; metricLabel?: string; formatScore?: (row: LeaderboardRow) => ReactNode;
+  rows: LeaderboardRow[]; currentUserId?: string; unit: Unit; limit?: number; empty?: ReactNode; metricLabel?: string; /** Draws a non-distance score. `onAccent` is set on your volt row, where the text must stay dark. */
+  formatScore?: (row: LeaderboardRow, onAccent: boolean) => ReactNode;
 }) {
   if (rows.length === 0) return <>{empty}</>;
   const meIndex = rows.findIndex((row) => row.userId === currentUserId);
@@ -75,7 +76,7 @@ export function Leaderboard({ rows, currentUserId, unit, limit = 50, empty, metr
   </View>;
 }
 
-function Row({ row, isMe, unit, formatScore, last }: { row: LeaderboardRow; isMe: boolean; unit: Unit; formatScore?: (row: LeaderboardRow) => ReactNode; last: boolean }) {
+function Row({ row, isMe, unit, formatScore, last }: { row: LeaderboardRow; isMe: boolean; unit: Unit; formatScore?: (row: LeaderboardRow, onAccent: boolean) => ReactNode; last: boolean }) {
   const body = <>
     <View style={{ width: 56, paddingLeft: 16 }}><RankBadge rank={row.rank} /></View>
     <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12, paddingRight: 8 }}>
@@ -91,7 +92,7 @@ function Row({ row, isMe, unit, formatScore, last }: { row: LeaderboardRow; isMe
       </View>
     </View>
     <View style={{ paddingRight: 16, alignItems: 'flex-end' }}>
-      {formatScore ? formatScore(row) : <Text style={[score(20), isMe && { color: colors.onAccent }]}>{formatDistanceNumber(row.metres, unit)}<Text style={[styles.unit, isMe && { color: colors.onAccent }]}> {unit}</Text></Text>}
+      {formatScore ? formatScore(row, isMe) : <Text style={[score(20), isMe && { color: colors.onAccent }]}>{formatDistanceNumber(row.metres, unit)}<Text style={[styles.unit, isMe && { color: colors.onAccent }]}> {unit}</Text></Text>}
     </View>
   </>;
   const style = [styles.row, !last && styles.rowLine, isMe && { backgroundColor: colors.volt }];

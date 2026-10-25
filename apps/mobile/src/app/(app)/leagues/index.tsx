@@ -6,7 +6,7 @@ import { ArrowRightIcon } from '@/components/icons';
 import { DivisionBadge, ZoneTag } from '@/components/league';
 import { Button, Card, EmptyState, ErrorNotice, Eyebrow, Notice, PageHeader, Score, Screen, SectionTitle, Skeleton, TextLink, Txt, useNow } from '@/components/ui';
 import { useLeagues, useLeagueStandings, useMyLeagues, useUnit } from '@/lib/queries';
-import { colors, display, radius, wideLabel } from '@/lib/theme';
+import { brand, colors, display, radius, wideLabel } from '@/lib/theme';
 
 export default function LeaguesScreen() {
   const leagues = useLeagues();
@@ -27,12 +27,12 @@ export default function LeaguesScreen() {
         : <Card variant="strong" padded={false}>
           <View style={styles.season}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Eyebrow style={{ color: colors.onInkMuted }}>Current season</Eyebrow>
-              <Text style={[display(26), { color: colors.paper, marginTop: 4 }]}>{active.name}</Text>
-              <Txt size={13} num style={{ marginTop: 4, color: colors.onInkMuted }}>{`${formatDate(active.startsAt)} – ${formatDate(active.endsAt, { year: 'numeric' })}`}</Txt>
+              <Eyebrow style={{ color: brand.onInkMuted }}>Current season</Eyebrow>
+              <Text style={[display(26), { color: brand.paper, marginTop: 4 }]}>{active.name}</Text>
+              <Txt size={13} num style={{ marginTop: 4, color: brand.onInkMuted }}>{`${formatDate(active.startsAt)} – ${formatDate(active.endsAt, { year: 'numeric' })}`}</Txt>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Eyebrow style={{ color: colors.onInkMuted }}>Ends in</Eyebrow>
+              <Eyebrow style={{ color: brand.onInkMuted }}>Ends in</Eyebrow>
               <Score size={30} color="volt" style={{ marginTop: 4 }}>{formatCountdown(active.endsAt, now)}</Score>
             </View>
           </View>
@@ -107,7 +107,8 @@ function LastSeasonResult() {
 }
 
 const styles = StyleSheet.create({
-  season: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, backgroundColor: colors.ink, padding: 20 },
+  // Always dark, in either theme (theme ink turns cream in dark mode, and the volt countdown vanished on it).
+  season: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, backgroundColor: brand.ink, padding: 20 },
   division: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 10 },
   other: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 12 },
 });

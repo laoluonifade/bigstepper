@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleShee
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fontFamily, GUTTER, radius, wideLabel } from '@/lib/theme';
+import { colors, fontFamily, GUTTER, radius, voltWash, wideLabel } from '@/lib/theme';
 import { ChevronRightIcon, CloseIcon } from './icons';
 import { haptic, Txt } from './ui';
 
@@ -92,7 +92,7 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
 /** One line in a form that opens a sheet: what it is, what's set now, and any problem to fix. */
 export function SheetRow({ title, summary, onOpen, error, tone = 'default' }: { title: string; summary: ReactNode; onOpen: () => void; error?: string; tone?: 'default' | 'on' }) {
   return <Pressable onPress={() => { haptic(); onOpen(); }} accessibilityRole="button" accessibilityLabel={title}
-    style={({ pressed }) => [styles.row, error ? { borderColor: colors.bad, backgroundColor: 'rgba(250,220,216,0.4)' } : tone === 'on' ? { backgroundColor: 'rgba(228,255,58,0.4)' } : { backgroundColor: colors.card }, pressed && { opacity: 0.75 }]}>
+    style={({ pressed }) => [styles.row, error ? { borderColor: colors.bad, backgroundColor: 'rgba(250,220,216,0.4)' } : tone === 'on' ? { backgroundColor: voltWash(0.4) } : { backgroundColor: colors.card }, pressed && { opacity: 0.75 }]}>
     <View style={{ flex: 1, minWidth: 0 }}>
       <Text style={wideLabel(13, 0)}>{title}</Text>
       {typeof summary === 'string' ? <Txt size={13.5} color="ink2" leading={1.35} style={{ marginTop: 2 }}>{summary}</Txt> : summary}
@@ -118,7 +118,7 @@ export function OptionSheet<T extends string>({ open, onOpenChange, title, descr
         const active = option.value === value;
         return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: active, disabled: option.disabled }} disabled={option.disabled}
           onPress={() => { haptic(); onChange(option.value); onOpenChange(false); }}
-          style={({ pressed }) => [styles.option, active && { borderColor: colors.edge, backgroundColor: 'rgba(228,255,58,0.4)' }, option.disabled && { opacity: 0.45 }, pressed && { opacity: 0.7 }]}>
+          style={({ pressed }) => [styles.option, active && { borderColor: colors.edge, backgroundColor: voltWash(0.4) }, option.disabled && { opacity: 0.45 }, pressed && { opacity: 0.7 }]}>
           {option.icon}
           <View style={{ flex: 1 }}>
             <Txt size={15} weight="bold">{option.label}</Txt>

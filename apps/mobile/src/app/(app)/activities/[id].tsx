@@ -1,20 +1,21 @@
 import { estimatedCalories } from '@jump/shared/calories';
 import { describeReason } from '@jump/shared/copy';
-import { activityName, formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace, formatSpeed } from '@jump/shared/format';
+import { activityName, formatDistance, formatDuration } from '@jump/shared/format';
 import { fromSteps, shownMetres } from '@jump/shared/progress';
 import { metricOf } from '@jump/shared/scoring';
 import type { Activity, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 import { CheckIcon, FeedIcon, SendIcon, ShareIcon } from '@/components/icons';
 import { FinishCelebration } from '@/components/FinishCelebration';
 import { RouteMap } from '@/components/RunMap';
 import { SendActivitySheet } from '@/components/SendActivity';
+import { StatStickers, Sticker } from '@/components/Stickers';
 import { ShareRunSheet } from '@/components/ShareRun';
-import { Button, Card, CountUp, ErrorNotice, Eyebrow, HardShadow, Loading, Meter, Notice, Score, Screen, Stat, TextField, TextLink, Txt, VerificationTag } from '@/components/ui';
+import { Button, Card, ErrorNotice, Eyebrow, HardShadow, Loading, Meter, Notice, Screen, Stat, TextField, TextLink, Txt, VerificationTag } from '@/components/ui';
 import { api, isApiError, post } from '@/lib/api';
 import { keys, useProfile, useUnit } from '@/lib/queries';
 import { colors, display, radius, wideLabel } from '@/lib/theme';
@@ -43,24 +44,32 @@ export default function ActivityDetailScreen() {
   const verified = a.verificationStatus === 'VERIFIED';
   const metres = shownMetres(a);
   const moving = a.movingSeconds || a.elapsedSeconds;
-  const pace = a.activityType === 'cycle' ? formatSpeed(metres, moving, unit) : formatPace(metres, moving, unit);
   const trimmed = verified ? a.recordedDistanceMetres - a.validatedDistanceMetres : 0;
   const calories = estimatedCalories(a, profile.data?.weightKg);
   const route = track.data?.points ?? [];
+  const started = new Date(a.startedAt);
+  const dateTag = `${started.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')} · ${started.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 
   return <Screen refreshing={activity.isRefetching} onRefresh={() => void activity.refetch()}>
-    <Stack.Screen options={{ title: formatDateTime(a.startedAt) }} />
+    <Stack.Screen options={{ title: '' }} />
     {celebrating && <FinishCelebration activity={a} route={route} unit={unit} onClose={() => setCelebrating(false)} onShare={() => { setCelebrating(false); setSheet('share'); }} />}
+    {/* Status only speaks up when something's off: a verified activity just shows when it was. */}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <VerificationTag status={a.verificationStatus} />
+      {!verified && <VerificationTag status={a.verificationStatus} />}
       {a.source === 'strava' ? <Txt size={12} weight="bold" style={{ color: '#FC5200' }}>via Strava</Txt> : null}
+      <Txt size={11} weight="bold" color="ink2" style={{ marginLeft: 'auto', letterSpacing: 0.8 }}>{dateTag.toUpperCase()}</Txt>
     </View>
-    <Text style={display(28)}>{activityName(a.startedAt, a.activityType)}</Text>
+    <Text style={display(34)} numberOfLines={2} adjustsFontSizeToFit>{activityName(a.startedAt, a.activityType)}</Text>
 
-    {/* Equal, quiet actions that fit one row on a phone. */}
-    <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, marginBottom: 24 }}>
+    {/* The activity as a pile of stickers: the route on top, the numbers underneath. */}
+    {route.length >= 2 && <Sticker p={colors} bg={colors.card} tilt={-1.5} padded={false} style={{ marginTop: 20, marginHorizontal: 4 }}>
+      <View style={{ padding: 8 }}><RouteMap route={route} style={styles.map} /></View>
+    </Sticker>}
+    <View style={{ marginTop: route.length >= 2 ? 8 : 20, marginHorizontal: 4 }}><StatStickers activity={a} unit={unit} p={colors} /></View>
+
+    <View style={{ flexDirection: 'row', gap: 10, marginTop: 28, marginBottom: 24 }}>
       <Action label="Post" icon={<FeedIcon size={17} />} disabled={!verified} onPress={() => router.navigate({ pathname: '/feed', params: { activity: a.id } })} />
-      <Action label="Share" icon={<ShareIcon size={16} />} onPress={() => setSheet('share')} />
+      <Action label="Share" primary icon={<ShareIcon size={16} color={colors.onAccent} />} onPress={() => setSheet('share')} />
       <Action label="Send" icon={<SendIcon size={16} />} disabled={a.verificationStatus === 'REJECTED'} onPress={() => setSheet('send')} />
     </View>
 
@@ -76,27 +85,14 @@ export default function ActivityDetailScreen() {
       </HardShadow>
     </Animated.View>}
 
-    {route.length >= 2 && <RouteMap route={route} style={styles.map} />}
-
     <Card variant="strong" padded={false}>
       <View style={{ padding: 20 }}>
-        <Eyebrow>{verified ? (fromSteps(a) ? 'Verified distance · from steps' : 'Verified distance') : pending ? 'Recorded distance · provisional' : 'Recorded distance'}</Eyebrow>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
-          <Score size={80} style={a.verificationStatus === 'REJECTED' ? { color: colors.ink3, textDecorationLine: 'line-through' } : undefined}>
-            <CountUp value={metres} format={(m) => formatDistanceNumber(m, unit)} />
-          </Score>
-          <Txt size={16} weight="semibold" color="ink2">{unit}</Txt>
-        </View>
-        {fromSteps(a) && <Txt size={13} color="ink2">{`Measured from ${a.validatedSteps.toLocaleString('en-GB')} steps. GPS couldn’t track this one (indoors?). It can count for your league and step-based competitions, but not paid distance scoring.`}</Txt>}
-        {trimmed > 0 && !fromSteps(a) && <Txt size={13} color="ink2">{`${formatDistance(trimmed, unit)} of the ${formatDistance(a.recordedDistanceMetres, unit)} recorded didn’t pass checks.`}</Txt>}
+        <Eyebrow>{verified ? (fromSteps(a) ? 'Details · distance from steps' : 'Details') : pending ? 'Details · distance provisional' : 'Details · recorded distance'}</Eyebrow>
+        {fromSteps(a) && <Txt size={13} color="ink2" style={{ marginTop: 8 }}>{`Measured from ${a.validatedSteps.toLocaleString('en-GB')} steps. GPS couldn’t track this one (indoors?). It can count for your league and step-based competitions, but not paid distance scoring.`}</Txt>}
+        {trimmed > 0 && !fromSteps(a) && <Txt size={13} color="ink2" style={{ marginTop: 8 }}>{`${formatDistance(trimmed, unit)} of the ${formatDistance(a.recordedDistanceMetres, unit)} recorded didn’t pass checks.`}</Txt>}
         <View style={styles.grid}>
-          {a.activityType !== 'cycle' && <>
-            <Stat style={styles.cell} label={verified ? 'Verified steps' : 'Recorded steps'} value={verified ? a.validatedSteps.toLocaleString('en-GB') : a.recordedSteps.toLocaleString('en-GB')} />
-            <Stat style={styles.cell} label="Step cadence" value={verified && a.validatedSteps > 0 && moving > 0 ? `${Math.round((a.validatedSteps * 60) / moving).toLocaleString('en-GB')} /min` : '–'} />
-          </>}
+          {a.activityType !== 'cycle' && <Stat style={styles.cell} label="Step cadence" value={verified && a.validatedSteps > 0 && moving > 0 ? `${Math.round((a.validatedSteps * 60) / moving).toLocaleString('en-GB')} /min` : '–'} />}
           {calories !== null && <Stat style={styles.cell} label="Estimated calories" value={calories.toLocaleString('en-GB')} unit="kcal" />}
-          <Stat style={styles.cell} label="Moving time" value={formatDuration(moving)} />
-          <Stat style={styles.cell} label={a.activityType === 'cycle' ? 'Avg speed' : `Pace /${unit}`} value={pace ?? '–'} />
           <Stat style={styles.cell} label="Elapsed" value={formatDuration(a.elapsedSeconds)} />
           <Stat style={styles.cell} label="Finished" value={new Date(a.finishedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} />
         </View>
@@ -142,9 +138,13 @@ export default function ActivityDetailScreen() {
   </Screen>;
 }
 
-function Action({ label, icon, onPress, disabled }: { label: string; icon: ReactNode; onPress: () => void; disabled?: boolean }) {
-  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [styles.action, disabled && { opacity: 0.4 }, pressed && { borderColor: colors.edge }]}>
-    {icon}<Txt size={14} weight="semibold">{label}</Txt>
+function Action({ label, icon, onPress, disabled, primary }: { label: string; icon: ReactNode; onPress: () => void; disabled?: boolean; primary?: boolean }) {
+  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={[{ flex: 1 }, disabled && { opacity: 0.4 }]}>
+    {({ pressed }) => <HardShadow offset={3} radius={radius.full} pressed={pressed}>
+      <View style={[styles.action, primary && { backgroundColor: colors.track }]}>
+        {icon}<Text style={[wideLabel(12, 0.04), primary && { color: colors.onAccent }]}>{label}</Text>
+      </View>
+    </HardShadow>}
   </Pressable>;
 }
 
@@ -214,10 +214,10 @@ function ReviewRequest({ activityId }: { activityId: string }) {
 }
 
 const styles = StyleSheet.create({
-  action: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.full, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
+  action: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card },
   counts: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.volt, paddingHorizontal: 20, paddingVertical: 16 },
   countsIcon: { width: 40, height: 40, borderRadius: radius.sm, backgroundColor: colors.onAccent, alignItems: 'center', justifyContent: 'center' },
-  map: { height: 220, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, marginBottom: 16 },
+  map: { height: 200, borderRadius: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 20, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 20 },
   cell: { width: '50%', paddingRight: 12 },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingHorizontal: 20, paddingVertical: 14 },

@@ -18,7 +18,7 @@ import { useSyncExternalStore } from 'react';
 import { router } from 'expo-router';
 import { AppState } from 'react-native';
 import { api, isApiError, post } from './api';
-import { syncLiveActivity } from './liveActivity';
+import { onLiveActivityControl, syncLiveActivity } from './liveActivity';
 import { keys } from './queries';
 import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, getActiveRun, pendingSamples, setActiveRun } from './run-buffer';
 import { Storage } from './kv';
@@ -580,6 +580,12 @@ async function resume() {
   set({ phase: 'recording' });
   await startWatching();
 }
+
+// The lock screen's Pause and Resume. A stale press (already paused, already moving) does nothing.
+onLiveActivityControl({
+  pause: () => { if (state.phase === 'recording') void pause(); },
+  resume: () => { if (state.phase === 'paused') void resume(); },
+});
 
 async function finish(): Promise<Activity | null> {
   const id = runId;

@@ -1,16 +1,16 @@
-import { activityName, formatDistanceNumber, formatDuration, formatPace, formatSpeed } from '@jump/shared/format';
-import { shownMetres } from '@jump/shared/progress';
+import { activityName } from '@jump/shared/format';
 import type { Activity, Unit } from '@jump/shared/types';
 import { useQuery } from '@tanstack/react-query';
 import * as Sharing from 'expo-sharing';
-import { ComponentRef, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Switch, Text, View } from 'react-native';
-import Svg, { Circle, Defs, Line, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { ComponentRef, ReactNode, useMemo, useRef, useState } from 'react';
+import { PixelRatio, Platform, StyleSheet, Switch, Text, View } from 'react-native';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { api } from '@/lib/api';
 // Share pictures look the same whoever posts them, so they use the brand palette, not the theme's.
 import { brand as colors, fontFamily } from '@/lib/theme';
-import { ShareIcon, StepMark, JumpLogo } from './icons';
+import { ShareIcon, JumpLogo } from './icons';
+import { Sticker, stickerNumbers } from './Stickers';
 import { Sheet } from './Sheet';
 import { Button, haptic, Segmented, Txt } from './ui';
 
@@ -36,58 +36,76 @@ function fitRoute(route: Array<[number, number]>, box: { x: number; y: number; w
   return flat.map(([x, y]) => [offX + (x - minX) * scale, offY + (y - minY) * scale] as const);
 }
 
-/** The share image, drawn with views: the web canvas card's layout. Everything on it comes from the activity. */
+/** Where each sticker sits on the image, in points: x, y, width, height, tilt, and the number's size. Nothing overlaps the map, so the whole route shows. */
+type Spot = [number, number, number, number, number, number?];
+const LAYOUT: Record<Format, Record<'route' | 'plain', { map?: Spot; distance: Spot; time: Spot; pace: Spot; steps: Spot }>> = {
+  story: {
+    route: { map: [24, 148, 312, 226, -2], distance: [20, 394, 196, 116, -4, 74], time: [228, 398, 112, 76, 5, 38], pace: [198, 484, 132, 76, -3, 38], steps: [46, 524, 124, 62, 3, 30] },
+    plain: { distance: [26, 160, 304, 190, -3, 140], time: [30, 376, 140, 90, 4, 46], pace: [186, 388, 146, 90, -3, 46], steps: [110, 488, 140, 72, 2, 34] },
+  },
+  square: {
+    route: { map: [20, 78, 172, 176, -3], distance: [206, 80, 132, 100, 4, 56], time: [206, 194, 64, 58, -4, 24], pace: [274, 202, 64, 58, 4, 24], steps: [218, 270, 104, 46, -2, 22] },
+    plain: { distance: [24, 82, 312, 128, -2, 92], time: [26, 228, 96, 66, 4, 30], pace: [132, 234, 100, 66, -3, 30], steps: [240, 226, 96, 66, 3, 30] },
+  },
+};
+
+/** One sticker pinned to its spot on the image. */
+function Placed({ spot, bg, children }: { spot: Spot; bg: string; children: ReactNode }) {
+  const [x, y, w, h, tilt] = spot;
+  return <Sticker p={colors} bg={bg} tilt={tilt} padded={false} width={w + 4} style={{ position: 'absolute', left: x, top: y }}>
+    <View style={{ height: h - 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}>{children}</View>
+  </Sticker>;
+}
+
+/** A number and its label, sized for the sticker it's on. */
+function Figure({ spot, value, label, color, labelColor = color, struck }: { spot: Spot; value: string; label: string; color: string; labelColor?: string; struck?: boolean }) {
+  const size = spot[5] ?? 32;
+  return <>
+    <Text style={[styles.figure, { fontSize: size, lineHeight: size * 1.04, color }, struck && { textDecorationLine: 'line-through' }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+    <Text style={[styles.figureLabel, { fontSize: spot[2] >= 150 ? 10 : spot[2] >= 100 ? 8.5 : 7, color: labelColor }]} numberOfLines={1} adjustsFontSizeToFit>{label}</Text>
+  </>;
+}
+
+/** The share image: the activity page's stickers on plain paper. Everything on it comes from the activity. */
 function RunCard({ activity, unit, route, format }: { activity: Activity; unit: Unit; route: Array<[number, number]> | null; format: Format }) {
   const { w: W, h: H } = BASE[format];
   const story = format === 'story';
-  const pad = 28;
-  const box = story ? { x: pad + 7, y: 87, w: W - pad * 2 - 14, h: 253 } : { x: pad + 7, y: 63, w: W - pad * 2 - 14, h: 97 };
-  const points = route && route.length >= 2 ? fitRoute(route, box) : null;
+  const pad = story ? 24 : 20;
+  const n = stickerNumbers(activity, unit);
+  const spots = LAYOUT[format][route && route.length >= 2 ? 'route' : 'plain'];
+  // The map inside its sticker: less the outline and a little paper margin.
+  const map = spots.map;
+  const mapW = map ? map[2] - 17 : 0;
+  const mapH = map ? map[3] - 17 : 0;
+  const points = map && route ? fitRoute(route, { x: 18, y: 18, w: mapW - 36, h: mapH - 36 }) : null;
   const path = points?.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-  const metres = shownMetres(activity);
-  const seconds = activity.movingSeconds || activity.elapsedSeconds;
-  const statsTop = story ? 370 : 187;
-  const cells = [
-    ['TIME', formatDuration(seconds)],
-    activity.activityType === 'cycle' ? ['AVG SPEED', formatSpeed(metres, seconds, unit) ?? '–'] : [`PACE /${unit.toUpperCase()}`, formatPace(metres, seconds, unit) ?? '–:––'],
-  ];
-  return <View style={{ width: W, height: H, backgroundColor: colors.ink, overflow: 'hidden' }}>
-    <Svg width={W} height={H} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <RadialGradient id="glow" cx={W * 0.85} cy={H * 0.12} rx={W * 0.9} ry={W * 0.9} gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={colors.track} stopOpacity="0.35" /><Stop offset="1" stopColor={colors.track} stopOpacity="0" /></RadialGradient>
-      </Defs>
-      <Rect width={W} height={H} fill="url(#glow)" />
-      {Array.from({ length: Math.ceil((W - pad) / 40) }, (_, index) => <Line key={index} x1={pad + index * 40} y1={0} x2={pad + index * 40} y2={H} stroke="rgba(242,239,232,0.05)" strokeWidth={0.7} />)}
-      {path && points ? <>
-        <Path d={path} fill="none" stroke={colors.volt} strokeOpacity={0.25} strokeWidth={story ? 14 : 10} strokeLinecap="round" strokeLinejoin="round" />
-        <Path d={path} fill="none" stroke={colors.volt} strokeWidth={story ? 5.3 : 4} strokeLinecap="round" strokeLinejoin="round" />
-        <Circle cx={points[0][0]} cy={points[0][1]} r={story ? 6 : 4.7} fill={colors.track} />
-        <Circle cx={points[points.length - 1][0]} cy={points[points.length - 1][1]} r={story ? 6 : 4.7} fill={colors.ink} stroke={PAPER} strokeWidth={2} />
-      </> : null}
-    </Svg>
+  const started = new Date(activity.startedAt);
+  const date = `${started.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')} · ${started.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+  return <View style={{ width: W, height: H, backgroundColor: PAPER, overflow: 'hidden' }}>
     <View style={{ position: 'absolute', left: pad, right: pad, top: pad, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-      <JumpLogo height={19} color={PAPER} />
-      <Text style={styles.date}>{new Date(activity.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+      <JumpLogo height={story ? 16 : 14} color={colors.ink} />
+      <Text style={styles.date}>{date.toUpperCase()}</Text>
     </View>
-    {!path && <View style={{ position: 'absolute', left: 0, right: 0, top: box.y, height: box.h, alignItems: 'center', justifyContent: 'center' }}><StepMark size={Math.min(box.w, box.h) * 0.7} /></View>}
-    <View style={{ position: 'absolute', left: pad, right: pad, top: statsTop - 12 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={styles.name} numberOfLines={1}>{activityName(activity.startedAt, activity.activityType).toUpperCase()}</Text>
-        {activity.verificationStatus === 'VERIFIED' && <View style={styles.verified}><Text style={styles.verifiedText}>✓ VERIFIED</Text></View>}
+    <Text style={[styles.name, { position: 'absolute', left: pad, right: pad, top: story ? 58 : 46, fontSize: story ? 30 : 17, lineHeight: story ? 31 : 19 }]} numberOfLines={story ? 2 : 1} adjustsFontSizeToFit>
+      {activityName(activity.startedAt, activity.activityType)}
+    </Text>
+    {map && path && points ? <Placed spot={map} bg={colors.card}>
+      <View style={{ width: mapW, height: mapH, borderRadius: 8, backgroundColor: '#ECE9E2', overflow: 'hidden' }}>
+        <Svg width={mapW} height={mapH}>
+          {Array.from({ length: Math.ceil(mapW / 44) }, (_, index) => <Line key={`x${index}`} x1={44 + index * 44} y1={0} x2={38 + index * 44} y2={mapH} stroke="#DCD7CC" strokeWidth={1.5} />)}
+          {Array.from({ length: Math.ceil(mapH / 44) }, (_, index) => <Line key={`y${index}`} x1={0} y1={24 + index * 44} x2={mapW} y2={30 + index * 44} stroke="#DCD7CC" strokeWidth={1.5} />)}
+          <Path d={path} fill="none" stroke="#FFFFFF" strokeWidth={story ? 6.5 : 5.5} strokeLinecap="round" strokeLinejoin="round" />
+          <Path d={path} fill="none" stroke={colors.track} strokeWidth={story ? 3.5 : 3} strokeLinecap="round" strokeLinejoin="round" />
+          <Circle cx={points[0][0]} cy={points[0][1]} r={4.5} fill={colors.ink} stroke="#FFFFFF" strokeWidth={1.5} />
+          <Circle cx={points[points.length - 1][0]} cy={points[points.length - 1][1]} r={4.5} fill={colors.volt} stroke={colors.ink} strokeWidth={1.2} />
+        </Svg>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5, marginTop: story ? 6 : 2 }}>
-        <Text style={[styles.distance, { fontSize: story ? 100 : 63, lineHeight: story ? 100 : 64 }]} numberOfLines={1}>{formatDistanceNumber(metres, unit)}</Text>
-        <Text style={[styles.unit, { fontSize: story ? 21 : 15 }]}>{unit.toUpperCase()}</Text>
-      </View>
-      <View style={[styles.rule, { marginTop: story ? 10 : 4 }]} />
-      <View style={{ flexDirection: 'row', marginTop: story ? 14 : 8 }}>
-        {cells.map(([label, value]) => <View key={label} style={{ flex: 1 }}>
-          <Text style={styles.cellLabel}>{label}</Text>
-          <Text style={[styles.cellValue, { fontSize: story ? 32 : 23 }]} numberOfLines={1}>{value}</Text>
-        </View>)}
-      </View>
-    </View>
-    <View style={{ position: 'absolute', left: pad, right: pad, bottom: pad - 2, flexDirection: 'row', justifyContent: 'space-between' }}>
+    </Placed> : null}
+    {n.steps && <Placed spot={spots.steps} bg={colors.card}><Figure spot={spots.steps} value={n.steps} label="steps" color={colors.ink} labelColor={colors.ink2} /></Placed>}
+    <Placed spot={spots.distance} bg={n.struck ? colors.card : colors.volt}><Figure spot={spots.distance} value={n.distance} label={n.distanceLabel} color={n.struck ? colors.ink3 : colors.ink} struck={n.struck} /></Placed>
+    <Placed spot={spots.time} bg="#121212"><Figure spot={spots.time} value={n.time} label="time" color={PAPER} labelColor={colors.volt} /></Placed>
+    <Placed spot={spots.pace} bg={colors.track}><Figure spot={spots.pace} value={n.pace} label={n.paceLabel} color={colors.ink} /></Placed>
+    <View style={{ position: 'absolute', left: pad, right: pad, bottom: pad - 6, flexDirection: 'row', justifyContent: 'space-between' }}>
       <Text style={styles.footer}>STARTAJUMP.COM</Text>
       <Text style={[styles.footer, { color: colors.track }]}>MOVE. COMPETE. WIN.</Text>
     </View>
@@ -111,7 +129,9 @@ export function ShareRunSheet({ open, onOpenChange, activity, unit }: { open: bo
     setBusy(true);
     setStatus(null);
     try {
-      const uri = await captureRef(card, { format: 'png', quality: 1, width: 1080, height: Math.round((1080 * h) / w), result: 'tmpfile' });
+      // iOS reads the size in points and renders at the screen's scale; Android reads pixels. Either way: 1080 px wide.
+      const across = Platform.OS === 'ios' ? 1080 / PixelRatio.get() : 1080;
+      const uri = await captureRef(card, { format: 'png', quality: 1, width: across, height: (across * h) / w, result: 'tmpfile' });
       haptic('success');
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'My Jump activity', UTI: 'public.png' });
       else setStatus('Sharing isn’t available on this phone.');
@@ -127,9 +147,14 @@ export function ShareRunSheet({ open, onOpenChange, activity, unit }: { open: bo
     <View style={{ alignItems: 'center' }}>
       <View style={[styles.preview, { width: w * preview, height: h * preview }]}>
         <View style={{ transform: [{ scale: preview }], transformOrigin: 'top left' }}>
-          <View ref={card} collapsable={false}><RunCard activity={activity} unit={unit} route={route} format={format} /></View>
+          <RunCard activity={activity} unit={unit} route={route} format={format} />
         </View>
       </View>
+    </View>
+    {/* What's captured: the same card at full size, off screen. Capturing the shrunk, clipped preview
+        saved a zoomed-in corner of it. */}
+    <View style={styles.offscreen} pointerEvents="none">
+      <View ref={card} collapsable={false}><RunCard activity={activity} unit={unit} route={route} format={format} /></View>
     </View>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16 }}>
       <Segmented<Format> label="Image size" value={format} onChange={setFormat} options={[{ value: 'story', label: 'Story' }, { value: 'square', label: 'Square' }]} />
@@ -144,15 +169,11 @@ export function ShareRunSheet({ open, onOpenChange, activity, unit }: { open: bo
 }
 
 const styles = StyleSheet.create({
-  preview: { borderRadius: 6, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.ink, overflow: 'hidden' },
-  date: { fontFamily: fontFamily('semibold'), fontSize: 10, color: 'rgba(242,239,232,0.6)' },
-  name: { flex: 1, fontFamily: fontFamily('bold', 'wide'), fontSize: 10, color: 'rgba(242,239,232,0.6)' },
-  verified: { borderRadius: 2, backgroundColor: colors.volt, paddingHorizontal: 7, paddingVertical: 4 },
-  verifiedText: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 8.5, color: colors.ink },
-  distance: { fontFamily: fontFamily('extrabold', 'narrow'), color: colors.volt, letterSpacing: -2, marginLeft: -3 },
-  unit: { fontFamily: fontFamily('extrabold', 'wide'), color: PAPER },
-  rule: { height: 0.7, backgroundColor: 'rgba(242,239,232,0.18)' },
-  cellLabel: { fontFamily: fontFamily('bold', 'wide'), fontSize: 8.5, color: 'rgba(242,239,232,0.55)' },
-  cellValue: { fontFamily: fontFamily('extrabold', 'narrow'), color: PAPER, marginTop: 2 },
-  footer: { fontFamily: fontFamily('bold', 'wide'), fontSize: 9.5, color: 'rgba(242,239,232,0.5)' },
+  offscreen: { position: 'absolute', left: -10_000, top: 0 },
+  preview: { borderRadius: 6, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: PAPER, overflow: 'hidden' },
+  date: { fontFamily: fontFamily('bold'), fontSize: 9.5, letterSpacing: 0.8, color: colors.ink2 },
+  name: { fontFamily: fontFamily('extrabold', 'wide'), textTransform: 'uppercase', color: colors.ink },
+  figure: { fontFamily: fontFamily('extrabold', 'narrow'), letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  figureLabel: { fontFamily: fontFamily('extrabold', 'wide'), letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 2 },
+  footer: { fontFamily: fontFamily('bold', 'wide'), fontSize: 8.5, color: colors.ink2 },
 });

@@ -105,6 +105,14 @@ export const scheme: 'light' | 'dark' = themePreference === 'system' ? (Appearan
 
 export const colors: Palette = scheme === 'dark' ? DARK : LIGHT;
 
+/**
+ * A see-through volt fill for highlighted rows and cards. On a light page, `alpha` of volt. On a dark
+ * page any real amount of volt turns muddy olive under cream text, so it's always a faint tint there.
+ */
+export function voltWash(alpha: number): string {
+  return scheme === 'dark' ? 'rgba(228,255,58,0.12)' : `rgba(228,255,58,${alpha})`;
+}
+
 // A chosen theme also overrides the system's for the native parts (Liquid Glass, maps, the keyboard,
 // pickers, alerts), so they match the app instead of the phone.
 if (themePreference !== 'system') {

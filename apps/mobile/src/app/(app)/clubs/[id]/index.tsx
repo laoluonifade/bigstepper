@@ -17,7 +17,7 @@ import { Avatar, Button, CopyButton, EmptyState, ErrorNotice, FieldLabel, haptic
 import { api, isApiError, patch, post, WEB_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { keys, useUnit } from '@/lib/queries';
-import { colors, fontFamily, GUTTER, mono, radius } from '@/lib/theme';
+import { colors, fontFamily, GUTTER, mono, radius, scheme, voltWash } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { pickPhoto, uploadPhoto } from '@/lib/upload';
 import { confirm } from '@/lib/dialog';
@@ -120,7 +120,7 @@ export default function ClubScreen() {
     {c.suspended && <Notice tone="warn" title="Suspended by Jump" style={{ marginTop: 20 }}>
       {isManager(role) ? `${c.suspendedReason ?? 'This club can’t run competitions right now.'} Contact Jump support to resolve it.` : 'This club can’t run new competitions right now.'}
     </Notice>}
-    {isManager(role) && !c.suspended && <Pressable onPress={() => router.push(`/clubs/${c.slug}/dashboard`)} style={({ pressed }) => [styles.dashboard, pressed && { backgroundColor: colors.volt }]} accessibilityRole="link">
+    {isManager(role) && !c.suspended && <Pressable onPress={() => router.push(`/clubs/${c.slug}/dashboard`)} style={({ pressed }) => [styles.dashboard, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="link">
       <View style={{ flex: 1 }}>
         <Txt size={14} weight="bold">Club dashboard</Txt>
         <Txt size={12.5} color="ink2">Competitions, series, prizes and how your community is doing.</Txt>
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   square: { width: 46, height: 46, borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 12, paddingVertical: 6 },
   people: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 },
-  dashboard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: 'rgba(228,255,58,0.6)', paddingHorizontal: 16, paddingVertical: 12 },
+  dashboard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, borderRadius: radius.xl, borderWidth: 1.5, borderColor: scheme === 'dark' ? colors.volt : colors.edge, backgroundColor: voltWash(0.6), paddingHorizontal: 16, paddingVertical: 12 },
   tabs: { marginTop: 32, flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, marginHorizontal: -GUTTER, paddingHorizontal: GUTTER },
   tab: { paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   list: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },

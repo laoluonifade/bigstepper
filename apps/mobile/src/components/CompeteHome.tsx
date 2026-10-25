@@ -1,18 +1,18 @@
 import { phaseLine, prizeLabel } from '@jump/shared/competition';
 import { formatCountdown, ordinal } from '@jump/shared/format';
-import { formatGap, formatScore, hasScored, towardLeader } from '@jump/shared/scoring';
+import { formatGap, hasScored, towardLeader } from '@jump/shared/scoring';
 import { TEMPLATES } from '@jump/shared/templates';
 import type { ChallengeType, CompetitionTable, ScoringMethod, StandingRow, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { ReactNode, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { Easing, useAnimatedProps, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { api, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { keys, useDiscover, useStandings } from '@/lib/queries';
-import { brand, colors, fontFamily, radius, scheme, score } from '@/lib/theme';
+import { brand, colors, fontFamily, radius, scheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { ChallengeMark, CompetitionPreviewCard, openCompetition } from './competition';
 import { ChevronRightIcon, PlusIcon, SearchIcon, UsersIcon } from './icons';
@@ -87,6 +87,19 @@ export function CompetitionSearch() {
   </View>;
 }
 
+const scoreOf = (value: number | null) => (value === null ? null : Number(value));
+
+/**
+ * The race for the home banner: of your live ones, one you've actually moved in, then the one you're
+ * closest to leading (first place counts as all the way), then whichever ends soonest.
+ */
+function heroRace(live: MyCompetition[]) {
+  const scored = (table: MyCompetition) => hasScored(table.scoringMethod, scoreOf(table.myScore));
+  const along = (table: MyCompetition) => (table.myRank === 1 ? 1 : towardLeader(table.scoringMethod, scoreOf(table.myScore), scoreOf(table.leaderScore)));
+  const ends = (table: MyCompetition) => (table.scoringClosesAt ? new Date(table.scoringClosesAt).getTime() : Infinity);
+  return live.filter((table) => table.joined).sort((a, b) => Number(scored(b)) - Number(scored(a)) || along(b) - along(a) || ends(a) - ends(b))[0];
+}
+
 /** Where you stand, in a few words: leading, behind by how much, or not started. */
 function standingLine(table: MyCompetition, unit: Unit) {
   const mine = table.myScore === null ? null : Number(table.myScore);
@@ -106,34 +119,27 @@ export function MyCompetitions({ unit, now }: { unit: Unit; now: number }) {
 
   if (mine.isLoading) return null;
   if (!live.some((table) => table.joined)) return <RecommendedJoin unit={unit} now={now} />;
-  const heroId = live.find((table) => table.joined)?.id;
+  const heroId = heroRace(live)?.id;
   const others = live.filter((table) => table.id !== heroId);
   if (!others.length) return null;
   return <View>
     <SectionHead title="Your other races" action={others.length > 2 ? <SeeAll label={`All ${others.length}`} /> : undefined} />
-    <HomeCard>
-      {others.slice(0, 2).map((table, index) => {
+    <View style={{ gap: 8 }}>
+      {others.slice(0, 2).map((table) => {
         const leading = table.joined && table.myRank === 1 && Number(table.myScore ?? 0) > 0;
         const ends = table.startsAt && new Date(table.startsAt).getTime() > now ? `Starts in ${formatCountdown(table.startsAt, now)}` : table.scoringClosesAt ? `${formatCountdown(table.scoringClosesAt, now)} left` : 'Open-ended';
         const along = towardLeader(table.scoringMethod, table.myScore === null ? null : Number(table.myScore), table.leaderScore === null ? null : Number(table.leaderScore));
-        return <Pressable key={table.id} onPress={() => openCompetition(table.code)} style={({ pressed }) => [styles.raceRow, index > 0 && styles.rowLine, pressed && { backgroundColor: colors.inkWash }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <ChallengeMark type={table.challengeType} code={table.code} size={36} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Txt size={14} weight="semibold" numberOfLines={1}>{table.title}</Txt>
-              <Txt size={12} color="ink3" num numberOfLines={1} style={{ marginTop: 2 }}>{`${table.entrants} in · ${ends}`}</Txt>
-            </View>
-            {table.joined && table.myRank !== null
-              ? <View style={{ alignItems: 'flex-end' }}>
-                <Text style={[score(22), leading && { color: colors.ok }]}>#{table.myRank}</Text>
-                <Txt size={11} weight="semibold" color="ink3">{standingLine(table, unit)}</Txt>
-              </View>
-              : <Txt size={12} weight="semibold" color="ink3">{standingLine(table, unit)}</Txt>}
+        return <Pressable key={table.id} onPress={() => openCompetition(table.code)} style={({ pressed }) => [styles.raceRow, pressed && { backgroundColor: colors.inkWash }]}>
+          <ChallengeMark type={table.challengeType} code={table.code} size={40} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt size={15} weight="semibold" numberOfLines={1}>{table.title}</Txt>
+            <Txt size={12} color="ink3" num numberOfLines={1} style={{ marginTop: 2 }}>{`${ends} · ${standingLine(table, unit)}`}</Txt>
+            {table.joined && <View style={styles.rowTrack}><View style={{ height: '100%', borderRadius: 2, width: `${Math.max(3, (leading ? 1 : along) * 100)}%`, backgroundColor: leading ? colors.ok : colors.track }} /></View>}
           </View>
-          {table.joined && <View style={styles.miniTrack}><View style={{ height: '100%', borderRadius: 2, width: `${Math.max(3, along * 100)}%`, backgroundColor: leading ? colors.ok : colors.ink }} /></View>}
+          {table.joined && table.myRank !== null && <Text style={[styles.rowRank, leading && { color: colors.ok }]}>{ordinal(table.myRank)}</Text>}
         </Pressable>;
       })}
-    </HomeCard>
+    </View>
   </View>;
 }
 
@@ -238,43 +244,48 @@ function lanePosition(method: string, row: StandingRow, leader: StandingRow | un
 }
 
 const firstName = (name: string) => name.split(' ')[0];
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const RADIUS = 50;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-function Ring({ progress }: { progress: number }) {
-  const shown = useSharedValue(0);
-  useEffect(() => {
-    shown.value = withTiming(progress, { duration: 1400, easing: EASE });
-  }, [progress, shown]);
-  const animatedProps = useAnimatedProps(() => ({ strokeDasharray: [shown.value * CIRCUMFERENCE, CIRCUMFERENCE] }));
-  return <Svg width={116} height={116} viewBox="0 0 116 116">
-    <Circle cx="58" cy="58" r={RADIUS} fill="none" stroke="#2A2A2E" strokeWidth="10" />
-    <AnimatedCircle cx="58" cy="58" r={RADIUS} fill="none" stroke={brand.volt} strokeWidth="10" strokeLinecap="round" transform="rotate(-90 58 58)" animatedProps={animatedProps} />
+/**
+ * The home summary's colours. On a dark page: dark cards with volt, as Apple Fitness does. On a light
+ * page: light cards in ink, since volt can't be read on white. `good` is a lead or a target hit.
+ */
+const dark = scheme === 'dark';
+export const SUMMARY = dark
+  ? { card: brand.ink, edge: colors.line, text: brand.paper, muted: brand.onInkMuted, wash: brand.onInkWash, accent: brand.volt, good: brand.volt }
+  : { card: colors.card, edge: colors.line, text: colors.ink, muted: colors.ink3, wash: colors.inkWash, accent: colors.ink, good: colors.ok };
+
+/** Small ring for a race row: how close you are to the leader. */
+export function MiniRing({ progress, size = 30, color = SUMMARY.accent }: { progress: number; size?: number; color?: string }) {
+  const stroke = size * 0.17;
+  const r = (size - stroke) / 2;
+  const around = 2 * Math.PI * r;
+  return <Svg width={size} height={size}>
+    <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={SUMMARY.wash} strokeWidth={stroke} />
+    <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={[Math.max(0.001, progress) * around, around]} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
   </Svg>;
 }
 
-/** One runner's lane in the hero: their avatar slides along to their score. */
-function Lane({ name, me, position, scoreText, avatar }: { name: string; me: boolean; position: number; scoreText: string; avatar: ReactNode }) {
+/** You and the runners either side of you on one line, the volt fill showing how far toward the lead you are. */
+function RaceLine({ progress, marks }: { progress: number; marks: Array<{ key: string; at: number; me: boolean; avatar: ReactNode }> }) {
   const [width, setWidth] = useState(0);
-  const along = useSharedValue(0.04);
+  const fill = useSharedValue(0);
   useEffect(() => {
-    along.value = withTiming(0.04 + position * 0.92, { duration: 1400, easing: EASE });
-  }, [along, position]);
-  const animated = useAnimatedStyle(() => ({ transform: [{ translateX: along.value * width - 12 }] }));
-  return <View style={styles.lane}>
-    <Txt size={12} weight={me ? 'bold' : 'regular'} numberOfLines={1} style={{ width: 56, color: me ? brand.volt : brand.onInkMuted }}>{name}</Txt>
-    <View style={{ flex: 1, height: 28, justifyContent: 'center' }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: brand.onInkWash }} />
-      {width > 0 && <Animated.View style={[{ position: 'absolute', left: 0, top: 2 }, animated]}>{avatar}</Animated.View>}
-    </View>
-    <Txt size={12} weight={me ? 'bold' : 'regular'} num numberOfLines={1} align="right" style={{ width: 56, color: me ? brand.volt : brand.onInkMuted }}>{scoreText}</Txt>
+    fill.value = withTiming(progress, { duration: 1200, easing: EASE });
+  }, [fill, progress]);
+  const filled = useAnimatedStyle(() => ({ width: fill.value * width }));
+  const AV = 26;
+  return <View style={{ height: AV + 4, justifyContent: 'center', marginTop: 20 }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+    <View style={styles.lineTrack}><Animated.View style={[styles.lineFill, filled]} /></View>
+    {width > 0 && marks.map((mark) => <View key={mark.key} style={{ position: 'absolute', left: Math.min(width - AV, Math.max(0, mark.at * width - AV / 2)), zIndex: mark.me ? 2 : 1 }}>
+      <View style={[styles.mark, mark.me && { borderColor: dark ? brand.volt : colors.track }]}>{mark.avatar}</View>
+    </View>)}
   </View>;
 }
 
 /**
- * The home hero: your most urgent race drawn as running lanes, everyone placed by their score, you in
- * volt. With no race of your own, it shows the hottest open one and invites you onto the start line.
+ * The home hero: your most urgent race at a glance. Your place, how far you are from the lead (or ahead
+ * of second), and a line with you between your neighbours. With no race of your own, it shows the
+ * hottest open one with a button to join.
  */
 export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   const user = useUser();
@@ -283,8 +294,9 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   const trending = useDiscover('trending');
   const live = (mine.data ?? []).filter((table) => table.joined && LIVE_STATUSES.includes(table.status) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now));
   const hot = trending.data?.pages[0]?.items[0];
-  const race = live[0] ?? (hot && { id: hot.id, code: hot.code, title: hot.title, challengeType: hot.challengeType, scoringMethod: hot.scoringMethod, scoringClosesAt: hot.scoringClosesAt, startsAt: hot.startsAt, entrants: hot.entrantCount ?? 0, type: hot.type });
-  const joined = Boolean(live[0]);
+  const featured = heroRace(live);
+  const race = featured ?? (hot && { id: hot.id, code: hot.code, title: hot.title, challengeType: hot.challengeType, scoringMethod: hot.scoringMethod, scoringClosesAt: hot.scoringClosesAt, startsAt: hot.startsAt, entrants: hot.entrantCount ?? 0, type: hot.type });
+  const joined = Boolean(featured);
   const standings = useStandings(race?.id, 60_000);
   const join = useMutation({
     mutationFn: () => post('/tables/join-many', { ids: [race!.id] }),
@@ -295,60 +307,88 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
     },
   });
 
-  if (mine.isLoading || (!live.length && trending.isLoading)) return <Skeleton style={{ height: 230, borderRadius: 24 }} />;
+  if (mine.isLoading || (!live.length && trending.isLoading)) return <Skeleton style={{ height: 176, borderRadius: 24 }} />;
   if (!race) return null;
 
   const rows = standings.data ?? [];
   const me = rows.find((row) => row.userId === user.id);
   const leader = rows[0];
-  const lanes = [...rows.slice(0, 4), ...(me && me.rank > 4 ? [me] : [])];
   const method = race.scoringMethod;
-  const ends = race.startsAt && new Date(race.startsAt).getTime() > now ? `starts in ${formatCountdown(race.startsAt, now)}` : race.scoringClosesAt ? `${formatCountdown(race.scoringClosesAt, now)} to go` : 'no end date';
+  const ends = race.startsAt && new Date(race.startsAt).getTime() > now ? `Starts in ${formatCountdown(race.startsAt, now)}` : race.scoringClosesAt ? `${formatCountdown(race.scoringClosesAt, now)} left` : 'Open-ended';
   const myScore = me && hasScored(method, me.score) ? laneScore(me) : null;
-  const runnerUp = rows[1] && hasScored(method, rows[1].score) ? laneScore(rows[1]) : null;
+  const second = rows[1] && hasScored(method, rows[1].score) ? laneScore(rows[1]) : null;
   const leaderScore = leader ? laneScore(leader) : null;
-  const gapToLeader = myScore !== null && leaderScore !== null ? formatGap(race, myScore, leaderScore, unit) : null;
+
+  // The number on the right: the gap that matters, in orange when you're chasing and volt when leading.
+  let gap: { value: string; label: string; color: string } | null = null;
+  if (joined && me) {
+    if (myScore === null) gap = { value: '–', label: 'No score yet', color: SUMMARY.text };
+    else if (me.rank === 1) gap = second === null ? { value: 'Lead', label: 'Out in front', color: SUMMARY.good }
+      : second === myScore ? { value: 'Level', label: `with ${firstName(rows[1].displayName)}`, color: SUMMARY.text }
+        : { value: formatGap(race, second, myScore, unit) ?? '–', label: `ahead of ${firstName(rows[1].displayName)}`, color: SUMMARY.good };
+    else if (leaderScore === myScore) gap = { value: 'Level', label: `with ${firstName(leader.displayName)}`, color: SUMMARY.text };
+    else if (leaderScore !== null) gap = { value: formatGap(race, myScore, leaderScore, unit) ?? '–', label: `behind ${firstName(leader.displayName)}`, color: colors.track };
+  }
+
+  // You and whoever's either side of you, placed by how close each is to the leader.
+  const neighbours = me ? [rows[me.rank - 2], me, rows[me.rank]].filter((row): row is StandingRow => Boolean(row)) : [];
+  const marks = neighbours.map((row) => ({
+    key: row.userId, me: row.userId === user.id, at: hasScored(method, row.score) ? (row.rank === 1 ? 1 : lanePosition(method, row, leader)) : 0,
+    avatar: <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={22} round />,
+  }));
   const progress = !joined || !me || myScore === null ? 0 : me.rank === 1 ? 1 : lanePosition(method, me, leader);
-  const bold = (text: string | null) => <Txt size={15} weight="semibold" style={{ color: brand.paper }}>{text}</Txt>;
-  const line = !joined
-    ? <>{bold(`${race.entrants} ${race.entrants === 1 ? 'runner' : 'runners'}`)} in, {ends}. Join and your next run counts.</>
-    : myScore === null ? <>Your first run puts you on the board, {ends}.</>
-      : me?.rank === 1 ? (runnerUp === myScore ? <>Level with {firstName(rows[1].displayName)}, {ends}. One more run takes it.</>
-        : runnerUp !== null ? <>Leading by {bold(formatGap(race, runnerUp, myScore, unit))}, {ends}. Keep the gap.</> : <>Out in front, {ends}. Invite rivals to chase you.</>)
-        : leaderScore === myScore ? <>Level with {firstName(leader.displayName)} at the top, {ends}.</>
-          : <>{bold(gapToLeader)} behind {firstName(leader.displayName)} with {ends}.</>;
 
   // Always dark, in either theme: drawn in the brand palette, with a hairline edge on a dark page.
-  return <View style={[styles.hero, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
-      <View style={{ width: 116, height: 116 }}>
-        <Ring progress={progress} />
-        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-          <Text style={[score(40), { color: brand.paper, lineHeight: 42 }]}>{joined && me ? ordinal(me.rank) : race.entrants}</Text>
-          <Txt size={11} style={{ color: brand.onInkMuted }}>{joined && me ? `of ${rows.length}` : race.entrants === 1 ? 'runner' : 'runners'}</Txt>
+  return <Pressable onPress={() => openCompetition(race.code)} accessibilityRole="button" accessibilityLabel={`${race.title}, ${joined && me ? `${ordinal(me.rank)} of ${rows.length}` : `${race.entrants} in`}`}>
+    {({ pressed }) => <View style={[styles.hero, pressed && { opacity: 0.92 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
+        <Txt size={17} weight="bold" numberOfLines={1} style={{ flex: 1, color: SUMMARY.text }}>{race.title}</Txt>
+        <Txt size={13} weight="semibold" num style={{ color: SUMMARY.muted }}>{ends}</Txt>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rank}>{joined && me ? ordinal(me.rank) : race.entrants}</Text>
+          <Txt size={13} weight="medium" style={{ color: SUMMARY.muted }}>{joined && me ? `of ${rows.length} ${rows.length === 1 ? 'runner' : 'runners'}` : race.entrants === 1 ? 'runner in' : 'runners in'}</Txt>
         </View>
+        {gap && <View style={{ alignItems: 'flex-end', paddingBottom: 2 }}>
+          <Text style={[styles.gap, { color: gap.color }]} numberOfLines={1}>{gap.value}</Text>
+          <Txt size={13} weight="medium" numberOfLines={1} style={{ color: SUMMARY.muted }}>{gap.label}</Txt>
+        </View>}
       </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={styles.heroKicker}>{race.title} · {joined ? 'Live' : 'Popular'}</Text>
-        <Txt size={15} leading={1.35} style={{ marginTop: 8, color: brand.onInkMuted }}>{line}</Txt>
-      </View>
-    </View>
-    {lanes.length > 0 && <View style={{ marginTop: 20, gap: 4 }}>
-      {lanes.map((row) => {
-        const isMe = row.userId === user.id;
-        return <Lane key={row.userId} me={isMe} name={isMe ? 'You' : firstName(row.displayName)} position={lanePosition(method, row, leader)}
-          scoreText={hasScored(method, row.score) ? formatScore(race, laneScore(row), unit) ?? '–' : '–'}
-          avatar={<View style={isMe ? { borderRadius: 14, borderWidth: 2, borderColor: brand.volt } : undefined}><Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={24} round /></View>} />;
-      })}
+      {joined && marks.length > 0 && <RaceLine progress={progress} marks={marks} />}
+      {!joined && <Pressable onPress={() => { haptic(); if (race.type === 'paid') openCompetition(race.code); else join.mutate(); }} disabled={join.isPending}
+        style={({ pressed: down }) => [styles.heroButton, (down || join.isPending) && { opacity: 0.8 }]} accessibilityRole="button">
+        <Txt size={15} weight="bold" style={{ color: dark ? brand.ink : brand.paper }}>{race.type === 'paid' ? 'See entry' : join.isPending ? 'Joining…' : 'Join the race'}</Txt>
+      </Pressable>}
+      <ErrorNotice error={join.error} />
     </View>}
-    <Pressable onPress={() => { haptic(); if (joined) router.navigate('/run'); else if (race.type === 'paid') openCompetition(race.code); else join.mutate(); }} disabled={join.isPending}
-      style={({ pressed }) => [styles.heroButton, (pressed || join.isPending) && { opacity: 0.8, transform: [{ scale: 0.98 }] }]} accessibilityRole="button">
-      <Txt size={15} weight="bold" style={{ color: brand.ink }}>{joined ? 'Start a run' : race.type === 'paid' ? 'See entry' : join.isPending ? 'Joining…' : 'Join the race'}</Txt>
+  </Pressable>;
+}
+
+/**
+ * Under the summary, like the competition page's bar: one line on what a run would do in your featured
+ * race, and a round Go to record. Volt Go on a dark page; ink with volt lettering on a light one.
+ */
+export function GoBar({ unit, now }: { unit: Unit; now: number }) {
+  const mine = useMyCompetitions();
+  const live = (mine.data ?? []).filter((table) => LIVE_STATUSES.includes(table.status) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now));
+  const race = heroRace(live);
+  const my = race ? scoreOf(race.myScore) : null;
+  const ahead = race ? scoreOf(race.aheadScore) : null;
+  const behind = race ? scoreOf(race.behindScore) : null;
+  const bold = (text: string | null) => <Txt size={14} weight="bold" style={{ color: SUMMARY.text }}>{text}</Txt>;
+  const line = !race ? <>Every walk and run counts toward your league.</>
+    : !hasScored(race.scoringMethod, my) ? <>Your first run puts you on the board in {bold(race.title)}.</>
+      : race.myRank === 1
+        ? behind !== null && behind !== my && race.behindName ? <>{bold(formatGap(race, behind, my!, unit))} ahead of {firstName(race.behindName)}. Keep the gap.</> : <>Out in front. Keep it that way.</>
+        : ahead !== null && race.aheadName ? (ahead === my ? <>Level with {firstName(race.aheadName)}. One run breaks the tie.</> : <>{bold(formatGap(race, my!, ahead, unit))} to pass {firstName(race.aheadName)}.</>)
+          : <>Every run counts.</>;
+  return <View style={styles.goBar}>
+    <Txt size={14} leading={1.4} style={{ flex: 1, color: SUMMARY.muted }}>{line}</Txt>
+    <Pressable onPress={() => { haptic('medium'); router.navigate('/run'); }} accessibilityRole="button" accessibilityLabel="Go: record now" hitSlop={6}
+      style={({ pressed }) => [styles.go, pressed && { transform: [{ scale: 0.94 }], opacity: 0.9 }]}>
+      <Text style={styles.goText}>Go</Text>
     </Pressable>
-    <Pressable onPress={() => openCompetition(race.code)} hitSlop={8} style={{ marginTop: 12, alignItems: 'center' }} accessibilityRole="link">
-      <Txt size={13} weight="semibold" style={{ color: brand.onInkMuted }}>Full board</Txt>
-    </Pressable>
-    <ErrorNotice error={join.error} />
   </View>;
 }
 
@@ -387,16 +427,23 @@ const styles = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 14 },
   searchInput: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
   chip: { height: 32, justifyContent: 'center', borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14 },
-  raceRow: { paddingHorizontal: 14, paddingVertical: 12 },
+  raceRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 12 },
+  rowTrack: { marginTop: 8, height: 4, borderRadius: 2, backgroundColor: colors.inkWash, overflow: 'hidden' },
+  rowRank: { fontFamily: fontFamily('bold'), fontSize: 20, color: colors.ink },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  miniTrack: { marginLeft: 48, marginTop: 8, height: 4, borderRadius: 2, backgroundColor: 'rgba(18,18,18,0.07)', overflow: 'hidden' },
   compact: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
   smallButton: { height: 32, justifyContent: 'center', borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 12 },
   darkButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.base, backgroundColor: colors.ink },
   plus: { width: 40, height: 40, borderRadius: radius.lg, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  hero: { borderRadius: 24, backgroundColor: brand.ink, padding: 20, overflow: 'hidden' },
-  heroKicker: { fontFamily: fontFamily('bold'), fontSize: 11, letterSpacing: 1.54, textTransform: 'uppercase', color: colors.volt },
-  lane: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  heroButton: { marginTop: 20, height: 48, borderRadius: radius.full, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
+  hero: { borderRadius: 24, borderWidth: 1, borderColor: SUMMARY.edge, backgroundColor: SUMMARY.card, padding: 20, overflow: 'hidden' },
+  rank: { fontFamily: fontFamily('bold'), fontSize: 48, lineHeight: 52, letterSpacing: -1, color: SUMMARY.text },
+  gap: { fontFamily: fontFamily('bold'), fontSize: 24, lineHeight: 28, letterSpacing: -0.3 },
+  lineTrack: { height: 6, borderRadius: 3, backgroundColor: SUMMARY.wash, overflow: 'hidden' },
+  lineFill: { height: 6, borderRadius: 3, backgroundColor: SUMMARY.accent },
+  mark: { borderRadius: 15, borderWidth: 2, borderColor: SUMMARY.card },
+  heroButton: { marginTop: 20, height: 48, borderRadius: radius.full, backgroundColor: dark ? brand.volt : brand.ink, alignItems: 'center', justifyContent: 'center' },
+  goBar: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 20, borderWidth: 1, borderColor: SUMMARY.edge, backgroundColor: SUMMARY.card, paddingVertical: 12, paddingLeft: 16, paddingRight: 12 },
+  go: { width: 56, height: 56, borderRadius: 28, backgroundColor: dark ? brand.volt : brand.ink, alignItems: 'center', justifyContent: 'center' },
+  goText: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 13, letterSpacing: 0.8, textTransform: 'uppercase', color: dark ? brand.ink : brand.volt },
   who: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
 });

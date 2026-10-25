@@ -1,5 +1,5 @@
-import { HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
-import { font, foregroundStyle, monospacedDigit, padding } from '@expo/ui/swift-ui/modifiers';
+import { Button, HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
+import { buttonStyle, controlSize, font, foregroundStyle, monospacedDigit, padding, tint } from '@expo/ui/swift-ui/modifiers';
 import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
 
 /** What the lock screen and Dynamic Island show for a run, walk or ride in progress. */
@@ -41,6 +41,11 @@ const RunActivity = (props: RunActivityProps, environment: LiveActivityEnvironme
       modifiers={[font({ size, weight: 'bold' }), monospacedDigit()]}
     />
   );
+  // Pause and resume from the lock screen: the press reaches the app (see liveActivity.ts), which updates this.
+  const control = props.finished ? null : (
+    <Button target={props.pausedAt ? 'resume' : 'pause'} label={props.pausedAt ? 'Resume' : 'Pause'} systemImage={props.pausedAt ? 'play.fill' : 'pause.fill'}
+      modifiers={[buttonStyle('borderedProminent'), tint(orange), controlSize('small')]} />
+  );
 
   return {
     banner: (
@@ -49,7 +54,7 @@ const RunActivity = (props: RunActivityProps, environment: LiveActivityEnvironme
           <Image systemName={props.symbol as never} color={orange} />
           <Text modifiers={[font({ size: 15, weight: 'bold' })]}>{status}</Text>
           <Spacer />
-          <Text modifiers={[font({ size: 13, weight: 'heavy' }), foregroundStyle(orange)]}>JUMP</Text>
+          {control ?? <Text modifiers={[font({ size: 13, weight: 'heavy' }), foregroundStyle(orange)]}>JUMP</Text>}
         </HStack>
         <HStack spacing={12}>
           <VStack spacing={2} alignment="leading">
@@ -90,6 +95,7 @@ const RunActivity = (props: RunActivityProps, environment: LiveActivityEnvironme
         <Spacer />
         <Text modifiers={[font({ size: 20, weight: 'bold' }), monospacedDigit()]}>{props.pace}</Text>
         <Text modifiers={[font({ size: 12 }), foregroundStyle('#8A857B')]}>{props.paceUnit}</Text>
+        {control}
       </HStack>
     ),
   };

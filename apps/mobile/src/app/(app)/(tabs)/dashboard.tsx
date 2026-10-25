@@ -1,25 +1,24 @@
 import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, ordinal, toMetres } from '@jump/shared/format';
 import { divisionRank, leagueZone } from '@jump/shared/league';
-import { computeMilestones, computeStreaks, countsForStreak, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek, type ActivityKind } from '@jump/shared/progress';
+import { computeMilestones, computeStreaks, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek, type ActivityKind } from '@jump/shared/progress';
 import type { Activity, Profile, Unit } from '@jump/shared/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActivityRow } from '@/components/ActivityRow';
-import { ChallengeSomeone, MyCompetitions, RaceHero } from '@/components/CompeteHome';
-import { ArrowRightIcon, ChevronDownIcon, FlameIcon, RunIcon } from '@/components/icons';
+import { ChallengeSomeone, GoBar, MiniRing, MyCompetitions, RaceHero, SUMMARY } from '@/components/CompeteHome';
+import { ArrowRightIcon, ChevronDownIcon, RunIcon } from '@/components/icons';
 import { DivisionBadge, ZoneTag } from '@/components/league';
 import { MilestoneBadge } from '@/components/Milestones';
 import { TabScreen } from '@/components/Shell';
 import { OptionSheet } from '@/components/Sheet';
 import { Button, Card, CountUp, EmptyState, Eyebrow, ErrorNotice, haptic, HardShadow, Meter, Notice, Score, SectionTitle, Segmented, Skeleton, Stat, TextLink, Txt, useNow } from '@/components/ui';
-import { WeekChart } from '@/components/WeekChart';
 import { patch, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { storageKeys, useStored } from '@/lib/local';
 import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useUnit } from '@/lib/queries';
-import { colors, radius, wideLabel } from '@/lib/theme';
+import { colors, fontFamily, radius, wideLabel } from '@/lib/theme';
 
 function greeting(hour: number) {
   if (hour < 12) return 'Morning';
@@ -41,6 +40,8 @@ export default function DashboardScreen() {
   const week = useMemo(() => summariseWeek(footActivities, new Date(now)), [footActivities, now]);
   // Any walk, run or ride keeps the streak, whatever the filter above shows.
   const streak = useMemo(() => computeStreaks(all, new Date(now)), [all, now]);
+  // The summary tile counts every walk and run, whatever the training filter below shows.
+  const summaryWeek = useMemo(() => summariseWeek(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
   const milestones = useMemo(() => computeMilestones(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
   const next = nextMilestone(milestones);
   const earned = milestones.filter((m) => m.earned).length;
@@ -57,9 +58,13 @@ export default function DashboardScreen() {
     {!user.emailVerified && <VerifyPrompt email={user.email} />}
     <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} />
 
-    {/* Competition first: the race, your other races, then your own training. */}
-    <View style={{ gap: 32 }}>
+    {/* A summary first, like Apple Fitness: your race, your week, your streak. Then your other races and training. */}
+    <View style={{ gap: 12 }}>
       <RaceHero unit={unit} now={now} />
+      <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
+      <GoBar unit={unit} now={now} />
+    </View>
+    <View style={{ gap: 32, marginTop: 32 }}>
       <MyCompetitions unit={unit} now={now} />
       <ChallengeSomeone />
     </View>
@@ -71,24 +76,6 @@ export default function DashboardScreen() {
 
     <View style={{ gap: 16 }}>
       <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} activities={footActivities} now={now} loading={activities.isLoading || profile.isLoading} />
-
-      <Card variant="strong" style={{ padding: 20 }}>
-        <Eyebrow>Streak</Eyebrow>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
-          <FlameIcon size={44} color={streak.ranToday ? colors.track : streak.atRisk ? 'rgba(255,77,18,0.35)' : colors.inkFaint} />
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-            <Score size={56}>{activities.isLoading ? '–' : <CountUp value={streak.current} />}</Score>
-            <Txt size={14} weight="semibold" color="ink2">{streak.current === 1 ? 'day' : 'days'}</Txt>
-          </View>
-        </View>
-        <StreakDots activities={all} now={now} />
-        <Txt size={13} color="ink2" style={{ marginTop: 12 }}>
-          {streak.ranToday ? 'Fire’s lit for today. Move again tomorrow to keep it burning.'
-            : streak.atRisk ? `Move today or your ${streak.current}-day streak goes out at midnight.`
-              : 'Walk, run or ride today to light your streak.'}
-          {streak.best > streak.current ? ` Best: ${streak.best}.` : ''}
-        </Txt>
-      </Card>
 
       <Card style={{ padding: 20 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -220,7 +207,6 @@ function WeekPanel({ userId, unit, week, kind, activities, now, loading }: { use
       </Txt>
     </View>
 
-    <View style={{ marginTop: 24 }}><WeekChart days={week.days} unit={unit} /></View>
   </Card>;
 }
 
@@ -255,22 +241,38 @@ function PeriodTotals({ period, onPeriod, activities, kind, unit, now, loading }
   </>;
 }
 
-function StreakDots({ activities, now }: { activities: Activity[]; now: number }) {
-  const days = useMemo(() => {
-    const moved = new Set(activities.filter(countsForStreak).map((a) => new Date(a.startedAt).toDateString()));
-    return Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(now);
-      date.setDate(date.getDate() - (6 - i));
-      return { moved: moved.has(date.toDateString()), today: i === 6, label: date.toLocaleDateString('en-GB', { weekday: 'narrow' }) };
-    });
-  }, [activities, now]);
-  return <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }} accessibilityLabel="Last seven days">
-    {days.map((day, index) => <View key={index} style={{ alignItems: 'center', gap: 4 }}>
-      <View style={[styles.streakDay, day.moved ? { backgroundColor: colors.track } : day.today ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.edge } : { backgroundColor: colors.inkWash }]}>
-        <FlameIcon size={14} color={day.moved ? colors.paper : day.today ? colors.inkFaint : colors.inkFaint} />
+/** This week's distance with a bar per day, and the streak as a ring: the two tiles under the race. */
+function SummaryTiles({ week, streak, unit, loading }: { week: ReturnType<typeof summariseWeek>; streak: ReturnType<typeof computeStreaks>; unit: Unit; loading: boolean }) {
+  const max = Math.max(1000, ...week.days.map((day) => day.metres));
+  return <View style={{ flexDirection: 'row', gap: 12 }}>
+    <Pressable onPress={() => router.push('/activities')} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.9 }]} accessibilityRole="button" accessibilityLabel={`This week, ${formatDistance(week.verifiedMetres, unit)}`}>
+      <Txt size={15} weight="bold" style={{ color: SUMMARY.text }}>This week</Txt>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 4 }}>
+        <Text style={styles.tileValue}>{loading ? '–' : formatDistanceNumber(week.verifiedMetres, unit)}</Text>
+        <Txt size={13} weight="bold" style={{ color: SUMMARY.accent }}>{unit.toUpperCase()}</Txt>
       </View>
-      <Txt size={10} weight="bold" color={day.today ? 'ink' : 'ink3'}>{day.label}</Txt>
-    </View>)}
+      <View style={styles.bars}>
+        {week.days.map((day, index) => <View key={index} style={[styles.bar, day.isToday && { borderWidth: 1, borderColor: SUMMARY.muted }]}>
+          {day.metres > 0 && <View style={{ height: `${Math.max(10, (day.metres / max) * 100)}%`, borderRadius: 4, backgroundColor: SUMMARY.accent }} />}
+        </View>)}
+      </View>
+    </Pressable>
+    <View style={styles.tile} accessibilityLabel={`Streak, ${streak.current} ${streak.current === 1 ? 'day' : 'days'}`}>
+      <Txt size={15} weight="bold" style={{ color: SUMMARY.text }}>Streak</Txt>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 88, height: 88 }}>
+          {/* A full ring is a week in a row. */}
+          <MiniRing progress={Math.min(streak.current, 7) / 7} size={88} color={colors.track} />
+          <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={[styles.tileValue, { color: SUMMARY.text, lineHeight: 30 }]}>{loading ? '–' : streak.current}</Text>
+            <Txt size={11} style={{ color: SUMMARY.muted }}>{streak.current === 1 ? 'day' : 'days'}</Txt>
+          </View>
+        </View>
+      </View>
+      <Txt size={12} weight="semibold" align="center" style={{ color: streak.atRisk && !streak.ranToday ? colors.track : SUMMARY.muted }}>
+        {streak.ranToday ? 'Lit for today' : streak.atRisk ? 'Move today to keep it' : 'Move today to start one'}
+      </Txt>
+    </View>
   </View>;
 }
 
@@ -308,6 +310,9 @@ const styles = StyleSheet.create({
   goal: { height: 36, justifyContent: 'center', borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 16 },
   totals: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16, marginTop: 20 },
   total: { width: '50%', paddingRight: 12 },
-  streakDay: { width: 28, height: 28, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  tile: { flex: 1, height: 184, borderRadius: 22, borderWidth: 1, borderColor: SUMMARY.edge, backgroundColor: SUMMARY.card, padding: 16 },
+  tileValue: { fontFamily: fontFamily('bold'), fontSize: 28, lineHeight: 32, letterSpacing: -0.5, color: SUMMARY.accent },
+  bars: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 14 },
+  bar: { width: 10, height: '100%', borderRadius: 4, backgroundColor: SUMMARY.wash, overflow: 'hidden', justifyContent: 'flex-end' },
   league: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, padding: 16 },
 });

@@ -7,7 +7,7 @@ import { Leaderboard } from '@/components/Leaderboard';
 import { EmptyState, ErrorNotice, haptic, PageHeader, Screen, Skeleton, Txt } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useLeagues, useLeagueStandings, useUnit } from '@/lib/queries';
-import { colors, GUTTER, radius } from '@/lib/theme';
+import { brand, colors, GUTTER, radius } from '@/lib/theme';
 
 export default function LeagueScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,9 +36,9 @@ export default function LeagueScreen() {
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -GUTTER, marginBottom: 20, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: GUTTER }} accessibilityRole="tablist">
       {divisions.map((division) => {
         const active = division.id === divisionId;
-        return <Pressable key={division.id} onPress={() => { haptic(); setPicked(division.id); }} accessibilityRole="tab" accessibilityState={{ selected: active }} style={[styles.division, active && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
+        return <Pressable key={division.id} onPress={() => { haptic(); setPicked(division.id); }} accessibilityRole="tab" accessibilityState={{ selected: active }} style={[styles.division, active && { borderColor: brand.ink, backgroundColor: brand.ink }]}>
           <DivisionBadge division={division} />
-          <Txt size={13} weight="bold" color={active ? 'paper' : 'ink'}>{division.name}</Txt>
+          <Txt size={13} weight="bold" style={active ? { color: brand.paper } : undefined}>{division.name}</Txt>
           {division.id === myDivisionId ? <Txt size={10} weight="bold" upper tracking={0.1} color="volt" style={!active ? { color: colors.trackDeep } : undefined}>You</Txt> : null}
         </Pressable>;
       })}

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { api } from '@/lib/api';
-import { colors, fontFamily, radius } from '@/lib/theme';
+import { colors, fontFamily, radius, voltWash } from '@/lib/theme';
 import { CheckIcon, SearchIcon } from './icons';
 import { Sheet } from './Sheet';
 import { Avatar, Button, haptic, Skeleton, Txt, VerifiedTick } from './ui';
@@ -48,7 +48,7 @@ export function OpponentPicker({ open, onOpenChange, value, onChange }: { open: 
     </View>
     <Txt size={12} color="ink3" style={{ marginTop: 8 }}>Phone numbers need the country code, like +2348012345678.</Txt>
     <View style={{ marginTop: 16, minHeight: 260, gap: 8 }}>
-      {value && !typed && <View style={[styles.choice, { backgroundColor: 'rgba(228,255,58,0.4)' }]}>
+      {value && !typed && <View style={[styles.choice, { backgroundColor: voltWash(0.4) }]}>
         {value.kind === 'runner' ? <Avatar name={value.displayName} src={value.avatarUrl} size={40} round /> : <View style={styles.mark}><Txt size={16} color="paper">{value.kind === 'email' ? '@' : '#'}</Txt></View>}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Txt size={15} weight="bold" numberOfLines={1}>{value.kind === 'runner' ? value.displayName : value.value}</Txt>
@@ -62,7 +62,7 @@ export function OpponentPicker({ open, onOpenChange, value, onChange }: { open: 
         ? <View style={{ gap: 8 }}>{[0, 1, 2].map((row) => <Skeleton key={row} style={{ height: 56, borderRadius: radius.xl }} />)}</View>
         : people.length ? <View style={styles.list}>
           {people.map((person, index) => <Pressable key={person.username} onPress={() => pick({ kind: 'runner', username: person.username, displayName: person.displayName, avatarUrl: person.avatarUrl })}
-            style={({ pressed }) => [styles.person, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, (pressed || (value?.kind === 'runner' && value.username === person.username)) && { backgroundColor: 'rgba(228,255,58,0.3)' }]}>
+            style={({ pressed }) => [styles.person, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, (pressed || (value?.kind === 'runner' && value.username === person.username)) && { backgroundColor: voltWash(0.3) }]}>
             <Avatar name={person.displayName} src={person.avatarUrl} avatarStyle={person.avatarStyle} size={40} round />
             <View style={{ flex: 1, minWidth: 0 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Txt size={15} weight="semibold" numberOfLines={1}>{person.displayName}</Txt>{person.verified ? <VerifiedTick /> : null}</View>

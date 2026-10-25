@@ -20,7 +20,7 @@ type Competition = ClubDashboard['challenges'][number];
 
 const PHASE: Record<Competition['phase'], { label: string; bg: string; fg: string }> = {
   draft: { label: 'Draft', bg: colors.inkFaint, fg: colors.ink2 },
-  scheduled: { label: 'Scheduled', bg: colors.volt, fg: colors.ink },
+  scheduled: { label: 'Scheduled', bg: colors.volt, fg: colors.onAccent },
   upcoming: { label: 'Upcoming', bg: colors.ink, fg: colors.paper },
   live: { label: 'Live', bg: colors.track, fg: colors.white },
   finished: { label: 'Finished', bg: colors.okWash, fg: colors.ok },
@@ -190,7 +190,7 @@ function ChallengeRow({ row, clubRef }: { row: Competition; clubRef: string }) {
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
       <Pill {...PHASE[row.phase]} />
       {row.edition ? <Pill label={`Edition ${row.edition}`} bg={colors.inkWash} fg={colors.ink} /> : null}
-      {row.hasPrizes ? <Pill label="Prizes" bg={colors.volt} fg={colors.ink} /> : null}
+      {row.hasPrizes ? <Pill label="Prizes" bg={colors.volt} fg={colors.onAccent} /> : null}
     </View>
     <Pressable onPress={() => router.push(`/competitions/${row.code}`)} style={{ marginTop: 4 }}><Txt size={15} weight="bold" numberOfLines={1}>{row.title}</Txt></Pressable>
     <Txt size={12} color="ink2" num style={{ marginTop: 2 }}>
@@ -438,7 +438,7 @@ function Winners({ winners }: { winners: ClubDashboard['winners'] }) {
       <Txt size={12} color="ink3">Ended {formatDate(row.scoringClosesAt, { year: 'numeric' })}</Txt>
       <View style={{ marginTop: 8, gap: 4 }}>
         {(row.podium ?? []).map((person) => <View key={person.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={[styles.place, { backgroundColor: person.rank === 1 ? colors.volt : colors.inkWash }]}><Txt size={12} weight="extrabold" num>{person.rank}</Txt></View>
+          <View style={[styles.place, { backgroundColor: person.rank === 1 ? colors.volt : colors.inkWash }]}><Txt size={12} weight="extrabold" num color={person.rank === 1 ? 'onAccent' : 'ink'}>{person.rank}</Txt></View>
           <Txt size={14} weight="semibold" numberOfLines={1} onPress={person.username ? () => router.push(`/runners/${person.username}`) : undefined}>{person.displayName}</Txt>
         </View>)}
         {!row.podium?.length && <Txt size={14} color="ink3">Nobody scored.</Txt>}

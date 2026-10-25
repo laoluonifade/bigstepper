@@ -19,6 +19,8 @@ const factory: LiveActivityFactory<RunActivityProps> | null = (() => {
 })();
 
 let instance: LiveActivity<RunActivityProps> | null = null;
+/** Set once the activities left from before an app restart have been looked at. */
+let adopted = false;
 /** The last numbers while recording: the recorder clears its session as it finishes, so the ending uses these. */
 let lastActive: LiveRun | null = null;
 let lastSentAt = 0;
@@ -69,7 +71,13 @@ export function syncLiveActivity(run: LiveRun) {
       const props = propsFor(run);
       if (!props) return;
       lastActive = run;
-      instance ??= factory.getInstances()[0] ?? null;
+      if (!instance && !adopted) {
+        // After a restart, carry on with the one already showing instead of starting a second, and clear any extras.
+        adopted = true;
+        const [first, ...extra] = factory.getInstances();
+        instance = first ?? null;
+        for (const leftover of extra) void leftover.end('immediate').catch(() => undefined);
+      }
       if (!instance) {
         instance = factory.start(props, 'jump://run');
         lastSentAt = Date.now();
@@ -84,14 +92,35 @@ export function syncLiveActivity(run: LiveRun) {
       void instance.update(props).catch(() => undefined);
       return;
     }
-    if (run.phase === 'finishing') return;
-    // Idle again: finished or discarded. Show the final numbers briefly, then go.
-    const ending = instance ?? factory.getInstances()[0] ?? null;
-    if (!ending) return;
+    // Only a run that's really over ends it. Restoring after a restart, or a blocked or unavailable
+    // recorder, passes through here too: ending then left a stale card ticking and started a second one.
+    if (run.phase !== 'idle' && run.phase !== 'saved') return;
+    adopted = true;
+    const endings = instance ? [instance] : factory.getInstances();
+    if (!endings.length) return;
     instance = null;
     const last = lastActive ? propsFor(lastActive, true) : null;
     lastActive = null;
-    // `after(date)` from expo-widgets, written out: importing it would load the native module in Expo Go.
-    void ending.end({ after: new Date(Date.now() + 5 * 60_000) } as never, last ?? undefined).catch(() => undefined);
+    for (const ending of endings) {
+      // With the final numbers, leave them up for a few minutes; without them (the app restarted), just go.
+      // `after(date)` from expo-widgets, written out: importing it would load the native module in Expo Go.
+      void ending.end(last ? { after: new Date(Date.now() + 5 * 60_000) } as never : 'immediate', last ?? undefined).catch(() => undefined);
+    }
   } catch { /* the lock screen is a nicety: never let it break recording */ }
+}
+
+/**
+ * Pause and Resume pressed on the lock screen or in the Dynamic Island. The press runs in the app (the
+ * recording keeps it alive in the background), and the recorder's change updates the activity.
+ */
+export function onLiveActivityControl(handlers: { pause: () => void; resume: () => void }) {
+  if (!factory) return;
+  try {
+    const { addUserInteractionListener } = require('expo-widgets') as typeof import('expo-widgets');
+    addUserInteractionListener((event) => {
+      if (event.source !== 'RunActivity') return;
+      if (event.target === 'pause') handlers.pause();
+      else if (event.target === 'resume') handlers.resume();
+    });
+  } catch { /* a build without widgets */ }
 }

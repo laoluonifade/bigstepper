@@ -190,7 +190,7 @@ export default function CompetitionDetailScreen() {
         {standings.isLoading ? <Skeleton style={{ height: 192 }} />
           : standings.error ? <ErrorNotice error={standings.error} onRetry={() => void standings.refetch()} />
             : <Leaderboard rows={rows} currentUserId={user?.id} unit={unit} limit={showAll ? 200 : 10} metricLabel={scoreHeader(t)}
-              formatScore={metricOf(t.scoringMethod).display === 'distance' ? undefined : (row) => <Text style={score(20)}>{hasScored(t.scoringMethod, row.score) ? formatScore(t, row.score, unit, { short: true }) : '-'}</Text>}
+              formatScore={metricOf(t.scoringMethod).display === 'distance' ? undefined : (row, onAccent) => <Text style={[score(20), onAccent && { color: colors.onAccent }]}>{hasScored(t.scoringMethod, row.score) ? formatScore(t, row.score, unit, { short: true }) : '-'}</Text>}
               empty={<EmptyState title="Nobody’s on the board yet">{`Join now and your first verified ${({ RUN: 'run', WALK: 'walk', CYCLING: 'ride', DISTANCE: 'run, walk or ride' } as Record<string, string>)[t.challengeType] ?? 'activity'} puts you on top.`}</EmptyState>} />}
         {rows.length > 10 && <Button full variant="quiet" style={{ marginTop: 12 }} title={showAll ? 'Show top 10' : `See all ${rows.length} runners`} onPress={() => setShowAll((value) => !value)} />}
       </View>
@@ -326,7 +326,7 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
     </Txt>
     <View style={{ gap: 12 }}>
       {steps.map((step, index) => <View key={step.title} style={styles.step}>
-        <View style={styles.stepNumber}><Text style={[score(18), { color: colors.volt }]}>{index + 1}</Text></View>
+        <View style={styles.stepNumber}><Text style={[score(18), { color: STEP_NUMBER }]}>{index + 1}</Text></View>
         <Text style={[wideLabel(14, 0), { marginTop: 12, lineHeight: 16 }]}>{step.title}</Text>
         <Txt size={13} color="ink2" leading={1.5} style={{ marginTop: 6 }}>{step.body}</Txt>
       </View>)}
@@ -696,6 +696,9 @@ function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; count: num
   </View>;
 }
 
+/** Step numbers: volt on ink in light mode; in dark mode ink turns cream, so dark on volt instead. */
+const STEP_NUMBER = scheme === 'dark' ? colors.onAccent : colors.volt;
+
 const styles = StyleSheet.create({
   private: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 20, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 12, paddingVertical: 4 },
   club: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-start', maxWidth: '100%', marginTop: 16, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingVertical: 6, paddingLeft: 6, paddingRight: 16 },
@@ -709,7 +712,7 @@ const styles = StyleSheet.create({
   onPhoto: { textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   cover: { borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, overflow: 'hidden' },
   step: { borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, padding: 16 },
-  stepNumber: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  stepNumber: { width: 36, height: 36, borderRadius: 18, backgroundColor: scheme === 'dark' ? colors.volt : colors.ink, alignItems: 'center', justifyContent: 'center' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dates: { borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
   date: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingHorizontal: 16, paddingVertical: 12 },

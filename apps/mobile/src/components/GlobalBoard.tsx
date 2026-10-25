@@ -8,7 +8,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Avatar, Button, Centered, ErrorNotice, haptic, HardShadow, Screen, Skeleton, Txt, VerifiedTick } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useProfile, useUnit } from '@/lib/queries';
-import { colors, GUTTER, radius, score } from '@/lib/theme';
+import { brand, colors, GUTTER, radius, scheme, score, voltWash } from '@/lib/theme';
 import { ShareIcon } from './icons';
 import { ShareBoardSheet } from './ShareBoard';
 
@@ -38,13 +38,13 @@ function RowLink({ row, style, children }: { row: BoardRow; style: object; child
 }
 
 function BoardRowView({ row, unit, leader, showFlag }: { row: BoardRow; unit: Unit; leader: number; showFlag: boolean }) {
-  return <RowLink row={row} style={[styles.row, row.isMe && { backgroundColor: 'rgba(228,255,58,0.3)' }]}>
+  return <RowLink row={row} style={[styles.row, row.isMe && { backgroundColor: ME_WASH }]}>
     <Txt size={15} weight="bold" color="ink3" num style={{ width: 28 }}>{row.rank}</Txt>
     <Runner row={row} size={36} showFlag={showFlag} />
     <View style={{ flex: 1, minWidth: 0 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Txt size={14} weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>{row.isMe ? 'You' : row.displayName}</Txt>{row.verified ? <VerifiedTick /> : null}</View>
       {/* How far off the top they are, as a thin bar. */}
-      <View style={styles.gap}><View style={{ height: '100%', borderRadius: 2, backgroundColor: 'rgba(18,18,18,0.7)', width: `${leader ? Math.max(4, (row.metres / leader) * 100) : 0}%` }} /></View>
+      <View style={styles.gap}><View style={{ height: '100%', borderRadius: 2, backgroundColor: colors.ink, opacity: 0.7, width: `${leader ? Math.max(4, (row.metres / leader) * 100) : 0}%` }} /></View>
     </View>
     <Txt size={15} weight="bold" num align="right">{formatDistance(row.metres, unit)}</Txt>
   </RowLink>;
@@ -54,16 +54,16 @@ function BoardRowView({ row, unit, leader, showFlag }: { row: BoardRow; unit: Un
 function Podium({ rows, unit, showFlag }: { rows: BoardRow[]; unit: Unit; showFlag: boolean }) {
   const order = [rows[1], rows[0], rows[2]];
   const heights = [56, 80, 40];
-  return <View style={styles.podium}>
+  return <View style={[styles.podium, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>
     {order.map((row, index) => {
       if (!row) return <View key={index} style={{ flex: 1 }} />;
       const first = row.rank === 1;
       return <RowLink key={row.userId} row={row} style={{ flex: 1, alignItems: 'center', minWidth: 0 }}>
-        <Runner row={row} size={first ? 64 : 48} showFlag={showFlag} ring={first || row.isMe ? colors.volt : colors.onInkWash} />
-        <Txt size={13} weight="semibold" numberOfLines={1} style={{ marginTop: 8, color: row.isMe ? colors.volt : colors.paper }}>{row.isMe ? 'You' : row.displayName.split(' ')[0]}</Txt>
-        <Txt size={15} weight="bold" num style={{ color: first ? colors.volt : colors.onInkMuted }}>{formatDistance(row.metres, unit)}</Txt>
-        <View style={[styles.step, { height: heights[index], backgroundColor: first ? colors.volt : colors.onInkWash }]}>
-          <Text style={[score(22), { color: first ? colors.onAccent : colors.onInkMuted }]}>{row.rank}</Text>
+        <Runner row={row} size={first ? 64 : 48} showFlag={showFlag} ring={first || row.isMe ? brand.volt : brand.onInkWash} />
+        <Txt size={13} weight="semibold" numberOfLines={1} style={{ marginTop: 8, color: row.isMe ? brand.volt : brand.paper }}>{row.isMe ? 'You' : row.displayName.split(' ')[0]}</Txt>
+        <Txt size={15} weight="bold" num style={{ color: first ? brand.volt : brand.onInkMuted }}>{formatDistance(row.metres, unit)}</Txt>
+        <View style={[styles.step, { height: heights[index], backgroundColor: first ? brand.volt : brand.onInkWash }]}>
+          <Text style={[score(22), { color: first ? colors.onAccent : brand.onInkMuted }]}>{row.rank}</Text>
         </View>
       </RowLink>;
     })}
@@ -148,17 +148,21 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
           </View>}
           {(data.rows.length > 3 || meOutside) && <View style={styles.list}>
             {data.rows.slice(3).map((row, index) => <View key={row.userId} style={index > 0 ? styles.line : undefined}><BoardRowView row={row} unit={unit} leader={leader} showFlag={global} /></View>)}
-            {meOutside && <View style={{ borderTopWidth: 1.5, borderTopColor: 'rgba(18,18,18,0.3)', borderStyle: 'dashed' }}><BoardRowView row={data.me!} unit={unit} leader={leader} showFlag={global} /></View>}
+            {meOutside && <View style={{ borderTopWidth: 1.5, borderTopColor: colors.line, borderStyle: 'dashed' }}><BoardRowView row={data.me!} unit={unit} leader={leader} showFlag={global} /></View>}
           </View>}
         </View>}
   </Screen></Linkable.Provider>;
 }
 
+/** Your row and card: a volt wash. */
+const ME_WASH = voltWash(0.4);
+
 const styles = StyleSheet.create({
   flag: { position: 'absolute', right: -4, bottom: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
   gap: { height: 4, borderRadius: 2, backgroundColor: 'rgba(18,18,18,0.07)', marginTop: 6, overflow: 'hidden' },
-  podium: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, borderRadius: 24, backgroundColor: colors.ink, paddingHorizontal: 12, paddingTop: 20, overflow: 'hidden' },
+  // Always dark, in either theme: theme ink turns cream in dark mode, where the volt and cream on it vanish.
+  podium: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, borderRadius: 24, backgroundColor: brand.ink, paddingHorizontal: 12, paddingTop: 20, overflow: 'hidden' },
   step: { width: '100%', marginTop: 8, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, alignItems: 'center', paddingTop: 8 },
   scope: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 8 },
   tabs: { marginTop: 16, flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, marginHorizontal: -GUTTER, paddingHorizontal: GUTTER },
@@ -166,7 +170,7 @@ const styles = StyleSheet.create({
   period: { height: 32, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 14, justifyContent: 'center' },
   share: { marginLeft: 'auto', width: 32, paddingHorizontal: 0, alignItems: 'center' },
   empty: { marginTop: 16, borderRadius: radius['2xl'], borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.3)', paddingHorizontal: 16, paddingVertical: 48 },
-  me: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: 'rgba(228,255,58,0.4)', paddingHorizontal: 16, paddingVertical: 12 },
+  me: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: scheme === 'dark' ? brand.volt : colors.edge, backgroundColor: ME_WASH, paddingHorizontal: 16, paddingVertical: 12 },
   go: { borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 14, paddingVertical: 8 },
   list: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
