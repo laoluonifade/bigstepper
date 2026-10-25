@@ -3,8 +3,8 @@
  * preferences: the same contract as the web's lib/local.ts, kept in SQLite instead of localStorage.
  * Everything here is a convenience cache; the API stays authoritative.
  */
-import { Storage } from 'expo-sqlite/kv-store';
 import { useCallback, useEffect, useState } from 'react';
+import { Storage } from './kv';
 
 const listeners = new Set<(key: string) => void>();
 

@@ -1,6 +1,6 @@
 import { reloadAppAsync } from 'expo';
-import { Storage } from 'expo-sqlite/kv-store';
 import { Appearance, DevSettings, type TextStyle } from 'react-native';
+import { Storage } from './kv';
 
 /** Same palette as apps/web/tailwind.config.ts. */
 const LIGHT = {

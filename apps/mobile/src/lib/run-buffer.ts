@@ -4,7 +4,7 @@
  * sequence numbers, which keeps uploads idempotent. Synchronous, so the background location task can write
  * a batch of fixes in one go even if the rest of the app isn't running.
  */
-import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { readStored, removeStored, writeStored } from './local';
 
 export interface BufferedSample {
@@ -24,6 +24,8 @@ let db: SQLiteDatabase | null = null;
 
 function open() {
   if (!db) {
+    // Required here, not at the top: a binary without SQLite then fails only when recording, not at launch.
+    const { openDatabaseSync } = require('expo-sqlite') as typeof import('expo-sqlite');
     db = openDatabaseSync('jump-runs.db');
     db.execSync(`
       PRAGMA journal_mode = WAL;

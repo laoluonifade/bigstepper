@@ -1,5 +1,5 @@
 import { createApiClient } from '@jump/shared/api';
-import { Storage } from 'expo-sqlite/kv-store';
+import { Storage } from './kv';
 import { clearToken, getToken } from './token';
 
 export { ApiError, isApiError, normalizeErrorMessage } from '@jump/shared/api';

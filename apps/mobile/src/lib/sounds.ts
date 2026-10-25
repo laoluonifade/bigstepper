@@ -1,6 +1,6 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
-import { Storage } from 'expo-sqlite/kv-store';
 import { useSyncExternalStore } from 'react';
+import { Storage } from './kv';
 
 /** Jump's short UI sounds (synthesised tones in assets/sounds). */
 const SOURCES = {
