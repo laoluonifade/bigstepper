@@ -42,12 +42,13 @@ export function LandingPage() {
 
       <OpenChallenges />
       {/* For brands: one band under the hero, pointing to the shareable /brands page. */}
-      <Link to="/brands" className="group flex flex-wrap items-center gap-4 rounded-2xl bg-ink px-6 py-6 text-paper lg:col-span-2">
-        <span className="min-w-0 flex-1">
+      {/* Stacked and centred on phones; side by side from tablet up. */}
+      <Link to="/brands" className="flex flex-col items-center gap-5 rounded-2xl bg-ink px-6 py-8 text-center text-paper sm:flex-row sm:text-left lg:col-span-2">
+        <span className="w-full sm:min-w-0 sm:flex-1">
           <span className="eyebrow block text-paper/55">For brands</span>
-          <span className="wide mt-1 block text-[20px] font-black uppercase leading-tight sm:text-[24px]">Sponsor a competition. Reach runners across countries.</span>
+          <span className="wide mt-2 block text-[20px] font-black uppercase leading-tight sm:text-[24px]">Sponsor a competition. Reach runners across countries.</span>
         </span>
-        <span className="btn-primary min-h-11 px-5">See Jump for brands <ArrowRightIcon size={16} /></span>
+        <span className="btn-primary min-h-12 w-full shrink-0 px-5 sm:w-auto">See Jump for brands <ArrowRightIcon size={16} /></span>
       </Link>
     </section>
   );
