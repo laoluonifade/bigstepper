@@ -205,7 +205,7 @@ export interface CompetitionTable {
   /** Detail page only: the club's prizes and terms, when it has them. */
   productPrizes?: ClubPrizeTerms | null;
   /** Detail page only: the hosting club. */
-  club?: { name: string; slug: string; logoUrl: string | null; accentColor: string; verified: boolean; followerCount: number; seriesTitle: string | null; seriesCadence: 'weekly' | 'monthly' | null } | null;
+  club?: { name: string; slug: string; logoUrl: string | null; accentColor: string; website?: string | null; verified: boolean; followerCount: number; seriesTitle: string | null; seriesCadence: 'weekly' | 'monthly' | null } | null;
   /** Detail page only: the viewer is the host or one of the club's managers. */
   canManage?: boolean;
   /** Club page lists only. */

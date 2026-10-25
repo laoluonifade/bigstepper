@@ -20,7 +20,7 @@ export default function PaymentReturnScreen() {
   const payments = useSavedPayments();
   return <Screen>
     <Stack.Screen options={{ title: 'Payment' }} />
-    <PageHeader eyebrow="Payments" title="Payments" description="We confirm every payment directly with Paystack. This screen updates on its own, so you can leave and come back." />
+    <PageHeader centered eyebrow="Payments" title="Payments" description="We confirm every payment directly with Paystack. This screen updates on its own, so you can leave and come back." />
     {!payments.length
       ? <EmptyState title="No payments on this phone" action={<Button variant="secondary" title="Browse competitions" onPress={() => router.navigate('/competitions')} />}>If you paid on another device, open Jump there to see its status.</EmptyState>
       : <View style={{ gap: 16 }}>{payments.map((payment, index) => <PaymentCard key={payment.reference} payment={payment} autoVerify={index === 0} />)}</View>}
@@ -82,23 +82,24 @@ function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerif
 
   const card = <View style={styles.card}>
     <View style={[styles.head, { backgroundColor: succeeded ? colors.volt : copy.terminal ? colors.card : colors.warnWash }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         {succeeded ? <CheckIcon size={16} /> : !copy.terminal ? <LiveDot live color={colors.warn} size={8} /> : null}
         <Txt size={12} weight="bold" upper tracking={0.12}>{notFound ? 'Not found' : copy.label}</Txt>
       </View>
       <Txt size={12} color="ink2">Started {formatRelative(payment.createdAt)}</Txt>
     </View>
-    <View style={{ padding: 20 }}>
-      <Eyebrow>{payment.tableTitle}</Eyebrow>
-      <Text style={[wideLabel(22, 0), { fontFamily: 'ArchivoWide-Black', marginTop: 4, lineHeight: 26 }]}>{notFound ? 'We can’t find this payment' : copy.title}</Text>
-      <Txt size={14} color="ink2" leading={1.55} style={{ marginTop: 8 }}>{notFound ? 'This reference doesn’t belong to the account you’re signed in with. Switch accounts, or dismiss it.' : copy.body}</Txt>
+    {/* Centred, like a receipt. */}
+    <View style={{ padding: 20, alignItems: 'center' }}>
+      <Eyebrow style={{ textAlign: 'center' }}>{payment.tableTitle}</Eyebrow>
+      <Text style={[wideLabel(22, 0), { fontFamily: 'ArchivoWide-Black', marginTop: 4, lineHeight: 26, textAlign: 'center' }]}>{notFound ? 'We can’t find this payment' : copy.title}</Text>
+      <Txt size={14} color="ink2" leading={1.55} align="center" style={{ marginTop: 8 }}>{notFound ? 'This reference doesn’t belong to the account you’re signed in with. Switch accounts, or dismiss it.' : copy.body}</Txt>
       {status.error && !notFound ? <ErrorNotice error={status.error} /> : null}
       <ErrorNotice error={verify.error} />
       <View style={styles.facts}>
-        <View style={{ flex: 1 }}><Txt size={13} color="ink2">Amount</Txt><Txt size={13} weight="bold" num style={{ marginTop: 2 }}>{formatMoney(status.data?.amountKobo ?? payment.amountKobo)}</Txt></View>
-        <View style={{ flex: 1, minWidth: 0 }}><Txt size={13} color="ink2">Reference</Txt><Text selectable numberOfLines={1} style={{ fontFamily: mono, fontSize: 12, color: colors.ink, marginTop: 2 }}>{payment.reference}</Text></View>
+        <View style={{ flex: 1, alignItems: 'center' }}><Txt size={13} color="ink2">Amount</Txt><Txt size={13} weight="bold" num style={{ marginTop: 2 }}>{formatMoney(status.data?.amountKobo ?? payment.amountKobo)}</Txt></View>
+        <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}><Txt size={13} color="ink2">Reference</Txt><Text selectable numberOfLines={1} style={{ fontFamily: mono, fontSize: 12, color: colors.ink, marginTop: 2 }}>{payment.reference}</Text></View>
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 20 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 20 }}>
         {!copy.terminal && !notFound && <Button size="sm" variant="secondary" loading={verify.isPending} title={verify.isPending ? 'Checking Paystack…' : 'Check with Paystack'} onPress={() => verify.mutate()} />}
         {succeeded && payment.tableCode && <Button size="sm" title="Go to competition" onPress={openTable} />}
         {succeeded && payment.purpose === 'WALLET_FUNDING' && <Button size="sm" title="View rewards" onPress={() => router.dismissTo('/rewards')} />}
@@ -113,6 +114,6 @@ function PaymentCard({ payment, autoVerify }: { payment: SavedPayment; autoVerif
 
 const styles = StyleSheet.create({
   card: { borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottomWidth: 2, borderBottomColor: colors.ink, paddingHorizontal: 20, paddingVertical: 12 },
-  facts: { flexDirection: 'row', gap: 16, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 },
+  head: { alignItems: 'center', gap: 4, borderBottomWidth: 2, borderBottomColor: colors.ink, paddingHorizontal: 20, paddingVertical: 12 },
+  facts: { alignSelf: 'stretch', flexDirection: 'row', gap: 16, marginTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 },
 });

@@ -283,12 +283,13 @@ export function TextLink({ title, onPress, color = 'ink', size = 14 }: { title: 
 /* ───────────────────────── Layout ───────────────────────── */
 
 /** A tab or page title inside the scroll view, as the web's PageHeader. */
-export function PageHeader({ eyebrow: kicker, title, description, actions }: { eyebrow?: ReactNode; title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({ eyebrow: kicker, title, description, actions, centered = false }: { eyebrow?: ReactNode; title: ReactNode; description?: ReactNode; actions?: ReactNode; centered?: boolean }) {
+  const align = centered ? { textAlign: 'center' as const } : undefined;
   return <View style={{ marginBottom: 24 }}>
-    {kicker ? <Eyebrow style={{ marginBottom: 8 }}>{kicker}</Eyebrow> : null}
-    <Text style={styles.pageTitle}>{title}</Text>
-    {description ? <Txt size={15} color="ink2" leading={1.55} style={{ marginTop: 10 }}>{description}</Txt> : null}
-    {actions ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16 }}>{actions}</View> : null}
+    {kicker ? <Eyebrow style={[{ marginBottom: 8 }, align]}>{kicker}</Eyebrow> : null}
+    <Text style={[styles.pageTitle, align]}>{title}</Text>
+    {description ? <Txt size={15} color="ink2" leading={1.55} style={[{ marginTop: 10 }, align]}>{description}</Txt> : null}
+    {actions ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16, justifyContent: centered ? 'center' : 'flex-start' }}>{actions}</View> : null}
   </View>;
 }
 

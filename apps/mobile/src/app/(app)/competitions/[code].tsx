@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { PrizeTerms } from '@/components/ClubPrizes';
+import { PrizeAds } from '@/components/PrizeAd';
 import { ChallengeMark, PhaseTag, TypeTag, cardTheme } from '@/components/competition';
 import { ActionMenu, type MenuAction } from '@/components/ActionMenu';
 import { DateTimePicker } from '@/components/DateTimePicker';
@@ -21,7 +22,7 @@ import { Sheet } from '@/components/Sheet';
 import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, Footer, haptic, HardShadow, LiveTag, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow } from '@/components/ui';
 import { api, isApiError, patch, post, WEB_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { openCheckout } from '@/lib/checkout';
+import { confirmCheckout, openCheckout } from '@/lib/checkout';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '@/lib/payments';
 import { keys, useFinalResult, useStandings, useUnit, useWallet } from '@/lib/queries';
 import { brand, colors, display, fontFamily, mono, radius, scheme, score, wideLabel } from '@/lib/theme';
@@ -177,6 +178,8 @@ export default function CompetitionDetailScreen() {
     </Pressable>}
 
     {!unpublished && <View style={{ marginTop: 24 }}><EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} entrants={entrants} faces={rows} now={now} /></View>}
+    {/* What's up for grabs, in one slim line like the Compete page's Strava note. */}
+    {t.productPrizes?.prizes.length ? <View style={{ marginTop: 16 }}><PrizeAds terms={t.productPrizes} clubName={t.club?.name} website={t.club?.website} /></View> : null}
 
     <View style={{ gap: 40, marginTop: 32 }}>
       <View>
@@ -586,7 +589,7 @@ function EntryPanel({ table, joined, joinedRank, entrants, faces, now }: { table
     {pendingPayment?.purpose === 'SPONSOR_FUNDING'
       ? <Button full variant="secondary" style={{ marginTop: 12 }} title="Check prize payment" onPress={() => router.push('/payments/return')} />
       : <Button full variant="secondary" style={{ marginTop: 12 }} loading={fundPrize.isPending} title={fundPrize.isPending ? 'Opening Paystack…' : `Fund ${formatMoney(fundingKobo || 0)}`}
-        disabled={!Number.isSafeInteger(fundingKobo) || fundingKobo < (table.guaranteedPrizeKobo ? 1_000_000 : 100) || fundingKobo > (table.guaranteedPrizeKobo ? 1_000_000_000 : 100_000_000)} onPress={() => fundPrize.mutate(fundingKobo)} />}
+        disabled={!Number.isSafeInteger(fundingKobo) || fundingKobo < (table.guaranteedPrizeKobo ? 1_000_000 : 100) || fundingKobo > (table.guaranteedPrizeKobo ? 1_000_000_000 : 100_000_000)} onPress={() => void confirmCheckout({ amountKobo: fundingKobo, purpose: `Adding to the prize for ${table.title}` }).then((ok) => { if (ok) fundPrize.mutate(fundingKobo); })} />}
     <Txt size={12} color="ink3" style={{ marginTop: 8 }}>{table.guaranteedPrizeKobo ? 'Only the host can fund this fixed amount; the host cannot win its cash prize.' : user?.id === table.creatorId ? 'You may contribute, but as host you cannot win this competition’s cash prize.' : 'Contributing is optional and does not affect your prize eligibility. Join the competition separately to compete.'}</Txt>
     <ErrorNotice error={fundPrize.error} />
   </View> : null;
@@ -617,7 +620,8 @@ function EntryPanel({ table, joined, joinedRank, entrants, faces, now }: { table
           : full ? <Notice tone="neutral">This competition is full.</Notice>
             : isPaid && pendingEntryPayment ? <Button full variant="secondary" title="Payment in progress: check status" onPress={() => router.push('/payments/return')} />
               : isPaid ? <>
-                <Button full loading={checkout.isPending} title={checkout.isPending ? 'Opening Paystack…' : `Pay ${formatMoney(table.entryFeeKobo)} & enter`} onPress={() => checkout.mutate()} />
+                <Button full loading={checkout.isPending} title={checkout.isPending ? 'Opening Paystack…' : `Pay ${formatMoney(table.entryFeeKobo)} & enter`}
+                  onPress={() => void confirmCheckout({ amountKobo: table.entryFeeKobo, purpose: `Entry to ${table.title}` }).then((ok) => { if (ok) checkout.mutate(); })} />
                 {Number(wallet.data?.balanceKobo ?? 0) >= table.entryFeeKobo && <Button full variant="secondary" style={{ marginTop: 8 }} loading={enterWallet.isPending} title={enterWallet.isPending ? 'Entering…' : `Use entry credit · ${formatMoney(wallet.data?.balanceKobo ?? 0)} available`} onPress={() => enterWallet.mutate()} />}
                 <Txt size={12} color="ink3" style={{ marginTop: 8 }}>You’ll pay securely on Paystack. Your seat is confirmed once we verify the payment.</Txt>
                 {checkout.error && <View style={{ marginTop: 16 }}>

@@ -700,7 +700,7 @@ export class TablesService {
     const [presented] = await this.present([table]);
     const productPrizes = table.prizeFulfilment ? await this.clubPrizes(table, manageable) : null;
     const [club] = table.communityId ? await this.dataSource.query(
-      `SELECT c."name", c."slug", c."logoUrl", c."accentColor", c."verifiedAt" IS NOT NULL AS "verified",
+      `SELECT c."name", c."slug", c."logoUrl", c."accentColor", c."website", c."verifiedAt" IS NOT NULL AS "verified",
               (SELECT count(*) FROM "club_follows" f WHERE f."clubId" = c."id")::integer AS "followerCount",
               s."title" AS "seriesTitle", s."cadence" AS "seriesCadence"
        FROM "clubs" c LEFT JOIN "challenge_series" s ON s."id" = $2 WHERE c."id" = $1`, [table.communityId, table.seriesId],

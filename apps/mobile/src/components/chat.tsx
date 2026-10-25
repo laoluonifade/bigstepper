@@ -17,7 +17,7 @@ import Svg, { Path } from 'react-native-svg';
 import { setOpenChat } from '@/lib/push';
 import { api, patch, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
-import { openCheckout } from '@/lib/checkout';
+import { confirmCheckout, openCheckout } from '@/lib/checkout';
 import { savePayment } from '@/lib/payments';
 import { playSound } from '@/lib/sounds';
 import { keys, useActivities, useUnit } from '@/lib/queries';
@@ -534,12 +534,14 @@ function InvitationActions({ message, received, queryKey }: { message: Message; 
         <TextField keyboardType="decimal-pad" accessibilityLabel="Contribution amount in naira" value={amount} onChangeText={(text) => setAmount(formatNairaInput(text))} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Button size="sm" variant="secondary" title="No thanks · join free" disabled={response.isPending} onPress={() => response.mutate({ decision: 'ACCEPT' })} />
-          <Button size="sm" variant="dark" title="Join & contribute" disabled={response.isPending || !Number.isSafeInteger(nairaInputToKobo(amount)) || nairaInputToKobo(amount) < 100 || nairaInputToKobo(amount) > 100_000_000} onPress={() => response.mutate({ decision: 'ACCEPT', contributeKobo: nairaInputToKobo(amount) })} />
+          <Button size="sm" variant="dark" title="Join & contribute" disabled={response.isPending || !Number.isSafeInteger(nairaInputToKobo(amount)) || nairaInputToKobo(amount) < 100 || nairaInputToKobo(amount) > 100_000_000} onPress={() => void confirmCheckout({ amountKobo: nairaInputToKobo(amount), purpose: `Joining ${message.tableTitle ?? 'this competition'} and adding to its prize` }).then((ok) => { if (ok) response.mutate({ decision: 'ACCEPT', contributeKobo: nairaInputToKobo(amount) }); })} />
           <Button size="sm" variant="quiet" title="Decline" disabled={response.isPending} onPress={() => response.mutate({ decision: 'DECLINE' })} />
         </View>
       </View>
         : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Button size="sm" variant="dark" loading={response.isPending} title={message.tableType === 'paid' ? `Accept & pay ${formatMoney(message.entryFeeKobo ?? 0)}` : 'Accept · join free'} onPress={() => (openPool ? setChoosingContribution(true) : response.mutate({ decision: 'ACCEPT' }))} />
+          <Button size="sm" variant="dark" loading={response.isPending} title={message.tableType === 'paid' ? `Accept & pay ${formatMoney(message.entryFeeKobo ?? 0)}` : 'Accept · join free'} onPress={() => (openPool ? setChoosingContribution(true)
+            : message.tableType === 'paid' ? void confirmCheckout({ amountKobo: message.entryFeeKobo ?? 0, purpose: `Entry to ${message.tableTitle ?? 'this competition'}` }).then((ok) => { if (ok) response.mutate({ decision: 'ACCEPT' }); })
+              : response.mutate({ decision: 'ACCEPT' }))} />
           <Button size="sm" variant="secondary" title="Decline" disabled={response.isPending} onPress={() => response.mutate({ decision: 'DECLINE' })} />
         </View>}
     <ErrorNotice error={response.error} />
