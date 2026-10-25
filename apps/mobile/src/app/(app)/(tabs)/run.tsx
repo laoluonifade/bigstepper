@@ -1,11 +1,10 @@
 import { formatDistance, formatDistanceNumber, formatDuration, formatPace } from '@jump/shared/format';
 import { useQuery } from '@tanstack/react-query';
-import { BlurView } from 'expo-blur';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, StyleProp, StyleSheet, Text, TextStyle, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { Linking, Platform, Pressable, StyleSheet, Text, TextStyle, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, Extrapolation, FadeInUp, FadeOutUp, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,14 +15,14 @@ import { CheckIcon, ChevronDownIcon, CloseIcon, CycleIcon, PauseIcon, PlayIcon, 
 import { RunMap, type LivePosition } from '@/components/RunMap';
 import { Sheet } from '@/components/Sheet';
 import { onStartPressed } from '@/components/TabBar';
-import { Button, ErrorNotice, haptic, Loading, Notice, PageHeader, Screen, Txt, useCountUp, useNow } from '@/components/ui';
+import { BottomBarInset, Button, ErrorNotice, haptic, Loading, Notice, PageHeader, Screen, Txt, useCountUp, useNow } from '@/components/ui';
 import { api } from '@/lib/api';
 import { confirm } from '@/lib/dialog';
 import { playSound } from '@/lib/sounds';
 import { usePlaceName } from '@/lib/place';
 import { useUnit } from '@/lib/queries';
 import { movingSeconds, useRecorder, type ActivityKind } from '@/lib/recorder';
-import { brand, colors, fontFamily, GUTTER, scheme, score } from '@/lib/theme';
+import { brand, colors, fontFamily, GUTTER, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
 export default function RunScreen() {
@@ -108,22 +107,6 @@ function signalStrength(accuracy: number | null) {
   return 1;
 }
 
-/**
- * The run screens' building block: a rounded card on a soft shadow, frosted on iOS when it floats over
- * the map (`glass`). `pressed` sinks it slightly, like a key going down.
- */
-function Slab({ children, style, inner, radius: r = 20, background = colors.card, pressed = false, flex = false, glass = false }: {
-  children: ReactNode; style?: StyleProp<ViewStyle>; inner?: StyleProp<ViewStyle>; offset?: number; radius?: number; background?: string; pressed?: boolean; flex?: boolean; glass?: boolean;
-}) {
-  const frosted = glass && Platform.OS === 'ios';
-  return <View style={[styles.lift, { borderRadius: r }, flex && { flex: 1 }, pressed && { transform: [{ scale: 0.96 }], shadowOpacity: 0.06 }, style]}>
-    <View style={[{ borderRadius: r, backgroundColor: frosted ? (scheme === 'dark' ? 'rgba(26,26,28,0.55)' : 'rgba(255,255,255,0.55)') : background, overflow: 'hidden' }, flex && { flex: 1 }, inner]}>
-      {frosted ? <BlurView intensity={70} tint={scheme === 'dark' ? 'systemThickMaterialDark' : 'systemThickMaterialLight'} style={StyleSheet.absoluteFill} /> : null}
-      {children}
-    </View>
-  </View>;
-}
-
 function ReadyScreen() {
   const recorder = useRecorder();
   const insets = useSafeAreaInsets();
@@ -134,6 +117,8 @@ function ReadyScreen() {
   const [backgroundDenied, setBackgroundDenied] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(240);
   const preview = usePreviewPosition();
+  // Clear of the floating tab bar on iOS.
+  const barInset = useContext(BottomBarInset);
   const eligible = useQuery({
     queryKey: ['tables', 'eligible', activityType],
     queryFn: () => api<Array<{ id: string; code: string; title: string; challengeType: string; type: string }>>(`/tables/eligible?activity=${activityType}`),
@@ -205,23 +190,14 @@ function ReadyScreen() {
       </Pressable>
     </View>
 
-    <DragSheet initiallyOpen={false} onVisibleHeight={setSheetHeight} header={picker} style={styles.floating}>
-      {/* Pulled up: what this one counts toward. */}
-      <View style={{ gap: 12, paddingBottom: 20 }}>
-        <Slab radius={18} background={colors.inkWash} style={{ shadowOpacity: 0, elevation: 0 }} inner={{ padding: 14 }}>
-          <Text style={plain(13, colors.ink2)}>Counting toward</Text>
-          {eligible.isLoading ? <Txt size={14} color="ink3" style={{ marginTop: 8 }}>Checking…</Txt>
-            : eligible.data?.length ? <View style={{ marginTop: 8, gap: 8 }}>{eligible.data.map((table) => <View key={table.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.track }} /><Txt size={15} weight="semibold" numberOfLines={1} style={{ flex: 1 }}>{table.title}</Txt>
-            </View>)}</View>
-              : <Txt size={14} color="ink2" style={{ marginTop: 8 }}>{`No competitions yet.${activityType === 'cycle' ? '' : ' It still counts for your league.'}`}</Txt>}
-          <ErrorNotice error={eligible.error} onRetry={() => void eligible.refetch()} />
-        </Slab>
+    <DragSheet initiallyOpen={false} onVisibleHeight={setSheetHeight} header={picker} style={[styles.floating, { bottom: 10 + barInset }]}>
+      {/* What it counts toward shows in the countdown; the sheet only carries a problem worth knowing about. */}
+      {(backgroundDenied || recorder.error) && <View style={{ gap: 12, paddingBottom: 20 }}>
         {backgroundDenied && <Notice tone="warn" title="Keep Jump open while you move" action={<Button size="sm" variant="secondary" title="Open Settings" onPress={() => void Linking.openSettings()} />}>
           Without “Always” location access, Jump only measures while it’s on screen. Allow it in Settings to keep counting with the screen locked.
         </Notice>}
         <ErrorNotice error={recorder.error ? new Error(recorder.error) : null} />
-      </View>
+      </View>}
     </DragSheet>
 
     <StartCountdown open={starting} title={`${capitalised(noun)} starting`} onDone={begin} onCancel={() => setStarting(false)}
@@ -449,7 +425,6 @@ const styles = StyleSheet.create({
   /** The ready sheet floats clear of the edges, rounded all round, like Maps on iOS 26. */
   floating: { left: 10, right: 10, bottom: 10, borderRadius: 34 },
   signalDot: { width: 10, height: 10, borderRadius: 5 },
-  lift: { shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
   choice: { width: 104, height: 104, borderRadius: 52, alignItems: 'center', justifyContent: 'center' },
   check: { width: 22, height: 22, borderRadius: 6, backgroundColor: brand.ink, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   liveTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },

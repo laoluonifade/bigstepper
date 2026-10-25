@@ -12,10 +12,11 @@ import { AvatarEditor, ProfileHero, ProfileStats, ShareProfileButton } from '@/c
 import { TabScreen } from '@/components/Shell';
 import { OptionSheet, Sheet } from '@/components/Sheet';
 import { StravaConnection } from '@/components/strava';
-import { Button, CopyButton, ErrorNotice, haptic, Loading, Segmented, Skeleton, TextField, Txt } from '@/components/ui';
+import { Button, CopyButton, ErrorNotice, haptic, Loading, Notice, Segmented, Skeleton, TextField, Txt } from '@/components/ui';
 import { api, patch } from '@/lib/api';
 import { useAuth, useUser } from '@/lib/auth';
 import { openWeb } from '@/lib/links';
+import { unregisterForPush } from '@/lib/push';
 import { setSoundsEnabled, useSoundsEnabled } from '@/lib/sounds';
 import { keys, useActivities, useNotifications, useProfile, useUnit } from '@/lib/queries';
 import { colors, GUTTER, radius, setThemePreference, themePreference, type ThemePreference } from '@/lib/theme';
@@ -35,7 +36,7 @@ export default function YouScreen() {
   const stats = useMemo(() => profileStats(activities.data ?? []), [activities.data]);
   // Follower counts come from the public profile.
   const social = useQuery({ queryKey: ['runner', profile.data?.username ?? ''], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(profile.data!.username)}`), enabled: Boolean(profile.data?.username) });
-  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | null>(null);
+  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | 'delete' | null>(null);
   const soundsOn = useSoundsEnabled();
   // What's picked shows straight away, even before the restart that applies it.
   const [chosenTheme, setChosenTheme] = useState<ThemePreference>(themePreference);
@@ -138,6 +139,10 @@ export default function YouScreen() {
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>Change password</Txt>
           <ChevronRightIcon size={16} color={colors.ink3} />
         </Row>
+        <Row onPress={() => setSheet('delete')}>
+          <Txt size={14} weight="semibold" color="bad" style={{ flex: 1 }}>Delete account</Txt>
+          <ChevronRightIcon size={16} color={colors.bad} />
+        </Row>
       </Group>
 
       <Pressable onPress={() => { haptic(); void logout(); }} style={({ pressed }) => [styles.logout, pressed && { backgroundColor: colors.badWash }]} accessibilityRole="button">
@@ -151,6 +156,7 @@ export default function YouScreen() {
     {sheet === 'profile' && <EditProfileSheet profile={me} onClose={() => setSheet(null)} />}
     {sheet === 'personal' && <PersonalSheet profile={me} onClose={() => setSheet(null)} />}
     {sheet === 'email' && <EmailSheet profile={me} onClose={() => setSheet(null)} />}
+    {sheet === 'delete' && <DeleteAccountSheet onClose={() => setSheet(null)} />}
     <OptionSheet<ThemePreference> open={sheet === 'appearance'} onOpenChange={(open) => { if (!open) setSheet(null); }} title="Appearance" value={chosenTheme}
       description="Jump restarts for a second to switch."
       options={[
@@ -258,6 +264,42 @@ function PersonalSheet({ profile, onClose }: { profile: Profile; onClose: () => 
       <PhoneField label="WhatsApp number" optional hint="Only Jump uses it, to reach you about prizes and your account." value={whatsappNumber} defaultCountry={countryCode} onChange={setWhatsappNumber} />
       <TextField label="Body weight · kg" optional error={weightError} hint="Used only to estimate calories on your activities." keyboardType="decimal-pad" value={weight} onChangeText={setWeight} />
       <ErrorNotice error={save.error} />
+    </View>
+  </Sheet>;
+}
+
+/**
+ * Deleting the account, from the app (as Apple and Google require). It checks first whether anything
+ * has to be settled (money, a club, a running competition) and says what; otherwise the runner types
+ * DELETE to confirm, and the app signs out.
+ */
+function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
+  const { forget } = useAuth();
+  const [typed, setTyped] = useState('');
+  const check = useQuery({ queryKey: ['me', 'deletion'], queryFn: () => api<{ canDelete: boolean; blocker: string | null }>('/me/deletion'), staleTime: 0 });
+  const remove = useMutation({
+    async mutationFn() {
+      // While the session still works, so this phone stops getting pushes.
+      await unregisterForPush();
+      await api('/me', { method: 'DELETE', body: { confirm: 'DELETE' } });
+    },
+    onSuccess() {
+      haptic('success');
+      toast({ tone: 'ok', title: 'Account deleted', message: 'Thanks for running with Jump.' });
+      forget();
+    },
+  });
+  const ready = typed.trim().toUpperCase() === 'DELETE';
+  return <Sheet open onOpenChange={(open) => { if (!open) onClose(); }} title="Delete your account?"
+    footer={check.data?.canDelete ? <Button full variant="danger" size="lg" title={remove.isPending ? 'Deleting…' : 'Delete my account'} loading={remove.isPending} disabled={!ready} onPress={() => remove.mutate()} /> : undefined}>
+    <View style={{ gap: 14 }}>
+      <Txt size={14} color="ink2" leading={1.5}>This can’t be undone. Your activities and routes, posts, messages, follows, club memberships and profile are deleted, and you’re signed out everywhere.</Txt>
+      <Txt size={14} color="ink2" leading={1.5}>Records of payments, payouts and identity checks are kept, without your name, for as long as the law requires.</Txt>
+      {check.isLoading ? <Loading />
+        : check.error ? <ErrorNotice error={check.error} onRetry={() => void check.refetch()} />
+          : check.data?.blocker ? <Notice tone="warn" title="Not yet">{check.data.blocker}</Notice>
+            : <TextField label="Type DELETE to confirm" value={typed} onChangeText={setTyped} autoCapitalize="characters" autoCorrect={false} />}
+      <ErrorNotice error={remove.error} />
     </View>
   </Sheet>;
 }

@@ -82,7 +82,7 @@
       [
         "expo-sensors",
         {
-          "motionPermission": "Jump counts your steps during a walk or run, so indoor distance and step competitions count."
+          "motionPermission": "Jump counts your steps during a walk or run, for step competitions and to confirm you are really moving."
         }
       ],
       "expo-font",

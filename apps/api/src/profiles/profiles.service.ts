@@ -78,7 +78,7 @@ export class ProfilesService {
 
   private async byUsername(username: string) {
     const profile = await this.profiles.findOne({ where: { username: username.toLowerCase().replace(/^@/, '') } });
-    if (!profile) throw new NotFoundException('Runner not found');
+    if (!profile || profile.username.startsWith('deleted_')) throw new NotFoundException('Runner not found');
     return profile;
   }
 
@@ -91,7 +91,8 @@ export class ProfilesService {
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               (p."userId"=$3) "isMe",
               EXISTS (SELECT 1 FROM "follows" f WHERE f."followerId"=$3 AND f."followingId"=p."userId") "followedByMe"
-       FROM "profiles" p WHERE p."username" ILIKE $1 ESCAPE '\\' OR p."displayName" ILIKE $1 ESCAPE '\\'
+       FROM "profiles" p JOIN "users" u ON u."id" = p."userId" AND u."deletedAt" IS NULL
+       WHERE p."username" ILIKE $1 ESCAPE '\\' OR p."displayName" ILIKE $1 ESCAPE '\\'
        ORDER BY CASE WHEN lower(p."username")=lower($2) THEN 0 WHEN lower(p."username") LIKE lower($2)||'%' THEN 1 ELSE 2 END,
                 p."username" ASC LIMIT 20`, [pattern, term, viewerId],
     );

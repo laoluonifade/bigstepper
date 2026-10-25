@@ -101,7 +101,12 @@ export function StartCountdown({ open, title, countingToward, onDone, onCancel }
       </View>
       {countingToward && <View style={styles.toward}>
         <Text style={styles.towardLabel}>Counting toward</Text>
-        <Text style={styles.towardList} numberOfLines={3}>{countingToward.length ? countingToward.join(' · ') : 'Your league and your totals'}</Text>
+        {/* Two by name, then a count, so five competitions still read at a glance. */}
+        <Text style={styles.towardList} numberOfLines={2}>
+          {!countingToward.length ? 'Your league and your totals'
+            : countingToward.length <= 2 ? countingToward.join(' · ')
+              : `${countingToward.slice(0, 2).join(' · ')} +${countingToward.length - 2} more`}
+        </Text>
       </View>}
       <Pressable onPress={() => { haptic(); onCancel(); }} style={({ pressed }) => [styles.cancel, pressed && { transform: [{ scale: 0.97 }], opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel="Cancel">
         <Text style={styles.cancelText}>Cancel</Text>

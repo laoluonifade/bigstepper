@@ -16,6 +16,8 @@ interface AuthState {
   /** Patch the signed-in user locally after a change the API has confirmed. */
   updateUser: (changes: Partial<User>) => void;
   logout: () => Promise<void>;
+  /** Sign out on this phone only, for when the account is already gone on the server (deleted). */
+  forget: () => void;
   retry: () => void;
 }
 
@@ -85,6 +87,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Stop this phone's pushes while the session can still say whose they are.
         await unregisterForPush();
         await post('/auth/logout').catch(() => undefined);
+        setExpired(false);
+        signOutLocally();
+      },
+      forget() {
         setExpired(false);
         signOutLocally();
       },

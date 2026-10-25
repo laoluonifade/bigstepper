@@ -323,9 +323,13 @@ function usePullToRefresh(refetching: boolean) {
   };
 }
 
+/** How much of the bottom a floating tab bar covers (iOS), so a page's end can scroll clear of it. */
+export const BottomBarInset = createContext(0);
+
 /** The standard scrolling page: paper background, 16px gutters, room for the tab bar. */
 export function Screen({ ref, children, refreshing, onRefresh, padded = true, contentStyle, footer }: { ref?: Ref<ComponentRef<typeof ScrollView>>; children: ReactNode; refreshing?: boolean; onRefresh?: () => void; padded?: boolean; contentStyle?: StyleProp<ViewStyle>; footer?: ReactNode }) {
   const pulling = usePullToRefresh(Boolean(refreshing));
+  const barInset = useContext(BottomBarInset);
   return <View style={{ flex: 1, backgroundColor: colors.paper }}>
     <ScrollView
       ref={ref}
@@ -337,6 +341,7 @@ export function Screen({ ref, children, refreshing, onRefresh, padded = true, co
       refreshControl={onRefresh ? <RefreshControl refreshing={pulling.active} onRefresh={() => { pulling.start(); onRefresh(); }} tintColor={colors.ink} colors={[colors.track]} /> : undefined}
     >
       {children}
+      {barInset ? <View style={{ height: barInset }} /> : null}
     </ScrollView>
     {footer}
   </View>;
