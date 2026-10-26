@@ -11,7 +11,6 @@ import type { AuthResponse, Gender } from '../lib/types';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { GenderSelect } from '../components/GenderSelect';
 import { GoogleButton } from './Google';
-import { StravaButton } from './Strava';
 import { PasswordInput } from '../components/PasswordInput';
 
 const DEV_VERIFY_KEY = 'jump_dev_verify_token';
@@ -143,7 +142,7 @@ export function LoginPage() {
           {login.isPending ? 'Logging in…' : 'Log in'}
         </button>
       </form>
-      <OrDivider /><GoogleButton redirect={safeRedirect(search.redirect)} /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} />
+      <GoogleButton redirect={safeRedirect(search.redirect)} divider={<OrDivider />} />
       <div className="mt-6 flex flex-wrap justify-between gap-3 text-[14px]">
         <Link to="/forgot-password" className="link">
           Forgot password?
@@ -159,11 +158,26 @@ export function LoginPage() {
   );
 }
 
+const SIGNUP_STEPS = [
+  { eyebrow: 'Free to join', title: 'Create your account', blurb: 'Record your first run today. Free competitions never cost a thing.' },
+  { eyebrow: 'About you', title: 'About you', blurb: 'How you show up on leaderboards. You can change all of this later.' },
+  { eyebrow: 'Almost done', title: 'Stay in the loop', blurb: 'So we can reach you about prizes and your account. Optional.' },
+] as const;
+
+const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+/**
+ * Sign-up in three short steps, as in the app: the account first (email, or Google under it), then who
+ * you are, then how to reach you.
+ */
 export function RegisterPage() {
   const auth = useAuth();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { redirect?: string };
+  const [step, setStep] = useState(0);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [country, setCountry] = useState('NG');
   const [gender, setGender] = useState<Gender | ''>('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -182,67 +196,78 @@ export function RegisterPage() {
 
   if (auth.status === 'signed-in' && !register.isSuccess) return <Redirect to="/dashboard" />;
 
+  function go(next: number) {
+    register.reset();
+    setStep(next);
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const displayName = String(form.get('displayName')).trim();
+    if (step === 0) return go(1);
+    if (step === 1) return go(2);
     register.mutate({
-      email: String(form.get('email')).trim(),
-      password: String(form.get('password')),
+      email: email.trim(),
+      password,
       countryCode: country,
       ...(gender ? { gender } : {}),
-      ...(displayName ? { displayName } : {}),
+      ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
       ...(whatsapp ? { whatsappNumber: whatsapp } : {}),
     });
   }
 
+  const { eyebrow, title, blurb } = SIGNUP_STEPS[step];
   return (
     <>
-      <AuthHeading eyebrow="Free to join" title="Create your account">
-        Record your first run today. Free competitions never cost a thing.
-      </AuthHeading>
-      <form className="space-y-5" onSubmit={submit}>
-        <Field label="Display name" hint="Shown on leaderboards. You can change it later." optional>
-          {(props) => <input {...props} className="field" name="displayName" autoComplete="nickname" maxLength={80} />}
-        </Field>
-        <Field label="Email">
-          {(props) => <input {...props} className="field" name="email" type="email" autoComplete="email" required />}
-        </Field>
-        <Field label="Country of residence">
-          {(props) => <CountryPicker id={props.id} value={country} onChange={setCountry} required />}
-        </Field>
-        <Field label="Gender" optional hint="Only used to choose your default avatar. You can change this later.">
-          {(props) => <GenderSelect id={props.id} value={gender} onChange={setGender} />}
-        </Field>
-        <Field label="WhatsApp number" optional hint="Private. Only Jump uses it, to reach you about prizes and your account.">
-          {(props) => <PhoneField id={props.id} value={whatsapp} onChange={setWhatsapp} defaultCountry={country} />}
-        </Field>
-        <Field label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}>
-          {(props) => (
-            <PasswordInput
-              {...props}
-              className="field"
-              name="password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          )}
-        </Field>
-        <ErrorNotice error={register.error} />
-        <button className="btn-primary w-full" disabled={register.isPending}>
-          {register.isPending ? 'Creating account…' : 'Create account'}
-        </button>
+      <div className="mb-5 flex gap-1.5" aria-label={`Step ${step + 1} of ${SIGNUP_STEPS.length}`}>
+        {SIGNUP_STEPS.map((_, index) => <span key={index} className={cx('h-1 flex-1 rounded-full', index <= step ? 'bg-track' : 'bg-line')} />)}
+      </div>
+      <AuthHeading eyebrow={`Step ${step + 1} of ${SIGNUP_STEPS.length} · ${eyebrow}`} title={title}>{blurb}</AuthHeading>
+      <form key={step} className="animate-rise space-y-5" onSubmit={submit}>
+        {step === 0 && <>
+          <Field label="Email">
+            {(props) => <input {...props} className="field" name="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(event) => setEmail(event.target.value)} />}
+          </Field>
+          <Field label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}>
+            {(props) => <PasswordInput {...props} className="field" name="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} />}
+          </Field>
+          <button className="btn-primary w-full" disabled={!looksLikeEmail(email) || password.length < 8}>Continue</button>
+        </>}
+
+        {step === 1 && <>
+          <Field label="Display name" hint="Shown on leaderboards." optional>
+            {(props) => <input {...props} className="field" name="displayName" autoComplete="nickname" maxLength={80} autoFocus value={displayName} onChange={(event) => setDisplayName(event.target.value)} />}
+          </Field>
+          <Field label="Country of residence">
+            {(props) => <CountryPicker id={props.id} value={country} onChange={setCountry} required />}
+          </Field>
+          <Field label="Gender" optional hint="Only used to choose your default avatar.">
+            {(props) => <GenderSelect id={props.id} value={gender} onChange={setGender} />}
+          </Field>
+          <button className="btn-primary w-full">Continue</button>
+        </>}
+
+        {step === 2 && <>
+          <Field label="WhatsApp number" optional hint="Private. Only Jump uses it.">
+            {(props) => <PhoneField id={props.id} value={whatsapp} onChange={setWhatsapp} defaultCountry={country} />}
+          </Field>
+          <ErrorNotice error={register.error} />
+          <button className="btn-primary w-full" disabled={register.isPending}>
+            {register.isPending ? 'Creating account…' : 'Create account'}
+          </button>
+          {!whatsapp && <p className="text-center text-[13px] text-ink-3">You can leave this blank and add it later.</p>}
+        </>}
       </form>
-      <OrDivider /><GoogleButton redirect={safeRedirect(search.redirect)} label="signup_with" /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} label="Sign up with Strava" />
-      <p className="mt-6 text-[14px] text-ink-2">
-        Already running with us?{' '}
-        <Link to="/login" className="link text-ink">
-          Log in
-        </Link>
-      </p>
+
+      {step === 0 && <GoogleButton redirect={safeRedirect(search.redirect)} label="signup_with" divider={<OrDivider />} />}
+
+      {step > 0
+        ? <button type="button" className="mt-6 text-[14px] font-semibold text-ink-2 hover:text-ink" onClick={() => go(step - 1)}>← Back</button>
+        : <p className="mt-6 text-[14px] text-ink-2">
+          Already running with us?{' '}
+          <Link to="/login" className="link text-ink">
+            Log in
+          </Link>
+        </p>}
     </>
   );
 }

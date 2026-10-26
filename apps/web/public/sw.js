@@ -1,6 +1,6 @@
 // Jump service worker: makes the app installable and lets it open offline (e.g. mid-run with no signal).
 // Pages: network first, cached shell as fallback. Hashed /assets/*: cache first. API calls are never touched.
-const CACHE = 'jump-shell-v1';
+const CACHE = 'jump-shell-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (event) => {
