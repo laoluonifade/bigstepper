@@ -5,7 +5,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { LockIcon, RunIcon } from '@/components/icons';
+import { ActivityBadge } from '@/components/ActivityRow';
+import { LockIcon } from '@/components/icons';
 import { OptionSheet } from '@/components/Sheet';
 import { ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '@/components/Profile';
 import { TrophyCabinet } from '@/components/Trophies';
@@ -79,8 +80,9 @@ export default function RunnerScreen() {
         : data.recent && (data.recent.length === 0 ? <EmptyState title="No verified activity yet">Verified walks and runs will show here.</EmptyState>
           : <View style={styles.list}>{data.recent.map((item, index) => {
             const pace = item.activityType === 'cycle' ? formatSpeed(item.metres, item.movingSeconds, unit) : formatPace(item.metres, item.movingSeconds, unit);
-            return <View key={index} style={[styles.row, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
-              <View style={[styles.badge, { backgroundColor: item.activityType === 'run' ? colors.track : colors.ink }]}><RunIcon size={18} color={item.activityType === 'run' ? colors.paper : colors.volt} /></View>
+            return <Pressable key={item.id ?? index} disabled={!item.id} onPress={() => router.push(`/activities/${item.id}`)} accessibilityRole="button"
+              style={({ pressed }) => [styles.row, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, pressed && { backgroundColor: colors.inkWash }]}>
+              <ActivityBadge type={item.activityType} size={40} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Txt size={14} weight="bold" numberOfLines={1}>{activityName(item.startedAt, item.activityType)}</Txt>
                 <Txt size={12} color="ink2" num>{`${formatRelative(item.startedAt)} · ${formatDuration(item.movingSeconds)}${pace ? ` · ${pace}${item.activityType === 'cycle' ? '' : ` /${unit}`}` : ''}`}</Txt>
@@ -89,7 +91,7 @@ export default function RunnerScreen() {
                 <Text style={score(24)}>{formatDistanceNumber(item.metres, unit)}</Text>
                 <Txt size={12} weight="semibold" color="ink2">{unit}</Txt>
               </View>
-            </View>;
+            </Pressable>;
           })}</View>)}
   </Screen>;
 }
@@ -117,5 +119,4 @@ const styles = StyleSheet.create({
   preview: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 10, marginBottom: 12 },
   list: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 4, paddingVertical: 14 },
-  badge: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
 });

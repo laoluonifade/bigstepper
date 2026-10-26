@@ -89,7 +89,7 @@ export interface PublicProfile {
   followedByMe: boolean;
   followsMe: boolean;
   stats: PublicStats;
-  recent?: Array<{ activityType: 'walk' | 'run' | 'cycle'; startedAt: string; metres: number; movingSeconds: number }>;
+  recent?: Array<{ id?: string; activityType: 'walk' | 'run' | 'cycle'; startedAt: string; metres: number; movingSeconds: number }>;
 }
 
 export type RunStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'FLAGGED' | 'REJECTED';
@@ -137,6 +137,9 @@ export interface Activity {
   startedAt: string;
   finishedAt: string;
   createdAt: string;
+  /** From the activity page: false when it's someone else's (read-only), with who did it. */
+  mine?: boolean;
+  owner?: { username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean } | null;
 }
 
 export interface CompetitionTable {

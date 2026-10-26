@@ -10,7 +10,8 @@ import Animated, { ZoomIn } from 'react-native-reanimated';
 import { api, post, WEB_URL } from '@/lib/api';
 import { colors, fontFamily, GUTTER, radius, score, wideLabel } from '@/lib/theme';
 import { confirm } from '@/lib/dialog';
-import { CommentIcon, CycleIcon, HeartIcon, RunIcon, SendIcon, ShareIcon, TrashIcon } from './icons';
+import { ActivityBadge } from './ActivityRow';
+import { CommentIcon, HeartIcon, SendIcon, ShareIcon, TrashIcon } from './icons';
 import { PhotoViewer, MentionText, ReactionPicker } from './social';
 import { Avatar, haptic, Txt, VerifiedTick } from './ui';
 
@@ -64,7 +65,7 @@ export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; u
       </View>
       {item.body ? <View style={{ marginTop: 4 }}><MentionText text={item.body} /></View> : null}
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" transition={150} /> : null}
-      {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} mine={false} /> : null}
+      {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} /> : null}
       <ActionBar item={item} viewerId={viewerId} />
     </View>
   </Pressable>;
@@ -133,10 +134,9 @@ function ReactButton({ item }: { item: FeedPost }) {
 }
 
 /** The activity a post shares: what it was, its steps and time, and its distance. */
-export function ActivityAttachment({ item, unit, mine }: { item: FeedPost; unit: Unit; mine: boolean }) {
-  const run = item.activityType === 'run';
-  return <Pressable disabled={!mine} onPress={() => router.push(`/activities/${item.activityId}`)} style={styles.attachment}>
-    <View style={[styles.attachmentBadge, { backgroundColor: run ? colors.track : colors.volt }]}>{item.activityType === 'cycle' ? <CycleIcon size={20} /> : <RunIcon size={20} color={run ? colors.paper : colors.ink} />}</View>
+export function ActivityAttachment({ item, unit }: { item: FeedPost; unit: Unit }) {
+  return <Pressable onPress={() => router.push(`/activities/${item.activityId}`)} style={styles.attachment} accessibilityRole="button">
+    {item.activityType && <View style={styles.attachmentBadge}><ActivityBadge type={item.activityType} size={40} /></View>}
     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 12, paddingVertical: 10 }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[wideLabel(10.5, 0.1), { color: colors.ink2 }]} numberOfLines={1}>{item.startedAt ? activityName(item.startedAt, item.activityType!) : item.activityType}</Text>
@@ -166,5 +166,5 @@ const styles = StyleSheet.create({
   action: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, borderRadius: radius.full, paddingHorizontal: 10 },
   actionPressed: { backgroundColor: 'rgba(18,18,18,0.05)' },
   attachment: { flexDirection: 'row', marginTop: 10, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, overflow: 'hidden' },
-  attachmentBadge: { width: 48, alignItems: 'center', justifyContent: 'center' },
+  attachmentBadge: { paddingLeft: 10, alignItems: 'center', justifyContent: 'center' },
 });

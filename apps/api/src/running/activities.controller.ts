@@ -26,7 +26,7 @@ export class ActivitiesController {
 
   @Get(':id')
   get(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.activitiesService.get(user.id, id);
+    return this.activitiesService.view(user.id, id);
   }
 
   /** The runner's own route (smoothed, thinned) for drawing on a share image. */

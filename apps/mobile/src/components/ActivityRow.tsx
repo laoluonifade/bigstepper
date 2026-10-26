@@ -3,16 +3,16 @@ import { shownMetres } from '@jump/shared/progress';
 import type { Activity, Unit } from '@jump/shared/types';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { brand, colors, fontFamily, GUTTER, radius, score } from '@/lib/theme';
-import { CheckIcon, ChevronRightIcon, CycleIcon, RunIcon } from './icons';
+import { colors, fontFamily, GUTTER, radius, score } from '@/lib/theme';
+import { ChallengeMark } from './competition';
+import { CheckIcon, ChevronRightIcon } from './icons';
 import { Sheet } from './Sheet';
 import { haptic, Txt, VerificationTag } from './ui';
 
+/** An activity's 3D tile, the same as competitions use: runs in flame, walks in volt, rides in silver. */
 export function ActivityBadge({ type, size = 36 }: { type: 'walk' | 'run' | 'cycle'; size?: number }) {
-  return <View style={{ width: size, height: size, borderRadius: radius.xl, alignItems: 'center', justifyContent: 'center', backgroundColor: type === 'run' ? colors.track : colors.volt }}>
-    {/* Brand colours: the badge is orange or lemon in both themes, so its icon must not flip. */}
-    {type === 'cycle' ? <CycleIcon size={size / 2.1} color={brand.ink} /> : <RunIcon size={size / 2.1} color={type === 'run' ? brand.paper : brand.ink} />}
-  </View>;
+  const mark = ({ run: ['RUN', 'flame'], walk: ['WALK', 'volt'], cycle: ['CYCLING', 'silver'] } as const)[type];
+  return <ChallengeMark type={mark[0]} code={type} tone={mark[1]} size={size} />;
 }
 
 export function ActivityRow({ activity, unit, last }: { activity: Activity; unit: Unit; last?: boolean }) {

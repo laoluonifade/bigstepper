@@ -89,7 +89,7 @@ export default function FeedPostScreen() {
         </View>
         {item.body ? <View style={{ marginTop: 16 }}><MentionText text={item.body} size={19} /></View> : null}
         {item.imageUrl ? <PostImage uri={item.imageUrl} /> : null}
-        {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} /> : null}
+        {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} /> : null}
         <Txt size={14} color="ink3" style={{ marginTop: 16 }}>{`${posted.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · ${posted.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}</Txt>
         <View style={styles.bar}><ActionBar item={item} viewerId={user.id} onComment={() => replyField.current?.focus()} /></View>
       </View>

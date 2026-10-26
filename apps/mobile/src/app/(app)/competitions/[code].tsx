@@ -312,7 +312,7 @@ function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: U
     </Svg>}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
       <TypeTag table={table} />
-      <Tag background={colors.paper}>{activityLabel(table.challengeType)}</Tag>
+      <Tag background={colors.paper}>{activityLabel(table)}</Tag>
       <PhaseTag table={table} now={now} />
     </View>
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginTop: banner ? 16 : 40 }}>

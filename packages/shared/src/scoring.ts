@@ -1,4 +1,4 @@
-import { ACTIVITY_RULES, dailyMeasure, eligibleKinds, METRICS, scoringOption, type MetricDefinition, type ScoringMethod } from './competition-rules';
+import { ACTIVITY_RULES, dailyMeasure, eligibleKinds, METRICS, scoringOption, type ChallengeType, type MetricDefinition, type ScoringMethod } from './competition-rules';
 import { formatDistance, formatDuration } from './format';
 import type { CompetitionTable, Unit } from './types';
 
@@ -15,8 +15,18 @@ export const lowerIsBetter = (method: ScoringMethod | string) => metricOf(method
 const KM_PER_MILE = 1.609344;
 
 /** What a competition is for, in a word or two: "Run", "Walk", "Run + walk", "Steps", "Ride", "Timed". */
-export function activityLabel(challengeType: string) {
-  return ({ RUN: 'Run', WALK: 'Walk', DISTANCE: 'Run + walk', STEP: 'Steps', CYCLING: 'Ride', TIMED: 'Timed' } as Record<string, string>)[challengeType] ?? challengeType;
+/**
+ * What you go and do for it: "Run", "Ride". For a competition that mixes them, the kinds it actually
+ * takes ("Run + walk + ride"), so a combined one that counts rides says so.
+ */
+export function activityLabel(table: string | Pick<Scored, 'challengeType' | 'eligibleActivities'>) {
+  const challengeType = typeof table === 'string' ? table : table.challengeType;
+  if (challengeType === 'DISTANCE' || (challengeType === 'TIMED' && typeof table !== 'string' && table.eligibleActivities?.length)) {
+    const kinds = eligibleKinds(challengeType as ChallengeType, typeof table === 'string' ? null : table.eligibleActivities);
+    const names = kinds.map((kind) => ({ run: 'run', walk: 'walk', cycle: 'ride' })[kind]);
+    return names.length ? `${names[0].charAt(0).toUpperCase()}${names[0].slice(1)}${names.slice(1).map((name) => ` + ${name}`).join('')}` : 'Timed';
+  }
+  return ({ RUN: 'Run', WALK: 'Walk', STEP: 'Steps', CYCLING: 'Ride', TIMED: 'Timed' } as Record<string, string>)[challengeType] ?? challengeType;
 }
 
 function sessionNoun(table: Pick<Scored, 'challengeType'>, count: number) {

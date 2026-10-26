@@ -31,10 +31,10 @@ const SYMBOLS: Record<ChallengeType, ReactNode> = {
  * A 3D tile for the competition type, in the same metals as the milestone medals. The metal is picked
  * from the code, so each competition keeps its colour.
  */
-export function ChallengeMark({ type, code, size = 46 }: { type: ChallengeType; code: string; size?: number }) {
+export function ChallengeMark({ type, code, size = 46, tone }: { type: ChallengeType; code: string; size?: number; tone?: keyof typeof METALS }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const metals = [METALS.flame, METALS.volt, METALS.bronze, METALS.silver, METALS.gold];
-  const metal = metals[[...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % metals.length];
+  const metal = tone ? METALS[tone] : metals[[...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % metals.length];
   const symbol = SYMBOLS[type];
   return <Svg viewBox="0 0 64 64" width={size} height={size} accessibilityLabel={`${type.toLowerCase()} competition`}>
     <Defs>
@@ -96,7 +96,7 @@ export function cardTheme(table: Pick<CompetitionTable, 'challengeType'>) {
 export function CompetitionRow({ table, unit, now, last }: { table: CompetitionTable; unit: Unit; now: number; last?: boolean }) {
   const hero = challengeHeadline(table, unit);
   const prize = prizeLabel(table, unit);
-  const wins = `${activityLabel(table.challengeType)} · ${winsLabel(table, unit)}${hero.big.startsWith('₦') ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
+  const wins = `${activityLabel(table)} · ${winsLabel(table, unit)}${hero.big.startsWith('₦') ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
   return <Pressable onPress={() => openCompetition(table.code)} accessibilityRole="button" accessibilityLabel={table.title}
     style={({ pressed }) => [styles.row, !last && styles.rowLine, pressed && { backgroundColor: colors.inkWash }]}>
     <ChallengeMark type={table.challengeType} code={table.code} size={40} />
@@ -141,7 +141,7 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
   const [trackWidth, setTrackWidth] = useState(0);
   const hero = challengeHeadline(table, unit);
   const cash = hero.big.startsWith('₦');
-  const rules = `${activityLabel(table.challengeType)} · ${winsLabel(table, unit)}${cash ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
+  const rules = `${activityLabel(table)} · ${winsLabel(table, unit)}${cash ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
   const leaders = table.leaders ?? [];
   const faces = table.faces ?? [];
   const leader = leaders[0];
@@ -257,7 +257,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
       <View style={styles.card}>
         <View style={{ backgroundColor: theme.band, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <View style={{ flexDirection: 'row', gap: 6 }}><TypeTag table={table} /><Tag background={colors.paper}>{activityLabel(table.challengeType)}</Tag></View>
+            <View style={{ flexDirection: 'row', gap: 6 }}><TypeTag table={table} /><Tag background={colors.paper}>{activityLabel(table)}</Tag></View>
             <PhaseTag table={table} now={now} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 16 }}>

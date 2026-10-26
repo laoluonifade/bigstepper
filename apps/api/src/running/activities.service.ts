@@ -5,9 +5,23 @@ import { refreshLeagueDistance } from '../leagues/league-credits';
 import { uncreditActivity } from '../tables/competition-credits';
 import { GpsSample } from './gps-sample.entity';
 import { RunningSession } from './running-session.entity';
+import { haversineMetres } from './haversine';
 import { MAX_USABLE_ACCURACY_METRES, smoothTrack } from './track';
 import { ActivityVerificationReview } from './activity-verification-review.entity';
 import { Activity } from './activity.entity';
+
+/** How much of each end of someone else's route is left off their map. */
+const PRIVATE_ENDS_METRES = 200;
+
+/** The route without its first and last `metres`; nothing at all when it's too short to keep any. */
+export function hideEnds<T extends { lat: number; lon: number }>(points: T[], metres: number): T[] {
+  const along = [0];
+  for (let index = 1; index < points.length; index += 1) {
+    along.push(along[index - 1] + haversineMetres(points[index - 1].lat, points[index - 1].lon, points[index].lat, points[index].lon));
+  }
+  const total = along[along.length - 1] ?? 0;
+  return points.filter((_, index) => along[index] >= metres && along[index] <= total - metres);
+}
 
 @Injectable()
 export class ActivitiesService {
@@ -41,8 +55,8 @@ export class ActivitiesService {
     );
   }
 
-  async credits(userId: string, activityId: string) {
-    await this.get(userId, activityId);
+  async credits(viewerId: string, activityId: string) {
+    await this.viewable(viewerId, activityId);
     return this.activities.query(
       `SELECT t."code", t."title", t."challengeType", t."scoringMethod", c."creditedDistanceMetres", c."creditedSteps", c."completionTimeSeconds"
        FROM "table_activity_credits" c JOIN "competition_tables" t ON t."id"=c."tableId"
@@ -76,8 +90,8 @@ export class ActivitiesService {
     });
   }
 
-  async track(userId: string, activityId: string) {
-    const activity = await this.get(userId, activityId);
+  async track(viewerId: string, activityId: string) {
+    const activity = await this.viewable(viewerId, activityId);
     const samples = await this.activities.manager.find(GpsSample, {
       where: { sessionId: activity.runningSessionId },
       order: { sequence: 'ASC' },
@@ -85,10 +99,38 @@ export class ActivitiesService {
     const usable = samples
       .filter((sample) => sample.accuracy === null || sample.accuracy <= MAX_USABLE_ACCURACY_METRES)
       .filter((sample, index, all) => index === 0 || sample.recordedAt.getTime() > all[index - 1].recordedAt.getTime());
-    const smoothed = smoothTrack(usable);
+    // Someone else's map leaves out where it starts and ends, so it doesn't show where they live.
+    const smoothed = activity.userId === viewerId ? smoothTrack(usable) : hideEnds(smoothTrack(usable), PRIVATE_ENDS_METRES);
     const step = Math.max(1, Math.ceil(smoothed.length / 400));
     const points = smoothed.filter((_, index) => index % step === 0 || index === smoothed.length - 1);
     return { points: points.map((point) => [Number(point.lat.toFixed(6)), Number(point.lon.toFixed(6))]) };
+  }
+
+
+  /**
+   * An activity for its page. Your own, whatever its status; anyone else's once it's verified, since
+   * every runner's activities are public (competitions are only fair when anyone can check the runs).
+   * Others' come with who did it, read-only.
+   */
+  async view(viewerId: string, activityId: string) {
+    const activity = await this.viewable(viewerId, activityId);
+    if (activity.userId === viewerId) return { ...activity, mine: true };
+    const [owner] = await this.activities.query(
+      `SELECT p."username", p."displayName", p."avatarUrl", p."verifiedAt" IS NOT NULL AS "verified",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
+       FROM "profiles" p WHERE p."userId"=$1`, [activity.userId],
+    ) as Array<Record<string, unknown>>;
+    // Verification notes are between Jump and the runner: nobody else sees them.
+    return { ...activity, verificationReasons: [], mine: false, owner: owner ?? null };
+  }
+
+  private async viewable(viewerId: string, activityId: string) {
+    const [activity] = await this.activities.query(
+      `SELECT a."id" FROM "activities" a JOIN "users" u ON u."id"=a."userId" AND u."deletedAt" IS NULL
+       WHERE a."id"=$1 AND (a."userId"=$2 OR a."verificationStatus"='VERIFIED')`, [activityId, viewerId],
+    ) as Array<{ id: string }>;
+    if (!activity) throw new NotFoundException('Activity not found');
+    return this.activities.findOneOrFail({ where: { id: activityId } });
   }
 
   async get(userId: string, activityId: string) {

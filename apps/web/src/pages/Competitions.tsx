@@ -1068,7 +1068,7 @@ export function ChallengeCover({ table, unit, now }: { table: CompetitionTable; 
       )}
       <div className="relative flex flex-wrap items-center gap-1.5">
         <TypeTag table={table} />
-        <span className="tag bg-paper text-ink">{activityLabel(table.challengeType)}</span>
+        <span className="tag bg-paper text-ink">{activityLabel(table)}</span>
         <PhaseTag table={table} now={now} />
       </div>
       <div className={cx('relative flex items-end justify-between gap-4', banner ? 'mt-4 [text-shadow:0_1px_6px_rgba(0,0,0,0.45)]' : 'mt-10 sm:mt-14')}>

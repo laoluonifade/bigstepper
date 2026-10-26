@@ -96,7 +96,7 @@ export function cardTheme(table: CompetitionTable) {
 export function CompetitionRow({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
   const hero = challengeHeadline(table, unit);
   const prize = prizeLabel(table, unit);
-  const wins = `${activityLabel(table.challengeType)} · ${winsLabel(table, unit)}${hero.big.startsWith('₦') ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
+  const wins = `${activityLabel(table)} · ${winsLabel(table, unit)}${hero.big.startsWith('₦') ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
   return <Link to="/competitions/$code" params={{ code: table.code }} className="group flex items-center gap-3 px-3.5 py-3 transition-colors hover:bg-ink/[0.025]">
     <ChallengeMark type={table.challengeType} code={table.code} size={40} />
     <div className="min-w-0 flex-1">
@@ -136,7 +136,7 @@ function DrawnBanner({ table, headline }: { table: CompetitionTable; headline: {
     <svg className="absolute inset-0 h-full w-full opacity-[0.18]" viewBox="0 0 400 134" preserveAspectRatio="none">
       {[0, 1, 2, 3, 4, 5].map((lane) => <path key={lane} d={`M-20 ${150 - lane * 22}C120 ${128 - lane * 26} 260 ${78 - lane * 18} 420 ${36 - lane * 14}`} fill="none" stroke="currentColor" strokeWidth="3" />)}
     </svg>
-    <p className="wide relative text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{activityLabel(table.challengeType)}</p>
+    <p className="wide relative text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{activityLabel(table)}</p>
     <p className="display relative truncate text-[clamp(26px,4.2vw,40px)] leading-[0.95]">{headline.big}</p>
   </div>;
 }
@@ -152,7 +152,7 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
   const hero = challengeHeadline(table, unit);
   const cash = hero.big.startsWith('₦');
   // Activity first, so you know what to go and do: "Walk · First to 50 km".
-  const rules = `${activityLabel(table.challengeType)} · ${winsLabel(table, unit)}${cash ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
+  const rules = `${activityLabel(table)} · ${winsLabel(table, unit)}${cash ? ` · ${hero.small.replace(/^to the winner$/, 'winner takes it')}` : ''}`;
   const leaders = table.leaders ?? [];
   const faces = table.faces ?? [];
   const leader = leaders[0];
@@ -272,7 +272,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
         <div className="relative z-10 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <TypeTag table={table} />
-            <span className="tag bg-paper text-ink">{activityLabel(table.challengeType)}</span>
+            <span className="tag bg-paper text-ink">{activityLabel(table)}</span>
           </div>
           <PhaseTag table={table} now={now} />
         </div>

@@ -169,7 +169,7 @@ export class ProfilesService {
     const stats = Object.fromEntries(Object.entries(totals as Record<string, string | number>).map(([key, value]) => [key, Number(value)]));
 
     const recent = await this.dataSource.query(
-      `SELECT a."activityType", a."startedAt", ${DISTANCE}::integer "metres", a."movingSeconds"
+      `SELECT a."id", a."activityType", a."startedAt", ${DISTANCE}::integer "metres", a."movingSeconds"
        FROM "activities" a WHERE a."userId" = $1 AND a."verificationStatus" = 'VERIFIED'
        ORDER BY a."startedAt" DESC LIMIT 8`,
       [profile.userId],

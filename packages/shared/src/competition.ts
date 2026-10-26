@@ -129,10 +129,10 @@ export function competitionCardData(table: CompetitionTable, rows: StandingRow[]
   const person = (row: StandingRow) => ({ userId: row.userId, name: row.displayName, rank: row.rank, score: formatScore(table, row.score, unit) ?? '' });
   const mine = rows.find((row) => row.userId === viewerId);
   // When the cover's headline is the prize, the card leads with how it's won instead.
-  const big = cash ? (winsLabel(table, unit).match(/\d+(\.\d+)?\s?(km|mi|K)/i)?.[0]?.replace(/\s?km$/i, 'K') ?? activityLabel(table.challengeType)) : hero.big;
+  const big = cash ? (winsLabel(table, unit).match(/\d+(\.\d+)?\s?(km|mi|K)/i)?.[0]?.replace(/\s?km$/i, 'K') ?? activityLabel(table)) : hero.big;
   return {
     title: table.title,
-    kind: `${activityLabel(table.challengeType)} · ${winsLabel(table, unit)}`,
+    kind: `${activityLabel(table)} · ${winsLabel(table, unit)}`,
     big,
     small: cash ? winsLabel(table, unit) : hero.small,
     stakes: cash ? `${hero.big} ${hero.small}` : table.type === 'paid' ? 'Cash prize' : 'Free to join',

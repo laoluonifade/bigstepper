@@ -15,7 +15,7 @@ import { RouteMap } from '@/components/RunMap';
 import { SendActivitySheet } from '@/components/SendActivity';
 import { StatStickers, Sticker } from '@/components/Stickers';
 import { ShareRunSheet } from '@/components/ShareRun';
-import { Button, Card, ErrorNotice, Eyebrow, HardShadow, Loading, Meter, Notice, Screen, Stat, TextField, TextLink, Txt, VerificationTag } from '@/components/ui';
+import { Avatar, Button, Card, ErrorNotice, Eyebrow, HardShadow, Loading, Meter, Notice, Screen, Stat, TextField, TextLink, Txt, VerificationTag, VerifiedTick } from '@/components/ui';
 import { api, isApiError, post } from '@/lib/api';
 import { keys, useProfile, useUnit } from '@/lib/queries';
 import { colors, display, radius, wideLabel } from '@/lib/theme';
@@ -40,19 +40,21 @@ export default function ActivityDetailScreen() {
   if (activity.error || !activity.data) return <Screen><Stack.Screen options={{ title: 'Not found' }} /><ErrorNotice error={activity.error ?? new Error('This activity doesn’t exist.')} /></Screen>;
 
   const a = activity.data;
+  // Someone else's (opened from their profile or the timeline): the same page, read-only, with who did it.
+  const mine = a.mine !== false;
   const pending = a.verificationStatus === 'PENDING_VERIFICATION';
   const verified = a.verificationStatus === 'VERIFIED';
   const metres = shownMetres(a);
   const moving = a.movingSeconds || a.elapsedSeconds;
   const trimmed = verified ? a.recordedDistanceMetres - a.validatedDistanceMetres : 0;
-  const calories = estimatedCalories(a, profile.data?.weightKg);
+  const calories = mine ? estimatedCalories(a, profile.data?.weightKg) : null;
   const route = track.data?.points ?? [];
   const started = new Date(a.startedAt);
   const dateTag = `${started.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')} · ${started.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 
   return <Screen refreshing={activity.isRefetching} onRefresh={() => void activity.refetch()}>
     <Stack.Screen options={{ title: '' }} />
-    {celebrating && <FinishCelebration activity={a} route={route} unit={unit} onClose={() => setCelebrating(false)} onShare={() => { setCelebrating(false); setSheet('share'); }} />}
+    {mine && celebrating && <FinishCelebration activity={a} route={route} unit={unit} onClose={() => setCelebrating(false)} onShare={() => { setCelebrating(false); setSheet('share'); }} />}
     {/* Status only speaks up when something's off: a verified activity just shows when it was. */}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
       {!verified && <VerificationTag status={a.verificationStatus} />}
@@ -60,6 +62,12 @@ export default function ActivityDetailScreen() {
       <Txt size={11} weight="bold" color="ink2" style={{ marginLeft: 'auto', letterSpacing: 0.8 }}>{dateTag.toUpperCase()}</Txt>
     </View>
     <Text style={display(34)} numberOfLines={2} adjustsFontSizeToFit>{activityName(a.startedAt, a.activityType)}</Text>
+    {!mine && a.owner && <Pressable onPress={() => router.push(`/runners/${a.owner!.username}`)} accessibilityRole="link" style={({ pressed }) => [styles.owner, pressed && { opacity: 0.7 }]}>
+      <Avatar name={a.owner.displayName} src={a.owner.avatarUrl} avatarStyle={a.owner.avatarStyle} size={32} round />
+      <Txt size={14} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{a.owner.displayName}</Txt>
+      {a.owner.verified ? <VerifiedTick /> : null}
+      <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{`@${a.owner.username}`}</Txt>
+    </Pressable>}
 
     {/* The activity as a pile of stickers: the route on top, the numbers underneath. */}
     {route.length >= 2 && <Sticker p={colors} bg={colors.card} tilt={-1.5} padded={false} style={{ marginTop: 20, marginHorizontal: 4 }}>
@@ -67,13 +75,13 @@ export default function ActivityDetailScreen() {
     </Sticker>}
     <View style={{ marginTop: route.length >= 2 ? 8 : 20, marginHorizontal: 4 }}><StatStickers activity={a} unit={unit} p={colors} /></View>
 
-    <View style={{ flexDirection: 'row', gap: 10, marginTop: 28, marginBottom: 24 }}>
+    {mine ? <View style={{ flexDirection: 'row', gap: 10, marginTop: 28, marginBottom: 24 }}>
       <Action label="Post" icon={<FeedIcon size={17} />} disabled={!verified} onPress={() => router.navigate({ pathname: '/feed', params: { activity: a.id } })} />
       <Action label="Share" primary icon={<ShareIcon size={16} color={colors.onAccent} />} onPress={() => setSheet('share')} />
       <Action label="Send" icon={<SendIcon size={16} />} disabled={a.verificationStatus === 'REJECTED'} onPress={() => setSheet('send')} />
-    </View>
+    </View> : <View style={{ height: 28 }} />}
 
-    {fresh === '1' && verified && <Animated.View entering={ZoomIn.springify()} style={{ marginBottom: 24 }}>
+    {mine && fresh === '1' && verified && <Animated.View entering={ZoomIn.springify()} style={{ marginBottom: 24 }}>
       <HardShadow radius={radius.md}>
         <View style={styles.counts}><AccentSurface.Provider value>
           <View style={styles.countsIcon}><CheckIcon size={22} color={colors.volt} /></View>
@@ -97,7 +105,7 @@ export default function ActivityDetailScreen() {
           <Stat style={styles.cell} label="Finished" value={new Date(a.finishedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} />
         </View>
       </View>
-      {verified && <View style={styles.rowLine}>
+      {mine && verified && <View style={styles.rowLine}>
         {profile.data?.weightKg ? <Txt size={12} color="ink3">Calories are an estimate from your private body weight and verified moving time, not a device measurement.</Txt>
           : <Txt size={12} color="ink3">Want a calorie estimate? <TextLink size={12} title="Add your private body weight" onPress={() => router.navigate('/you')} />.</Txt>}
       </View>}
@@ -111,7 +119,7 @@ export default function ActivityDetailScreen() {
       </View>}
     </Card>
 
-    {verified && <ActivityCredits activityId={a.id} unit={unit} />}
+    {verified && <ActivityCredits activityId={a.id} unit={unit} mine={mine} />}
     {pending && <Notice tone="warn" title="Checking your route" style={{ marginTop: 24 }}>This usually takes a few seconds. The distance above is provisional until it’s verified. It won’t count on leaderboards before then. This page updates by itself.</Notice>}
 
     {a.verificationReasons.length > 0 && <View style={{ marginTop: 32 }}>
@@ -130,11 +138,13 @@ export default function ActivityDetailScreen() {
       </View>
     </View>}
 
-    {(a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED') && <ReviewRequest activityId={a.id} />}
-    <DeleteActivity activityId={a.id} />
+    {mine && <>
+      {(a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED') && <ReviewRequest activityId={a.id} />}
+      <DeleteActivity activityId={a.id} />
+    </>}
 
-    <ShareRunSheet open={sheet === 'share'} onOpenChange={(open) => setSheet(open ? 'share' : null)} activity={a} unit={unit} />
-    <SendActivitySheet open={sheet === 'send'} onOpenChange={(open) => setSheet(open ? 'send' : null)} activity={a} unit={unit} />
+    {mine && <ShareRunSheet open={sheet === 'share'} onOpenChange={(open) => setSheet(open ? 'share' : null)} activity={a} unit={unit} />}
+    {mine && <SendActivitySheet open={sheet === 'send'} onOpenChange={(open) => setSheet(open ? 'send' : null)} activity={a} unit={unit} />}
   </Screen>;
 }
 
@@ -148,11 +158,13 @@ function Action({ label, icon, onPress, disabled, primary }: { label: string; ic
   </Pressable>;
 }
 
-function ActivityCredits({ activityId, unit }: { activityId: string; unit: Unit }) {
+function ActivityCredits({ activityId, unit, mine }: { activityId: string; unit: Unit; mine: boolean }) {
   const credits = useQuery({
     queryKey: ['activity-credits', activityId],
     queryFn: () => api<Array<{ code: string; title: string; scoringMethod: string; creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null }>>(`/activities/${activityId}/credits`),
   });
+  // Someone else's activity that counted nowhere: nothing to say.
+  if (!mine && !credits.isLoading && !credits.data?.length) return null;
   return <Card style={{ padding: 20, marginTop: 24 }}>
     <Text style={wideLabel(16, 0)}>Competition credits</Text>
     <ErrorNotice error={credits.error} onRetry={() => void credits.refetch()} />
@@ -214,6 +226,7 @@ function ReviewRequest({ activityId }: { activityId: string }) {
 }
 
 const styles = StyleSheet.create({
+  owner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, alignSelf: 'flex-start', maxWidth: '100%' },
   action: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card },
   counts: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.volt, paddingHorizontal: 20, paddingVertical: 16 },
   countsIcon: { width: 40, height: 40, borderRadius: radius.sm, backgroundColor: colors.onAccent, alignItems: 'center', justifyContent: 'center' },
