@@ -10,7 +10,7 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.startajump.app",
-      "buildNumber": "21",
+      "buildNumber": "22",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "infoPlist": {

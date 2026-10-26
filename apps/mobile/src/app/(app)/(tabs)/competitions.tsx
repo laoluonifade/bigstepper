@@ -5,13 +5,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CompetitionPreviewCard, openCompetition } from '@/components/competition';
-import { ArrowRightIcon, CloseIcon, PlayIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon } from '@/components/icons';
+import { ArrowRightIcon, CloseIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon } from '@/components/icons';
 import { TabScreen } from '@/components/Shell';
 import { Sheet } from '@/components/Sheet';
 import { Button, EmptyState, ErrorNotice, haptic, Skeleton, Txt, useNow } from '@/components/ui';
 import { api, post } from '@/lib/api';
 import { useDiscover, useUnit, type DiscoverView } from '@/lib/queries';
-import { colors, fontFamily, radius, scheme, voltWash } from '@/lib/theme';
+import { colors, fontFamily, radius } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { confirm } from '@/lib/dialog';
 
@@ -71,13 +71,6 @@ export default function CompetitionsScreen() {
         <Txt size={13} weight="semibold">{label}</Txt><ArrowRightIcon size={13} />
       </Pressable>)}
     </View>
-
-    {/* Shown while Strava connections are limited: recording in Jump always counts. */}
-    <Pressable onPress={() => router.navigate('/run')} style={({ pressed }) => [styles.record, pressed && { backgroundColor: colors.volt }]} accessibilityRole="link">
-      <View style={styles.recordIcon}><PlayIcon size={12} /></View>
-      <Txt size={13} leading={1.35} style={{ flex: 1 }}><Txt size={13} weight="bold">Record your runs in Jump</Txt> while Strava connections are limited.</Txt>
-      <ArrowRightIcon size={14} />
-    </Pressable>
 
     <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
     {drafts.length > 0 && <Pressable onPress={() => setDraftsOpen(true)} style={({ pressed }) => [styles.drafts, pressed && { borderColor: colors.edge }]} accessibilityRole="button">
@@ -199,8 +192,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   create: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 16 },
   subNav: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 32, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 12 },
-  record: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.lg, borderWidth: 1.5, borderColor: scheme === 'dark' ? colors.volt : colors.edge, backgroundColor: voltWash(0.6), paddingVertical: 8, paddingLeft: 8, paddingRight: 12, marginBottom: 16 },
-  recordIcon: { width: 28, height: 28, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.track, alignItems: 'center', justifyContent: 'center' },
   drafts: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.4)', paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
   draftCount: { minWidth: 28, height: 28, borderRadius: 14, backgroundColor: colors.ink, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
   search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 14 },

@@ -11,7 +11,7 @@ import { templateById } from '../lib/templates';
 import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, EditIcon, LockIcon, PlayIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, EditIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -141,15 +141,6 @@ export function CompetitionsPage() {
         <h1 className="text-[24px] font-extrabold tracking-tight sm:text-[30px]">Competitions</h1>
         {user && <Link to="/competitions/new" className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-transform active:scale-95"><PlusIcon size={15} /> Create</Link>}
       </header>
-
-      {/* Always shown while Strava sync is unreliable for some runners: recording in Jump always counts. */}
-      {user && <Link to="/run" className="mb-4 flex items-center gap-2.5 rounded-lg border-[1.5px] border-ink bg-volt/60 py-2 pl-2 pr-3 transition-colors hover:bg-volt">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-[1.5px] border-ink bg-track" aria-hidden="true">
-          <PlayIcon size={12} className="translate-x-[1px]" />
-        </span>
-        <span className="min-w-0 flex-1 text-[13px] leading-snug"><b>Record your runs in Jump</b> while Strava connections are limited.</span>
-        <ArrowRightIcon size={14} className="shrink-0" />
-      </Link>}
 
       <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
       {/* Drafts stay out of the way: one quiet row that opens a sheet to finish or discard them. */}
