@@ -6,4 +6,7 @@ module.exports = {
   parserOptions: { project: './tsconfig.json', tsconfigRootDir: __dirname },
   env: { node: true, jest: true },
   ignorePatterns: ['dist'],
+  rules: {
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+  },
 };
