@@ -67,6 +67,19 @@ export class RunningService {
         throw new BadRequestException('Samples can only be added while the run is active');
       }
 
+      // A number the run already has with a different time means the phone started counting again (a
+      // reinstall, cleared storage): those are new points, so they go on the end instead of being dropped.
+      // The same number and time is a retried upload, ignored below.
+      const taken = new Map((await manager.query(
+        `SELECT "sequence", "recordedAt" FROM "gps_samples" WHERE "sessionId"=$1 AND "sequence"=ANY($2::integer[])`,
+        [sessionId, input.map((sample) => sample.sequence)],
+      ) as Array<{ sequence: number; recordedAt: Date }>).map((row) => [row.sequence, new Date(row.recordedAt).getTime()]));
+      let next = taken.size ? (await manager.query(`SELECT COALESCE(MAX("sequence"),0)::integer AS "max" FROM "gps_samples" WHERE "sessionId"=$1`, [sessionId]) as Array<{ max: number }>)[0].max : 0;
+      const sequenceOf = (sample: GpsSampleDto) => {
+        const at = taken.get(sample.sequence);
+        return at === undefined || at === new Date(sample.recordedAt).getTime() ? sample.sequence : (next += 1);
+      };
+
       await manager
         .createQueryBuilder()
         .insert()
@@ -74,7 +87,7 @@ export class RunningService {
         .values(
           input.map((sample) => ({
             sessionId,
-            sequence: sample.sequence,
+            sequence: sequenceOf(sample),
             latitude: sample.latitude,
             longitude: sample.longitude,
             accuracy: sample.accuracy,

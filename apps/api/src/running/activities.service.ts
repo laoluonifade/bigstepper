@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { MoreThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { refreshLeagueDistance } from '../leagues/league-credits';
 import { uncreditActivity } from '../tables/competition-credits';
 import { GpsSample } from './gps-sample.entity';
@@ -31,8 +31,12 @@ export class ActivitiesService {
     private readonly reviews: Repository<ActivityVerificationReview>,
   ) {}
 
+  /** Yours, newest first, minus any where GPS saw no movement at all (0.00 km isn't saved). */
   list(userId: string) {
-    return this.activities.find({ where: { userId }, order: { startedAt: 'DESC' }, take: 100 });
+    return this.activities.find({
+      where: [{ userId, verificationStatus: Not('REJECTED') }, { userId, verificationStatus: 'REJECTED', validatedDistanceMetres: MoreThan(0) }],
+      order: { startedAt: 'DESC' }, take: 100,
+    });
   }
 
   async calendar(userId: string, month?: string, timeZone = 'UTC') {

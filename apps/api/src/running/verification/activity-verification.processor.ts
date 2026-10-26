@@ -16,8 +16,8 @@ const MAX_STEPS_PER_SECOND = 5.5;
 const MIN_STRIDE_METRES = 0.45;
 /** Slack for GPS under-measuring a short or twisty route before extra steps look like shaking. */
 const SHAKE_ALLOWANCE_STEPS = 150;
-/** At least this share of fixes must be accurate enough to use (cities and tall buildings knock some out). */
-const MIN_GPS_CONFIDENCE = 0.35;
+/** Less than this and GPS saw no movement at all (it would read 0.00 km): nothing to save. */
+const MIN_MOVED_METRES = 5;
 
 /**
  * Whether a recorded activity counts, and how many of its steps do.
@@ -25,7 +25,7 @@ const MIN_GPS_CONFIDENCE = 0.35;
  * Like Strava, distance comes from GPS alone, and steps only count while the GPS shows you moving. A
  * phone shaken in a hand or a pocket counts steps at a perfectly human rate, so steps can't stand in for
  * distance; they're capped at what the route allows (no stride is shorter than about 0.45 m, so 20 m of
- * GPS can't carry 3,000 steps), and far more steps than that is shaking, which flags the activity.
+ * GPS can't carry 3,000 steps), and far more steps than that is shaking, noted but never held against it.
  */
 export function judgeActivity(
   track: Pick<TrackMeasure, 'distanceMetres' | 'confidence' | 'usableCount' | 'reasons'>,
@@ -56,14 +56,13 @@ export function judgeActivity(
   }
 
   const cycling = activityType === 'cycle';
-  const gpsOk = track.usableCount >= 2 && track.confidence >= MIN_GPS_CONFIDENCE && track.distanceMetres > 0;
-  if (!gpsOk) reasons.add('NO_GPS_MOVEMENT');
+  if (track.distanceMetres < MIN_MOVED_METRES) reasons.add('NO_GPS_MOVEMENT');
   const stepCap = Math.ceil(track.distanceMetres / MIN_STRIDE_METRES);
   if (!cycling && steps > Math.max(stepCap * 2, stepCap + SHAKE_ALLOWANCE_STEPS)) reasons.add('STEPS_WITHOUT_MOVEMENT');
-  // Only travel no person could do on foot (or a bike) for a sustained stretch is held against it.
-  const tampered = reasons.has('IMPLAUSIBLE_SPEED');
+  // Nothing is flagged: whatever distance GPS measured counts, and the reasons above are only notes
+  // for the runner. GPS that saw no movement at all (0.00 km) isn't an activity, so it isn't saved.
   return {
-    status: !tampered && gpsOk ? 'VERIFIED' as const : 'FLAGGED' as const,
+    status: track.distanceMetres >= MIN_MOVED_METRES ? 'VERIFIED' as const : 'REJECTED' as const,
     validatedSteps: cycling ? 0 : Math.min(steps, stepCap),
     reasons,
   };
@@ -99,6 +98,7 @@ export class ActivityVerificationProcessor extends WorkerHost {
     const movingSeconds = track.movingSeconds;
     const confidence = track.confidence;
     const cycling = activity.activityType === 'cycle';
+    const noun = cycling ? 'ride' : activity.activityType;
     // Steps still count as steps; they no longer turn into distance.
     const stepDistance = 0;
 
@@ -143,10 +143,10 @@ export class ActivityVerificationProcessor extends WorkerHost {
       }
       if (!(job.data.recheck && status !== 'VERIFIED')) await manager.query(
         `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,$5)`,
-        [activity.userId, status === 'VERIFIED' ? 'ACTIVITY_VERIFIED' : 'ACTIVITY_REVIEW',
-          status === 'VERIFIED' ? `Your ${activity.activityType} is verified` : `Your ${activity.activityType} needs review`,
-          status === 'VERIFIED' ? 'Your distance and steps are checked. Open Jump to see your progress.' : 'Open Jump to see what needs attention.',
-          `/activities/${activity.id}`],
+        status === 'VERIFIED'
+          ? [activity.userId, 'ACTIVITY_VERIFIED', `Your ${noun} is verified`, 'Your distance and steps are checked. Open Jump to see your progress.', `/activities/${activity.id}`]
+          // Kept (with its GPS points) but off your lists: there was no distance to show.
+          : [activity.userId, 'ACTIVITY_NO_DISTANCE', `Your ${noun} didn’t record any distance`, 'GPS didn’t pick up any movement, so it isn’t saved. Next time, wait for a GPS signal outdoors before you start.', null],
       );
     });
     this.logger.log(`Activity ${activity.id} processed as ${status}`);

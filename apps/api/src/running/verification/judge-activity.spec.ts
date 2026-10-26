@@ -7,10 +7,10 @@ const samples = (ticks: number, perTick: number) =>
 const track = (distanceMetres: number, usableCount = 40) => ({ distanceMetres, confidence: 0.9, usableCount, reasons: new Set<string>() });
 
 describe('judgeActivity', () => {
-  it('flags a phone shaken while standing still: steps at a human rate, no GPS movement', () => {
+  it('doesn’t save a phone shaken while standing still: steps at a human rate, no GPS movement', () => {
     // 10 minutes at 2.5 steps/s, the pace a shaken phone reports.
     const verdict = judgeActivity(track(0), samples(120, 12), 'walk');
-    expect(verdict.status).toBe('FLAGGED');
+    expect(verdict.status).toBe('REJECTED');
     expect(verdict.validatedSteps).toBe(0);
     expect(verdict.reasons.has('NO_GPS_MOVEMENT')).toBe(true);
     expect(verdict.reasons.has('STEPS_WITHOUT_MOVEMENT')).toBe(true);
@@ -63,5 +63,11 @@ describe('judgeActivity', () => {
     const verdict = judgeActivity(track(8000), samples(60, 5), 'cycle');
     expect(verdict.status).toBe('VERIFIED');
     expect(verdict.validatedSteps).toBe(0);
+  });
+
+  it('verifies any distance GPS measured, never flagging it: weak GPS, a car-fast stretch or a short one', () => {
+    const weak = { distanceMetres: 940, confidence: 0.2, usableCount: 30, reasons: new Set(['LOW_GPS_ACCURACY', 'IMPLAUSIBLE_SPEED']) };
+    expect(judgeActivity(weak, [], 'cycle').status).toBe('VERIFIED');
+    expect(judgeActivity(track(40), samples(10, 1), 'run').status).toBe('VERIFIED');
   });
 });
