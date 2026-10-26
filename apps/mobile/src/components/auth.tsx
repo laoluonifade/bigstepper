@@ -67,7 +67,7 @@ function deviceRegion() {
 }
 
 /** "Continue with Google": Google's sheet, then the API signs in, links the account with that email, or creates one. */
-export function GoogleButton({ label = 'Continue with Google' }: { label?: string }) {
+function GoogleButton({ label }: { label: string }) {
   const auth = useAuth();
   const signIn = useMutation({
     mutationFn: async () => {
@@ -85,7 +85,7 @@ export function GoogleButton({ label = 'Continue with Google' }: { label?: strin
     },
   });
   if (!google) return null;
-  return <View style={{ marginBottom: 12 }}>
+  return <View>
     <Pressable onPress={() => signIn.mutate()} disabled={signIn.isPending} accessibilityRole="button" accessibilityLabel={label}
       style={({ pressed }) => [styles.google, pressed && { opacity: 0.8 }]}>
       {signIn.isPending ? <ActivityIndicator color="#1F1F1F" /> : <GoogleG />}
@@ -110,12 +110,16 @@ const apple: AppleModule | null = (() => {
  * "Sign in with Apple", Apple's own button, as App Review requires next to Google. Apple shares the name
  * and email only the first time, so they go to the API straight away.
  */
-export function AppleButton({ signUp = false }: { signUp?: boolean }) {
-  const auth = useAuth();
+function useAppleAvailable() {
   const [available, setAvailable] = useState(false);
   useEffect(() => {
     void apple?.isAvailableAsync().then(setAvailable).catch(() => setAvailable(false));
   }, []);
+  return available;
+}
+
+function AppleButton({ signUp }: { signUp: boolean }) {
+  const auth = useAuth();
   const signIn = useMutation({
     mutationFn: async () => {
       if (!apple) throw new Error('Sign in with Apple isn’t available in this version of Jump');
@@ -141,19 +145,35 @@ export function AppleButton({ signUp = false }: { signUp?: boolean }) {
       auth.authenticate(response);
     },
   });
-  if (!apple || !available) return null;
+  if (!apple) return null;
   const Button = apple.AppleAuthenticationButton;
-  return <View style={{ marginBottom: 12 }}>
+  return <View>
     <View style={signIn.isPending && { opacity: 0.6 }} pointerEvents={signIn.isPending ? 'none' : 'auto'}>
       <Button
         buttonType={signUp ? apple.AppleAuthenticationButtonType.SIGN_UP : apple.AppleAuthenticationButtonType.CONTINUE}
         buttonStyle={scheme === 'dark' ? apple.AppleAuthenticationButtonStyle.WHITE : apple.AppleAuthenticationButtonStyle.BLACK}
         cornerRadius={radius.base}
-        style={{ height: 46, width: '100%' }}
+        style={{ height: 44, width: '100%' }}
         onPress={() => signIn.mutate()}
       />
     </View>
     {signIn.error ? <View style={{ marginTop: 8 }}><ErrorNotice error={signIn.error} /></View> : null}
+  </View>;
+}
+
+/**
+ * The other ways in, under the form: "or", then Apple (as App Review wants, as prominent as Google) and
+ * Google. Nothing at all where neither works (Expo Go, Android until Google is set up there).
+ */
+export function SocialSignIn({ signUp = false }: { signUp?: boolean }) {
+  const appleAvailable = useAppleAvailable();
+  if (!appleAvailable && !google) return null;
+  return <View>
+    <OrDivider />
+    <View style={{ gap: 10 }}>
+      {appleAvailable && <AppleButton signUp={signUp} />}
+      <GoogleButton label={signUp ? 'Sign up with Google' : 'Continue with Google'} />
+    </View>
   </View>;
 }
 
@@ -185,7 +205,7 @@ const styles = StyleSheet.create({
   form: { flex: 1, justifyContent: 'center', paddingVertical: 32, width: '100%', maxWidth: 420, alignSelf: 'center' },
   or: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 24 },
   orLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
-  google: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 46, borderRadius: radius.base, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#747775' },
+  google: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 44, borderRadius: radius.base, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#747775' },
   googleText: { fontFamily: fontFamily('semibold'), fontSize: 15, color: '#1F1F1F' },
   strava: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 46, borderRadius: radius.base, backgroundColor: '#FC5200', opacity: 0.6 },
   stravaText: { fontFamily: fontFamily('bold', 'wide'), fontSize: 13, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.white },

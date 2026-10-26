@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInRight } from 'react-native-reanimated';
-import { AppleButton, AuthHeading, AuthScreen, GoogleButton, OrDivider, StravaButton } from '@/components/auth';
+import { AuthHeading, AuthScreen, SocialSignIn } from '@/components/auth';
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
 import { Button, ErrorNotice, haptic, TextField, TextLink, Txt } from '@/components/ui';
 import { post } from '@/lib/api';
@@ -21,8 +21,8 @@ const STEPS = [
 const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 /**
- * Sign-up in three short steps rather than one long form: the account first (with Strava right at the
- * top, so it's the first thing you see), then who you are, then how to reach you.
+ * Sign-up in three short steps rather than one long form: the account first (email, or Apple or Google
+ * under it), then who you are, then how to reach you.
  */
 export default function RegisterScreen() {
   const auth = useAuth();
@@ -64,14 +64,11 @@ export default function RegisterScreen() {
 
     <Animated.View key={step} entering={FadeInRight.duration(220)} style={{ gap: 20 }}>
       {step === 0 && <>
-        <AppleButton signUp />
-        <GoogleButton label="Sign up with Google" />
-        <StravaButton label="Continue with Strava" />
-        <OrDivider />
         <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
         <TextField label="Password" hint={password.length > 0 && password.length < 8 ? `${8 - password.length} more characters needed` : 'At least 8 characters.'}
           value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
         <Button full title="Continue" disabled={!looksLikeEmail(email) || password.length < 8} onPress={() => go(1)} />
+        <SocialSignIn signUp />
       </>}
 
       {step === 1 && <>

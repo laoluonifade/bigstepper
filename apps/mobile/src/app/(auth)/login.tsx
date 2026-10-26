@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
-import { AppleButton, AuthHeading, AuthScreen, GoogleButton, OrDivider, StravaButton } from '@/components/auth';
+import { AuthHeading, AuthScreen, SocialSignIn } from '@/components/auth';
 import { Button, ErrorNotice, Notice, TextField, TextLink, Txt, type TextFieldRef } from '@/components/ui';
 import { post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -33,12 +33,11 @@ export default function LoginScreen() {
       <ErrorNotice error={login.error} />
       <Button full title={login.isPending ? 'Logging in…' : 'Log in'} loading={login.isPending} disabled={!email.trim() || !password} onPress={submit} />
     </View>
-    <OrDivider />
-    <AppleButton />
-    <GoogleButton />
-    <StravaButton />
-    <View style={{ marginTop: 24, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 }}>
+    <View style={{ marginTop: 16, alignItems: 'flex-end' }}>
       <TextLink title="Forgot password?" onPress={() => router.push('/forgot-password')} />
+    </View>
+    <SocialSignIn />
+    <View style={{ marginTop: 28, alignItems: 'center' }}>
       <Txt size={14} color="ink2">New here? <TextLink title="Create an account" onPress={() => router.push('/register')} /></Txt>
     </View>
   </AuthScreen>;
