@@ -7,6 +7,7 @@ import { useNotifications, useProfile } from '@/lib/queries';
 import { setAppBadge } from '@/lib/push';
 import { StandingNudge } from '@/components/StandingNudge';
 import { TrophyCelebration } from '@/components/Trophies';
+import { UsernamePrompt } from '@/components/UsernamePrompt';
 import { colors, fontFamily } from '@/lib/theme';
 
 /** Screens a runner can use before joining their first competition: the ways into one, and account basics. */
@@ -55,5 +56,7 @@ export default function AppLayout() {
   <StandingNudge />
   {/* A new podium finish: the medal drops in, once. */}
   <TrophyCelebration />
+  {/* Still on the generated sign-up username: pick your own. */}
+  <UsernamePrompt />
   </>;
 }

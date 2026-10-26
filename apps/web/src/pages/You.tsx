@@ -638,7 +638,7 @@ export function CreatorPage() {
             {(props) => <input {...props} className="field" minLength={2} maxLength={100} value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />}
           </Field>
           <Field label="Social or community URL" optional>
-            {(props) => <input {...props} className="field" type="url" placeholder="https://" value={socialUrl} onChange={(event) => setSocialUrl(event.target.value)} />}
+            {(props) => <input {...props} className="field" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" placeholder="instagram.com/yourname" value={socialUrl} onChange={(event) => setSocialUrl(event.target.value)} />}
           </Field>
           <Field label="About" optional>
             {(props) => <textarea {...props} className="field min-h-28" maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} />}

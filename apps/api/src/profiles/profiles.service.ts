@@ -30,7 +30,10 @@ export class ProfilesService {
     const profile = await this.getMine(userId);
     // Only fields actually sent: assigning `undefined` for the rest blanked them in the response.
     const changes: Partial<Profile> = {};
-    if (input.username !== undefined) changes.username = input.username.toLowerCase();
+    if (input.username !== undefined) {
+      changes.username = input.username.toLowerCase();
+      changes.usernameChosen = true;
+    }
     if (input.displayName !== undefined) {
       const name = input.displayName.trim();
       if (!name) throw new BadRequestException('Display name can’t be empty');

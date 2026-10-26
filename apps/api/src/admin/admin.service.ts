@@ -367,12 +367,13 @@ export class AdminService {
 
   async resolveReview(actorUserId: string, reviewId: string, input: ResolveReviewDto) {
     return this.dataSource.transaction(async (manager) => {
+      // Lock the review alone: Postgres refuses FOR UPDATE on a LEFT JOINed relation, so the activity loads after.
       const review = await manager.findOne(ActivityVerificationReview, {
         where: { id: reviewId, status: 'PENDING' },
-        relations: { activity: true },
         lock: { mode: 'pessimistic_write' },
       });
       if (!review) throw new NotFoundException('Pending review not found');
+      review.activity = await manager.findOneOrFail(Activity, { where: { id: review.activityId } });
 
       const verificationStatus = input.decision === 'APPROVED' ? 'VERIFIED' : 'REJECTED';
       review.status = input.decision;

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, ConflictException, Logger, UnauthorizedException } from '@nestjs/common';
 import { MailService } from '../mail/mail.service';
 import { passwordResetEmail, verificationEmail, welcomeEmail } from '../mail/templates';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -12,6 +12,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import { AuthActionToken } from './auth-action-token.entity';
 import { ConfigService } from '@nestjs/config';
 import { MoreThan } from 'typeorm';
+import { OAuth2Client } from 'google-auth-library';
+import { appleKeyConfigured, exchangeAppleCode, verifyAppleIdentityToken, type AppleConfig } from './apple';
+import type { AppleSignInDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -43,6 +46,8 @@ export class AuthService {
     displayName?: string;
     whatsappNumber?: string;
     gender?: Profile['gender'];
+    /** Already proved by the sign-in provider (Google): no verification email. */
+    emailVerified?: boolean;
     afterCreate?: (manager: EntityManager, user: User) => Promise<void>;
   }) {
     const normalizedEmail = input.email.trim().toLowerCase();
@@ -54,6 +59,7 @@ export class AuthService {
       email: normalizedEmail,
       passwordHash,
       displayName: input.displayName?.trim() || normalizedEmail.split('@')[0],
+      emailVerified: input.emailVerified ?? false,
     });
     try {
       await this.usersRepo.manager.transaction(async (manager) => {
@@ -90,6 +96,10 @@ export class AuthService {
     }
 
     const response = await this.generateToken(user);
+    if (user.emailVerified) {
+      if (!user.email.endsWith('.invalid')) this.mail.sendInBackground(welcomeEmail({ address: user.email, name: user.displayName }));
+      return response;
+    }
     const verificationToken = await this.createActionToken(user.id, 'VERIFY_EMAIL', 24 * 60 * 60 * 1000);
     this.mail.sendInBackground(
       verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', verificationToken)),
@@ -100,6 +110,119 @@ export class AuthService {
       ...response,
       ...(this.config.get('NODE_ENV') === 'development' ? { developmentVerificationToken: verificationToken } : {}),
     };
+  }
+
+  private readonly google = new OAuth2Client();
+
+  private googleClientIds() {
+    return ['GOOGLE_WEB_CLIENT_ID', 'GOOGLE_IOS_CLIENT_ID', 'GOOGLE_ANDROID_CLIENT_ID'].map((name) => this.config.get<string>(name)).filter((id): id is string => Boolean(id));
+  }
+
+  /** The web page draws Google's button with this (public) id; null hides it. */
+  googleConfig() {
+    return { webClientId: this.config.get<string>('GOOGLE_WEB_CLIENT_ID') || null };
+  }
+
+  /**
+   * "Continue with Google". The ID token must be signed by Google for one of Jump's client ids and carry a
+   * verified email. A known Google account signs in; otherwise the account with that email gets Google
+   * linked (Google has proved the address); otherwise a new account starts, already verified.
+   */
+  async googleSignIn(idToken: string, countryCode?: string) {
+    const audience = this.googleClientIds();
+    if (!audience.length) throw new BadRequestException('Google sign-in is not available yet');
+    let payload: { sub: string; email?: string; email_verified?: boolean; name?: string } | undefined;
+    try {
+      payload = (await this.google.verifyIdToken({ idToken, audience })).getPayload();
+    } catch {
+      throw new UnauthorizedException('Google sign-in failed. Try again.');
+    }
+    if (!payload?.sub || !payload.email || !payload.email_verified) {
+      throw new UnauthorizedException('Your Google account needs a verified email');
+    }
+    const email = payload.email.trim().toLowerCase();
+    const sub = payload.sub;
+
+    const linked = await this.usersRepo.createQueryBuilder('user').where('user.googleSub = :sub', { sub }).getOne();
+    if (linked) return this.generateToken(linked);
+
+    const existing = await this.usersRepo.findOne({ where: { email } });
+    if (existing) {
+      await this.usersRepo.update({ id: existing.id }, { googleSub: sub, emailVerified: true });
+      return this.generateToken({ ...existing, emailVerified: true });
+    }
+
+    return this.createAccount({
+      email,
+      countryCode: countryCode ?? 'NG',
+      displayName: payload.name,
+      emailVerified: true,
+      afterCreate: async (manager, user) => {
+        await manager.update(User, { id: user.id }, { googleSub: sub });
+      },
+    });
+  }
+
+  private readonly logger = new Logger(AuthService.name);
+
+  appleConfig(): AppleConfig {
+    return {
+      bundleId: this.config.get<string>('APPLE_BUNDLE_ID') || 'com.startajump.app',
+      teamId: this.config.get<string>('APPLE_TEAM_ID') ?? '',
+      keyId: this.config.get<string>('APPLE_KEY_ID') ?? '',
+      privateKey: this.config.get<string>('APPLE_PRIVATE_KEY') ?? '',
+    };
+  }
+
+  /**
+   * "Sign in with Apple". Same rules as Google: a known Apple id signs in; a verified email already on Jump
+   * gets Apple linked; otherwise a new, verified account (a "Hide My Email" relay address is fine). Apple
+   * sends the email and name only the first time, so an Apple id we've never seen without an email can't
+   * make an account.
+   */
+  async appleSignIn(input: AppleSignInDto) {
+    const config = this.appleConfig();
+    let identity: Awaited<ReturnType<typeof verifyAppleIdentityToken>>;
+    try {
+      identity = await verifyAppleIdentityToken(this.jwtService, input.identityToken, config.bundleId);
+    } catch {
+      throw new UnauthorizedException('Sign in with Apple failed. Try again.');
+    }
+    const { sub, email } = identity;
+
+    let response: Awaited<ReturnType<AuthService['generateToken']>>;
+    const linked = await this.usersRepo.createQueryBuilder('user').where('user.appleSub = :sub', { sub }).getOne();
+    if (linked) {
+      response = await this.generateToken(linked);
+    } else {
+      if (!email || !identity.emailVerified) {
+        throw new UnauthorizedException('Apple didn’t share your email. In Settings › Apple Account › Sign in with Apple, stop using Jump, then try again.');
+      }
+      const existing = await this.usersRepo.findOne({ where: { email } });
+      if (existing) {
+        await this.usersRepo.update({ id: existing.id }, { appleSub: sub, emailVerified: true });
+        response = await this.generateToken({ ...existing, emailVerified: true });
+      } else {
+        response = await this.createAccount({
+          email,
+          countryCode: input.countryCode ?? 'NG',
+          displayName: input.displayName,
+          emailVerified: true,
+          afterCreate: async (manager, user) => {
+            await manager.update(User, { id: user.id }, { appleSub: sub });
+          },
+        });
+      }
+    }
+
+    // Keep a refresh token so deleting the account can revoke Jump at Apple. Never holds up the sign-in.
+    if (input.authorizationCode && appleKeyConfigured(config)) {
+      const userId = response.user.id;
+      void exchangeAppleCode(this.jwtService, config, input.authorizationCode)
+        .then(async (token) => { if (token) await this.usersRepo.update({ id: userId }, { appleRefreshToken: token }); })
+        .catch((error: unknown) => this.logger.warn(`Apple token exchange failed: ${error instanceof Error ? error.message : error}`));
+    }
+    return response;
   }
 
   /** Session for a user who proved who they are some other way (Strava sign-in). */

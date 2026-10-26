@@ -17,6 +17,18 @@ export class User {
   @Column({ default: false })
   emailVerified: boolean;
 
+  /** The Google account's id once the runner has used "Continue with Google". */
+  @Column({ type: 'varchar', length: 64, nullable: true, select: false })
+  googleSub: string | null;
+
+  /** Apple's id for the runner once they've used "Sign in with Apple". */
+  @Column({ type: 'varchar', length: 64, nullable: true, select: false })
+  appleSub: string | null;
+
+  /** Kept only so deleting the account can revoke Jump's access at Apple. */
+  @Column({ type: 'varchar', length: 512, nullable: true, select: false })
+  appleRefreshToken: string | null;
+
   @Column({ default: 'runner' })
   role: 'runner' | 'admin' | 'compliance';
 

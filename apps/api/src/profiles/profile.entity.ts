@@ -16,6 +16,10 @@ export class Profile {
   @Column({ unique: true })
   username: string;
 
+  /** False while the runner still has the generated sign-up username; the app asks them to pick one. */
+  @Column({ default: false })
+  usernameChosen: boolean;
+
   @Column()
   displayName: string;
 

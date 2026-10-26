@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInRight } from 'react-native-reanimated';
-import { AuthHeading, AuthScreen, OrDivider, StravaButton } from '@/components/auth';
+import { AppleButton, AuthHeading, AuthScreen, GoogleButton, OrDivider, StravaButton } from '@/components/auth';
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
 import { Button, ErrorNotice, haptic, TextField, TextLink, Txt } from '@/components/ui';
 import { post } from '@/lib/api';
@@ -64,6 +64,8 @@ export default function RegisterScreen() {
 
     <Animated.View key={step} entering={FadeInRight.duration(220)} style={{ gap: 20 }}>
       {step === 0 && <>
+        <AppleButton signUp />
+        <GoogleButton label="Sign up with Google" />
         <StravaButton label="Continue with Strava" />
         <OrDivider />
         <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />

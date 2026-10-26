@@ -28,6 +28,35 @@ let lastKey = '';
 /** Distance and pace change every fix; the clock ticks by itself. Refresh at most this often. */
 const EVERY_MS = 4_000;
 
+/** The app group the widget extension shares with the app (see app.json). */
+const APP_GROUP = 'group.com.startajump.app';
+let logoUri: string | null | undefined;
+
+/**
+ * The widget runs in its own process and can't see the app's bundled images, so the wordmark is copied
+ * once into the shared app group folder and passed by path. Null (the widget writes "JUMP") if that fails.
+ */
+async function sharedLogo(): Promise<string | null> {
+  if (logoUri !== undefined) return logoUri;
+  try {
+    const { Asset } = require('expo-asset') as typeof import('expo-asset');
+    const { File, Paths } = require('expo-file-system') as typeof import('expo-file-system');
+    const folder = Paths.appleSharedContainers[APP_GROUP];
+    if (!folder) return (logoUri = null);
+    const target = new File(folder, 'jump-live-logo.png');
+    if (!target.exists) {
+      const [asset] = await Asset.loadAsync(require('../../assets/images/live-logo.png'));
+      if (!asset?.localUri) return (logoUri = null);
+      new File(asset.localUri).copy(target);
+    }
+    return (logoUri = target.uri);
+  } catch {
+    return (logoUri = null);
+  }
+}
+// Ready before the first run starts.
+if (factory) void sharedLogo();
+
 const SYMBOL = { run: 'figure.run', walk: 'figure.walk', cycle: 'bicycle' } as const;
 const TITLE = { run: 'Run', walk: 'Walk', cycle: 'Ride' } as const;
 
@@ -55,6 +84,7 @@ function propsFor(run: LiveRun, finished = false): RunActivityProps | null {
     timerStart: now - run.movingSeconds * 1000,
     pausedAt: paused || finished ? now : null,
     finished,
+    logo: logoUri ?? null,
   };
 }
 
@@ -107,20 +137,4 @@ export function syncLiveActivity(run: LiveRun) {
       void ending.end(last ? { after: new Date(Date.now() + 5 * 60_000) } as never : 'immediate', last ?? undefined).catch(() => undefined);
     }
   } catch { /* the lock screen is a nicety: never let it break recording */ }
-}
-
-/**
- * Pause and Resume pressed on the lock screen or in the Dynamic Island. The press runs in the app (the
- * recording keeps it alive in the background), and the recorder's change updates the activity.
- */
-export function onLiveActivityControl(handlers: { pause: () => void; resume: () => void }) {
-  if (!factory) return;
-  try {
-    const { addUserInteractionListener } = require('expo-widgets') as typeof import('expo-widgets');
-    addUserInteractionListener((event) => {
-      if (event.source !== 'RunActivity') return;
-      if (event.target === 'pause') handlers.pause();
-      else if (event.target === 'resume') handlers.resume();
-    });
-  } catch { /* a build without widgets */ }
 }

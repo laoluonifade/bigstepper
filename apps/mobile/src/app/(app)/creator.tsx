@@ -41,7 +41,7 @@ export default function CreatorScreen() {
         { value: 'influencer', label: 'Influencer' }, { value: 'community_manager', label: 'Community manager' }, { value: 'run_club', label: 'Run club' }, { value: 'other', label: 'Other' },
       ]} />
       <TextField label="Display name" maxLength={100} value={displayName} onChangeText={setDisplayName} />
-      <TextField label="Social or community URL" optional keyboardType="url" autoCapitalize="none" placeholder="https://" value={socialUrl} onChangeText={setSocialUrl} />
+      <TextField label="Social or community URL" optional keyboardType="url" autoCapitalize="none" autoCorrect={false} placeholder="instagram.com/yourname" value={socialUrl} onChangeText={setSocialUrl} />
       <TextField label="About" optional multiline maxLength={500} value={bio} onChangeText={setBio} style={{ minHeight: 112 }} />
       <ErrorNotice error={signup.error} />
       <Txt size={13} color="ink2">We’ll let you know once it’s reviewed. Free competitions are open to everyone in the meantime.</Txt>

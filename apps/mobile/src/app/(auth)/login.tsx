@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
-import { AuthHeading, AuthScreen, OrDivider, StravaButton } from '@/components/auth';
+import { AppleButton, AuthHeading, AuthScreen, GoogleButton, OrDivider, StravaButton } from '@/components/auth';
 import { Button, ErrorNotice, Notice, TextField, TextLink, Txt, type TextFieldRef } from '@/components/ui';
 import { post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -34,6 +34,8 @@ export default function LoginScreen() {
       <Button full title={login.isPending ? 'Logging in…' : 'Log in'} loading={login.isPending} disabled={!email.trim() || !password} onPress={submit} />
     </View>
     <OrDivider />
+    <AppleButton />
+    <GoogleButton />
     <StravaButton />
     <View style={{ marginTop: 24, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 }}>
       <TextLink title="Forgot password?" onPress={() => router.push('/forgot-password')} />

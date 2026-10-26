@@ -27,3 +27,37 @@ export class RegisterDto extends LoginDto {
   @Matches(/^\+[1-9]\d{7,14}$/, { message: 'Enter your WhatsApp number with its country code' })
   whatsappNumber?: string;
 }
+
+export class GoogleSignInDto {
+  /** The ID token from Google Sign-In on the phone or the web. */
+  @IsString()
+  @Length(20, 4096)
+  idToken: string;
+
+  /** The device's region, for a new account's country. Changeable later in the profile. */
+  @IsOptional()
+  @Matches(/^[A-Z]{2}$/)
+  countryCode?: string;
+}
+
+export class AppleSignInDto {
+  @IsString()
+  @Length(20, 4096)
+  identityToken: string;
+
+  /** One-time code, swapped for a refresh token so deleting the account can revoke it. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  authorizationCode?: string;
+
+  /** Apple shares the name only on the very first sign-in. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  displayName?: string;
+
+  @IsOptional()
+  @Matches(/^[A-Z]{2}$/)
+  countryCode?: string;
+}

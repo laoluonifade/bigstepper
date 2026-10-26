@@ -98,6 +98,17 @@ export function validateEnvironment(env: Environment) {
     CLOUDINARY_CLOUD_NAME: env.CLOUDINARY_CLOUD_NAME?.trim() || '',
     CLOUDINARY_API_KEY: env.CLOUDINARY_API_KEY?.trim() || '',
     CLOUDINARY_API_SECRET: env.CLOUDINARY_API_SECRET?.trim() || '',
+    // "Continue with Google" stays off until the web client id is set. All three are public OAuth client ids;
+    // a Google ID token must be issued to one of them.
+    GOOGLE_WEB_CLIENT_ID: env.GOOGLE_WEB_CLIENT_ID?.trim() || '',
+    GOOGLE_IOS_CLIENT_ID: env.GOOGLE_IOS_CLIENT_ID?.trim() || '',
+    GOOGLE_ANDROID_CLIENT_ID: env.GOOGLE_ANDROID_CLIENT_ID?.trim() || '',
+    // Sign in with Apple: tokens are checked against the app's bundle id. The key (Team ID, Key ID and the
+    // .p8 contents, newlines as \n) is only for revoking access when an account is deleted.
+    APPLE_BUNDLE_ID: env.APPLE_BUNDLE_ID?.trim() || 'com.startajump.app',
+    APPLE_TEAM_ID: env.APPLE_TEAM_ID?.trim() || '',
+    APPLE_KEY_ID: env.APPLE_KEY_ID?.trim() || '',
+    APPLE_PRIVATE_KEY: env.APPLE_PRIVATE_KEY?.trim() || '',
     // Strava sign-in and activity sync stay off until the client id and secret are set.
     STRAVA_CLIENT_ID: env.STRAVA_CLIENT_ID?.trim() || '',
     STRAVA_CLIENT_SECRET: env.STRAVA_CLIENT_SECRET?.trim() || '',

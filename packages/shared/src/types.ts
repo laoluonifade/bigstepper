@@ -22,6 +22,8 @@ export interface Profile {
   /** Set when a Jump admin gave this runner a blue tick. */
   verifiedAt?: string | null;
   username: string;
+  /** False while it's still the generated sign-up username. */
+  usernameChosen?: boolean;
   displayName: string;
   preferredUnit: Unit;
   countryCode: string;

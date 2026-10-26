@@ -1,6 +1,9 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
+import { appleKeyConfigured, revokeAppleToken } from '../auth/apple';
 
 /** Unfinished: still open, running, or waiting to be settled. */
 const LIVE = `t."status" NOT IN ('SETTLED','CANCELLED','DRAFT') AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now() OR t."type" <> 'free')`;
@@ -21,7 +24,7 @@ const LIVE = `t."status" NOT IN ('SETTLED','CANCELLED','DRAFT') AND (t."scoringC
 export class AccountDeletionService {
   private readonly logger = new Logger(AccountDeletionService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly dataSource: DataSource, @Optional() private readonly config?: ConfigService) {}
 
   /** Why the account can't be deleted yet, or null when it can. */
   async blocker(userId: string, manager: EntityManager = this.dataSource.manager): Promise<string | null> {
@@ -48,11 +51,13 @@ export class AccountDeletionService {
   }
 
   async delete(userId: string) {
+    let appleRefreshToken: string | null = null;
     await this.dataSource.transaction(async (manager) => {
       // Lock the account so a payout or entry can't slip in between the check and the deletion.
       await manager.query(`SELECT 1 FROM "users" WHERE "id" = $1 FOR UPDATE`, [userId]);
       const reason = await this.blocker(userId, manager);
       if (reason) throw new ConflictException(reason);
+      [{ appleRefreshToken } = { appleRefreshToken: null }] = await manager.query(`SELECT "appleRefreshToken" FROM "users" WHERE "id" = $1`, [userId]) as Array<{ appleRefreshToken: string | null }>;
 
       // Activity history: credits first (they guard finished boards), then sessions, which take their
       // activities and GPS points with them.
@@ -86,11 +91,29 @@ export class AccountDeletionService {
       );
       // The account row stays for the records that must, but can't be signed into or found.
       await manager.query(
-        `UPDATE "users" SET "email" = $2, "passwordHash" = $3, "displayName" = 'Deleted runner', "emailVerified" = false, "deletedAt" = now() WHERE "id" = $1`,
+        `UPDATE "users" SET "email" = $2, "passwordHash" = $3, "displayName" = 'Deleted runner', "emailVerified" = false, "deletedAt" = now(),
+           "googleSub" = NULL, "appleSub" = NULL, "appleRefreshToken" = NULL WHERE "id" = $1`,
         [userId, `deleted-${tag}@deleted.startajump.invalid`, `deleted:${randomBytes(24).toString('hex')}`],
       );
     });
     this.logger.log(`Account ${userId} deleted`);
+    if (appleRefreshToken) await this.revokeApple(appleRefreshToken);
     return { deleted: true };
+  }
+
+  /** Signed in with Apple: tell Apple Jump no longer has access. Best effort; the deletion already happened. */
+  private async revokeApple(refreshToken: string) {
+    const config = {
+      bundleId: this.config?.get<string>('APPLE_BUNDLE_ID') || 'com.startajump.app',
+      teamId: this.config?.get<string>('APPLE_TEAM_ID') ?? '',
+      keyId: this.config?.get<string>('APPLE_KEY_ID') ?? '',
+      privateKey: this.config?.get<string>('APPLE_PRIVATE_KEY') ?? '',
+    };
+    if (!appleKeyConfigured(config)) return;
+    try {
+      await revokeAppleToken(new JwtService(), config, refreshToken);
+    } catch (error) {
+      this.logger.warn(`Apple revoke failed: ${error instanceof Error ? error.message : error}`);
+    }
   }
 }

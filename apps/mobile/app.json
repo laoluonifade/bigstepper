@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.startajump.app",
       "buildNumber": "21",
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -99,7 +100,8 @@
           "color": "#FF4D12"
         }
       ],
-      "expo-widgets"
+      "expo-widgets",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true,

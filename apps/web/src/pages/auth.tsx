@@ -10,6 +10,7 @@ import { setFlag, storageKeys } from '../lib/local';
 import type { AuthResponse, Gender } from '../lib/types';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { GenderSelect } from '../components/GenderSelect';
+import { GoogleButton } from './Google';
 import { StravaButton } from './Strava';
 import { PasswordInput } from '../components/PasswordInput';
 
@@ -142,7 +143,7 @@ export function LoginPage() {
           {login.isPending ? 'Logging in…' : 'Log in'}
         </button>
       </form>
-      <OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} />
+      <OrDivider /><GoogleButton redirect={safeRedirect(search.redirect)} /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} />
       <div className="mt-6 flex flex-wrap justify-between gap-3 text-[14px]">
         <Link to="/forgot-password" className="link">
           Forgot password?
@@ -235,7 +236,7 @@ export function RegisterPage() {
           {register.isPending ? 'Creating account…' : 'Create account'}
         </button>
       </form>
-      <OrDivider /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} label="Sign up with Strava" />
+      <OrDivider /><GoogleButton redirect={safeRedirect(search.redirect)} label="signup_with" /><StravaButton intent="login" redirect={safeRedirect(search.redirect)} label="Sign up with Strava" />
       <p className="mt-6 text-[14px] text-ink-2">
         Already running with us?{' '}
         <Link to="/login" className="link text-ink">
