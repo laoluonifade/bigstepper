@@ -13,6 +13,11 @@ export class RegisterDto extends LoginDto {
   @Matches(/^[A-Z]{2}$/, { message: 'Choose your country of residence' })
   countryCode: string;
 
+  /** Picked at sign-up; without it the account gets a generated one and is asked to choose later. */
+  @IsOptional()
+  @Matches(/^[a-z0-9_]{2,30}$/, { message: 'Usernames are 2–30 lowercase letters, numbers and underscores' })
+  username?: string;
+
   @IsOptional()
   @IsIn(['male', 'female', 'non_binary', 'prefer_not_to_say'])
   gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';

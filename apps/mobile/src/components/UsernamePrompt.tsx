@@ -14,7 +14,7 @@ const SNOOZE_KEY = 'jump_username_snoozed_at';
 /** "Not now" asks again after this long. */
 const SNOOZE_MS = 3 * 24 * 60 * 60_000;
 /** Not over sign-up, onboarding or a run in progress. */
-const QUIET = [/^\/welcome/, /^\/run/, /^\/verify-email/, /^\/payments/];
+const QUIET = [/^\/setup/, /^\/welcome/, /^\/run/, /^\/verify-email/, /^\/payments/];
 
 function snoozed() {
   try {

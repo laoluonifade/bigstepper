@@ -4,6 +4,11 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
 
+/** Hosted on the web app so every mail client can load it; the alt text stands in when images are off. */
+const WORDMARK = '<img src="https://startajump.com/email-wordmark.png" width="73" height="28" alt="JUMP" style="display:block;border:0;height:28px;width:73px">';
+const SITE = 'https://startajump.com';
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+
 function layout(heading: string, intro: string, buttonLabel: string, url: string, footnote: string) {
   const safeUrl = escapeHtml(url);
   return `<!doctype html>
@@ -11,7 +16,7 @@ function layout(heading: string, intro: string, buttonLabel: string, url: string
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FBFAF6;border:1.5px solid #121212;border-radius:6px">
-        <tr><td style="padding:28px 28px 8px;font-size:15px;font-weight:900;font-style:italic;letter-spacing:-0.01em;text-transform:uppercase">Jump</td></tr>
+        <tr><td style="padding:28px 28px 8px">${WORDMARK}</td></tr>
         <tr><td style="padding:8px 28px 0;font-size:26px;font-weight:900;text-transform:uppercase;line-height:1.1">${escapeHtml(heading)}</td></tr>
         <tr><td style="padding:14px 28px 0;font-size:15px;line-height:1.55;color:#55524B">${escapeHtml(intro)}</td></tr>
         <tr><td style="padding:24px 28px">
@@ -43,24 +48,65 @@ export function verificationEmail(to: { address: string; name?: string }, url: s
  * The founder's hello, sent when someone signs up. Deliberately a plain personal note, not a branded
  * template, and replies go to a real inbox.
  */
+/** First moves for a new runner, shown under the note. */
+const FIRST_MOVES: Array<[string, string]> = [
+  ['Join a free competition', 'Your next walk or run counts toward it straight away.'],
+  ['Record with your phone', 'Every kilometre is checked before it counts, so the board is fair.'],
+  ['Bring a friend', 'Racing someone you know is the best reason to get out the door.'],
+];
+
+/**
+ * A personal note from the founder, in Jump's own look: the wordmark, a volt welcome, the note, three
+ * first moves and one button. Sent from Laolu, and replies go to a real inbox.
+ */
 export function welcomeEmail(to: { address: string; name?: string }): MailMessage {
+  const first = to.name?.trim().split(/\s+/)[0];
   const paragraphs = [
-    'Hey!',
+    first ? `Hey ${first}!` : 'Hey!',
     'I’m glad you signed up to join our community! ❤️',
     'I’m Laolu, founder of Jump, and I’m happy to have you here.',
     'We’re building something exciting, and since you’re here early, I’d love for you to be part of the journey. You can join challenges, compete with people around the world, climb leaderboards, and eventually meet people you probably wouldn’t have met otherwise, all through something as simple as walking or running.',
     'If you have any issues, questions, or ideas on how we can make Jump better, just hit reply. I read the replies myself, and I’d love to hear from you!',
     'See you on the Jump,',
   ];
-  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;color:#121212;max-width:560px">
-${paragraphs.map((p) => `<p style="margin:0 0 16px">${p}</p>`).join('\n')}
-<p style="margin:0">Laolu<br><span style="color:#55524B">Founder, Jump</span></p>
-</div>`;
+  const moves = FIRST_MOVES.map(([title, body], index) => `
+          <tr><td style="padding:${index ? '14px' : '0'} 0 0">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td width="34" valign="top"><div style="width:26px;height:26px;border:1.5px solid #121212;border-radius:6px;background:${index === 0 ? '#E4FF3A' : '#FBFAF6'};font-size:13px;font-weight:800;line-height:26px;text-align:center">${index + 1}</div></td>
+              <td valign="top" style="font-size:15px;line-height:1.45"><b>${title}</b><br><span style="color:#55524B">${body}</span></td>
+            </tr></table>
+          </td></tr>`).join('');
+  const html = `<!doctype html>
+<html><body style="margin:0;background:#F2EFE8;font-family:${FONT};color:#121212">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FBFAF6;border:1.5px solid #121212;border-radius:12px;overflow:hidden">
+        <tr><td style="padding:24px 28px">${WORDMARK}</td></tr>
+        <tr><td style="background:#E4FF3A;border-top:1.5px solid #121212;border-bottom:1.5px solid #121212;padding:28px">
+          <div style="font-size:30px;font-weight:900;line-height:1.05;letter-spacing:-0.01em;text-transform:uppercase">Welcome to Jump${first ? `,<br>${escapeHtml(first)}` : ''}.</div>
+          <div style="margin-top:10px;font-size:15px;line-height:1.5">Walk, run and ride in competitions with your friends, your club and your city.</div>
+        </td></tr>
+        <tr><td style="padding:28px 28px 8px;font-size:16px;line-height:1.6">
+          ${paragraphs.map((p) => `<p style="margin:0 0 16px">${escapeHtml(p)}</p>`).join('\n          ')}
+          <p style="margin:0">Laolu<br><span style="color:#55524B">Founder, Jump</span></p>
+        </td></tr>
+        <tr><td style="padding:20px 28px 0"><div style="border-top:1px solid #DCD7CC;padding-top:22px;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#55524B">Your first moves</div></td></tr>
+        <tr><td style="padding:14px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${moves}
+        </table></td></tr>
+        <tr><td style="padding:26px 28px 28px">
+          <a href="${SITE}/dashboard" style="display:inline-block;background:#FF4D12;color:#121212;border:1.5px solid #121212;border-radius:6px;padding:14px 24px;font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none">Find a competition</a>
+        </td></tr>
+      </table>
+      <div style="max-width:520px;padding:16px 8px 0;font-size:12px;line-height:1.5;color:#8A857B;text-align:center">You’re getting this because you created a Jump account. Reply any time, it reaches a real person.</div>
+    </td></tr>
+  </table>
+</body></html>`;
+  const text = `${paragraphs.join('\n\n')}\n\nLaolu\nFounder, Jump\n\nYour first moves:\n${FIRST_MOVES.map(([title, body], index) => `${index + 1}. ${title}: ${body}`).join('\n')}\n\nFind a competition: ${SITE}/dashboard`;
   return {
     to,
     subject: 'Welcome to Jump ❤️',
     html,
-    text: `${paragraphs.join('\n\n')}\n\nLaolu\nFounder, Jump`,
+    text,
     fromName: 'Laolu from Jump',
     replyTo: 'start@startajump.com',
   };

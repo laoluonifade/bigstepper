@@ -12,6 +12,7 @@ import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { GenderSelect } from '../components/GenderSelect';
 import { GoogleButton } from './Google';
 import { PasswordInput } from '../components/PasswordInput';
+import { cleanUsername, UsernameField, useUsernameCheck } from '../components/UsernameField';
 
 const DEV_VERIFY_KEY = 'jump_dev_verify_token';
 
@@ -133,11 +134,13 @@ export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const usernameCheck = useUsernameCheck(username);
   const [country, setCountry] = useState('NG');
   const [gender, setGender] = useState<Gender | ''>('');
   const [whatsapp, setWhatsapp] = useState('');
   const register = useMutation({
-    mutationFn: (values: { email: string; password: string; countryCode: string; displayName?: string; whatsappNumber?: string; gender?: Gender }) => post<AuthResponse>('/auth/register', values),
+    mutationFn: (values: { email: string; password: string; countryCode: string; username: string; displayName?: string; whatsappNumber?: string; gender?: Gender }) => post<AuthResponse>('/auth/register', values),
     onSuccess(response) {
       flushSync(() => auth.authenticate(response));
       setFlag(storageKeys.verifyPrompt(response.user.id), true);
@@ -153,17 +156,20 @@ export function RegisterPage() {
 
   function go(next: number) {
     register.reset();
+    // Start them off with the name from their email; they can change it.
+    if (next === 1 && !username) setUsername(cleanUsername(email.split('@')[0] ?? '').slice(0, 30));
     setStep(next);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step === 0) return go(1);
-    if (step === 1) return go(2);
+    if (step === 1) return usernameCheck.ok ? go(2) : undefined;
     register.mutate({
       email: email.trim(),
       password,
       countryCode: country,
+      username,
       ...(gender ? { gender } : {}),
       ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
       ...(whatsapp ? { whatsappNumber: whatsapp } : {}),
@@ -189,8 +195,9 @@ export function RegisterPage() {
         </>}
 
         {step === 1 && <>
+          <UsernameField value={username} onChange={setUsername} autoFocus />
           <Field label="Display name" hint="Shown on leaderboards." optional>
-            {(props) => <input {...props} className="field" name="displayName" autoComplete="nickname" maxLength={80} autoFocus value={displayName} onChange={(event) => setDisplayName(event.target.value)} />}
+            {(props) => <input {...props} className="field" name="displayName" autoComplete="nickname" maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />}
           </Field>
           <Field label="Country of residence">
             {(props) => <CountryPicker id={props.id} value={country} onChange={setCountry} required />}
@@ -198,7 +205,7 @@ export function RegisterPage() {
           <Field label="Gender" optional hint="Only used to choose your default avatar.">
             {(props) => <GenderSelect id={props.id} value={gender} onChange={setGender} />}
           </Field>
-          <button className="btn-primary w-full">Continue</button>
+          <button className="btn-primary w-full" disabled={!usernameCheck.ok}>Continue</button>
         </>}
 
         {step === 2 && <>

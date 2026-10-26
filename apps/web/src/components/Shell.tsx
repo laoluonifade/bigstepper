@@ -104,12 +104,17 @@ function PublicShell() {
 /** Pages a runner can use before joining their first competition: the ways into one, and account basics. */
 const ONBOARDING_PATHS = ['/welcome', '/competitions', '/clubs', '/settings', '/verify-email', '/strava'];
 
-/** New runners go to the welcome page until they're in at least one competition (joined or hosting). */
+/**
+ * New runners finish their profile first (Google sign-ups arrive without a username), then go to the
+ * welcome page until they're in at least one competition (joined or hosting).
+ */
 function OnboardingGate() {
   const location = useLocation();
   const profile = useProfile();
   const mine = useQuery({ queryKey: ['tables', 'mine'], queryFn: () => api<Array<{ joined: boolean }>>('/tables/mine') });
   const fresh = profile.data && new Date(profile.data.createdAt).getTime() >= ONBOARDING_REQUIRED_SINCE;
+  if (location.pathname === '/setup') return null;
+  if (fresh && profile.data?.usernameChosen === false) return <Redirect to="/setup" />;
   if (!fresh || !mine.data || mine.data.some((row) => row.joined) || onboardingSkipped()) return null;
   if (ONBOARDING_PATHS.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))) return null;
   return <Redirect to="/welcome" />;

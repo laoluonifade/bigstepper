@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInRight } from 'react-native-reanimated';
 import { AuthHeading, AuthScreen, SocialSignIn } from '@/components/auth';
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
+import { cleanUsername, UsernameField, useUsernameCheck } from '@/components/UsernameField';
 import { Button, ErrorNotice, haptic, TextField, TextLink, Txt } from '@/components/ui';
 import { post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -28,6 +29,8 @@ export default function RegisterScreen() {
   const auth = useAuth();
   const [step, setStep] = useState(0);
   const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const usernameCheck = useUsernameCheck(username);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [country, setCountry] = useState('NG');
@@ -38,6 +41,7 @@ export default function RegisterScreen() {
       email: email.trim(),
       password,
       countryCode: country,
+      username,
       ...(gender ? { gender } : {}),
       ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
       ...(whatsapp ? { whatsappNumber: whatsapp } : {}),
@@ -51,6 +55,8 @@ export default function RegisterScreen() {
 
   function go(next: number) {
     haptic('select');
+    // Start them off with the name from their email; they can change it.
+    if (next === 1 && !username) setUsername(cleanUsername(email.split('@')[0] ?? '').slice(0, 30));
     register.reset();
     setStep(next);
   }
@@ -72,10 +78,11 @@ export default function RegisterScreen() {
       </>}
 
       {step === 1 && <>
+        <UsernameField value={username} onChange={setUsername} />
         <TextField label="Display name" optional hint="Shown on leaderboards." value={displayName} onChangeText={setDisplayName} autoComplete="nickname" textContentType="nickname" maxLength={80} />
         <CountryPicker label="Country of residence" value={country} onChange={setCountry} />
         <GenderSelect optional hint="Only used to choose your default avatar." value={gender} onChange={setGender} />
-        <Button full title="Continue" onPress={() => go(2)} />
+        <Button full title="Continue" disabled={!usernameCheck.ok} onPress={() => go(2)} />
       </>}
 
       {step === 2 && <>

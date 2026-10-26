@@ -26,6 +26,13 @@ export class ProfilesService {
     return profile;
   }
 
+  async usernameAvailable(username: string, viewerId?: string) {
+    const name = username.trim().toLowerCase().replace(/^@/, '');
+    if (!/^[a-z0-9_]{2,30}$/.test(name)) return { available: false };
+    const taken = await this.profiles.findOne({ where: { username: name }, select: { userId: true } });
+    return { available: !taken || taken.userId === viewerId };
+  }
+
   async updateMine(userId: string, input: UpdateProfileDto) {
     const profile = await this.getMine(userId);
     // Only fields actually sent: assigning `undefined` for the rest blanked them in the response.

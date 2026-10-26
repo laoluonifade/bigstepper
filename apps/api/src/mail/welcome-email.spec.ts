@@ -7,7 +7,8 @@ describe('welcome email', () => {
     expect(email.replyTo).toBe('start@startajump.com');
     expect(email.text).toContain('I’m Laolu, founder of Jump');
     expect(email.text).toContain('just hit reply');
-    expect(email.text.trim().endsWith('Laolu\nFounder, Jump')).toBe(true);
+    expect(email.text).toContain('Laolu\nFounder, Jump');
+    expect(email.text).toContain('Hey Ada!');
     expect(email.html).toContain('See you on the Jump,');
   });
 });

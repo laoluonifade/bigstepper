@@ -30,8 +30,8 @@ export class AuthService {
     private readonly mail: MailService,
   ) {}
 
-  async register(email: string, password: string, countryCode: string, displayName?: string, whatsappNumber?: string, gender?: Profile['gender']) {
-    return this.createAccount({ email, passwordHash: await bcrypt.hash(password, 10), countryCode, displayName, whatsappNumber, gender });
+  async register(email: string, password: string, countryCode: string, displayName?: string, whatsappNumber?: string, gender?: Profile['gender'], username?: string) {
+    return this.createAccount({ email, passwordHash: await bcrypt.hash(password, 10), countryCode, displayName, whatsappNumber, gender, username });
   }
 
   /**
@@ -46,6 +46,8 @@ export class AuthService {
     displayName?: string;
     whatsappNumber?: string;
     gender?: Profile['gender'];
+    /** Chosen at sign-up; otherwise generated from the email, and the app asks them to pick one. */
+    username?: string;
     /** Already proved by the sign-in provider (Google): no verification email. */
     emailVerified?: boolean;
     afterCreate?: (manager: EntityManager, user: User) => Promise<void>;
@@ -69,7 +71,8 @@ export class AuthService {
           Profile,
           manager.create(Profile, {
             userId: user.id,
-            username: `${baseUsername}_${randomBytes(3).toString('hex')}`,
+            username: input.username?.toLowerCase() ?? `${baseUsername}_${randomBytes(3).toString('hex')}`,
+            usernameChosen: Boolean(input.username),
             displayName: user.displayName || baseUsername,
             countryCode: input.countryCode,
             gender: input.gender ?? null,
@@ -90,7 +93,8 @@ export class AuthService {
         error instanceof QueryFailedError &&
         (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505'
       ) {
-        throw new ConflictException('Email already registered');
+        const detail = (error as QueryFailedError & { driverError?: { detail?: string } }).driverError?.detail ?? '';
+        throw new ConflictException(detail.includes('(username)') ? 'That username is taken. Try another.' : 'Email already registered');
       }
       throw error;
     }

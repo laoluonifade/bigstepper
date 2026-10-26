@@ -18,6 +18,14 @@ export class ProfilesController {
     return this.profilesService.getMine(user.id);
   }
 
+  /** For the sign-up and profile forms: whether a username is free (yours counts as free). */
+  @Get('usernames/:username/available')
+  @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  usernameAvailable(@Param('username') username: string, @CurrentUser() viewer: AuthenticatedUser | null) {
+    return this.profilesService.usernameAvailable(username, viewer?.id);
+  }
+
   @Patch('me')
   @UseGuards(JwtAuthGuard)
   updateMine(@CurrentUser() user: AuthenticatedUser, @Body() body: UpdateProfileDto) {
