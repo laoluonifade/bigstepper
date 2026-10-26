@@ -25,8 +25,9 @@ async function publicKey(kid: string) {
 export async function verifyAppleIdentityToken(jwt: JwtService, identityToken: string, bundleId: string): Promise<AppleIdentity> {
   const header = JSON.parse(Buffer.from(identityToken.split('.')[0] ?? '', 'base64url').toString('utf8')) as { kid?: string };
   if (!header.kid) throw new Error('No key id');
+  // `secret`, not `publicKey`: the app's JwtModule has its own secret, which @nestjs/jwt prefers over `publicKey`.
   const payload = await jwt.verifyAsync<{ sub: string; email?: string; email_verified?: boolean | string }>(identityToken, {
-    publicKey: await publicKey(header.kid),
+    secret: await publicKey(header.kid),
     algorithms: ['RS256'],
     issuer: ISSUER,
     audience: bundleId,
@@ -43,7 +44,8 @@ export function appleKeyConfigured(config: AppleConfig) {
 function clientSecret(jwt: JwtService, config: AppleConfig) {
   return jwt.sign({}, {
     algorithm: 'ES256',
-    privateKey: config.privateKey.replace(/\\n/g, '\n'),
+    // `secret` for the same reason as above: it wins over the module's own secret.
+    secret: config.privateKey.replace(/\\n/g, '\n'),
     keyid: config.keyId,
     issuer: config.teamId,
     audience: ISSUER,

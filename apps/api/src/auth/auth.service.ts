@@ -185,7 +185,8 @@ export class AuthService {
     let identity: Awaited<ReturnType<typeof verifyAppleIdentityToken>>;
     try {
       identity = await verifyAppleIdentityToken(this.jwtService, input.identityToken, config.bundleId);
-    } catch {
+    } catch (error) {
+      this.logger.warn(`Sign in with Apple rejected: ${error instanceof Error ? error.message : error}`);
       throw new UnauthorizedException('Sign in with Apple failed. Try again.');
     }
     const { sub, email } = identity;
