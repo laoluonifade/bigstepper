@@ -16,61 +16,16 @@ import { PasswordInput } from '../components/PasswordInput';
 const DEV_VERIFY_KEY = 'jump_dev_verify_token';
 
 export function AuthLayout() {
+  // One centred form on the page, the wordmark above it: nothing beside it to compete with the form.
   return (
-    <div className="grid min-h-screen md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-      <aside className="relative hidden flex-col justify-between overflow-hidden bg-ink p-10 text-paper md:flex">
-        <Link to="/competitions" className="[&_span]:text-paper">
+    <main className="flex min-h-screen flex-col items-center px-5 py-6 sm:px-10">
+      <div className="flex w-full max-w-[420px] flex-1 animate-rise-lg flex-col justify-center py-10">
+        <Link to="/competitions" className="mb-10 self-start">
           <Wordmark />
         </Link>
-        <div>
-          <p className="display text-[clamp(44px,5.4vw,76px)]">
-            <span className="reveal-line"><span>Move.</span></span>
-            <span className="reveal-line"><span className="[animation-delay:90ms]">Compete.</span></span>
-            <span className="reveal-line">
-              <span className="[animation-delay:180ms]">
-                <span className="bg-volt px-2 text-ink">Win.</span>
-              </span>
-            </span>
-          </p>
-          <ol className="stagger mt-10 space-y-4 text-[15px] text-paper/75">
-            {[
-              ['01', 'Record runs with your phone’s GPS.'],
-              ['02', 'Distance is checked before it counts. No shortcuts.'],
-              ['03', 'Join competitions, climb the standings, take the top spot.'],
-            ].map(([n, text]) => (
-              <li key={n} className="flex gap-4">
-                <span className="score w-7 text-[20px] text-track">{n}</span>
-                <span className="pt-0.5">{text}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-        <Steps />
-      </aside>
-      <main className="flex flex-col px-5 py-6 sm:px-10">
-        <Link to="/competitions" className="md:hidden">
-          <Wordmark />
-        </Link>
-        <div className="mx-auto flex w-full max-w-[420px] flex-1 animate-rise-lg flex-col justify-center py-10">
-          <Outlet />
-        </div>
-      </main>
-    </div>
-  );
-}
-
-/** Decorative podium steps anchoring the brand panel. */
-function Steps() {
-  return (
-    <div className="flex items-end gap-2" aria-hidden="true">
-      {[28, 44, 64, 92].map((h, i) => (
-        <span
-          key={h}
-          className={cx('w-14 origin-bottom animate-grow-y', i === 3 ? 'bg-volt' : 'bg-track')}
-          style={{ height: h, animationDelay: `${300 + i * 110}ms` }}
-        />
-      ))}
-    </div>
+        <Outlet />
+      </div>
+    </main>
   );
 }
 

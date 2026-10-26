@@ -2,9 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
-import { ChallengeSomeone, MyCompetitions, RaceHero } from '../components/CompeteHome';
+import { ChallengeSomeone, GoBar, MiniRing, MyCompetitions, RaceHero, SUMMARY_CARD } from '../components/CompeteHome';
 import { InstallPrompt } from '../components/InstallPrompt';
-import { RunIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, FlameIcon } from '../components/icons';
+import { RunIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon } from '../components/icons';
 import { EmojiPopover } from '../components/EmojiPopover';
 import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/league';
 import { MilestoneBadge } from '../components/Milestones';
@@ -14,7 +14,7 @@ import { patch } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, ordinal, toMetres } from '../lib/format';
 import { storageKeys, useStored } from '../lib/local';
-import { ActivityKind, computeMilestones, computeStreaks, countsForStreak, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
+import { ActivityKind, computeMilestones, computeStreaks, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
 import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
 import type { Activity, Profile, Unit } from '../lib/types';
@@ -41,6 +41,8 @@ export function DashboardPage() {
   const week = useMemo(() => summariseWeek(footActivities, new Date(now)), [footActivities, now]);
   // Any walk, run or ride keeps the streak, whatever the filter above shows.
   const streak = useMemo(() => computeStreaks(all, new Date(now)), [all, now]);
+  // The summary tile counts every walk and run, whatever the training filter below shows.
+  const summaryWeek = useMemo(() => summariseWeek(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
   const milestones = useMemo(() => computeMilestones(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
   const next = nextMilestone(milestones);
   const earned = milestones.filter((m) => m.earned).length;
@@ -54,20 +56,26 @@ export function DashboardPage() {
           <p className="text-[13px] font-medium text-ink-3">{new Date(now).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
           <h1 className="mt-0.5 truncate text-[26px] font-extrabold leading-tight tracking-tight sm:text-[30px]">{greeting(new Date(now).getHours())}, {name.split(' ')[0]}</h1>
         </div>
-        <Link to="/run" className="btn-dark hidden min-h-10 px-5 md:inline-flex">
+        {live && <Link to="/run" className="btn-dark hidden min-h-10 px-5 md:inline-flex">
           <RunIcon size={16} />
-          {live ? 'Back to your run' : 'Start a run'}
-        </Link>
+          Back to your run
+        </Link>}
       </header>
 
       {!user.emailVerified && <VerifyPrompt email={user.email} />}
       <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} className="mb-6" />
 
-      {/* Competition first: the race, your other races, the leaderboard, then your own training. */}
-      <div className="mx-auto max-w-2xl space-y-8">
-        <RaceHero unit={unit} now={now} />
-        <MyCompetitions unit={unit} now={now} />
-        <ChallengeSomeone />
+      {/* A summary first, like Apple Fitness: your race, your week, your streak. Then your other races and training. */}
+      <div className="mx-auto max-w-2xl">
+        <div className="space-y-3">
+          <RaceHero unit={unit} now={now} />
+          <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
+          <GoBar unit={unit} now={now} />
+        </div>
+        <div className="mt-8 space-y-8">
+          <MyCompetitions unit={unit} now={now} />
+          <ChallengeSomeone />
+        </div>
       </div>
 
       <div className="mt-8"><InstallPrompt /></div>
@@ -81,35 +89,6 @@ export function DashboardPage() {
         <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} activities={footActivities} now={now} loading={activities.isLoading || profile.isLoading} />
 
         <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-          <section className="panel-strong p-5" aria-labelledby="streak-title">
-            <p id="streak-title" className="eyebrow">
-              Streak
-            </p>
-            <div className="mt-2 flex items-center gap-3">
-              <FlameIcon
-                size={44}
-                className={cx(
-                  'shrink-0 transition-colors',
-                  streak.ranToday ? 'animate-flicker text-track drop-shadow-[0_2px_6px_rgba(255,77,18,0.45)]' : streak.atRisk ? 'text-track/35' : 'text-ink/15',
-                )}
-                aria-label={streak.ranToday ? 'Streak lit today' : streak.atRisk ? 'Streak at risk' : 'No streak'}
-              />
-              <p className="flex items-baseline gap-2">
-                <span className="score text-[56px]">{activities.isLoading ? '–' : <CountUp value={streak.current} />}</span>
-                <span className="text-[14px] font-semibold text-ink-2">{streak.current === 1 ? 'day' : 'days'}</span>
-              </p>
-            </div>
-            <StreakDots activities={all} now={now} />
-            <p className="mt-3 text-[13px] text-ink-2">
-              {streak.ranToday
-                ? 'Fire’s lit for today. Move again tomorrow to keep it burning.'
-                : streak.atRisk
-                  ? `Move today or your ${streak.current}-day streak goes out at midnight.`
-                  : 'Walk, run or ride today to light your streak.'}
-              {streak.best > streak.current && ` Best: ${streak.best}.`}
-            </p>
-          </section>
-
           <section className="panel p-5" aria-labelledby="next-title">
             <div className="flex items-center justify-between">
               <p id="next-title" className="eyebrow">
@@ -188,6 +167,40 @@ export function DashboardPage() {
       </section>
     </div>
   );
+}
+
+/** This week's distance as seven bars, and the streak as a ring: a full ring is a week in a row. */
+function SummaryTiles({ week, streak, unit, loading }: { week: ReturnType<typeof summariseWeek>; streak: ReturnType<typeof computeStreaks>; unit: Unit; loading: boolean }) {
+  const max = Math.max(1000, ...week.days.map((day) => day.metres));
+  return <div className="grid grid-cols-2 gap-3">
+    <Link to="/activities" className={cx(SUMMARY_CARD, 'flex h-[184px] flex-col rounded-[22px] p-4 transition-colors hover:bg-ink/[0.02]')} aria-label={`This week, ${formatDistance(week.verifiedMetres, unit)}`}>
+      <span className="text-[15px] font-bold">This week</span>
+      <span className="mt-1 flex items-baseline gap-1">
+        <span className="num text-[28px] font-bold leading-8 tracking-tight">{loading ? '–' : formatDistanceNumber(week.verifiedMetres, unit)}</span>
+        <span className="text-[13px] font-bold">{unit.toUpperCase()}</span>
+      </span>
+      <span className="mt-3.5 flex flex-1 items-end justify-between" aria-hidden="true">
+        {week.days.map((day, index) => <span key={index} className={cx('flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-ink/[0.07]', day.isToday && 'ring-1 ring-ink-3')}>
+          {day.metres > 0 && <span className="block rounded bg-ink" style={{ height: `${Math.max(10, (day.metres / max) * 100)}%` }} />}
+        </span>)}
+      </span>
+    </Link>
+    <div className={cx(SUMMARY_CARD, 'flex h-[184px] flex-col rounded-[22px] p-4')} aria-label={`Streak, ${streak.current} ${streak.current === 1 ? 'day' : 'days'}`}>
+      <span className="text-[15px] font-bold">Streak</span>
+      <span className="flex flex-1 items-center justify-center">
+        <span className="relative h-[88px] w-[88px]">
+          <MiniRing progress={Math.min(streak.current, 7) / 7} size={88} className="text-track" />
+          <span className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="num text-[28px] font-bold leading-[30px]">{loading ? '–' : streak.current}</span>
+            <span className="text-[11px] text-ink-3">{streak.current === 1 ? 'day' : 'days'}</span>
+          </span>
+        </span>
+      </span>
+      <span className={cx('text-center text-[12px] font-semibold', streak.atRisk && !streak.ranToday ? 'text-track' : 'text-ink-3')}>
+        {streak.ranToday ? 'Lit for today' : streak.atRisk ? 'Move today to keep it' : 'Move today to start one'}
+      </span>
+    </div>
+  </div>;
 }
 
 function VerifyPrompt({ email }: { email: string }) {
@@ -421,35 +434,6 @@ function PeriodTotals({ id, period, onPeriod, activities, kind, unit, now, loadi
       <Stat label={`Avg pace /${unit}`} value={pace ?? '–'} />
     </div>
   </>;
-}
-
-function StreakDots({ activities, now }: { activities: ReturnType<typeof useActivities>['data'] & object; now: number }) {
-  const days = useMemo(() => {
-    const moved = new Set(activities.filter(countsForStreak).map((a) => new Date(a.startedAt).toDateString()));
-    return Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(now);
-      date.setDate(date.getDate() - (6 - i));
-      return { moved: moved.has(date.toDateString()), today: i === 6, label: date.toLocaleDateString('en-GB', { weekday: 'narrow' }) };
-    });
-  }, [activities, now]);
-  return (
-    <div className="mt-3 flex gap-1.5" aria-label="Last seven days">
-      {days.map((day, index) => (
-        <div key={index} className="flex flex-col items-center gap-1">
-          <span
-            className={cx(
-              'flex h-7 w-7 items-center justify-center rounded-md',
-              day.moved ? 'bg-track text-paper' : day.today ? 'border-[1.5px] border-dashed border-ink text-ink/25' : 'bg-ink/[0.06] text-ink/20',
-            )}
-            title={day.moved ? 'Moved' : day.today ? 'Not yet today' : 'Rest'}
-          >
-            <FlameIcon size={14} />
-          </span>
-          <span className={cx('text-[10px] font-bold', day.today ? 'text-ink' : 'text-ink-3')}>{day.label}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function LeagueSummary({ unit }: { unit: Unit }) {

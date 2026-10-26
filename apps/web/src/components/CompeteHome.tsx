@@ -5,7 +5,7 @@ import { api, post } from '../lib/api';
 import { formatCountdown, ordinal } from '../lib/format';
 import { useUser } from '../lib/auth';
 import { keys, useDiscover, useStandings } from '../lib/queries';
-import { formatGap, formatScore, hasScored, towardLeader } from '../lib/scoring';
+import { formatGap, hasScored, towardLeader } from '../lib/scoring';
 import { TEMPLATES } from '../lib/templates';
 import { toast } from '../lib/toast';
 import type { ChallengeType, CompetitionTable, ScoringMethod, StandingRow, Unit } from '../lib/types';
@@ -17,7 +17,15 @@ export type MyCompetition = {
   id: string; code: string; title: string; type: string; challengeType: ChallengeType; scoringMethod: ScoringMethod; targetDistanceMetres: number | null;
   status: string; startsAt: string | null; scoringClosesAt: string | null; visibility: string; hosting: boolean; joined: boolean;
   entrants: number; myRank: number | null; myScore: number | null; leaderScore: number | null;
+  /** The runners either side of you on the board. */
+  aheadScore: number | null; aheadName: string | null; behindScore: number | null; behindName: string | null;
 };
+
+const LIVE_STATUSES = ['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'];
+
+export function useMyCompetitions() {
+  return useQuery({ queryKey: ['tables', 'mine'], queryFn: () => api<MyCompetition[]>('/tables/mine'), refetchInterval: 60_000 });
+}
 
 /*
  * Home design rules: one type scale (13–15px body, 15px section titles), ink outlines with small hard
@@ -67,51 +75,59 @@ export function CompetitionSearch() {
   </div>;
 }
 
-const scoreOf = (table: Pick<MyCompetition, 'challengeType' | 'scoringMethod'>, value: number | null, unit: Unit) => formatScore(table, value, unit);
+const scoreOf = (value: number | null) => (value === null ? null : Number(value));
+
+/**
+ * The race for the home banner: of your live ones, one you've actually moved in, then the one you're
+ * closest to leading (first place counts as all the way), then whichever ends soonest.
+ */
+function heroRace(live: MyCompetition[]) {
+  const scored = (table: MyCompetition) => hasScored(table.scoringMethod, scoreOf(table.myScore));
+  const along = (table: MyCompetition) => (table.myRank === 1 ? 1 : towardLeader(table.scoringMethod, scoreOf(table.myScore), scoreOf(table.leaderScore)));
+  const ends = (table: MyCompetition) => (table.scoringClosesAt ? new Date(table.scoringClosesAt).getTime() : Infinity);
+  return live.filter((table) => table.joined).sort((a, b) => Number(scored(b)) - Number(scored(a)) || along(b) - along(a) || ends(a) - ends(b))[0];
+}
 
 /** Where you stand, in a few words: leading, behind by how much, or not started. */
 function standingLine(table: MyCompetition, unit: Unit) {
-  const mine = table.myScore === null ? null : Number(table.myScore);
-  const leader = table.leaderScore === null ? null : Number(table.leaderScore);
+  const mine = scoreOf(table.myScore);
+  const leader = scoreOf(table.leaderScore);
   if (!table.joined) return 'Hosting';
   if (!hasScored(table.scoringMethod, mine)) return 'No score yet';
   if (table.myRank === 1) return table.entrants > 1 ? 'Leading' : 'On top';
   if (leader === null) return '';
+  if (leader === mine) return 'Level with the leader';
   return `${formatGap(table, mine!, leader, unit)} behind`;
 }
 
-/** Your live competitions: two at most, each one line of where you stand. */
+const liveNow = (tables: MyCompetition[] | undefined, now: number) =>
+  (tables ?? []).filter((table) => LIVE_STATUSES.includes(table.status) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now));
+
+/** Your live competitions after the hero: two at most, each one line of where you stand. */
 export function MyCompetitions({ unit, now }: { unit: Unit; now: number }) {
-  const mine = useQuery({ queryKey: ['tables', 'mine'], queryFn: () => api<MyCompetition[]>('/tables/mine'), refetchInterval: 60_000 });
-  const live = (mine.data ?? []).filter((table) => ['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(table.status) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now));
+  const mine = useMyCompetitions();
+  const live = liveNow(mine.data, now);
 
   if (mine.isLoading) return null;
   if (!live.some((table) => table.joined)) return <RecommendedJoin unit={unit} now={now} />;
-  // The first joined race is the hero above; list the rest here.
-  const heroId = live.find((table) => table.joined)?.id;
+  const heroId = heroRace(live)?.id;
   const others = live.filter((table) => table.id !== heroId);
   if (!others.length) return null;
   return <section>
     <SectionHead title="Your other races" action={others.length > 2 ? <SeeAll label={`All ${others.length}`} /> : undefined} />
-    <div className={cx(CARD, 'divide-y divide-line overflow-hidden')}>
+    <div className="space-y-2">
       {others.slice(0, 2).map((table) => {
         const leading = table.joined && table.myRank === 1 && Number(table.myScore ?? 0) > 0;
         const ends = table.startsAt && new Date(table.startsAt).getTime() > now ? `Starts in ${formatCountdown(table.startsAt, now)}` : table.scoringClosesAt ? `${formatCountdown(table.scoringClosesAt, now)} left` : 'Open-ended';
-        return <Link key={table.id} to="/competitions/$code" params={{ code: table.code }} className="block px-3.5 py-3 transition-colors hover:bg-ink/[0.02]">
-          <div className="flex items-center gap-3">
-            <ChallengeMark type={table.challengeType} code={table.code} size={36} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-semibold leading-tight">{table.title}</p>
-              <p className="num mt-0.5 truncate text-[12px] text-ink-3">{table.entrants} in · {ends}</p>
-            </div>
-            {table.joined && table.myRank !== null
-              ? <div className="shrink-0 text-right leading-none">
-                <p className={cx('score num text-[22px]', leading && 'text-ok')}>#{table.myRank}</p>
-                <p className="mt-1 text-[11px] font-semibold text-ink-3">{standingLine(table, unit)}</p>
-              </div>
-              : <span className="shrink-0 text-[12px] font-semibold text-ink-3">{standingLine(table, unit)}</span>}
-          </div>
-          {table.joined && <div className="ml-12 mt-2 h-1 overflow-hidden rounded-full bg-ink/[0.07]"><div className={cx('h-full rounded-full', leading ? 'bg-ok' : 'bg-ink')} style={{ width: `${Math.max(3, towardLeader(table.scoringMethod, table.myScore === null ? null : Number(table.myScore), table.leaderScore === null ? null : Number(table.leaderScore)) * 100)}%` }} /></div>}
+        const along = towardLeader(table.scoringMethod, scoreOf(table.myScore), scoreOf(table.leaderScore));
+        return <Link key={table.id} to="/competitions/$code" params={{ code: table.code }} className={cx(SUMMARY_CARD, 'flex items-center gap-3 rounded-[18px] px-3.5 py-3 transition-colors hover:bg-ink/[0.03]')}>
+          <ChallengeMark type={table.challengeType} code={table.code} size={40} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px] font-semibold leading-tight">{table.title}</span>
+            <span className="num mt-0.5 block truncate text-[12px] text-ink-3">{ends} · {standingLine(table, unit)}</span>
+            {table.joined && <span className="mt-2 block h-1 overflow-hidden rounded-full bg-ink/[0.07]"><span className={cx('block h-full rounded-full', leading ? 'bg-ok' : 'bg-track')} style={{ width: `${Math.max(3, (leading ? 1 : along) * 100)}%` }} /></span>}
+          </span>
+          {table.joined && table.myRank !== null && <span className={cx('shrink-0 text-[20px] font-bold', leading && 'text-ok')}>{ordinal(table.myRank)}</span>}
         </Link>;
       })}
     </div>
@@ -219,22 +235,51 @@ function lanePosition(method: string, row: StandingRow, leader: StandingRow | un
 
 const firstName = (name: string) => name.split(' ')[0];
 
+/** The home summary's cards, like Apple Fitness on a light page: plain cards, ink figures, green for a lead. */
+export const SUMMARY_CARD = 'border border-line bg-card';
+
+/** Small ring: how far round a week of streak, or toward the leader. */
+export function MiniRing({ progress, size = 30, className = 'text-ink' }: { progress: number; size?: number; className?: string }) {
+  const stroke = size * 0.17;
+  const r = (size - stroke) / 2;
+  const around = 2 * Math.PI * r;
+  return <svg width={size} height={size} aria-hidden="true">
+    <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(18,18,18,0.07)" strokeWidth={stroke} />
+    <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" className={className} strokeWidth={stroke} strokeLinecap="round"
+      strokeDasharray={`${Math.max(0.001, progress) * around} ${around}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: 'stroke-dasharray 1200ms cubic-bezier(0.2,0.8,0.2,1)' }} />
+  </svg>;
+}
+
+/** You and the runners either side of you on one line, the fill showing how far toward the lead you are. */
+function RaceLine({ progress, marks }: { progress: number; marks: Array<{ key: string; at: number; me: boolean; avatar: ReactNode }> }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => { const frame = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(frame); }, []);
+  return <div className="relative mt-5 flex h-[30px] items-center">
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink/[0.07]">
+      <div className="h-full rounded-full bg-ink transition-[width] duration-[1200ms] ease-out" style={{ width: `${(shown ? progress : 0) * 100}%` }} />
+    </div>
+    {marks.map((mark) => <span key={mark.key} className={cx('absolute top-0 rounded-full border-2', mark.me ? 'z-10 border-track' : 'border-card')}
+      style={{ left: `clamp(0px, calc(${mark.at * 100}% - 15px), calc(100% - 30px))` }}>{mark.avatar}</span>)}
+  </div>;
+}
+
 /**
- * The home hero: your most urgent race drawn as running lanes, everyone placed by their score, you in
- * volt. With no race of your own, it shows the hottest open one and invites you onto the start line.
+ * The home hero: your most urgent race at a glance. Your place, how far you are from the lead (or ahead
+ * of second), and a line with you between your neighbours. With no race of your own, it shows the
+ * hottest open one with a button to join.
  */
 export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   const user = useUser();
   const queryClient = useQueryClient();
-  const mine = useQuery({ queryKey: ['tables', 'mine'], queryFn: () => api<MyCompetition[]>('/tables/mine'), refetchInterval: 60_000 });
+  const navigate = useNavigate();
+  const mine = useMyCompetitions();
   const trending = useDiscover('trending');
-  const live = (mine.data ?? []).filter((table) => table.joined && ['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(table.status) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now));
+  const live = liveNow(mine.data, now).filter((table) => table.joined);
   const hot = trending.data?.pages[0]?.items[0];
-  const race = live[0] ?? (hot && { id: hot.id, code: hot.code, title: hot.title, challengeType: hot.challengeType, scoringMethod: hot.scoringMethod, scoringClosesAt: hot.scoringClosesAt, startsAt: hot.startsAt, entrants: hot.entrantCount ?? 0, type: hot.type });
-  const joined = Boolean(live[0]);
+  const featured = heroRace(live);
+  const race = featured ?? (hot && { id: hot.id, code: hot.code, title: hot.title, challengeType: hot.challengeType, scoringMethod: hot.scoringMethod, scoringClosesAt: hot.scoringClosesAt, startsAt: hot.startsAt, entrants: hot.entrantCount ?? 0, type: hot.type });
+  const joined = Boolean(featured);
   const standings = useStandings(race?.id, 60_000);
-  const [shown, setShown] = useState(false);
-  useEffect(() => { const frame = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(frame); }, [race?.id]);
   const join = useMutation({
     mutationFn: () => post('/tables/join-many', { ids: [race!.id] }),
     async onSuccess() {
@@ -243,76 +288,86 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
     },
   });
 
-  if (mine.isLoading || (!live.length && trending.isLoading)) return <Skeleton className="h-[230px] rounded-3xl" />;
+  if (mine.isLoading || (!live.length && trending.isLoading)) return <Skeleton className="h-[176px] rounded-3xl" />;
   if (!race) return null;
 
   const rows = standings.data ?? [];
   const me = rows.find((row) => row.userId === user.id);
   const leader = rows[0];
-  const lanes = [...rows.slice(0, 4), ...(me && me.rank > 4 ? [me] : [])];
   const method = race.scoringMethod;
-  const ends = race.startsAt && new Date(race.startsAt).getTime() > now ? `starts in ${formatCountdown(race.startsAt, now)}` : race.scoringClosesAt ? `${formatCountdown(race.scoringClosesAt, now)} to go` : 'no end date';
+  const ends = race.startsAt && new Date(race.startsAt).getTime() > now ? `Starts in ${formatCountdown(race.startsAt, now)}` : race.scoringClosesAt ? `${formatCountdown(race.scoringClosesAt, now)} left` : 'Open-ended';
   const myScore = me && hasScored(method, me.score) ? laneScore(me) : null;
-  const runnerUp = rows[1] && hasScored(method, rows[1].score) ? laneScore(rows[1]) : null;
+  const second = rows[1] && hasScored(method, rows[1].score) ? laneScore(rows[1]) : null;
   const leaderScore = leader ? laneScore(leader) : null;
-  const gapToLeader = myScore !== null && leaderScore !== null ? formatGap(race, myScore, leaderScore, unit) : null;
-  const progress = !joined || !me || myScore === null ? 0 : me.rank === 1 ? 1 : lanePosition(method, me, leader);
-  const RADIUS = 50;
-  const circumference = 2 * Math.PI * RADIUS;
-  const line = !joined
-    ? <><b className="font-semibold text-paper">{race.entrants} {race.entrants === 1 ? 'runner' : 'runners'}</b> in, {ends}. Join and your next run counts.</>
-    : myScore === null ? <>Your first run puts you on the board, {ends}.</>
-      : me?.rank === 1 ? (runnerUp !== null ? <>Leading by <b className="font-semibold text-paper">{formatGap(race, runnerUp, myScore, unit)}</b>, {ends}. Keep the gap.</> : <>Out in front, {ends}. Invite rivals to chase you.</>)
-        : <><b className="font-semibold text-paper">{gapToLeader}</b> behind {firstName(leader.displayName)} with {ends}.</>;
 
-  return <section className="overflow-hidden rounded-3xl bg-[#121212] p-5 text-paper">
-    <div className="flex items-center gap-5">
-      <div className="relative h-[116px] w-[116px] shrink-0">
-        <svg width="116" height="116" viewBox="0 0 116 116" aria-hidden="true">
-          <circle cx="58" cy="58" r={RADIUS} fill="none" stroke="#2A2A2E" strokeWidth="10" />
-          <circle cx="58" cy="58" r={RADIUS} fill="none" stroke="#E4FF3A" strokeWidth="10" strokeLinecap="round" transform="rotate(-90 58 58)"
-            strokeDasharray={`${(shown ? progress : 0) * circumference} ${circumference}`}
-            style={{ transition: 'stroke-dasharray 1400ms cubic-bezier(0.2,0.8,0.2,1)', filter: progress ? 'drop-shadow(0 0 6px rgba(228,255,58,0.45))' : undefined }} />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          {joined && me
-            ? <><span className="score num text-[40px] leading-none">{ordinal(me.rank)}</span><span className="mt-0.5 text-[11px] text-paper/50">of {rows.length}</span></>
-            : <><span className="score num text-[40px] leading-none">{race.entrants}</span><span className="mt-0.5 text-[11px] text-paper/50">{race.entrants === 1 ? 'runner' : 'runners'}</span></>}
-        </div>
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-[11px] font-bold uppercase tracking-[0.14em] text-volt">{race.title} · {joined ? 'Live' : 'Popular'}</p>
-        <p className="mt-2 text-[15px] leading-snug text-paper/70">{line}</p>
-      </div>
+  // The number on the right: the gap that matters, orange when chasing and green when leading.
+  let gap: { value: string; label: string; tone: string } | null = null;
+  if (joined && me) {
+    if (myScore === null) gap = { value: '–', label: 'No score yet', tone: 'text-ink' };
+    else if (me.rank === 1) gap = second === null ? { value: 'Lead', label: 'Out in front', tone: 'text-ok' }
+      : second === myScore ? { value: 'Level', label: `with ${firstName(rows[1].displayName)}`, tone: 'text-ink' }
+        : { value: formatGap(race, second, myScore, unit) ?? '–', label: `ahead of ${firstName(rows[1].displayName)}`, tone: 'text-ok' };
+    else if (leaderScore === myScore) gap = { value: 'Level', label: `with ${firstName(leader.displayName)}`, tone: 'text-ink' };
+    else if (leaderScore !== null) gap = { value: formatGap(race, myScore, leaderScore, unit) ?? '–', label: `behind ${firstName(leader.displayName)}`, tone: 'text-track' };
+  }
+
+  // You and whoever's either side of you, placed by how close each is to the leader.
+  const neighbours = me ? [rows[me.rank - 2], me, rows[me.rank]].filter((row): row is StandingRow => Boolean(row)) : [];
+  const marks = neighbours.map((row) => ({
+    key: row.userId, me: row.userId === user.id, at: hasScored(method, row.score) ? (row.rank === 1 ? 1 : lanePosition(method, row, leader)) : 0,
+    avatar: <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={26} className="rounded-full" />,
+  }));
+  const progress = !joined || !me || myScore === null ? 0 : me.rank === 1 ? 1 : lanePosition(method, me, leader);
+  const open = () => void navigate({ to: '/competitions/$code', params: { code: race.code } });
+
+  return <section role="link" tabIndex={0} onClick={open} onKeyDown={(event) => { if (event.key === 'Enter') open(); }}
+    aria-label={`${race.title}, ${joined && me ? `${ordinal(me.rank)} of ${rows.length}` : `${race.entrants} in`}`}
+    className={cx(SUMMARY_CARD, 'cursor-pointer rounded-3xl p-5 transition-colors hover:bg-ink/[0.02]')}>
+    <div className="flex items-baseline gap-3">
+      <p className="min-w-0 flex-1 truncate text-[17px] font-bold">{race.title}</p>
+      <p className="num shrink-0 text-[13px] font-semibold text-ink-3">{ends}</p>
     </div>
-    {/* The race itself: top runners (and you) placed along the track by score; the dashed line is the leader's mark. */}
-    {lanes.length > 0 && <div className="relative mt-5">
-      <div className="pointer-events-none absolute bottom-0 right-[calc(56px+0.5rem+2%)] top-0 border-l-[1.5px] border-dashed border-paper/20" aria-hidden="true" />
-      <ol className="space-y-1">
-        {lanes.map((row) => {
-          const isMe = row.userId === user.id;
-          const position = lanePosition(method, row, leader);
-          return <li key={row.userId} className="grid grid-cols-[56px_1fr_56px] items-center gap-2">
-            <span className={cx('truncate text-[12px]', isMe ? 'font-bold text-volt' : 'text-paper/60')}>{isMe ? 'You' : firstName(row.displayName)}</span>
-            <span className="relative h-7">
-              <span className="absolute inset-x-0 top-1/2 h-px bg-paper/10" aria-hidden="true" />
-              <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 transition-[left] duration-[1400ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]" style={{ left: `${shown ? 4 + position * 92 : 4}%` }}>
-                <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={24} className={cx('rounded-full', isMe && 'ring-2 ring-volt shadow-[0_0_10px_rgba(228,255,58,0.55)]')} />
-              </span>
-            </span>
-            <span className={cx('num truncate text-right text-[12px]', isMe ? 'font-bold text-volt' : 'text-paper/60')}>{hasScored(method, row.score) ? scoreOf(race, laneScore(row), unit) : '–'}</span>
-          </li>;
-        })}
-      </ol>
-    </div>}
-    {joined
-      ? <Link to="/run" className="mt-5 flex h-12 items-center justify-center rounded-full bg-volt text-[15px] font-bold text-ink transition-transform active:scale-[0.98]">Start a run</Link>
-      : race.type === 'paid'
-        ? <Link to="/competitions/$code" params={{ code: race.code }} className="mt-5 flex h-12 items-center justify-center rounded-full bg-volt text-[15px] font-bold text-ink">See entry</Link>
-        : <button type="button" onClick={() => join.mutate()} disabled={join.isPending} className="mt-5 flex h-12 w-full items-center justify-center rounded-full bg-volt text-[15px] font-bold text-ink transition-transform active:scale-[0.98] disabled:opacity-60">{join.isPending ? 'Joining…' : 'Join the race'}</button>}
-    <Link to="/competitions/$code" params={{ code: race.code }} className="mt-3 block text-center text-[13px] font-semibold text-paper/55 transition-colors hover:text-paper">Full board</Link>
+    <div className="mt-3 flex items-end gap-3">
+      <div className="flex-1">
+        <p className="num text-[48px] font-bold leading-[52px] tracking-tight">{joined && me ? ordinal(me.rank) : race.entrants}</p>
+        <p className="text-[13px] font-medium text-ink-3">{joined && me ? `of ${rows.length} ${rows.length === 1 ? 'runner' : 'runners'}` : race.entrants === 1 ? 'runner in' : 'runners in'}</p>
+      </div>
+      {gap && <div className="pb-0.5 text-right">
+        <p className={cx('num truncate text-[24px] font-bold leading-7 tracking-tight', gap.tone)}>{gap.value}</p>
+        <p className="truncate text-[13px] font-medium text-ink-3">{gap.label}</p>
+      </div>}
+    </div>
+    {joined && marks.length > 0 && <RaceLine progress={progress} marks={marks} />}
+    {!joined && <button type="button" disabled={join.isPending}
+      onClick={(event) => { event.stopPropagation(); if (race.type === 'paid') open(); else join.mutate(); }}
+      className="mt-5 flex h-12 w-full items-center justify-center rounded-full bg-ink text-[15px] font-bold text-paper transition-transform active:scale-[0.98] disabled:opacity-60">
+      {race.type === 'paid' ? 'See entry' : join.isPending ? 'Joining…' : 'Join the race'}
+    </button>}
     <ErrorNotice error={join.error} />
   </section>;
+}
+
+/**
+ * Under the summary, like the competition page's bar: one line on what a run would do in your featured
+ * race, and a round Go to record.
+ */
+export function GoBar({ unit, now }: { unit: Unit; now: number }) {
+  const mine = useMyCompetitions();
+  const race = heroRace(liveNow(mine.data, now));
+  const my = race ? scoreOf(race.myScore) : null;
+  const ahead = race ? scoreOf(race.aheadScore) : null;
+  const behind = race ? scoreOf(race.behindScore) : null;
+  const bold = (text: string | null) => <b className="font-bold text-ink">{text}</b>;
+  const line = !race ? <>Every walk and run counts toward your league.</>
+    : !hasScored(race.scoringMethod, my) ? <>Your first run puts you on the board in {bold(race.title)}.</>
+      : race.myRank === 1
+        ? behind !== null && behind !== my && race.behindName ? <>{bold(formatGap(race, behind, my!, unit))} ahead of {firstName(race.behindName)}. Keep the gap.</> : <>Out in front. Keep it that way.</>
+        : ahead !== null && race.aheadName ? (ahead === my ? <>Level with {firstName(race.aheadName)}. One run breaks the tie.</> : <>{bold(formatGap(race, my!, ahead, unit))} to pass {firstName(race.aheadName)}.</>)
+          : <>Every run counts.</>;
+  return <div className={cx(SUMMARY_CARD, 'flex items-center gap-3.5 rounded-[20px] py-3 pl-4 pr-3')}>
+    <p className="min-w-0 flex-1 text-[14px] leading-snug text-ink-3">{line}</p>
+    <Link to="/run" aria-label="Go: record now" className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-ink text-[13px] font-extrabold uppercase tracking-[0.06em] text-volt transition-transform hover:scale-105 active:scale-95">Go</Link>
+  </div>;
 }
 
 const WHO_ICONS: Record<string, ReactNode> = {
