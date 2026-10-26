@@ -127,6 +127,21 @@ function Face({ face, size = 28, ring }: { face: { displayName: string; avatarUr
 }
 
 /**
+ * Stands in for a host's banner: the activity's colour with running-track lanes sweeping across, and what
+ * the competition is about (the prize, or what wins) set big, like a race poster.
+ */
+function DrawnBanner({ table, headline }: { table: CompetitionTable; headline: { big: string; small: string } }) {
+  const theme = cardTheme(table);
+  return <div className={cx('relative -mx-4 -mt-4 mb-3.5 flex aspect-[3/1] w-[calc(100%+2rem)] flex-col justify-end overflow-hidden border-b-[1.5px] border-ink px-4 pb-3', theme.band)} aria-hidden="true">
+    <svg className="absolute inset-0 h-full w-full opacity-[0.18]" viewBox="0 0 400 134" preserveAspectRatio="none">
+      {[0, 1, 2, 3, 4, 5].map((lane) => <path key={lane} d={`M-20 ${150 - lane * 22}C120 ${128 - lane * 26} 260 ${78 - lane * 18} 420 ${36 - lane * 14}`} fill="none" stroke="currentColor" strokeWidth="3" />)}
+    </svg>
+    <p className="wide relative text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{activityLabel(table.challengeType)}</p>
+    <p className="display relative truncate text-[clamp(26px,4.2vw,40px)] leading-[0.95]">{headline.big}</p>
+  </div>;
+}
+
+/**
  * A competition card built to make you want in: what's at stake, the race itself (runners placed along a
  * track by score), who's in, how long is left, and one tap to join a free one.
  */
@@ -159,8 +174,9 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
   });
 
   return <article className="group relative overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card px-4 pb-3.5 pt-4 transition-shadow hover:shadow-hard-sm">
-    {/* The host's banner, when there is one: a slim strip across the top; the card below is unchanged. */}
-    {table.bannerUrl && <img src={table.bannerUrl} alt="" loading="lazy" className="-mx-4 -mt-4 mb-3.5 block aspect-[3/1] w-[calc(100%+2rem)] max-w-none bg-ink/5 object-cover" />}
+    {/* The host's banner across the top; without one, a drawn one the same size, so every card in a grid lines up. */}
+    {table.bannerUrl ? <img src={table.bannerUrl} alt="" loading="lazy" className="-mx-4 -mt-4 mb-3.5 block aspect-[3/1] w-[calc(100%+2rem)] max-w-none bg-ink/5 object-cover" />
+      : <DrawnBanner table={table} headline={hero} />}
     <Link to="/competitions/$code" params={{ code: table.code }} className="absolute inset-0 rounded-2xl" aria-label={`Open ${table.title}`} />
 
     <div className="flex items-start gap-3">
@@ -247,8 +263,12 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
       params={{ code: table.code }}
       className="group flex flex-col overflow-hidden rounded-md border-[1.5px] border-ink bg-card transition-[transform,box-shadow] duration-150 ease-out hover:-translate-x-1 hover:-translate-y-1 hover:shadow-hard active:translate-x-0 active:translate-y-0 active:shadow-none"
     >
-      {/* Colour band with the headline figure */}
-      <div className={cx('relative overflow-hidden px-4 pb-4 pt-3', theme.band)}>
+      {/* Colour band with the headline figure; the host's banner photo behind it when there is one, darkened so the type reads. */}
+      <div className={cx('relative overflow-hidden px-4 pb-4 pt-3', table.bannerUrl ? 'bg-ink text-paper' : theme.band)}>
+        {table.bannerUrl && <>
+          <img src={table.bannerUrl} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]" />
+          <span className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/40 to-ink/15" aria-hidden="true" />
+        </>}
         <div className="relative z-10 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <TypeTag table={table} />
