@@ -9,7 +9,6 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 export const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
 export const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
 
-/** Verified distance: GPS, or steps × stride when larger (indoors) — what leagues credit. */
 const DISTANCE = 'GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")';
 
 @Injectable()
@@ -35,7 +34,6 @@ export class ProfilesService {
 
   async updateMine(userId: string, input: UpdateProfileDto) {
     const profile = await this.getMine(userId);
-    // Only fields actually sent: assigning `undefined` for the rest blanked them in the response.
     const changes: Partial<Profile> = {};
     if (input.username !== undefined) {
       changes.username = input.username.toLowerCase();
@@ -58,7 +56,6 @@ export class ProfilesService {
     Object.assign(profile, changes);
     try {
       const saved = await this.profiles.save(profile);
-      // Challenge leaderboards and emails read the account's name; keep it the same as the profile's.
       if (changes.displayName) await this.dataSource.query(`UPDATE "users" SET "displayName" = $2 WHERE "id" = $1`, [userId, changes.displayName]);
       return saved;
     } catch (error) {
@@ -87,12 +84,10 @@ export class ProfilesService {
     return this.profiles.save(profile);
   }
 
-  /** Your trophy cabinet: podium finishes, newest first, with win and podium counts. */
   myTrophies(userId: string) {
     return trophiesFor(this.dataSource.manager, userId);
   }
 
-  /** Someone else's, by their handle. */
   async trophies(username: string) {
     const profile = await this.byUsername(username);
     return trophiesFor(this.dataSource.manager, profile.userId);
@@ -120,10 +115,6 @@ export class ProfilesService {
     );
   }
 
-  /**
-   * Verified totals and recent activities are public; never expose routes (a start point is often
-   * someone's front door).
-   */
   async getPublic(username: string, viewerId?: string | null) {
     const profile = await this.byUsername(username);
     const isMe = viewerId === profile.userId;
@@ -143,7 +134,6 @@ export class ProfilesService {
       verified: Boolean(profile.verifiedAt),
       bio: profile.bio,
       memberSince: profile.createdAt,
-      // Every runner's activities are public: competitions are only fair when anyone can check the runs.
       runsVisible: true,
       isMe,
       followers: counts.followers,
@@ -206,7 +196,6 @@ export class ProfilesService {
     return { following: false };
   }
 
-  /** Followers of (or runners followed by) `username`, newest first. */
   async connections(username: string, direction: 'followers' | 'following', viewerId?: string | null) {
     const profile = await this.byUsername(username);
     const [mine, theirs] = direction === 'followers' ? ['followingId', 'followerId'] : ['followerId', 'followingId'];

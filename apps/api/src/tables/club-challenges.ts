@@ -9,15 +9,10 @@ import { creditActivities } from './competition-credits';
 import { CompetitionTable } from './competition-table.entity';
 import { TableRegistration } from './table-registration.entity';
 
-/** Not public yet: a draft, or waiting for its publish time. */
 export const UNPUBLISHED = ['DRAFT', 'SCHEDULED'];
 
 export type ClubForHosting = { id: string; slug: string; name: string; plan: string; planRenewsAt: Date | null; suspendedAt: Date | null; role: string | null };
 
-/**
- * A club manager running a challenge for their club: the club must exist and not be suspended, and a new
- * live (or scheduled) challenge must fit the club's plan.
- */
 export async function assertClubCanHost(manager: EntityManager, clubId: string, userId: string, { adding = true } = {}) {
   const [club] = await manager.query(
     `SELECT c."id", c."slug", c."name", c."plan", c."planRenewsAt", c."suspendedAt", m."role"
@@ -42,7 +37,6 @@ export async function assertClubCanHost(manager: EntityManager, clubId: string, 
   return club;
 }
 
-/** A club manager, or the person who made it, can manage a challenge. */
 export async function canManageTable(manager: EntityManager, table: Pick<CompetitionTable, 'creatorId' | 'communityId'>, userId: string) {
   if (table.creatorId === userId) return true;
   if (!table.communityId) return false;
@@ -50,7 +44,6 @@ export async function canManageTable(manager: EntityManager, table: Pick<Competi
   return rows.length > 0;
 }
 
-/** Prize tiers numbered from 1 with no gaps, enough places for every winner, and photos uploaded for this club. */
 export function checkClubPrizes(prizes: ClubPrizesDto, capacity: number | null, clubId: string, cloudinary: CloudinaryService) {
   const positions = prizes.prizes.map((prize) => prize.position).sort((a, b) => a - b);
   if (positions.some((position, index) => position !== index + 1)) throw new BadRequestException('Number the prizes 1, 2, 3… in the order they’re won');
@@ -61,7 +54,6 @@ export function checkClubPrizes(prizes: ClubPrizesDto, capacity: number | null, 
   }
 }
 
-/** The challenge's columns for its prize terms (or none). */
 export function prizeColumns(prizes: ClubPrizesDto | null | undefined) {
   return prizes ? {
     prizeDeliveryCountries: [...new Set(prizes.deliveryCountries)],
@@ -88,7 +80,6 @@ export async function savePrizes(manager: EntityManager, tableId: string, prizes
   }
 }
 
-/** Followers hear about each new public challenge from the club. */
 export async function announceToFollowers(manager: EntityManager, table: Pick<CompetitionTable, 'id' | 'communityId' | 'visibility' | 'creatorId' | 'title' | 'code'>) {
   if (!table.communityId || table.visibility !== 'public') return;
   await manager.query(
@@ -101,11 +92,6 @@ export async function announceToFollowers(manager: EntityManager, table: Pick<Co
   );
 }
 
-/**
- * A public competition just opened: tell everyone. While Jump is small, every runner hears about every
- * new one, as a push and (if they get activity emails) an email. Club followers get the club's own
- * wording above instead; the host and anyone already in it hear nothing; and it's once per competition.
- */
 export async function announceCompetition(manager: EntityManager, table: Pick<CompetitionTable, 'id' | 'communityId' | 'visibility' | 'creatorId' | 'title' | 'code'>) {
   if (table.visibility !== 'public') return;
   await announceToFollowers(manager, table);
@@ -123,7 +109,6 @@ export async function announceCompetition(manager: EntityManager, table: Pick<Co
   );
 }
 
-/** Opens a draft or scheduled challenge: entry opens, the club is entered if asked, and everyone hears. */
 export async function openTable(manager: EntityManager, table: CompetitionTable) {
   table.status = 'OPEN_FOR_ENTRY';
   table.publishAt = null;
@@ -133,7 +118,6 @@ export async function openTable(manager: EntityManager, table: CompetitionTable)
   return table;
 }
 
-/** What a duplicate or a series edition copies: the rules, branding, limits and prize terms. */
 const TEMPLATE_FIELDS = [
   'title', 'description', 'type', 'challengeType', 'scoringMethod', 'targetDistanceMetres', 'targetSteps', 'targetSeconds', 'targetSessions',
   'dailyTarget', 'minSessions', 'minActivityMetres', 'minActivitySeconds', 'eligibleActivities', 'format', 'timeZone', 'rulesVersion',
@@ -148,7 +132,6 @@ export type ChallengeTemplate = Partial<Record<(typeof TEMPLATE_FIELDS)[number],
   prizes: PrizeInputDto[];
 };
 
-/** Only free challenges repeat: a cash prize has to be funded each time. */
 export function assertRepeatable(table: CompetitionTable) {
   if (table.type !== 'free') throw new BadRequestException('Only free-entry competitions (with or without club prizes) can be copied or repeated. Cash prizes are funded one competition at a time.');
   if (!table.startsAt || !table.scoringClosesAt) throw new BadRequestException('Give the competition an end date first');
@@ -170,7 +153,6 @@ export async function templateOf(manager: EntityManager, table: CompetitionTable
   };
 }
 
-/** A new challenge from a template, with its own dates, code, board and entrants. The creator is entered like any host. */
 export async function createFromTemplate(manager: EntityManager, template: ChallengeTemplate, values: {
   creatorId: string; communityId: string; startsAt: Date; status: 'DRAFT' | 'SCHEDULED' | 'OPEN_FOR_ENTRY'; publishAt?: Date | null;
   seriesId?: string | null; edition?: number | null; title?: string;
@@ -203,7 +185,6 @@ export async function createFromTemplate(manager: EntityManager, template: Chall
   return values.status === 'OPEN_FOR_ENTRY' ? openTable(manager, table) : table;
 }
 
-/** The next edition's start: a week or a calendar month on. */
 export function nextStart(from: Date, cadence: 'weekly' | 'monthly') {
   const next = new Date(from);
   if (cadence === 'weekly') next.setUTCDate(next.getUTCDate() + 7);
@@ -211,7 +192,6 @@ export function nextStart(from: Date, cadence: 'weekly' | 'monthly') {
   return next;
 }
 
-/** Only people from the listed countries can join; an empty list lets everyone in. */
 export async function assertCountryEligible(manager: EntityManager, table: Pick<CompetitionTable, 'eligibleCountries'>, userId: string) {
   if (!table.eligibleCountries?.length) return;
   const [profile] = await manager.query(`SELECT "countryCode" FROM "profiles" WHERE "userId" = $1`, [userId]) as Array<{ countryCode: string | null }>;

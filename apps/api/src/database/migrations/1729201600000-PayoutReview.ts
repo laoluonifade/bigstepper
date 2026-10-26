@@ -1,9 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * One admin reviews each payout request and either sends it or rejects it with a reason. A rejected
- * request no longer blocks a new one for the same prize or earning (e.g. after fixing bank details).
- */
 export class PayoutReview1729201600000 implements MigrationInterface {
   name = 'PayoutReview1729201600000';
 

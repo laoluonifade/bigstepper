@@ -6,19 +6,16 @@ export class RichRant1729203500000 implements MigrationInterface {
   name = 'RichRant1729203500000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    // Photos on posts: a post needs text, an activity or a photo.
     await queryRunner.query(`ALTER TABLE "feed_posts" ADD COLUMN "imageUrl" varchar(400)`);
     await queryRunner.query(`ALTER TABLE "feed_posts" DROP CONSTRAINT "feed_post_has_content"`);
     await queryRunner.query(`ALTER TABLE "feed_posts" ADD CONSTRAINT "feed_post_has_content"
       CHECK (length(trim("body")) > 0 OR "activityId" IS NOT NULL OR "imageUrl" IS NOT NULL)`);
 
-    // Activities shared in DMs: a message needs text or an activity.
     await queryRunner.query(`ALTER TABLE "direct_messages" ADD COLUMN "activityId" uuid REFERENCES "activities"("id") ON DELETE SET NULL`);
     await queryRunner.query(`ALTER TABLE "direct_messages" DROP CONSTRAINT "direct_messages_body_check"`);
     await queryRunner.query(`ALTER TABLE "direct_messages" ADD CONSTRAINT "direct_messages_body_check"
       CHECK (length(trim("body")) > 0 OR "activityId" IS NOT NULL)`);
 
-    // One wider set of reactions shared by posts and messages.
     await queryRunner.query(`ALTER TABLE "feed_post_reactions" DROP CONSTRAINT "feed_post_reactions_reaction_check"`);
     await queryRunner.query(`ALTER TABLE "feed_post_reactions" ADD CONSTRAINT "feed_post_reactions_reaction_check" CHECK ("reaction" IN (${REACTIONS}))`);
     await queryRunner.query(`ALTER TABLE "direct_message_reactions" DROP CONSTRAINT "direct_message_reactions_reaction_check"`);

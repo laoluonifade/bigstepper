@@ -1,7 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 import { retotal } from '../../tables/competition-credits';
 
-/** Distance competitions count verified runs, walks and rides, including activities recorded before joining. */
 export class DistanceIncludesCycling1729205000000 implements MigrationInterface {
   name = 'DistanceIncludesCycling1729205000000';
 
@@ -12,7 +11,6 @@ export class DistanceIncludesCycling1729205000000 implements MigrationInterface 
       WHERE "challengeType" = 'DISTANCE'
         AND "eligibleActivities" <> '["run","walk","cycle"]'::jsonb`);
 
-    // One set-based backfill; finished/settled boards are not rewritten.
     const credited = await queryRunner.manager.query(`
       INSERT INTO "table_activity_credits"
         ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
@@ -32,7 +30,6 @@ export class DistanceIncludesCycling1729205000000 implements MigrationInterface 
         AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
         AND a."validatedDistanceMetres" >= COALESCE(t."minActivityMetres", 0)
         AND a."movingSeconds" >= COALESCE(t."minActivitySeconds", 0)
-        -- Leave ambiguous overlapping historical rides for review rather than double-counting them.
         AND NOT EXISTS (
           SELECT 1 FROM "activities" other
           WHERE other."userId" = a."userId" AND other."id" <> a."id"
@@ -50,6 +47,5 @@ export class DistanceIncludesCycling1729205000000 implements MigrationInterface 
   }
 
   async down(): Promise<void> {
-    // Scored rides cannot be removed from settled cash results safely.
   }
 }

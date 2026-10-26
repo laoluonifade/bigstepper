@@ -1,10 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * The first league season was seeded as "Founding Season", running three months. Every other season is
- * a calendar month named after that month, so make the first one the same: named for its month, ending
- * at the end of it (or the end of the current month if that has already passed).
- */
 export class NameSeasonsByMonth1729201100000 implements MigrationInterface {
   name = 'NameSeasonsByMonth1729201100000';
 
@@ -25,6 +20,5 @@ export class NameSeasonsByMonth1729201100000 implements MigrationInterface {
   }
 
   public async down(): Promise<void> {
-    // Renaming back would reintroduce the placeholder name; nothing to undo.
   }
 }

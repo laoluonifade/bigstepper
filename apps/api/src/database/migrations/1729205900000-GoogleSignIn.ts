@@ -4,7 +4,6 @@ export class GoogleSignIn1729205900000 implements MigrationInterface {
   name = 'GoogleSignIn1729205900000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // "Continue with Google": the Google account's stable id, so a changed Gmail address still signs in.
     await queryRunner.query(`ALTER TABLE "users" ADD "googleSub" varchar(64)`);
     await queryRunner.query(`CREATE UNIQUE INDEX "users_google_sub_idx" ON "users" ("googleSub") WHERE "googleSub" IS NOT NULL`);
   }

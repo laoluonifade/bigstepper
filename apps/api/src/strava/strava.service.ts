@@ -17,15 +17,11 @@ import { StravaAccount } from './strava-account.entity';
 import { hasCadence, stravaStepTotals } from './strava-steps';
 
 const STRAVA = 'https://www.strava.com';
-/** Strava wants the token refreshed when it has less than an hour left. */
 const REFRESH_MARGIN_MS = 60 * 60 * 1000;
-/** The first sync takes the most recent activities however old; later syncs pick up from the last one. */
 const MAX_PER_SYNC = 30;
-/** Strava filters by start time, so look back past the last sync for activities uploaded late; imports are deduped by id. */
 const SYNC_OVERLAP_MS = 7 * 24 * 60 * 60 * 1000;
 const SIGNUP_TOKEN_PURPOSE = 'strava-signup';
 
-/** Strava sport types Jump can verify. Treadmill, virtual and e-bike activities have no honest GPS track. */
 const SPORT_TYPES: Record<string, 'walk' | 'run' | 'cycle'> = {
   Run: 'run',
   TrailRun: 'run',
@@ -68,7 +64,6 @@ export type SyncResult = { imported: number; skipped: number };
 @Injectable()
 export class StravaService implements OnApplicationBootstrap {
   private readonly logger = new Logger(StravaService.name);
-  /** One sync per runner at a time; a second request joins the one already running. */
   private readonly inFlight = new Map<string, Promise<SyncResult>>();
 
   constructor(
@@ -84,7 +79,6 @@ export class StravaService implements OnApplicationBootstrap {
     return { clientId: this.config.get<string>('STRAVA_CLIENT_ID') || null, public: this.config.get<boolean>('STRAVA_PUBLIC') === true };
   }
 
-  /** "Continue with Strava": signs in a linked athlete, or starts a sign-up that still needs an email. */
   async login(code: string, scope: string) {
     const token = await this.exchange(code);
     const account = await this.saveTokens(token, scope, null);
@@ -127,14 +121,12 @@ export class StravaService implements OnApplicationBootstrap {
     return response;
   }
 
-  /** Links Strava to the signed-in runner from settings. */
   async connect(userId: string, code: string, scope: string) {
     const token = await this.exchange(code);
     const existing = await this.accounts.findOne({ where: { athleteId: String(token.athlete?.id) } });
     if (existing?.userId && existing.userId !== userId) {
       throw new ConflictException('That Strava account is linked to another Jump account.');
     }
-    // A runner has one Strava account; reconnecting a different one replaces it.
     await this.accounts.delete({ userId });
     await this.saveTokens(token, scope, userId);
     this.syncInBackground(userId);
@@ -157,7 +149,6 @@ export class StravaService implements OnApplicationBootstrap {
   async disconnect(userId: string) {
     const account = await this.withTokens({ userId });
     if (!account) return { connected: false };
-    // Revoke on Strava's side too; if that fails the link is still removed here.
     await fetch(`${STRAVA}/oauth/deauthorize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -167,7 +158,6 @@ export class StravaService implements OnApplicationBootstrap {
     return { connected: false };
   }
 
-  /** Imports new GPS activities since the last sync. Each one goes through the same verification as a Jump run. */
   sync(userId: string): Promise<SyncResult> {
     const running = this.inFlight.get(userId);
     if (running) return running;
@@ -196,7 +186,6 @@ export class StravaService implements OnApplicationBootstrap {
     return { imported, skipped };
   }
 
-  /** Webhook: a new activity was uploaded, or the athlete revoked access. */
   async handleEvent(event: { object_type: string; object_id: number; aspect_type: string; owner_id: number; updates?: Record<string, string> }) {
     const account = await this.withTokens({ athleteId: String(event.owner_id) });
     if (!account?.userId) return;
@@ -215,10 +204,6 @@ export class StravaService implements OnApplicationBootstrap {
     }
   }
 
-  /**
-   * Deleted on Strava, so gone from Jump too: off every live board, and removed. Finished competitions keep
-   * the result they were settled on (their snapshot holds it), so their totals aren't recomputed.
-   */
   private async forgetActivity(userId: string, stravaId: number) {
     await this.dataSource.transaction(async (manager) => {
       const activity = await manager.findOne(Activity, { where: { externalId: `strava:${stravaId}`, userId }, lock: { mode: 'pessimistic_write' } });
@@ -230,11 +215,6 @@ export class StravaService implements OnApplicationBootstrap {
     });
   }
 
-  /**
-   * The athlete changed the sport on Strava. A sport Jump can't verify is treated as deleted; a different
-   * one comes off the boards and is verified again as what it now is (a run relabelled a ride must pass
-   * the cycling checks before it counts anywhere).
-   */
   private async retype(userId: string, summary: StravaActivity) {
     const activityType = SPORT_TYPES[summary.sport_type];
     if (!activityType || summary.manual || summary.trainer) return this.forgetActivity(userId, summary.id);
@@ -244,7 +224,6 @@ export class StravaService implements OnApplicationBootstrap {
       await uncreditActivity(manager, existing.id, { liveOnly: true });
       await manager.update(Activity, { id: existing.id }, { activityType, verificationStatus: 'PENDING_VERIFICATION' });
       await manager.update(RunningSession, { id: existing.runningSessionId }, { activityType, status: 'PENDING_VERIFICATION' });
-      // Out of league distance until it's verified again.
       await refreshLeagueDistance(manager, userId);
       return existing;
     });
@@ -256,17 +235,12 @@ export class StravaService implements OnApplicationBootstrap {
     );
   }
 
-  /**
-   * Strava only pushes new uploads to a registered webhook. Register ours on start-up when it isn't yet
-   * (needs STRAVA_WEBHOOK_VERIFY_TOKEN and STRAVA_WEBHOOK_CALLBACK_URL); otherwise imports wait for a sync.
-   */
   async onApplicationBootstrap() {
     const callbackUrl = this.config.get<string>('STRAVA_WEBHOOK_CALLBACK_URL');
     const verifyToken = this.config.get<string>('STRAVA_WEBHOOK_VERIFY_TOKEN');
     const clientId = this.config.get<string>('STRAVA_CLIENT_ID');
     const clientSecret = this.config.get<string>('STRAVA_CLIENT_SECRET');
     if (!callbackUrl || !verifyToken || !clientId || !clientSecret) return;
-    // After start-up, so the verification GET Strava sends back can be answered.
     setTimeout(() => void this.ensureWebhook(callbackUrl, verifyToken, clientId, clientSecret), 5_000).unref();
   }
 
@@ -276,7 +250,6 @@ export class StravaService implements OnApplicationBootstrap {
       const listed = await fetch(`${STRAVA}/api/v3/push_subscriptions?${query}`);
       const subscriptions = listed.ok ? await listed.json() as Array<{ id: number; callback_url: string }> : [];
       if (subscriptions.some((subscription) => subscription.callback_url === callbackUrl)) return;
-      // Strava allows one subscription per app; replace one pointing somewhere else.
       for (const old of subscriptions) await fetch(`${STRAVA}/api/v3/push_subscriptions/${old.id}?${query}`, { method: 'DELETE' });
       const created = await fetch(`${STRAVA}/api/v3/push_subscriptions`, {
         method: 'POST',
@@ -308,7 +281,6 @@ export class StravaService implements OnApplicationBootstrap {
 
     const startedAt = new Date(summary.start_date);
     const finishedAt = new Date(startedAt.getTime() + summary.elapsed_time * 1000);
-    // Recording the same outing in Jump and Strava must not count twice: the Jump recording wins.
     const [{ overlapping }] = await this.dataSource.query(
       `SELECT EXISTS (SELECT 1 FROM "activities" WHERE "userId" = $1 AND "startedAt" < $3 AND "finishedAt" > $2) AS overlapping`,
       [userId, startedAt, finishedAt],
@@ -340,8 +312,6 @@ export class StravaService implements OnApplicationBootstrap {
         sequence: index,
         latitude,
         longitude,
-        // Strava streams carry no accuracy (verification treats it as usable) and no step count, so the
-        // running total is rebuilt from cadence or distance and checked like a phone's.
         stepCount: stepTotals?.[index] ?? null,
         recordedAt: new Date(startedAt.getTime() + offsets[index] * 1000),
       }));
@@ -417,7 +387,6 @@ export class StravaService implements OnApplicationBootstrap {
     } as StravaAccount);
   }
 
-  /** Loads the account with its tokens, refreshing the access token when it is about to expire. */
   private async withTokens(where: { userId: string } | { athleteId: string }) {
     const account = await this.accounts
       .createQueryBuilder('account')

@@ -11,7 +11,6 @@ export class EmailUpdates1729202900000 implements MigrationInterface {
     await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN "emailClaimedAt" timestamptz`);
     await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN "emailProcessedAt" timestamptz`);
     await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN "emailSentAt" timestamptz`);
-    // Existing notifications must not become a surprise email flood on deployment.
     await queryRunner.query(`UPDATE "notifications" SET "emailProcessedAt"=now()`);
     await queryRunner.query(`CREATE INDEX "notifications_email_pending_idx" ON "notifications" ("createdAt", "id") WHERE "emailProcessedAt" IS NULL`);
     await queryRunner.query(`CREATE INDEX "profiles_digest_due_idx" ON "profiles" ("digestNextAt", "userId") WHERE "emailDigestEnabled"=true`);

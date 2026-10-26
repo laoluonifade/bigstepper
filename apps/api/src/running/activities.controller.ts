@@ -29,7 +29,6 @@ export class ActivitiesController {
     return this.activitiesService.view(user.id, id);
   }
 
-  /** The runner's own route (smoothed, thinned) for drawing on a share image. */
   @Get(':id/track')
   track(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.activitiesService.track(user.id, id);

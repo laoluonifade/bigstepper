@@ -1,12 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Club group chats reuse direct messages: a message goes either to one person (recipientId) or to a
- * club (clubId), never both, so replies, reactions, edits, voice notes and shared activities all work in
- * both. Each member's last read time drives unread counts.
- *
- * Competitions can be archived by their host once they're over: off every list, still at their link.
- */
 export class ClubChatAndArchive1729204700000 implements MigrationInterface {
   name = 'ClubChatAndArchive1729204700000';
 

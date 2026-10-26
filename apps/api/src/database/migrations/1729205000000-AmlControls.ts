@@ -1,20 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Anti-money-laundering controls.
- *
- * - kyc_verifications: Level 2 identity (BVN validated against a named bank account through Paystack). The
- *   Paystack transfer recipient for that account is made at submission and becomes the payout account on success.
- *   The BVN and account number are never stored, only salted hashes and the last four digits. One BVN can
- *   verify one Jump account (partial unique index), so limits can't be spread across accounts.
- * - aml_settings: every threshold, editable by admins, so they can be tuned to real behaviour.
- * - user_devices: device ids and last IP per account, to spot accounts that share a device.
- * - risk_flags: each suspicious pattern found, with its reason and evidence, and how an admin resolved it.
- * - user_risk: the score from those flags, and whether payouts are held. Once an admin releases a hold, the
- *   system only holds the account again for flags raised after that.
- * - payout_requests gains the hold, escalation and the reviewer's written decision.
- * - payout_recipients records whether the account is the KYC-verified one.
- */
 export class AmlControls1729205000000 implements MigrationInterface {
   name = 'AmlControls1729205000000';
 

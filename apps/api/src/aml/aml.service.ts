@@ -17,7 +17,6 @@ export interface NewFlag {
   payoutRequestId?: string | null;
   reason: string;
   evidence?: Record<string, unknown>;
-  /** Stops the same finding being raised twice. */
   fingerprint: string;
   status?: 'OPEN' | 'ESCALATED';
 }
@@ -27,18 +26,12 @@ const isDuplicate = (error: unknown) =>
   error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505';
 const words = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((word) => word.length > 1);
 
-/**
- * Anti-money-laundering controls: KYC Level 2, limits on paid challenges and payouts, risk flags and
- * scores, and payout holds. Thresholds live in aml_settings so admins can tune them.
- */
 @Injectable()
 export class AmlService {
   private readonly logger = new Logger(AmlService.name);
   private cache: { at: number; settings: AmlSettings } | null = null;
 
   constructor(private readonly dataSource: DataSource, private readonly config: ConfigService, private readonly paystack: PaystackClient) {}
-
-  // ── Settings ────────────────────────────────────────────────────────────
 
   async settings(): Promise<AmlSettings> {
     if (this.cache && Date.now() - this.cache.at < 60_000) return this.cache.settings;
@@ -88,13 +81,10 @@ export class AmlService {
     return merged;
   }
 
-  // ── KYC ─────────────────────────────────────────────────────────────────
-
   private hash(value: string) {
     return createHmac('sha256', this.config.getOrThrow<string>('KYC_HASH_SECRET')).update(value).digest('hex');
   }
 
-  /** The bank account hash used to spot one account behind several Jump accounts. */
   accountHash(bankCode: string, accountNumber: string) {
     return this.hash(`acct:${bankCode}:${accountNumber}`);
   }
@@ -108,10 +98,6 @@ export class AmlService {
     return { required: settings.kycRequired, ...(row ?? { level: 0, status: 'NONE' }) };
   }
 
-  /**
-   * KYC Level 2. Paystack checks the BVN belongs to the named holder of the bank account, so the verified
-   * person and the payout account are proved together. One BVN and one bank account per Jump account.
-   */
   async submitKyc(userId: string, input: SubmitKycDto) {
     const user = await this.dataSource.getRepository(User).createQueryBuilder('user').addSelect('user.passwordHash').where('user.id = :userId', { userId }).getOne();
     if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) throw new ForbiddenException('Password confirmation failed');
@@ -194,7 +180,6 @@ export class AmlService {
     return this.kycStatus(userId);
   }
 
-  /** Paystack's customeridentification.success / .failed webhook. */
   async applyIdentificationEvent(eventType: string, data: { customer_code?: string; reason?: string } | undefined) {
     if (!data?.customer_code) return;
     const [row] = await this.dataSource.query(
@@ -213,11 +198,9 @@ export class AmlService {
     });
   }
 
-  /** Level 2: the verified account becomes the only payout account. Changing it starts the 24-hour hold. */
   private async markVerified(userId: string) {
     try {
       await this.dataSource.transaction(async (manager) => {
-        // TypeORM returns [rows, affected] for UPDATE ... RETURNING on Postgres.
         const [rows] = await manager.query(
           `UPDATE "kyc_verifications" SET "status"='VERIFIED',"level"=2,"verifiedAt"=now(),"failureReason"=NULL,"updatedAt"=now()
            WHERE "userId"=$1 RETURNING "recipientCode","accountName","bankCode","accountLast4","accountHash"`, [userId],
@@ -241,7 +224,6 @@ export class AmlService {
             : `Payouts go to ${verified.accountName} (••${verified.accountLast4}). You can now join paid competitions and request payouts.`);
       });
     } catch (error) {
-      // Another account verified the same BVN or account first.
       if (!isDuplicate(error)) throw error;
       await this.dataSource.query(`UPDATE "kyc_verifications" SET "status"='FAILED',"failureReason"='These details are linked to another Jump account',"updatedAt"=now() WHERE "userId"=$1`, [userId]);
     }
@@ -253,16 +235,12 @@ export class AmlService {
     return rows.length > 0;
   }
 
-  /** Unverified people stay on free challenges. */
   async assertVerified(userId: string, manager: EntityManager = this.dataSource.manager) {
     if (!(await this.isVerified(userId, manager))) {
       throw new ForbiddenException({ statusCode: 403, code: 'KYC_REQUIRED', message: 'Verify your identity to use paid competitions and payouts. It takes a couple of minutes under You → Identity verification.' });
     }
   }
 
-  // ── Limits ──────────────────────────────────────────────────────────────
-
-  /** Checks a new paid challenge; returns the fewest entrants it must have to start and pay out. */
   async assertPaidChallengeLimits(userId: string, input: { entryFeeKobo: number; potKobo: number; capacity: number; minimumEntrants?: number }) {
     const settings = await this.settings();
     if (input.entryFeeKobo > settings.maxEntryFeeKobo) throw new BadRequestException(`The entry fee can be at most ${naira(settings.maxEntryFeeKobo)}`);
@@ -292,12 +270,6 @@ export class AmlService {
     if (amountKobo > settings.maxPotKobo) throw new BadRequestException(`A contribution can be at most ${naira(settings.maxPotKobo)}`);
   }
 
-  // ── Payouts ─────────────────────────────────────────────────────────────
-
-  /**
-   * Run before a payout request is saved: it must go to the verified account and stay inside the
-   * withdrawal limits for the account's risk level. Returns why it should be held for review, if at all.
-   */
   async assessPayout(manager: EntityManager, userId: string, amountKobo: number) {
     const settings = await this.settings();
     const [recipient] = await manager.query(`SELECT "kycVerified" FROM "payout_recipients" WHERE "userId"=$1`, [userId]) as Array<{ kycVerified: boolean }>;
@@ -331,14 +303,12 @@ export class AmlService {
     return reasons;
   }
 
-  /** Saves the hold on a new payout request and records it. */
   async holdPayout(manager: EntityManager, payoutRequestId: string, userId: string, reasons: string[]) {
     if (!reasons.length) return;
     await manager.query(`UPDATE "payout_requests" SET "riskHold"=true,"holdReasons"=$2 WHERE "id"=$1`, [payoutRequestId, JSON.stringify(reasons)]);
     await this.audit(manager, null, 'PAYOUT_HELD_FOR_REVIEW', 'payout_request', payoutRequestId, { userId, reasons });
   }
 
-  /** Before an admin sends a payout. A held payout needs a written decision; a held account must be cleared first. */
   async assertApprovable(manager: EntityManager, payout: { userId: string; riskHold: boolean; kycVerified: boolean }, note: string | undefined) {
     const settings = await this.settings();
     if (settings.kycRequired && !payout.kycVerified) throw new ConflictException('The payout account isn’t the runner’s verified account. They need to verify again.');
@@ -363,8 +333,6 @@ export class AmlService {
     });
   }
 
-  // ── Risk ────────────────────────────────────────────────────────────────
-
   async riskOf(userId: string, manager: EntityManager = this.dataSource.manager) {
     const [row] = await manager.query(
       `SELECT r."score", r."level", r."payoutHold", r."holdReason",
@@ -374,7 +342,6 @@ export class AmlService {
     return { score: row?.score ?? 0, level: (row?.level ?? 'LOW') as RiskLevel, payoutHold: row?.payoutHold ?? false, holdReason: row?.holdReason ?? null, openFlags: row?.openFlags ?? 0 };
   }
 
-  /** Records a finding once; a severe one holds payouts straight away. */
   async raiseFlag(flag: NewFlag) {
     const [row] = await this.dataSource.query(
       `INSERT INTO "risk_flags" ("rule","severity","userId","relatedUserIds","tableId","payoutRequestId","reason","evidence","fingerprint","status")
@@ -387,11 +354,6 @@ export class AmlService {
     return row.id;
   }
 
-  /**
-   * Score = points for each open, escalated or upheld flag (half for flags where they're the other
-   * party), capped at 100. High risk puts a payout hold on, unless an admin cleared the account and
-   * nothing new has been raised since.
-   */
   async recomputeRisk(userIds: string[]) {
     const settings = await this.settings();
     for (const userId of [...new Set(userIds)]) {
@@ -446,9 +408,6 @@ export class AmlService {
     await this.audit(manager, actorUserId, hold ? 'PAYOUT_HOLD_SET' : 'PAYOUT_HOLD_RELEASED', 'user', userId, { reason, by });
   }
 
-  // ── Devices ─────────────────────────────────────────────────────────────
-
-  /** Remembers which devices and IPs an account uses, at most once an hour per device. */
   recordDevice(userId: string, deviceId: string | undefined, ip: string | undefined) {
     if (!deviceId || !/^[A-Za-z0-9_-]{8,64}$/.test(deviceId)) return;
     void this.dataSource.query(
@@ -459,8 +418,6 @@ export class AmlService {
     ).catch((error) => this.logger.warn(`Could not record device: ${error instanceof Error ? error.message : String(error)}`));
   }
 
-  // ── Shared ──────────────────────────────────────────────────────────────
-
   async audit(manager: EntityManager, actorUserId: string | null, action: string, targetType: string, targetId: string, metadata: Record<string, unknown>) {
     await manager.query(
       `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,$3,$4,$5)`,
@@ -469,7 +426,6 @@ export class AmlService {
   }
 
   private async notify(manager: EntityManager, userId: string, type: string, title: string, body: string) {
-    // Identity checks open their own page; everything else here is about prizes and payouts.
     await manager.query(`INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,$5)`, [userId, type, title, body, type.startsWith('KYC') ? '/identity' : '/rewards']);
   }
 
@@ -483,7 +439,6 @@ function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
-/** The bank's account name must contain the first and last names given (in any order). */
 export function namesMatch(firstName: string, lastName: string, accountName: string) {
   const account = new Set(words(accountName));
   const given = [...words(firstName), ...words(lastName)];

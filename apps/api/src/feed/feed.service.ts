@@ -15,7 +15,6 @@ export class FeedService {
     catch (error) { this.logger.error('Could not create Rant notification', error instanceof Error ? error.stack : String(error)); }
   }
 
-  /** Tells each @mentioned runner (not the author) where they were tagged. */
   private async notifyMentions(authorId: string, postId: string, text: string, where: string) {
     const usernames = extractMentions(text);
     if (!usernames.length) return;
@@ -164,8 +163,6 @@ export class FeedService {
       )) as Array<{ id: string }>;
       if (!owned.length) throw new BadRequestException('Choose one of your verified activities');
     }
-    // The activity already went up by itself when it was verified: posting it fills in that post.
-    // (Claimed in a CTE: a bare UPDATE … RETURNING comes back from TypeORM as [rows, count].)
     const [filled] = input.activityId ? await this.dataSource.query(
       `WITH auto AS (
          UPDATE "feed_posts" SET "body"=$3,"imageUrl"=$4
@@ -177,7 +174,6 @@ export class FeedService {
       `INSERT INTO "feed_posts" ("userId","body","activityId","imageUrl") VALUES ($1,$2,$3,$4)
        RETURNING "id","createdAt"`, [userId, body, input.activityId ?? null, input.imageUrl ?? null],
     );
-    // Followers aren't notified of new Rants (too many); they're in the feed. Mentions still are.
     if (body) await this.notifyMentions(userId, post.id, body, 'a Rant');
     return post;
   }

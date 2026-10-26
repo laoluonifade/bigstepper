@@ -20,14 +20,11 @@ export class CreatePaidTableDto extends ScoringFieldsDto {
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true }) inviteEmails?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(50) @Matches(/^\+[1-9]\d{7,14}$/, { each: true }) invitePhones?: string[];
   @IsOptional() @IsIn([true]) inviteClubMembers?: true;
-  /** Defaults to 2: a paid race needs at least two people. */
   @IsOptional() @IsInt() @Min(2) @Max(10000) minimumEntrants?: number;
   @IsInt() @Min(2) @Max(10000) capacity: number;
   @IsDateString() startsAt: string;
-  /** Defaults to when the challenge ends: entry stays open the whole time. */
   @IsOptional() @IsDateString() entryClosesAt?: string;
   @IsDateString() scoringClosesAt: string;
-  /** Prizes the hosting club puts up on top of the cash pot (products, discounts, experiences). Club competitions only. */
   @IsOptional() @ValidateNested() @Type(() => ClubPrizesDto) clubPrizes?: ClubPrizesDto;
 }
 

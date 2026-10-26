@@ -1,9 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * When each person last used Jump, so admins can see who's active today. Starts from their latest
- * sign-in (or their latest activity, if later); every signed-in request keeps it current from here on.
- */
 export class LastSeen1729204200000 implements MigrationInterface {
   name = 'LastSeen1729204200000';
 

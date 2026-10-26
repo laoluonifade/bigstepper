@@ -54,9 +54,9 @@ describe('standing boost', () => {
   it('only queues between 5pm and 9pm Lagos time, as push-only notifications', async () => {
     const query = jest.fn(async (sql: string) => (sql.includes('WITH live') ? [row({})] : []));
     const processor = new PushNotificationsProcessor({ query } as unknown as DataSource, {} as ConfigService, {} as Queue);
-    expect(await processor.queueStandingBoosts(new Date('2026-10-25T08:00:00Z'))).toBe(0); // 9am Lagos
+    expect(await processor.queueStandingBoosts(new Date('2026-10-25T08:00:00Z'))).toBe(0);
     expect(query).not.toHaveBeenCalled();
-    expect(await processor.queueStandingBoosts(new Date('2026-10-25T16:30:00Z'))).toBe(1); // 5:30pm Lagos
+    expect(await processor.queueStandingBoosts(new Date('2026-10-25T16:30:00Z'))).toBe(1);
     const insert = query.mock.calls.find(([sql]) => String(sql).startsWith('INSERT INTO "notifications"'));
     expect(String(insert?.[0])).toContain('"emailProcessedAt"');
   });

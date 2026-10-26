@@ -2,15 +2,9 @@ import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'crypto';
 
-/** Square, face-centred, sized for the largest avatar the app shows (2× for sharp screens). */
 const AVATAR_TRANSFORM = 'c_fill,g_face,w_320,h_320,q_auto,f_auto';
 const POST_IMAGE_TRANSFORM = 'c_limit,w_1600,h_1600,q_auto,f_auto';
 
-/**
- * Profile photos on Cloudinary through its signed upload API
- * (https://cloudinary.com/documentation/image_upload_api_reference). Each runner has one image,
- * overwritten in place, so a new photo never leaves an old one behind.
- */
 @Injectable()
 export class CloudinaryService implements OnModuleInit {
   private readonly logger = new Logger(CloudinaryService.name);
@@ -32,14 +26,11 @@ export class CloudinaryService implements OnModuleInit {
     return result.secure_url.replace('/image/upload/', `/image/upload/${AVATAR_TRANSFORM}/`);
   }
 
-  /** A club's logo: one per club, overwritten in place, square like an avatar. */
   async uploadClubLogo(clubId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
     const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/clubs/${clubId}/logo`, overwrite: 'true', invalidate: 'true' }, file);
-    // Square without face-cropping: logos are usually marks or wordmarks.
     return result.secure_url.replace('/image/upload/', '/image/upload/c_pad,b_white,w_320,h_320,q_auto,f_auto/');
   }
 
-  /** A competition's banner: one per competition, overwritten in place, cropped to 2:1. */
   async uploadCompetitionBanner(tableId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
     const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/competitions/${tableId}/banner`, overwrite: 'true', invalidate: 'true' }, file);
     return result.secure_url.replace('/image/upload/', '/image/upload/c_fill,g_auto,w_1600,h_800,q_auto,f_auto/');
@@ -53,16 +44,11 @@ export class CloudinaryService implements OnModuleInit {
     await this.call('destroy', { public_id: `jump/clubs/${clubId}/logo`, invalidate: 'true' });
   }
 
-  /** A photo on a Rant post, capped at 1600px wide for the feed. */
   async uploadPostImage(userId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
     const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/posts/${userId}/${randomUUID()}` }, file);
     return result.secure_url.replace('/image/upload/', `/image/upload/${POST_IMAGE_TRANSFORM}/`);
   }
 
-  /**
-   * A DM voice note. Browsers record WebM/Opus or MP4/AAC; the returned URL asks Cloudinary for MP3
-   * so every browser can play it.
-   */
   async uploadVoiceNote(userId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
     const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/voice/${userId}/${randomUUID()}` }, file, 'video');
     return result.secure_url.replace(/\.[a-z0-9]+$/i, '.mp3');
@@ -73,19 +59,16 @@ export class CloudinaryService implements OnModuleInit {
     return Boolean(cloud) && url.startsWith(`https://res.cloudinary.com/${cloud}/video/upload/`) && url.includes(`/jump/voice/${userId}/`) && url.endsWith('.mp3');
   }
 
-  /** A prize photo for a club's competition, up to 1200px, kept under the club's folder. */
   async uploadClubPrizeImage(clubId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
     const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/clubs/${clubId}/prizes/${randomUUID()}` }, file);
     return result.secure_url.replace('/image/upload/', `/image/upload/${POST_IMAGE_TRANSFORM}/`);
   }
 
-  /** Only photos uploaded for that club can go on its prizes. */
   isOwnClubPrizeImage(clubId: string, url: string) {
     const cloud = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
     return Boolean(cloud) && url.startsWith(`https://res.cloudinary.com/${cloud}/image/upload/${POST_IMAGE_TRANSFORM}/`) && url.includes(`/jump/clubs/${clubId}/prizes/`);
   }
 
-  /** Only URLs this service produced for the runner's own posts can be attached to a post. */
   isOwnPostImage(userId: string, url: string) {
     const cloud = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
     return Boolean(cloud) && url.startsWith(`https://res.cloudinary.com/${cloud}/image/upload/${POST_IMAGE_TRANSFORM}/`) && url.includes(`/jump/posts/${userId}/`);
@@ -112,7 +95,6 @@ export class CloudinaryService implements OnModuleInit {
     form.append('signature', createHash('sha1').update(toSign + this.config.getOrThrow<string>('CLOUDINARY_API_SECRET')).digest('hex'));
     if (file) form.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), 'upload');
 
-    // Cloudinary files audio under its "video" resource type.
     const response = await fetch(`https://api.cloudinary.com/v1_1/${this.config.getOrThrow<string>('CLOUDINARY_CLOUD_NAME')}/${resourceType}/${action}`, {
       method: 'POST',
       body: form,

@@ -28,7 +28,6 @@ export class GpsSampleDto {
   @Min(0)
   accuracy?: number;
 
-  // Session-relative cumulative steps. The client should start this value at zero.
   @IsOptional()
   @IsInt()
   @Min(0)

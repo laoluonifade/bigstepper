@@ -5,7 +5,6 @@ export class StravaCodeDto {
   @MaxLength(200)
   code: string;
 
-  /** The scopes the athlete actually granted (Strava sends them back on the redirect). */
   @IsString()
   @MaxLength(200)
   scope: string;

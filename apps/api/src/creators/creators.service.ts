@@ -10,10 +10,8 @@ export class CreatorsService {
   constructor(@InjectRepository(CreatorProfile) private readonly creators: Repository<CreatorProfile>, private readonly aml: AmlService) {}
 
   async signup(userId: string, input: CreatorSignupDto) {
-    // Creators host paid challenges and earn commission, so they need KYC Level 2 first.
     await this.aml.assertVerified(userId);
     try {
-      // Pending until an admin approves it; only active creators can host paid challenges.
       return await this.creators.save(this.creators.create({
         userId,
         creatorType: input.creatorType,

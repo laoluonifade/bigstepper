@@ -34,7 +34,6 @@ describe('AccountDeletionService', () => {
     for (const table of ['running_sessions', 'feed_posts', 'direct_messages', 'follows', 'club_memberships', 'push_tokens', 'auth_sessions', 'notifications']) {
       expect(statements.some((sql) => sql.startsWith(`DELETE FROM "${table}"`))).toBe(true);
     }
-    // Credits go before the sessions (which take the activities with them).
     expect(statements.findIndex((sql) => sql.includes('"table_activity_credits"'))).toBeLessThan(statements.findIndex((sql) => sql.includes('DELETE FROM "running_sessions"')));
     const account = query.mock.calls.find(([sql]) => String(sql).startsWith('UPDATE "users"'));
     expect(account?.[1]?.[1]).toMatch(/^deleted-[0-9a-f]+@deleted\.startajump\.invalid$/);

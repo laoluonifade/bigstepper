@@ -6,7 +6,6 @@ export class StravaAccount {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** Null while a Strava sign-up is waiting for the runner's email. */
   @Column({ type: 'uuid', nullable: true, unique: true })
   userId: string | null;
 

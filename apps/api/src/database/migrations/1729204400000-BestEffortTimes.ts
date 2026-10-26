@@ -2,11 +2,6 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 import { bestEffortFor } from '../../tables/best-effort';
 import { retotal } from '../../tables/competition-credits';
 
-/**
- * Fastest-time races used to time a whole activity: a 14 km run in a 10K race scored its full 1:20:32.
- * They now score each activity's fastest stretch of the race distance. Re-time the activities already
- * on live boards and re-rank them; finished competitions keep the results they were settled on.
- */
 export class BestEffortTimes1729204400000 implements MigrationInterface {
   name = 'BestEffortTimes1729204400000';
 
@@ -27,6 +22,5 @@ export class BestEffortTimes1729204400000 implements MigrationInterface {
   }
 
   async down(): Promise<void> {
-    // Whole-activity times were wrong; nothing to restore.
   }
 }

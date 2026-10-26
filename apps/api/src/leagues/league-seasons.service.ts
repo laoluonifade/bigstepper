@@ -16,11 +16,6 @@ interface DivisionRow {
   level: number;
 }
 
-/**
- * Closes league seasons when they end: final distances, ranks, promotion/relegation, notifications,
- * and the next season with everyone placed in their new division. Safe to run repeatedly and from
- * several processes — an advisory lock serialises runs and each step checks the season's status.
- */
 @Injectable()
 export class LeagueSeasonsService {
   private readonly logger = new Logger(LeagueSeasonsService.name);
@@ -28,7 +23,6 @@ export class LeagueSeasonsService {
   constructor(private readonly dataSource: DataSource) {}
 
   async closeDueSeasons() {
-    // A long outage can leave more than one season due; close them in order.
     for (let i = 0; i < 24; i += 1) {
       const closed = await this.dataSource.transaction((manager) => this.closeOne(manager));
       if (!closed) break;
@@ -69,11 +63,8 @@ export class LeagueSeasonsService {
     );
     const resultById = new Map(results.map((result) => [result.membershipId, result]));
 
-    // Finish this one first: only one ACTIVE season may exist.
     await manager.query(`UPDATE "league_seasons" SET "status" = 'FINALIZED' WHERE "id" = $1`, [season.id]);
 
-    // Next season: from this one's end to the end of the current calendar month (at least), so a
-    // late run never opens a season that is already over.
     const [next] = (await manager.query(
       `INSERT INTO "league_seasons" ("name", "startsAt", "endsAt", "status")
        SELECT to_char(bounds.ends - interval '1 day', 'FMMonth YYYY'), bounds.starts, bounds.ends, 'ACTIVE'
@@ -115,7 +106,6 @@ export class LeagueSeasonsService {
     return true;
   }
 
-  /** If there is no active season at all, open one for the current month and place everyone in it. */
   private async ensureActiveSeason(manager: EntityManager) {
     await manager.query(`SELECT pg_advisory_xact_lock(hashtext('league-season-rollover'))`);
     const [active] = await manager.query(`SELECT 1 FROM "league_seasons" WHERE "status" = 'ACTIVE' LIMIT 1`);

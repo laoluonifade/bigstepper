@@ -1,4 +1,3 @@
-/** A paid challenge's fixed gross prize is based on a full field, not typed in by the host. */
 export function paidPrizePot(capacity: number, entryFeeKobo: number): number {
   const amount = capacity * entryFeeKobo;
   if (!Number.isSafeInteger(capacity) || capacity < 2 || capacity > 10000 ||

@@ -1,12 +1,11 @@
 import { hideEnds } from './activities.service';
 import { haversineMetres } from './haversine';
 
-// A straight line north, one point roughly every 50 m.
 const line = (count: number) => Array.from({ length: count }, (_, index) => ({ lat: 6.5 + (index * 50) / 111_320, lon: 3.3 }));
 
 describe('hideEnds', () => {
   it('leaves the first and last 200 m off someone else’s map', () => {
-    const route = line(21); // about 1 km
+    const route = line(21);
     const kept = hideEnds(route, 200);
     const from = (point: { lat: number; lon: number }, end: { lat: number; lon: number }) => haversineMetres(point.lat, point.lon, end.lat, end.lon);
     expect(kept.length).toBeGreaterThan(8);

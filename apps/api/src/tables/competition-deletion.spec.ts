@@ -1,11 +1,12 @@
 import type { DataSource } from 'typeorm';
 import type { CompetitionTable } from './competition-table.entity';
+import { TablesRepository } from './tables.repository';
 import { TablesService } from './tables.service';
 
 function service(money: { paid?: boolean; entered?: boolean; awarded?: boolean }) {
   const query = jest.fn(async () => [{ paid: false, entered: false, awarded: false, ...money }]);
   const dataSource = { manager: { query } } as unknown as DataSource;
-  const tables = new (TablesService as unknown as new (...args: unknown[]) => TablesService)(null, null, dataSource, null, null, null);
+  const tables = new (TablesService as unknown as new (...args: unknown[]) => TablesService)(null, null, dataSource, null, null, null, null, new TablesRepository(dataSource));
   return { tables, query };
 }
 
@@ -29,7 +30,6 @@ describe('deleting a competition', () => {
 
   it('allows a funded or paid competition nobody has paid into yet', async () => {
     expect(await service({}).tables.deletionBlocker(table('sponsored'))).toBeNull();
-    // Someone joined a funded-free one without paying: still no money.
     expect(await service({ entered: true }).tables.deletionBlocker(table('sponsored'))).toBeNull();
     expect(await service({}).tables.deletionBlocker(table('paid'))).toBeNull();
   });

@@ -39,7 +39,6 @@ export class RunningController {
     return this.runningService.finish(user.id, sessionId, body?.at);
   }
 
-  /** Throw away a run that hasn't been finished: nothing is saved or submitted. */
   @Post(':id/discard')
   discard(
     @CurrentUser() user: AuthenticatedUser,

@@ -18,7 +18,6 @@ export class ProfilesController {
     return this.profilesService.getMine(user.id);
   }
 
-  /** For the sign-up and profile forms: whether a username is free (yours counts as free). */
   @Get('usernames/:username/available')
   @UseGuards(OptionalJwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
@@ -32,7 +31,6 @@ export class ProfilesController {
     return this.profilesService.updateMine(user.id, body);
   }
 
-  /** Whether the account can be deleted right now, and if not, what to sort out first. */
   @Get('me/trophies')
   @UseGuards(JwtAuthGuard)
   myTrophies(@CurrentUser() user: AuthenticatedUser) {
@@ -46,7 +44,6 @@ export class ProfilesController {
     return { canDelete: !blocker, blocker };
   }
 
-  /** Deletes the account for good. The runner confirms by typing DELETE. */
   @Delete('me')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
@@ -82,7 +79,6 @@ export class ProfilesController {
     return this.profilesService.getPublic(username, viewer?.id);
   }
 
-  /** Someone's trophy cabinet: podium finishes in finished competitions. Public, like their profile. */
   @Get('users/:username/trophies')
   trophies(@Param('username') username: string) {
     return this.profilesService.trophies(username);

@@ -1,16 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Product prize sponsorship: brands and run clubs (sponsors) put products up as prizes for a competition's
- * top places, instead of cash.
- *
- * - sponsors / sponsor_members: the brand or club, its default delivery countries, and who acts for it.
- * - competition_tables gains the prize terms: which sponsor, where prizes can be delivered, who delivers
- *   and pays shipping, the eligibility notes, how long winners have to claim, and when the sponsor committed.
- * - competition_prizes: the product for each winning position.
- * - product_awards: one row per winner and prize, holding the delivery details (only ever shown to the
- *   winner, whoever delivers, and Jump admins) and the fulfilment status.
- */
 export class ProductSponsorship1729204900000 implements MigrationInterface {
   name = 'ProductSponsorship1729204900000';
 
@@ -98,7 +87,6 @@ export class ProductSponsorship1729204900000 implements MigrationInterface {
         "createdAt" timestamptz NOT NULL DEFAULT now(),
         "updatedAt" timestamptz NOT NULL DEFAULT now()
       )`);
-    // One live winner per prize position; forfeited rows stay as history.
     await queryRunner.query(`CREATE UNIQUE INDEX "UQ_product_awards_live_position" ON "product_awards" ("tableId", "position") WHERE "status" <> 'FORFEITED'`);
     await queryRunner.query(`CREATE INDEX "IDX_product_awards_user" ON "product_awards" ("userId")`);
     await queryRunner.query(`CREATE INDEX "IDX_product_awards_due" ON "product_awards" ("detailsDueAt") WHERE "status" = 'AWAITING_DETAILS'`);

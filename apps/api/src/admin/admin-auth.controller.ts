@@ -43,7 +43,6 @@ export class AdminAuthController {
     return this.adminAuth.logout(user.sessionId, user.id);
   }
 
-  /** A code to confirm a money action (payout approval, reconciliation). */
   @Post('confirm-code')
   @UseGuards(JwtAuthGuard, PrivilegedGuard)
   @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })

@@ -1,6 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/** Runners following runners. One row per pair; nobody follows themselves. */
 export class Follows1729201500000 implements MigrationInterface {
   name = 'Follows1729201500000';
 

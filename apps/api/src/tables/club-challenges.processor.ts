@@ -4,7 +4,6 @@ import { Job, Queue } from 'bullmq';
 import { CLUB_CHALLENGES_QUEUE } from '../jobs/jobs.module';
 import { ChallengeStudioService } from './challenge-studio.service';
 
-/** Every 5 minutes: open scheduled challenges and make each series' next edition when it's due. */
 @Injectable()
 @Processor(CLUB_CHALLENGES_QUEUE)
 export class ClubChallengesProcessor extends WorkerHost implements OnModuleInit {

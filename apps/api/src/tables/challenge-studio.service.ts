@@ -18,12 +18,6 @@ type Series = {
   leadDays: number; nextStartsAt: Date; lastEdition: number; active: boolean; createdByUserId: string | null;
 };
 
-/**
- * Everything a club does to run its own challenges without the Jump team: drafts, scheduling and
- * publishing, copying a challenge, weekly or monthly series, prize photos and fulfilment, and the club
- * dashboard. The scheduled job (ClubChallengesProcessor) opens scheduled challenges and makes each
- * series' next edition.
- */
 @Injectable()
 export class ChallengeStudioService {
   private readonly logger = new Logger(ChallengeStudioService.name);
@@ -47,7 +41,6 @@ export class ChallengeStudioService {
     return club.id;
   }
 
-  /** Before it opens, a draft or scheduled challenge can change its name, dates, places, countries and prizes. */
   async editDraft(tableId: string, userId: string, input: EditDraftDto) {
     return this.dataSource.transaction(async (manager) => {
       const table = await this.managed(manager, tableId, userId);
@@ -82,7 +75,6 @@ export class ChallengeStudioService {
     });
   }
 
-  /** Opens a draft now, or schedules it (or reschedules a scheduled one). */
   async publish(tableId: string, userId: string, at?: string) {
     return this.dataSource.transaction(async (manager) => {
       const table = await this.managed(manager, tableId, userId);
@@ -102,7 +94,6 @@ export class ChallengeStudioService {
     });
   }
 
-  /** Scheduled: open every challenge whose publish time has come. */
   async publishDue() {
     const due = await this.dataSource.query(`SELECT "id" FROM "competition_tables" WHERE "status" = 'SCHEDULED' AND "publishAt" <= now() ORDER BY "publishAt" LIMIT 100`) as Array<{ id: string }>;
     for (const { id } of due) {
@@ -118,7 +109,6 @@ export class ChallengeStudioService {
     return due.length;
   }
 
-  /** A new draft with the same rules, branding and prizes, starting a week after the original unless told otherwise. */
   async duplicate(tableId: string, userId: string, startsAt?: string) {
     return this.dataSource.transaction(async (manager) => {
       const table = await this.managed(manager, tableId, userId);
@@ -131,9 +121,6 @@ export class ChallengeStudioService {
     });
   }
 
-  /* ───────── Series ───────── */
-
-  /** Repeats a club challenge every week or month. It becomes edition 1 and the template for the rest. */
   async createSeries(clubRef: string, userId: string, input: CreateSeriesDto) {
     const clubId = await this.clubId(clubRef);
     return this.dataSource.transaction(async (manager) => {
@@ -166,7 +153,6 @@ export class ChallengeStudioService {
         const plan = planOf(club.plan, club.planRenewsAt);
         const [{ active }] = await manager.query(`SELECT count(*)::integer AS "active" FROM "challenge_series" WHERE "clubId" = $1 AND "active"`, [series.clubId]) as Array<{ active: number }>;
         if (active >= plan.activeSeries) throw new ConflictException(`Your club can run ${plan.activeSeries} series at a time on the ${plan.label} plan`);
-        // Resuming picks up from the next date that hasn't passed.
         let next = new Date(series.nextStartsAt);
         while (next.getTime() + series.template.durationMs <= Date.now()) next = nextStart(next, series.cadence);
         series.nextStartsAt = next;
@@ -185,7 +171,6 @@ export class ChallengeStudioService {
     });
   }
 
-  /** Makes the next edition now instead of waiting for its lead time. */
   async nextEditionNow(seriesId: string, userId: string) {
     const [series] = await this.dataSource.query(`SELECT "clubId" FROM "challenge_series" WHERE "id" = $1`, [seriesId]) as Array<{ clubId: string }>;
     if (!series) throw new NotFoundException('Series not found');
@@ -193,7 +178,6 @@ export class ChallengeStudioService {
     return this.makeEdition(seriesId, { force: true });
   }
 
-  /** Scheduled: every active series whose next edition is within its lead time gets that edition. */
   async generateDue() {
     const due = await this.dataSource.query(
       `SELECT "id" FROM "challenge_series" WHERE "active" AND "nextStartsAt" - make_interval(days => "leadDays") <= now() ORDER BY "nextStartsAt" LIMIT 50`,
@@ -206,11 +190,6 @@ export class ChallengeStudioService {
     return made;
   }
 
-  /**
-   * The next edition: the template with its own dates, numbered on from the last. It opens now when the
-   * series publishes on its own (so people can join before it starts), or waits as a draft for a manager.
-   * A series whose club was suspended, or that has hit its plan's limit, makes a draft instead.
-   */
   private async makeEdition(seriesId: string, { force = false } = {}) {
     const result = await this.dataSource.transaction(async (manager) => {
       const [series] = await manager.query(`SELECT * FROM "challenge_series" WHERE "id" = $1 FOR UPDATE`, [seriesId]) as Series[];
@@ -243,8 +222,6 @@ export class ChallengeStudioService {
     return result;
   }
 
-  /* ───────── Prizes ───────── */
-
   async uploadPrizeImage(clubRef: string, userId: string, file: { buffer: Buffer; mimetype: string } | undefined) {
     const clubId = await this.clubId(clubRef);
     await assertClubCanHost(this.dataSource.manager, clubId, userId, { adding: false });
@@ -257,18 +234,9 @@ export class ChallengeStudioService {
     return this.awards.updateStatus(awardId, status, notes, { clubUserId: userId });
   }
 
-  /* ───────── Dashboard ───────── */
-
-  /**
-   * The club's own numbers: challenges in every state, followers and members, participation and
-   * completion, repeat participants, past winners, prize claims, series and month-by-month performance.
-   * "Completed" means reaching the target, or for challenges without one, scoring and meeting the minimums.
-   * The host and club managers aren't counted as participants.
-   */
   async dashboard(clubRef: string, userId: string) {
     const clubId = await this.clubId(clubRef);
     const club = await assertClubCanHost(this.dataSource.manager, clubId, userId, { adding: false }).catch((error) => {
-      // A suspended club's managers still see their dashboard.
       if (error instanceof ForbiddenException && /suspended/.test(error.message)) return null;
       throw error;
     });
@@ -293,8 +261,6 @@ export class ChallengeStudioService {
               (SELECT count(*) FROM "competition_tables" WHERE "communityId" = $1 AND "status" NOT IN ('DRAFT','SCHEDULED','CANCELLED'))::integer AS "challenges"`,
       [clubId],
     );
-    // Reach and activity over the last 30 days: views of the club page and its competitions, who viewed
-    // (signed in, or visitors arriving from shared links), shares, joins, and how much members moved.
     const [reach] = await this.dataSource.query(
       `WITH e AS (${entrants}),
        ev AS (SELECT * FROM "engagement_events" WHERE "clubId" = $1 AND "createdAt" > now() - interval '30 days')
@@ -375,7 +341,6 @@ export class ChallengeStudioService {
     };
   }
 
-  /** A series' editions, newest first, with each one's entrants, completions and winner. */
   async seriesEditions(seriesId: string, userId: string) {
     const [series] = await this.dataSource.query(`SELECT "clubId" FROM "challenge_series" WHERE "id" = $1`, [seriesId]) as Array<{ clubId: string }>;
     if (!series) throw new NotFoundException('Series not found');

@@ -35,13 +35,11 @@ export class LeaguesService {
       .createQueryBuilder('m')
       .innerJoin('users', 'u', 'u.id = m."userId" AND u.role = :role', { role: 'runner' })
       .where('m."seasonId" = :seasonId', { seasonId })
-      // Property paths, not quoted columns: TypeORM needs them to order a paginated (take) query.
       .orderBy('m.divisionId', 'ASC')
       .addOrderBy('m.creditedDistanceMetres', 'DESC')
       .addOrderBy('m.id', 'ASC')
       .take(1000)
       .getMany();
-    // Same public fields table leaderboards show: display name and handle.
     const profiles = rows.length ? await this.profiles.find({ where: { userId: In(rows.map((row) => row.userId)) } }) : [];
     const byUser = new Map(profiles.map((profile) => [profile.userId, profile]));
     return rows.map((row) => ({

@@ -8,7 +8,6 @@ import { AVATAR_MAX_BYTES } from '../profiles/profiles.service';
 import { ChallengeStudioService } from './challenge-studio.service';
 import { CreateSeriesDto, DuplicateDto, EditDraftDto, PublishDto, UpdateSeriesDto } from './dto/club-challenge.dto';
 
-/** What club managers use to run their own challenges, series and prizes. */
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class ChallengeStudioController {

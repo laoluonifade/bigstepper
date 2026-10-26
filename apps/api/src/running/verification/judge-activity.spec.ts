@@ -1,14 +1,12 @@
 import { judgeActivity } from './activity-verification.processor';
 
 const START = new Date('2026-10-25T07:00:00Z').getTime();
-/** Step totals every 5 s, rising by `perTick` each time. */
 const samples = (ticks: number, perTick: number) =>
   Array.from({ length: ticks + 1 }, (_, index) => ({ stepCount: index * perTick, recordedAt: new Date(START + index * 5000) }));
 const track = (distanceMetres: number, usableCount = 40) => ({ distanceMetres, confidence: 0.9, usableCount, reasons: new Set<string>() });
 
 describe('judgeActivity', () => {
   it('doesn’t save a phone shaken while standing still: steps at a human rate, no GPS movement', () => {
-    // 10 minutes at 2.5 steps/s, the pace a shaken phone reports.
     const verdict = judgeActivity(track(0), samples(120, 12), 'walk');
     expect(verdict.status).toBe('REJECTED');
     expect(verdict.validatedSteps).toBe(0);
@@ -17,7 +15,6 @@ describe('judgeActivity', () => {
   });
 
   it('verifies a real walk and keeps its steps', () => {
-    // 1 km in 12 minutes, about 1,400 steps.
     const verdict = judgeActivity(track(1000), samples(144, 10), 'walk');
     expect(verdict.status).toBe('VERIFIED');
     expect(verdict.validatedSteps).toBe(1440);
@@ -27,12 +24,10 @@ describe('judgeActivity', () => {
     const verdict = judgeActivity(track(150), samples(120, 12), 'walk');
     expect(verdict.status).toBe('VERIFIED');
     expect(verdict.reasons.has('STEPS_WITHOUT_MOVEMENT')).toBe(true);
-    // Shaking gains nothing: steps are capped to what 150 m allows.
     expect(verdict.validatedSteps).toBe(Math.ceil(150 / 0.45));
   });
 
   it('does not flag steps the phone held back while the screen was locked', () => {
-    // 5 minutes frozen at 200, then 600 steps arrive in one go when the app comes back.
     const held = [
       ...Array.from({ length: 61 }, (_, i) => ({ stepCount: 200, recordedAt: new Date(START + i * 5000) })),
       { stepCount: 800, recordedAt: new Date(START + 301_000) },
@@ -53,7 +48,6 @@ describe('judgeActivity', () => {
   });
 
   it('caps steps a little over what the route allows without flagging', () => {
-    // GPS under-measures a twisty 100 m; 300 steps is within the allowance.
     const verdict = judgeActivity(track(100), samples(30, 10), 'walk');
     expect(verdict.status).toBe('VERIFIED');
     expect(verdict.validatedSteps).toBe(Math.ceil(100 / 0.45));

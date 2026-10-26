@@ -6,7 +6,6 @@ export class ResolveAccountDto {
 }
 
 export class CreateRecipientDto {
-  /** Ignored: the name always comes from the bank via Paystack. Kept so older clients still validate. */
   @IsOptional() @IsString() @Length(2, 100) accountName?: string;
   @Matches(/^\d{10}$/) accountNumber: string;
   @IsString() @Length(2, 20) bankCode: string;

@@ -1,7 +1,6 @@
 import { bestEffortSeconds } from './track';
 
 describe('best effort over a distance', () => {
-  // A run at 6:00/km for 4 km, a 4 km burst at 4:00/km, then 6 km easy at 6:00/km.
   const profile: Array<[number, number]> = [];
   let seconds = 0;
   for (let km = 0; km <= 14; km += 1) {
@@ -11,7 +10,6 @@ describe('best effort over a distance', () => {
 
   it('finds the fastest stretch anywhere in the run, not the whole run', () => {
     expect(bestEffortSeconds(profile, 4000)).toBe(960);
-    // Best 10 km covers the burst: 4 fast km and 6 easy ones.
     expect(bestEffortSeconds(profile, 10_000)).toBe(4 * 240 + 6 * 360);
   });
 

@@ -2,15 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 
 type Address = Record<string, string | undefined>;
 
-/** Rounding to 3 decimals (~110 m) lets runners nearby share one lookup. */
 const PRECISION = 3;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CACHE_LIMIT = 5_000;
 
-/**
- * Names the area you're in ("Yaba, Lagos") using OpenStreetMap's Nominatim. Its usage policy asks for an
- * identifying User-Agent, at most one request a second, and caching, so lookups go through here.
- */
 @Injectable()
 export class GeoService {
   private readonly logger = new Logger(GeoService.name);
@@ -29,7 +24,6 @@ export class GeoService {
     return { name };
   }
 
-  /** One request at a time, at least a second apart. */
   private throttled<T>(task: () => Promise<T>): Promise<T> {
     const run = this.queue.then(async () => {
       const wait = this.lastCall + 1_000 - Date.now();

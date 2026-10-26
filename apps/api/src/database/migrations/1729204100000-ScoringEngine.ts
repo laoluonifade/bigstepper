@@ -1,13 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * The scoring engine: competitions gain the settings every format needs (targets, daily amounts, minimums,
- * which activities count, a calendar time zone), entrants gain one ranked score, and activities record
- * elevation and where their steps came from.
- *
- * Competitions that already exist become rules v1 and are scored exactly as before; their scores are
- * filled in here from the totals they already have, so no board moves.
- */
 export class ScoringEngine1729204100000 implements MigrationInterface {
   name = 'ScoringEngine1729204100000';
 
@@ -66,8 +58,6 @@ export class ScoringEngine1729204100000 implements MigrationInterface {
     await queryRunner.query(`
       ALTER TABLE "activities" ADD COLUMN "elevationGainMetres" integer CHECK ("elevationGainMetres" >= 0),
         ADD COLUMN "stepsSource" varchar(12) CHECK ("stepsSource" IN ('sensor','estimate'))`);
-    // Jump counts steps with the phone's motion sensor. Older Strava imports may have been estimated
-    // from distance, so new step competitions (which count measured steps only) leave them out.
     await queryRunner.query(`
       UPDATE "activities" SET "stepsSource" = CASE
         WHEN "source" = 'jump' AND "recordedSteps" > 0 THEN 'sensor'

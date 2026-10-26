@@ -16,7 +16,6 @@ export class Profile {
   @Column({ unique: true })
   username: string;
 
-  /** False while the runner still has the generated sign-up username; the app asks them to pick one. */
   @Column({ default: false })
   usernameChosen: boolean;
 
@@ -29,11 +28,9 @@ export class Profile {
   @Column({ length: 2, default: 'NG' })
   countryCode: string;
 
-  /** Private preference used to choose a default avatar; never shown on public profiles. */
   @Column({ type: 'varchar', length: 20, nullable: true })
   gender: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say' | null;
 
-  /** Cloudinary delivery URL (already face-cropped to a square). */
   @Column({ type: 'varchar', length: 500, nullable: true })
   avatarUrl: string | null;
 
@@ -43,18 +40,15 @@ export class Profile {
   @Column({ type: 'integer', nullable: true })
   weeklyGoalMetres: number | null;
 
-  /** Private; used only for an optional activity calorie estimate. */
   @Column({ type: 'real', nullable: true })
   weightKg: number | null;
 
   @Column({ default: true })
   emailActivityEnabled: boolean;
 
-  /** Private contact number in international format; never on public profiles. */
   @Column({ type: 'varchar', length: 20, nullable: true })
   whatsappNumber: string | null;
 
-  /** Lagos date of the last "keep your streak alive" email, so it goes out at most once a day. */
   @Column({ type: 'date', nullable: true })
   streakReminderSentOn: string | null;
 
@@ -67,7 +61,6 @@ export class Profile {
   @Column({ type: 'timestamptz', nullable: true, select: false })
   digestClaimedAt: Date | null;
 
-  /** Blue tick, set by a Jump admin once the runner's email is verified. */
   @Column({ type: 'timestamptz', nullable: true })
   verifiedAt: Date | null;
 

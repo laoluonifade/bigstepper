@@ -5,16 +5,11 @@ import { STREAK_TIME_ZONE } from '../running/streaks';
 const ACTIVITIES: Record<string, string[]> = { run: ['run'], walk: ['walk'], cycle: ['cycle'], foot: ['run', 'walk'] };
 const PERIODS = ['week', 'month', 'all'] as const;
 
-/**
- * Who has covered the most verified distance, per activity, per period. Rides never mix with runs or
- * walks ("foot" combines only runs and walks). Weeks and months follow Lagos time.
- */
 @Injectable()
 export class LeaderboardService {
   constructor(private readonly dataSource: DataSource) {}
 
   async board(viewerId: string | null, activity = 'foot', period = 'week', scope = 'global', limit = '50') {
-    // A guest has no home country, so the country board is for signed-in runners.
     if (!viewerId && scope === 'country') throw new BadRequestException('Sign in to see your country’s board');
     const types = ACTIVITIES[activity];
     const size = Number(limit);

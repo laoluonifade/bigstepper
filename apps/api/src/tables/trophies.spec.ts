@@ -12,10 +12,10 @@ describe('trophies', () => {
     const cabinet = await trophiesFor({ query } as unknown as EntityManager, 'u1');
     expect(cabinet).toMatchObject({ wins: 2, podiums: 3 });
     const sql = String(query.mock.calls[0][0]);
-    expect(sql).toContain('"scoringClosesAt" <= now()'); // finished only
+    expect(sql).toContain('"scoringClosesAt" <= now()');
     expect(sql).toContain('"deletedAt" IS NULL');
-    expect(sql).toContain('x."entrants" >= 2'); // not a one-person race
-    expect(sql).toContain('x."score" > 0'); // actually scored
+    expect(sql).toContain('x."entrants" >= 2');
+    expect(sql).toContain('x."score" > 0');
   });
 
   it('tells the top three once a competition finishes', async () => {

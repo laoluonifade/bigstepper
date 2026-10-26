@@ -1,13 +1,3 @@
-/**
- * Credit a runner with an activity Jump lost (say, deleted by a bug), so it counts like one they recorded:
- * on their activities, in their live competitions, on the timeline, and for walks and runs, the league.
- * Shows what it would do and writes nothing unless you add --apply.
- *
- *   npm run activity:credit -- <email> <walk|run|cycle> <km> <started-at ISO> <minutes> [--apply]
- *   npm run activity:credit -- ada@gmail.com cycle 12 2026-10-26T15:30:00+01:00 45 --apply
- *
- * There's no GPS route behind it, so it's marked MANUAL_CREDIT and the activity page has no map.
- */
 import dataSource from '../database/data-source';
 import { refreshLeagueDistance } from '../leagues/league-credits';
 import { creditActivities } from '../tables/competition-credits';

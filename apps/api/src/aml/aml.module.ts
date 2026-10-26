@@ -8,7 +8,6 @@ import { AmlMonitorService } from './aml-monitor.service';
 import { KycController, RiskAdminController } from './aml.controller';
 import { AmlService } from './aml.service';
 
-/** Global so payments, competitions, creators and sign-in can all apply the same controls. */
 @Global()
 @Module({
   imports: [BullModule.registerQueue({ name: AML_MONITOR_QUEUE })],

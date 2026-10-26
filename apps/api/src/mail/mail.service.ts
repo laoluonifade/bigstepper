@@ -7,20 +7,10 @@ export interface MailMessage {
   subject: string;
   html: string;
   text: string;
-  /** Sender name shown in the inbox; the address stays Jump's. Defaults to ZEPTOMAIL_FROM_NAME. */
   fromName?: string;
-  /** Where replies go, when not the sending address (a personal note people can answer). */
   replyTo?: string;
 }
 
-/**
- * Transactional email through ZeptoMail (https://www.zoho.com/zeptomail/help/api/email-sending.html),
- * falling back to Zoho Mail SMTP with an app password when ZeptoMail isn't set up or refuses a message
- * (e.g. its trial's daily limit). With neither, development logs the message so links still work locally.
- *
- * SMTP settings: ZOHO_APP_PASS (required), SMTP_USER (defaults to ZEPTOMAIL_FROM_ADDRESS),
- * SMTP_HOST (default smtp.zoho.com), SMTP_PORT (default 465, SSL).
- */
 @Injectable()
 export class MailService implements OnModuleInit {
   private readonly logger = new Logger(MailService.name);
@@ -70,7 +60,6 @@ export class MailService implements OnModuleInit {
       } else {
         this.logger.error(`Email provider rejected delivery: ${error instanceof Error ? error.message : String(error)}`);
       }
-      // Keep optional notification jobs from hammering a provider that has blocked sending.
       this.bulkBlockedUntil = Date.now() + 60 * 60_000;
       throw new ServiceUnavailableException('Email delivery is temporarily unavailable. Please try again later.');
     }
@@ -88,7 +77,6 @@ export class MailService implements OnModuleInit {
       greetingTimeout: 10_000,
       socketTimeout: 20_000,
     });
-    // Zoho only sends as the signed-in mailbox, so the sender is that address.
     await this.smtp.sendMail({
       from: { address: this.smtpUser, name: message.fromName ?? (this.config.get<string>('ZEPTOMAIL_FROM_NAME') || 'Jump') },
       ...(message.replyTo ? { replyTo: message.replyTo } : {}),
@@ -124,7 +112,6 @@ export class MailService implements OnModuleInit {
     }
   }
 
-  /** Fire-and-forget for request paths: a slow or failing provider must not hold up sign-up. */
   sendInBackground(message: MailMessage) {
     void this.send(message).catch((error: unknown) =>
       this.logger.error(`Failed to send email to ${message.to.address}`, error instanceof Error ? error.message : String(error)),

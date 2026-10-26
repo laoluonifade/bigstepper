@@ -1,20 +1,16 @@
 import { METRICS, ScoringMethod } from './competition-rules';
 
-/** One credited activity as the engine sees it. Distance and steps are what the competition credited. */
 export interface ScoredActivity {
   registrationId: string;
   activityId: string;
   startedAt: Date;
   finishedAt: Date;
-  /** Calendar day the activity started on, YYYY-MM-DD, in the competition's time zone. */
   day: string;
   distance: number;
   steps: number;
   movingSeconds: number;
   elapsedSeconds: number;
-  /** Null when the source had no elevation (Jump recordings don't yet). */
   elevation: number | null;
-  /** Fastest-time races: the activity's best stretch of the race distance (see best-effort.ts), else null. */
   completionSeconds: number | null;
 }
 
@@ -28,25 +24,17 @@ export interface ScoringRules {
   dailyTarget: number | null;
   dailyMeasure: 'distance' | 'steps' | 'time' | null;
   minSessions: number | null;
-  /** Every calendar day of the competition so far (start day to today, or to the end once it's over). */
   windowDays: string[];
 }
 
 export interface EntrantScore {
-  /** In the metric's own unit; null when there's nothing to rank yet (no qualifying effort). */
   score: number | null;
-  /** Bigger is better, whichever way the metric runs; null ranks last. */
   rankScore: number | null;
   targetReachedAt: Date | null;
-  /** When the current score was reached, for breaking ties. */
   scoredAt: Date | null;
   qualified: boolean;
 }
 
-/**
- * Bigger-is-better ordering used everywhere a board is ranked (cards, standings, payouts): qualified first,
- * then whoever reached a first-to target earliest, then score, then whoever got there first.
- */
 export const RANK_ORDER = `r."qualified" DESC, r."targetReachedAt" ASC NULLS LAST, r."rankScore" DESC NULLS LAST, r."scoredAt" ASC NULLS LAST, r."joinedAt" ASC, r."userId" ASC`;
 
 export function scoreEntrants(rules: ScoringRules, registrationIds: string[], activities: ScoredActivity[]): Map<string, EntrantScore> {
@@ -54,7 +42,6 @@ export function scoreEntrants(rules: ScoringRules, registrationIds: string[], ac
   for (const activity of activities) byEntrant.get(activity.registrationId)?.push(activity);
   const out = new Map<string, EntrantScore>();
   for (const [id, own] of byEntrant) {
-    // Older competitions keep exactly the totals they were created with; overlap removal is new.
     const counted = rules.rulesVersion >= 2 ? withoutOverlaps(own) : [...own].sort(chronological);
     out.set(id, scoreOne(rules, counted));
   }
@@ -65,7 +52,6 @@ function chronological(a: ScoredActivity, b: ScoredActivity) {
   return a.finishedAt.getTime() - b.finishedAt.getTime() || a.activityId.localeCompare(b.activityId);
 }
 
-/** One outing recorded twice (say on a watch and the phone) counts once: the earlier-starting copy. */
 function withoutOverlaps(activities: ScoredActivity[]) {
   const byStart = [...activities].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime() || a.activityId.localeCompare(b.activityId));
   const kept: ScoredActivity[] = [];
@@ -125,7 +111,6 @@ function scoreOne(rules: ScoringRules, activities: ScoredActivity[]): EntrantSco
       return result(total, reached ?? last, { targetReachedAt: reached });
     }
     case 'fastest': {
-      // The quickest best-effort time any qualifying activity set over the race distance.
       let best: { seconds: number; at: Date } | null = null;
       for (const activity of activities) {
         if (activity.completionSeconds === null || activity.completionSeconds <= 0) continue;
@@ -147,7 +132,6 @@ function scoreOne(rules: ScoringRules, activities: ScoredActivity[]): EntrantSco
       const metres = counted.reduce((sum, activity) => sum + activity.distance, 0);
       const seconds = counted.reduce((sum, activity) => sum + activity.movingSeconds, 0);
       if (!metres || !seconds) return result(null, null, { qualified: false });
-      // Pace in seconds per km; speed in km/h.
       const score = metric.aggregate === 'averagePace' ? seconds / (metres / 1000) : (metres / 1000) / (seconds / 3600);
       return result(score, counted.at(-1)!.finishedAt, { qualified: counted.length >= (rules.minSessions ?? 1) });
     }
@@ -167,7 +151,6 @@ function targetFor(rules: ScoringRules, target: 'distance' | 'steps' | 'time' | 
   return target === 'distance' ? rules.targetDistanceMetres : target === 'steps' ? rules.targetSteps : target === 'time' ? rules.targetSeconds : rules.targetSessions;
 }
 
-/** Formats built on calendar days: active days, streaks, target days, best day, averages and variation. */
 function scoreDays(
   rules: ScoringRules,
   aggregate: string,
@@ -224,7 +207,6 @@ function scoreDays(
       const window = rules.windowDays.length ? rules.windowDays : sortedDays;
       const totals = window.map((key) => days.get(key)?.total ?? 0);
       const average = totals.reduce((sum, value) => sum + value, 0) / Math.max(1, totals.length);
-      // A steady zero isn't consistency: the daily amount is the minimum average to be ranked.
       if (!totals.length || average <= 0 || average < (rules.dailyTarget ?? 0)) return result(null, null, { qualified: false });
       return result(variation(totals), lastAt(sortedDays));
     }
@@ -233,7 +215,6 @@ function scoreDays(
       const weeks: number[] = [];
       for (let start = 0; start < window.length; start += 7) {
         const week = window.slice(start, start + 7);
-        // A week still in progress would always look uneven; only count it when it's the only one.
         if (week.length < 7 && weeks.length) break;
         weeks.push(week.reduce((sum, key) => sum + (days.get(key)?.total ?? 0), 0));
       }
@@ -246,7 +227,6 @@ function scoreDays(
   }
 }
 
-/** Coefficient of variation as a percentage: how far values stray from their average, lower is steadier. */
 function variation(values: number[]) {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   if (!mean) return 0;
@@ -260,7 +240,6 @@ export function nextDay(day: string) {
   return date.toISOString().slice(0, 10);
 }
 
-/** Every day from start to end inclusive, YYYY-MM-DD; empty when the competition hasn't started. */
 export function daysBetween(start: string, end: string) {
   const days: string[] = [];
   for (let day = start; day <= end && days.length < 3660; day = nextDay(day)) days.push(day);

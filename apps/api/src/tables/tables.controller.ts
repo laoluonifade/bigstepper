@@ -60,7 +60,6 @@ export class TablesController {
     return this.tablesService.remove(tableId, user.id);
   }
 
-  /** Counts a share of the competition (card, WhatsApp, X, copied link), for the host's numbers. */
   @Post(':id/shared')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
@@ -103,7 +102,6 @@ export class TablesController {
     return this.tablesService.registerFree(tableId, user.id);
   }
 
-  /** Challenges the runner created or joined, newest first. Declared before `:code` so "mine" isn't read as a code. */
   @Get('discover')
   @UseGuards(OptionalJwtAuthGuard)
   discover(

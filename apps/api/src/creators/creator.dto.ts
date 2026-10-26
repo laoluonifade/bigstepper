@@ -8,7 +8,6 @@ export class CreatorSignupDto {
   @IsString() @MinLength(2) @MaxLength(100)
   displayName: string;
 
-  /** Any form people paste ("instagram.com/x", "www.x.com/x", "http://…"): https is added when missing. */
   @IsOptional() @Transform(({ value }) => normaliseUrl(value))
   @IsUrl({ require_protocol: true, protocols: ['http', 'https'] }, { message: 'Enter a link, like instagram.com/yourname' }) @MaxLength(300)
   socialUrl?: string;

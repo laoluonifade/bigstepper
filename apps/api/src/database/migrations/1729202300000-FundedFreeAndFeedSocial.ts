@@ -4,7 +4,6 @@ export class FundedFreeAndFeedSocial1729202300000 implements MigrationInterface 
   name = 'FundedFreeAndFeedSocial1729202300000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    // No settled deposit exists on these old fixed-target drafts. Entry can now open for free.
     await queryRunner.query(`UPDATE "competition_tables" t SET "status"='OPEN_FOR_ENTRY',"guaranteedPrizeKobo"=NULL
       WHERE t."type"='sponsored' AND t."status"='PENDING_FUNDING' AND t."fundedAt" IS NULL
         AND NOT EXISTS (SELECT 1 FROM "payment_intents" i WHERE i."tableId"=t."id" AND i."purpose"='SPONSOR_FUNDING' AND i."status"='SUCCEEDED')`);
@@ -39,6 +38,5 @@ export class FundedFreeAndFeedSocial1729202300000 implements MigrationInterface 
     await queryRunner.query(`DROP TABLE "direct_messages"`);
     await queryRunner.query(`DROP TABLE "feed_comments"`);
     await queryRunner.query(`DROP TABLE "feed_post_reactions"`);
-    // Opening an old challenge is not safely reversible after runners have joined.
   }
 }

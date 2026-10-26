@@ -15,7 +15,7 @@ describe('stravaStepTotals', () => {
   });
 
   it('estimates from distance when there is no cadence', () => {
-    const distance = seconds(101).map((s) => s * 1.44); // 1.44 m/s walk, 144 m
+    const distance = seconds(101).map((s) => s * 1.44);
     expect(stravaStepTotals('walk', seconds(101), still(101), undefined, distance)!.at(-1)).toBe(200);
   });
 

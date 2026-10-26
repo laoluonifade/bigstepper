@@ -5,7 +5,6 @@ export class NotificationLinks1729203200000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN "link" varchar(300)`);
-    // Older notifications only carry a type, so point the ones with a fixed home at it.
     await queryRunner.query(`UPDATE "notifications" SET "link"='/wallet' WHERE "type" LIKE 'PAYOUT_%'`);
     await queryRunner.query(`UPDATE "notifications" SET "link"='/leagues' WHERE "type"='LEAGUE_RESULT'`);
     await queryRunner.query(`UPDATE "notifications" SET "link"='/creator' WHERE "type" IN ('CREATOR_APPROVED','CREATOR_SUSPENDED')`);

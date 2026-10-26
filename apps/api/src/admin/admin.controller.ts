@@ -46,7 +46,6 @@ export class AdminController {
     return this.adminService.pendingReviews();
   }
 
-  /** Re-run the (updated) checks on recently flagged activities. */
   @Post('verification/recheck')
   recheck(@CurrentUser() user: AuthenticatedUser) {
     return this.adminService.recheckFlagged(user.id);
@@ -71,14 +70,12 @@ export class AdminController {
     return this.adminService.createPaidDraft(user.id, body);
   }
 
-  /** Headline numbers for the whole platform, shown to admins in settings. */
   @Get('stats')
   @UseGuards(AdminOnlyGuard)
   stats() {
     return this.adminService.stats();
   }
 
-  /** :person is a user ID or an @username (profile pages only know the username). */
   @Patch('people/:person/verified')
   @UseGuards(AdminOnlyGuard)
   verifyPerson(@CurrentUser() user: AuthenticatedUser, @Param('person') person: string, @Body() body: VerifyDto) {
@@ -161,7 +158,6 @@ export class AdminController {
     return this.adminService.approvePaidTable(user.id, id, body);
   }
 
-  /** Approves and sends: the Paystack transfer starts as soon as this succeeds. */
   @Post('payouts/:id/approve')
   @UseGuards(AdminOnlyGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

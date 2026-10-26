@@ -1,4 +1,3 @@
-/** Share of each division that moves up / down when a season ends. */
 export const PROMOTE_SHARE = 0.2;
 export const RELEGATE_SHARE = 0.2;
 
@@ -17,13 +16,6 @@ export interface StandingResult {
   nextLevel: number;
 }
 
-/**
- * End-of-season movement, decided per division:
- * - the top 20% (rounded up) move up, if they logged any verified distance;
- * - the bottom 20% (rounded down) move down, and so does anyone with no verified distance;
- * - nobody moves above the top division or below the bottom one.
- * Ties on distance keep the input order, so callers pass rows sorted by distance, then by a stable key.
- */
 export function decideOutcomes(rows: StandingInput[], minLevel: number, maxLevel: number): StandingResult[] {
   const byLevel = new Map<number, StandingInput[]>();
   for (const row of rows) byLevel.set(row.divisionLevel, [...(byLevel.get(row.divisionLevel) ?? []), row]);

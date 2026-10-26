@@ -18,7 +18,6 @@ export function allocatePrizes(amountKobo: number, split: number[]): number[] {
   return amounts;
 }
 
-/** Tiny crowdfunded pots still settle: pay at least one kobo per payable place. */
 export function allocateFundedPrizes(amountKobo: number, split: number[]): number[] {
   if (!Number.isSafeInteger(amountKobo) || amountKobo < split.length || split.length === 0) throw new Error('Prize pot is too small');
   const total = split.reduce((sum, share) => sum + share, 0);

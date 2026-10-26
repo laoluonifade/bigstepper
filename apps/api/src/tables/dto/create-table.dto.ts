@@ -9,7 +9,6 @@ export class SeriesInputDto {
   @IsIn(['weekly', 'monthly'])
   cadence: 'weekly' | 'monthly';
 
-  /** Open each new edition on its own, or save it as a draft for a manager to confirm. */
   @IsBoolean()
   autoPublish: boolean;
 }
@@ -26,7 +25,6 @@ export class CreateTableDto extends ScoringFieldsDto {
   @IsOptional() @IsIn(['public', 'private'])
   visibility?: 'public' | 'private';
 
-  /** No end date: runs until the host ends it. Free competitions only (prizes need a moment to pay out). */
   @IsOptional() @IsBoolean()
   openEnded?: boolean;
 
@@ -60,22 +58,18 @@ export class CreateTableDto extends ScoringFieldsDto {
   @IsOptional() @IsIn([true])
   fundedFree?: true;
 
-  /** Prizes the hosting club puts up (products, discounts, experiences) on top of cash. Funded club challenges only. */
   @IsOptional() @ValidateNested() @Type(() => ClubPrizesDto)
   clubPrizes?: ClubPrizesDto;
 
-  /** Only people from these countries can join (empty or missing: anyone). */
   @IsOptional() @IsArray() @ArrayMaxSize(60) @Matches(/^[A-Z]{2}$/, { each: true })
   eligibleCountries?: string[];
 
-  /** Club challenges: open now (the default), open at publishAt, or keep as a draft. */
   @IsOptional() @IsIn(['now', 'schedule', 'draft'])
   publish?: 'now' | 'schedule' | 'draft';
 
   @IsOptional() @IsDateString()
   publishAt?: string;
 
-  /** Club challenges: repeat it every week or month as a series. */
   @IsOptional() @ValidateNested() @Type(() => SeriesInputDto)
   series?: SeriesInputDto;
 

@@ -1,19 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Brands run on Jump as run clubs: there is no separate sponsor account any more. A club's managers put
- * up prizes, run challenges and recurring series, and see their own dashboard.
- *
- * - sponsors / sponsor_members go (they never held data); a prize challenge's sponsor is its club.
- * - club_follows: people who follow a club without joining it (members follow too).
- * - clubs gain a plan (for paid features later) and a suspension Jump can apply.
- * - challenge_series: a weekly or monthly challenge, with the template each new edition is made from.
- * - competition_tables gain: draft and scheduled publishing, the series and edition, eligible countries,
- *   how prize winners are chosen (top finishers or a draw), whether the club is entered when it opens,
- *   and a promoted-until time for premium placement.
- * - competition_prizes become tiers: a product, discount or experience, each for `quantity` winners, with
- *   redemption instructions only the winner sees. A winner holds one prize per challenge.
- */
 export class ClubPartnerships1729205100000 implements MigrationInterface {
   name = 'ClubPartnerships1729205100000';
 
@@ -70,7 +56,6 @@ export class ClubPartnerships1729205100000 implements MigrationInterface {
         ADD COLUMN "promotedUntil" timestamptz`);
     await queryRunner.query(`CREATE INDEX "IDX_competition_tables_series" ON "competition_tables" ("seriesId", "edition") WHERE "seriesId" IS NOT NULL`);
     await queryRunner.query(`CREATE INDEX "IDX_competition_tables_publish" ON "competition_tables" ("publishAt") WHERE "status" = 'SCHEDULED'`);
-    // The club delivers its own prizes now ('sponsor' had no rows).
     await queryRunner.query(`ALTER TABLE "competition_tables" DROP CONSTRAINT "competition_tables_prizeFulfilment_check", DROP CONSTRAINT "competition_tables_prizeShipping_check"`);
     await queryRunner.query(`
       ALTER TABLE "competition_tables"

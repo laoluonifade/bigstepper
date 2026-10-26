@@ -5,7 +5,6 @@ const LON = 3.4219;
 const M_PER_DEG_LAT = 111_195;
 const M_PER_DEG_LON = 110_500;
 
-/** Deterministic pseudo-random noise so tests are repeatable. */
 function noise(seed: number) {
   let s = seed;
   return () => {
@@ -14,10 +13,6 @@ function noise(seed: number) {
   };
 }
 
-/**
- * One fix per second moving north at `speed` m/s, with GPS noise of about `wobble` metres in both
- * directions (what phones actually do), reporting `accuracy`.
- */
 function track(seconds: number, speed: number, { accuracy = 6, wobble = 0, seed = 1, start = 0, northOffset = 0 } = {}): TrackPoint[] {
   const rand = noise(seed);
   return Array.from({ length: seconds + 1 }, (_, i) => ({
@@ -30,20 +25,19 @@ function track(seconds: number, speed: number, { accuracy = 6, wobble = 0, seed 
 
 describe('measureTrack', () => {
   it('measures a clean straight run close to its true distance', () => {
-    const result = measureTrack(track(300, 3)); // 900 m
+    const result = measureTrack(track(300, 3));
     expect(result.distanceMetres).toBeGreaterThan(855);
     expect(result.distanceMetres).toBeLessThanOrEqual(905);
     expect(result.reasons.size).toBe(0);
   });
 
   it('measures a normal walk with realistic GPS noise within 10%', () => {
-    const result = measureTrack(track(300, 1.4, { wobble: 3, accuracy: 5 })); // 420 m
+    const result = measureTrack(track(300, 1.4, { wobble: 3, accuracy: 5 }));
     expect(result.distanceMetres).toBeGreaterThan(378);
     expect(result.distanceMetres).toBeLessThan(462);
   });
 
   it('a phone lying still with good GPS does not collect distance', () => {
-    // The case the previous rule got badly wrong (it counted ~400 m here).
     for (const seed of [1, 2, 3]) {
       expect(measureTrack(track(150, 0, { wobble: 3, accuracy: 5, seed })).distanceMetres).toBeLessThan(15);
     }
@@ -54,7 +48,7 @@ describe('measureTrack', () => {
   });
 
   it('slow position drift while standing still is not counted', () => {
-    expect(measureTrack(track(300, 0.1, { wobble: 1, accuracy: 5 })).distanceMetres).toBe(0); // 30 m drift over 5 min
+    expect(measureTrack(track(300, 0.1, { wobble: 1, accuracy: 5 })).distanceMetres).toBe(0);
   });
 
   it('a jittery but real run is not flagged for speed', () => {
@@ -127,7 +121,6 @@ describe('measureTrack', () => {
   });
 
   describe('standing still on a phone that drifts', () => {
-    /** A position that wanders like Android's does indoors: a slow random walk, not independent wobble. */
     function wander(seconds: number, accuracy: number, seed: number, stepCount: number | null = null): TrackPoint[] {
       const rand = noise(seed);
       let north = 0;
@@ -167,7 +160,6 @@ describe('measureTrack', () => {
     });
 
     it('counts a locked-screen walk whose steps only arrive when the app comes back', () => {
-      // 10 minutes at 1.4 m/s; the step count freezes for 8 of them, then catches up in one go.
       const points = track(600, 1.4, { accuracy: 8 }).map((point, i) => ({ ...point, stepCount: i < 60 || i >= 540 ? Math.floor(i * 1.8) : Math.floor(60 * 1.8) }));
       expect(measureTrack(points).distanceMetres).toBeGreaterThan(760);
     });
@@ -186,7 +178,6 @@ describe('measureTrack', () => {
   describe('gaps in tracking', () => {
     it('doesn’t count a jump across a gap where GPS saw nothing (app closed, then reopened elsewhere)', () => {
       const before = track(60, 1.4, { accuracy: 6 });
-      // Ten silent minutes, then fixes resume 3.7 km away.
       const after = track(60, 1.4, { accuracy: 6, start: 660, northOffset: 3700 });
       const result = measureTrack([...before, ...after]);
       expect(result.reasons.has('GPS_GAP')).toBe(true);

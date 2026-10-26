@@ -1,10 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Activities used to count only if they started after the runner joined, so a walk done during a
- * competition (or synced from Strava) before joining never reached the board. They now count whenever
- * the runner joined; credit the ones already recorded for competitions still running, then re-total.
- */
 export class CountActivitiesBeforeJoining1729204000000 implements MigrationInterface {
   name = 'CountActivitiesBeforeJoining1729204000000';
 
@@ -42,6 +37,5 @@ export class CountActivitiesBeforeJoining1729204000000 implements MigrationInter
   }
 
   async down(): Promise<void> {
-    // Credits for activities done before joining can't be told apart afterwards; nothing to undo.
   }
 }

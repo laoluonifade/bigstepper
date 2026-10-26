@@ -34,11 +34,6 @@ export class AuthService {
     return this.createAccount({ email, passwordHash: await bcrypt.hash(password, 10), countryCode, displayName, whatsappNumber, gender, username });
   }
 
-  /**
-   * Creates the user, profile and league place, then emails a verification link. `afterCreate` runs in the
-   * same transaction (Strava sign-up links the athlete there). Accounts without a password get an unguessable
-   * one; the runner can set a real one through "forgot password".
-   */
   async createAccount(input: {
     email: string;
     passwordHash?: string;
@@ -46,9 +41,7 @@ export class AuthService {
     displayName?: string;
     whatsappNumber?: string;
     gender?: Profile['gender'];
-    /** Chosen at sign-up; otherwise generated from the email, and the app asks them to pick one. */
     username?: string;
-    /** Already proved by the sign-in provider (Google): no verification email. */
     emailVerified?: boolean;
     afterCreate?: (manager: EntityManager, user: User) => Promise<void>;
   }) {
@@ -108,7 +101,6 @@ export class AuthService {
     this.mail.sendInBackground(
       verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', verificationToken)),
     );
-    // And a hello from the founder, as a personal note (not for placeholder addresses).
     if (!user.email.endsWith('.invalid')) this.mail.sendInBackground(welcomeEmail({ address: user.email, name: user.displayName }));
     return {
       ...response,
@@ -122,16 +114,10 @@ export class AuthService {
     return ['GOOGLE_WEB_CLIENT_ID', 'GOOGLE_IOS_CLIENT_ID', 'GOOGLE_ANDROID_CLIENT_ID'].map((name) => this.config.get<string>(name)).filter((id): id is string => Boolean(id));
   }
 
-  /** The web page draws Google's button with this (public) id; null hides it. */
   googleConfig() {
     return { webClientId: this.config.get<string>('GOOGLE_WEB_CLIENT_ID') || null };
   }
 
-  /**
-   * "Continue with Google". The ID token must be signed by Google for one of Jump's client ids and carry a
-   * verified email. A known Google account signs in; otherwise the account with that email gets Google
-   * linked (Google has proved the address); otherwise a new account starts, already verified.
-   */
   async googleSignIn(idToken: string, countryCode?: string) {
     const audience = this.googleClientIds();
     if (!audience.length) throw new BadRequestException('Google sign-in is not available yet');
@@ -178,12 +164,6 @@ export class AuthService {
     };
   }
 
-  /**
-   * "Sign in with Apple". Same rules as Google: a known Apple id signs in; a verified email already on Jump
-   * gets Apple linked; otherwise a new, verified account (a "Hide My Email" relay address is fine). Apple
-   * sends the email and name only the first time, so an Apple id we've never seen without an email can't
-   * make an account.
-   */
   async appleSignIn(input: AppleSignInDto) {
     const config = this.appleConfig();
     let identity: Awaited<ReturnType<typeof verifyAppleIdentityToken>>;
@@ -220,7 +200,6 @@ export class AuthService {
       }
     }
 
-    // Keep a refresh token so deleting the account can revoke Jump at Apple. Never holds up the sign-in.
     if (input.authorizationCode && appleKeyConfigured(config)) {
       const userId = response.user.id;
       void exchangeAppleCode(this.jwtService, config, input.authorizationCode)
@@ -230,7 +209,6 @@ export class AuthService {
     return response;
   }
 
-  /** Session for a user who proved who they are some other way (Strava sign-in). */
   async signInAs(userId: string) {
     const user = await this.usersRepo.findOne({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('This account no longer exists');
@@ -275,7 +253,6 @@ export class AuthService {
     if (user.emailVerified) return { success: true, alreadyVerified: true };
     const rawToken = await this.createActionToken(userId, 'VERIFY_EMAIL', 24 * 60 * 60 * 1000);
     await this.mail.send(verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', rawToken)));
-    // A provider failure must not invalidate a previously delivered link.
     await this.actionTokensRepo.createQueryBuilder().update()
       .set({ usedAt: new Date() })
       .where('"userId" = :userId AND "type" = :type AND "usedAt" IS NULL AND "tokenHash" <> :tokenHash',
@@ -292,7 +269,6 @@ export class AuthService {
     const user = await this.usersRepo.findOne({ where: { email: email.trim().toLowerCase() } });
     if (!user) return { success: true };
     const rawToken = await this.createActionToken(user.id, 'RESET_PASSWORD', 60 * 60 * 1000);
-    // In the background so response time doesn't reveal whether the account exists.
     this.mail.sendInBackground(passwordResetEmail({ address: user.email, name: user.displayName }, this.webUrl('/reset-password', rawToken)));
     return {
       success: true,

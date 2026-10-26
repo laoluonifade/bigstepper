@@ -1,9 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Clubs become pages of their own: an about, a logo and colour, a home city and links, open or
- * invite-only joining, and an invite code for share links. Every existing club starts open, in Jump orange.
- */
 export class ClubPages1729204300000 implements MigrationInterface {
   name = 'ClubPages1729204300000';
 

@@ -40,18 +40,15 @@ export class Activity {
   @Column({ type: 'integer', default: 0 })
   validatedSteps: number;
 
-  /** validatedSteps × stride: counts for leagues and free challenges where GPS can't measure (indoors). */
   @Column({ type: 'integer', default: 0 })
   stepDistanceMetres: number;
 
   @Column({ type: 'integer', default: 0 })
   elapsedSeconds: number;
 
-  /** Metres climbed; null when the source didn't record elevation (Jump recordings don't yet). */
   @Column({ type: 'integer', nullable: true })
   elevationGainMetres: number | null;
 
-  /** Steps measured by a motion sensor or cadence ('sensor'), or estimated from distance ('estimate'). */
   @Column({ type: 'varchar', length: 12, nullable: true })
   stepsSource: 'sensor' | 'estimate' | null;
 
@@ -64,11 +61,9 @@ export class Activity {
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   verificationReasons: string[];
 
-  /** Where the track came from: recorded in Jump, or imported from Strava. */
   @Column({ type: 'varchar', length: 20, default: 'jump' })
   source: 'jump' | 'strava';
 
-  /** The provider's id (Strava activity id) so an import never happens twice. */
   @Column({ type: 'varchar', length: 40, nullable: true, unique: true })
   externalId: string | null;
 

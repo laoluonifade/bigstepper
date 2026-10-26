@@ -37,14 +37,12 @@ export class ClubsController {
     return this.clubsService.list(user.id, view === 'discover' ? 'discover' : 'mine');
   }
 
-  /** Public: the club page, so an invite link works before signing up. */
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   get(@Param('id') id: string, @CurrentUser() viewer: AuthenticatedUser | null, @Req() req: ViewRequest, @Query('invite') invite?: string) {
     return this.clubsService.get(id, viewer?.id, invite, viewer ? null : anonKey(req.ip, String(req.headers['user-agent'] ?? '')));
   }
 
-  /** Counts a share of the club page, for its dashboard. */
   @Post(':id/shared')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })

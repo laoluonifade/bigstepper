@@ -15,6 +15,7 @@ import { CreateRecipientDto } from './payout.dto';
 import * as bcrypt from 'bcrypt';
 import { AmlService } from '../aml/aml.service';
 import { announceCompetition, assertCountryEligible } from '../tables/club-challenges';
+import { PaymentsRepository } from './payments.repository';
 
 @Injectable()
 export class PaymentsService {
@@ -25,9 +26,9 @@ export class PaymentsService {
     private readonly config: ConfigService,
     private readonly paystack: PaystackClient,
     private readonly aml: AmlService,
+    private readonly repo: PaymentsRepository,
   ) {}
 
-  /** The return page is for navigation only; webhooks and verification still decide payment status. */
   private returnUrl() {
     const origin = this.config.getOrThrow<string>('WEB_ORIGIN').split(',')[0].trim().replace(/\/+$/, '');
     return `${origin}/payments/return`;
@@ -154,27 +155,19 @@ export class PaymentsService {
       if (table.status !== 'OPEN_FOR_ENTRY' || (table.entryClosesAt && table.entryClosesAt <= new Date())) throw new ConflictException('Entry is closed');
       await assertCountryEligible(manager, table, userId);
       if (await manager.exists(TableRegistration, { where: { tableId, userId } })) throw new ConflictException('You already joined this competition');
-      const count = Number((await manager.query(`SELECT COUNT(*)::integer count FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`, [tableId, table.creatorId]) as Array<{ count: number }>)[0].count);
+      const count = await this.repo.entrantsOtherThan(manager, tableId, table.creatorId);
       if (table.capacity !== null && count >= table.capacity) throw new ConflictException('This competition is full');
-      const wallets = await manager.query(`SELECT "id","balanceKobo","frozenAt" FROM "wallets" WHERE "userId"=$1 FOR UPDATE`, [userId]) as Array<{ id: string; balanceKobo: string; frozenAt: Date | null }>;
-      const wallet = wallets[0];
+      const wallet = await this.repo.lockWallet(manager, userId);
       if (wallet?.frozenAt) throw new ForbiddenException('Spending your entry credit is temporarily restricted; contact support');
-      if (!wallet || Number(wallet.balanceKobo) < table.entryFeeKobo) throw new ConflictException('You don’t have enough entry credit for this entry');
-      const balanceAfter = Number(wallet.balanceKobo) - table.entryFeeKobo;
+      if (!wallet || wallet.balanceKobo < table.entryFeeKobo) throw new ConflictException('You don’t have enough entry credit for this entry');
+      const balanceAfter = wallet.balanceKobo - table.entryFeeKobo;
       const reference = `jump-wallet-entry-${randomUUID()}`;
-      await manager.query(`UPDATE "wallets" SET "balanceKobo"=$1,"updatedAt"=now() WHERE "id"=$2`, [balanceAfter, wallet.id]);
-      await manager.query(
-        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'CHALLENGE_ENTRY',$2,$3,$4,'Paid competition entry')`,
-        [wallet.id, -table.entryFeeKobo, balanceAfter, reference],
-      );
+      await this.repo.setWalletBalance(manager, wallet.id, balanceAfter);
+      await this.repo.recordWalletTransaction(manager, { walletId: wallet.id, type: 'CHALLENGE_ENTRY', amountKobo: -table.entryFeeKobo, balanceAfterKobo: balanceAfter, reference, description: 'Paid competition entry' });
       const registration = await manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId, paymentIntentId: null }));
       await creditActivities(manager, { tableId, userId });
-      await manager.query(
-        `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
-         WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,
-        [tableId, userId],
-      );
-      await this.postWalletEntryLedger(manager, reference, table.entryFeeKobo);
+      await this.repo.acceptPendingInvitation(manager, tableId, userId);
+      await this.repo.postLedger(manager, { reference, description: 'Wallet-funded competition entry', debit: 'wallet_liability', credit: 'contest_entry_liability', amountKobo: table.entryFeeKobo });
       return registration;
     });
   }
@@ -196,20 +189,11 @@ export class PaymentsService {
   }
 
   rewards(userId: string) {
-    // With the competition's name, and whether a payout is already on its way (the award stays
-    // PENDING_APPROVAL until Jump approves it), so the app can show what's left to withdraw.
-    return this.dataSource.query(
-      `SELECT a."id",a."tableId",t."title" AS "tableTitle",t."code" AS "tableCode",a."place",a."grossPrizeKobo",a."platformFeeKobo",a."creatorCommissionKobo",a."amountKobo",a."currency",a."status",a."createdAt",
-              EXISTS (SELECT 1 FROM "payout_requests" p WHERE p."awardId"=a."id" AND p."status" <> 'REJECTED') AS "payoutRequested"
-       FROM "prize_awards" a LEFT JOIN "competition_tables" t ON t."id"=a."tableId"
-       WHERE a."winnerUserId"=$1 ORDER BY a."createdAt" DESC`,
-      [userId],
-    );
+    return this.repo.rewards(userId);
   }
 
   private bankCache: { at: number; banks: Array<{ code: string; name: string }> } | null = null;
 
-  /** Live bank list from Paystack, so payouts never offer a bank that has closed. Cached for 12 hours. */
   async banks() {
     if (this.bankCache && Date.now() - this.bankCache.at < 12 * 60 * 60 * 1000) return this.bankCache.banks;
     const banks = (await this.paystack.listBanks())
@@ -221,7 +205,6 @@ export class PaymentsService {
     return banks;
   }
 
-  /** Looks up the account holder's name so runners confirm it instead of typing it. */
   async resolveAccount(accountNumber: string, bankCode: string) {
     const bank = (await this.banks()).find((item) => item.code === bankCode);
     if (!bank) throw new BadRequestException('Choose your bank from the list');
@@ -233,10 +216,6 @@ export class PaymentsService {
     }
   }
 
-  /**
-   * Only used while KYC is switched off. With KYC on, the payout account is the bank account verified
-   * with the runner's BVN (AmlService.submitKyc), so payouts never go to a third party's account.
-   */
   async createPayoutRecipient(userId: string, input: CreateRecipientDto) {
     this.assertPayoutsEnabled();
     await this.assertPaidEligibility(userId);
@@ -254,56 +233,37 @@ export class PaymentsService {
     const resolved = await this.resolveAccount(input.accountNumber, input.bankCode);
     const recipient = await this.paystack.createRecipient({ type: 'nuban', name: resolved.accountName, account_number: input.accountNumber, bank_code: input.bankCode, currency: 'NGN' });
     return this.dataSource.transaction(async (manager) => {
-      const existing = await manager.query(`SELECT "id" FROM "payout_recipients" WHERE "userId"=$1 FOR UPDATE`, [userId]) as Array<{ id: string }>;
-      const availableForPayoutAt = existing[0] ? new Date(Date.now() + 24 * 60 * 60 * 1000) : new Date();
-      const rows = await manager.query(
-        `INSERT INTO "payout_recipients" ("userId","providerRecipientCode","accountName","bankCode","accountLast4","availableForPayoutAt","accountHash","kycVerified") VALUES ($1,$2,$3,$4,$5,$6,$7,false)
-         ON CONFLICT ("userId") DO UPDATE SET "providerRecipientCode"=EXCLUDED."providerRecipientCode","accountName"=EXCLUDED."accountName",
-           "bankCode"=EXCLUDED."bankCode","accountLast4"=EXCLUDED."accountLast4","availableForPayoutAt"=EXCLUDED."availableForPayoutAt",
-           "accountHash"=EXCLUDED."accountHash","kycVerified"=false,"updatedAt"=now()
-         RETURNING "id","accountName","bankCode","accountLast4","currency","availableForPayoutAt"`,
-        [userId, recipient.recipient_code, recipient.details.account_name, input.bankCode, input.accountNumber.slice(-4), availableForPayoutAt, this.aml.accountHash(input.bankCode, input.accountNumber)],
-      ) as Array<Record<string, unknown>>;
-      await manager.query(
-        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,'payout_recipient',$3,$4)`,
-        [userId, existing[0] ? 'PAYOUT_RECIPIENT_REPLACED' : 'PAYOUT_RECIPIENT_CREATED', rows[0].id, JSON.stringify({ accountLast4: input.accountNumber.slice(-4), availableForPayoutAt })],
-      );
-      if (existing[0]) {
-        await manager.query(
-          `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_RECIPIENT_CHANGED','Payout account changed','Your payout account was changed. Payouts are paused for 24 hours; contact support immediately if this was not you.','/rewards')`,
-          [userId],
-        );
+      const replacing = await this.repo.hasRecipient(manager, userId);
+      const availableForPayoutAt = replacing ? new Date(Date.now() + 24 * 60 * 60 * 1000) : new Date();
+      const saved = await this.repo.saveRecipient(manager, {
+        userId, providerRecipientCode: recipient.recipient_code, accountName: recipient.details.account_name, bankCode: input.bankCode,
+        accountLast4: input.accountNumber.slice(-4), availableForPayoutAt, accountHash: this.aml.accountHash(input.bankCode, input.accountNumber),
+      });
+      await this.repo.audit(manager, {
+        actorUserId: userId, action: replacing ? 'PAYOUT_RECIPIENT_REPLACED' : 'PAYOUT_RECIPIENT_CREATED', targetType: 'payout_recipient', targetId: saved.id,
+        metadata: { accountLast4: input.accountNumber.slice(-4), availableForPayoutAt },
+      });
+      if (replacing) {
+        await this.repo.notify(manager, {
+          userId, type: 'PAYOUT_RECIPIENT_CHANGED', title: 'Payout account changed', link: '/rewards',
+          body: 'Your payout account was changed. Payouts are paused for 24 hours; contact support immediately if this was not you.',
+        });
       }
-      return rows[0];
+      return saved;
     });
   }
 
-  /**
-   * Checks the withdrawal limits for the account's risk level first. Requests over the review threshold,
-   * or from flagged, held or new accounts, are saved with a risk hold for a documented admin decision.
-   */
   async requestPayout(userId: string, awardId: string) {
     this.assertPayoutsEnabled();
     await this.assertPaidEligibility(userId);
     return this.dataSource.transaction(async (manager) => {
-      const [award] = await manager.query(`SELECT "amountKobo" FROM "prize_awards" WHERE "id"=$1 AND "winnerUserId"=$2 FOR UPDATE`, [awardId, userId]) as Array<{ amountKobo: string }>;
-      if (!award) throw new NotFoundException('Award not found');
-      const holdReasons = await this.aml.assessPayout(manager, userId, Number(award.amountKobo));
-      const rows = await manager.query(
-        `INSERT INTO "payout_requests" ("awardId","recipientId")
-         SELECT a."id",r."id" FROM "prize_awards" a
-         JOIN "payout_recipients" r ON r."userId"=a."winnerUserId"
-         JOIN "competition_tables" t ON t."id"=a."tableId"
-         WHERE a."id"=$1 AND a."winnerUserId"=$2 AND a."status"='PENDING_APPROVAL' AND r."availableForPayoutAt" <= now()
-           AND (t."type"<>'sponsored' OR (
-             EXISTS (SELECT 1 FROM "payment_intents" i WHERE i."tableId"=t."id" AND i."purpose"='SPONSOR_FUNDING' AND i."status"='SUCCEEDED')
-             AND NOT EXISTS (SELECT 1 FROM "payment_intents" i WHERE i."tableId"=t."id" AND i."purpose"='SPONSOR_FUNDING' AND i."status"='DISPUTED')
-           ))
-         ON CONFLICT ("awardId") WHERE "status" <> 'REJECTED' DO NOTHING RETURNING *`, [awardId, userId],
-      ) as Array<Record<string, unknown>>;
-      if (!rows[0]) throw new ConflictException('Award is unavailable or a payout was already requested');
-      await this.aml.holdPayout(manager, rows[0].id as string, userId, holdReasons);
-      return { ...rows[0], riskHold: holdReasons.length > 0 };
+      const amountKobo = await this.repo.lockAwardAmount(manager, awardId, userId);
+      if (amountKobo === undefined) throw new NotFoundException('Award not found');
+      const holdReasons = await this.aml.assessPayout(manager, userId, amountKobo);
+      const request = await this.repo.requestPrizePayout(manager, awardId, userId);
+      if (!request) throw new ConflictException('Award is unavailable or a payout was already requested');
+      await this.aml.holdPayout(manager, request.id, userId, holdReasons);
+      return { ...request, riskHold: holdReasons.length > 0 };
     });
   }
 
@@ -311,90 +271,25 @@ export class PaymentsService {
     this.assertPayoutsEnabled();
     await this.assertPaidEligibility(userId);
     return this.dataSource.transaction(async (manager) => {
-      const [earning] = await manager.query(
-        `SELECT e."amountKobo" FROM "creator_earnings" e JOIN "creator_profiles" c ON c."id"=e."creatorProfileId" WHERE e."id"=$1 AND c."userId"=$2 FOR UPDATE OF e`, [earningId, userId],
-      ) as Array<{ amountKobo: string }>;
-      if (!earning) throw new NotFoundException('Creator earning not found');
-      const holdReasons = await this.aml.assessPayout(manager, userId, Number(earning.amountKobo));
-      const rows = await manager.query(
-        `INSERT INTO "payout_requests" ("creatorEarningId","recipientId")
-         SELECT e."id",r."id" FROM "creator_earnings" e
-         JOIN "creator_profiles" c ON c."id"=e."creatorProfileId"
-         JOIN "payout_recipients" r ON r."userId"=c."userId"
-         WHERE e."id"=$1 AND c."userId"=$2 AND e."status"='EARNED' AND r."availableForPayoutAt" <= now()
-         ON CONFLICT ("creatorEarningId") WHERE "status" <> 'REJECTED' DO NOTHING RETURNING *`,
-        [earningId, userId],
-      ) as Array<Record<string, unknown>>;
-      if (!rows[0]) throw new ConflictException('Creator earning is unavailable, has no payout recipient, or was already requested');
-      await manager.query(`UPDATE "creator_earnings" SET "status"='PENDING_PAYOUT' WHERE "id"=$1`, [earningId]);
-      await this.aml.holdPayout(manager, rows[0].id as string, userId, holdReasons);
-      return { ...rows[0], riskHold: holdReasons.length > 0 };
+      const amountKobo = await this.repo.lockCreatorEarningAmount(manager, earningId, userId);
+      if (amountKobo === undefined) throw new NotFoundException('Creator earning not found');
+      const holdReasons = await this.aml.assessPayout(manager, userId, amountKobo);
+      const request = await this.repo.requestCreatorPayout(manager, earningId, userId);
+      if (!request) throw new ConflictException('Creator earning is unavailable, has no payout recipient, or was already requested');
+      await this.repo.setCreatorEarningStatus(manager, earningId, 'PENDING_PAYOUT');
+      await this.aml.holdPayout(manager, request.id, userId, holdReasons);
+      return { ...request, riskHold: holdReasons.length > 0 };
     });
   }
 
-  /** Payout requests for the admin review screen, oldest pending first. */
   listPayouts(view: 'pending' | 'history') {
-    return this.dataSource.query(
-      `SELECT p."id", p."status", p."createdAt", p."reviewedAt", p."rejectionReason",
-              CASE WHEN p."awardId" IS NOT NULL THEN 'PRIZE' ELSE 'CREATOR' END "kind",
-              COALESCE(a."amountKobo", e."amountKobo")::integer "amountKobo",
-              COALESCE(at."title", et."title") "challengeTitle", COALESCE(at."code", et."code") "challengeCode",
-              u."id" "userId", u."email", pr."displayName", pr."username", pr."avatarUrl",
-              r."accountName", r."bankCode", r."accountLast4", r."availableForPayoutAt",
-              (COALESCE(ue."paidCompetitionEligible" = false, false) OR
-               (at."type"='sponsored' AND (
-                 NOT EXISTS (SELECT 1 FROM "payment_intents" fi WHERE fi."tableId"=at."id" AND fi."purpose"='SPONSOR_FUNDING' AND fi."status"='SUCCEEDED') OR
-                 EXISTS (SELECT 1 FROM "payment_intents" fi WHERE fi."tableId"=at."id" AND fi."purpose"='SPONSOR_FUNDING' AND fi."status"='DISPUTED')
-               ))) "blocked",
-              reviewer."displayName" "reviewedBy",
-              p."riskHold", p."holdReasons", p."escalatedAt", p."decisionNote", r."kycVerified",
-              COALESCE(ur."score", 0) "riskScore", COALESCE(ur."level", 'LOW') "riskLevel", COALESCE(ur."payoutHold", false) "accountHold",
-              (SELECT count(*)::integer FROM "risk_flags" f WHERE f."status" IN ('OPEN','ESCALATED') AND (f."userId"=u."id" OR f."relatedUserIds" ? u."id"::text)) "openFlags",
-              (SELECT pa."status" FROM "payout_attempts" pa WHERE pa."payoutRequestId" = p."id" ORDER BY pa."createdAt" DESC LIMIT 1) "transferStatus"
-       FROM "payout_requests" p
-       JOIN "payout_recipients" r ON r."id" = p."recipientId"
-       JOIN "users" u ON u."id" = r."userId"
-       LEFT JOIN "profiles" pr ON pr."userId" = u."id"
-       LEFT JOIN "user_eligibility" ue ON ue."userId" = u."id"
-       LEFT JOIN "prize_awards" a ON a."id" = p."awardId"
-       LEFT JOIN "competition_tables" at ON at."id" = a."tableId"
-       LEFT JOIN "creator_earnings" e ON e."id" = p."creatorEarningId"
-       LEFT JOIN "competition_tables" et ON et."id" = e."tableId"
-       LEFT JOIN "profiles" reviewer ON reviewer."userId" = p."approvedByUserId"
-       LEFT JOIN "user_risk" ur ON ur."userId" = u."id"
-       WHERE ($1 = 'pending') = (p."status" = 'PENDING_APPROVAL')
-       ORDER BY CASE WHEN $1 = 'pending' THEN p."escalatedAt" IS NULL END, CASE WHEN $1 = 'pending' THEN p."createdAt" END ASC, p."updatedAt" DESC
-       LIMIT 200`,
-      [view],
-    );
+    return this.repo.payouts(view);
   }
 
-  /**
-   * Approving a payout sends it: one admin reviews the request and the Paystack transfer starts
-   * straight away. Admins can't approve a payout to themselves. A payout held for risk needs a written
-   * decision, and an account on a payout hold must be cleared first.
-   */
   async approvePayout(actorUserId: string, payoutId: string, note?: string) {
     this.assertPayoutsEnabled();
     const claimed = await this.dataSource.transaction(async (manager) => {
-      const rows = await manager.query(
-        `SELECT p."id", p."status", r."userId", COALESCE(a."amountKobo", e."amountKobo") "amountKobo",
-                r."providerRecipientCode", r."availableForPayoutAt", p."riskHold", r."kycVerified",
-                (COALESCE(ue."paidCompetitionEligible" = false, false) OR
-                 (t."type"='sponsored' AND (
-                   NOT EXISTS (SELECT 1 FROM "payment_intents" fi WHERE fi."tableId"=t."id" AND fi."purpose"='SPONSOR_FUNDING' AND fi."status"='SUCCEEDED') OR
-                   EXISTS (SELECT 1 FROM "payment_intents" fi WHERE fi."tableId"=t."id" AND fi."purpose"='SPONSOR_FUNDING' AND fi."status"='DISPUTED')
-                 ))) "blocked"
-         FROM "payout_requests" p
-         LEFT JOIN "prize_awards" a ON a."id" = p."awardId"
-         LEFT JOIN "competition_tables" t ON t."id" = a."tableId"
-         LEFT JOIN "creator_earnings" e ON e."id" = p."creatorEarningId"
-         JOIN "payout_recipients" r ON r."id" = p."recipientId"
-         LEFT JOIN "user_eligibility" ue ON ue."userId" = r."userId"
-         WHERE p."id" = $1 FOR UPDATE OF p`,
-        [payoutId],
-      ) as Array<{ id: string; status: string; userId: string; amountKobo: string; providerRecipientCode: string; availableForPayoutAt: Date; blocked: boolean; riskHold: boolean; kycVerified: boolean }>;
-      const payout = rows[0];
+      const payout = await this.repo.lockPayoutForApproval(manager, payoutId);
       if (!payout) throw new NotFoundException('Payout request not found');
       if (payout.status !== 'PENDING_APPROVAL') throw new ConflictException('This payout was already reviewed');
       if (payout.userId === actorUserId) throw new ForbiddenException('You can’t approve a payout to yourself');
@@ -402,68 +297,45 @@ export class PaymentsService {
       if (new Date(payout.availableForPayoutAt) > new Date()) throw new ConflictException('Their bank details changed recently, so this payout is on a 24-hour security hold');
       await this.aml.assertApprovable(manager, payout, note);
       const reference = `payout-${randomUUID()}`;
-      await manager.query(
-        `UPDATE "payout_requests" SET "status"='PROCESSING',"approvedByUserId"=$1,"reviewedAt"=now(),"decisionNote"=COALESCE($3,"decisionNote"),"updatedAt"=now() WHERE "id"=$2`,
-        [actorUserId, payoutId, note?.trim() || null],
-      );
-      await manager.query(`INSERT INTO "payout_attempts" ("payoutRequestId","reference") VALUES ($1,$2)`, [payoutId, reference]);
-      await manager.query(
-        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAYOUT_APPROVED','payout_request',$2,$3)`,
-        [actorUserId, payoutId, JSON.stringify({ amountKobo: Number(payout.amountKobo), reference, userId: payout.userId, riskHold: payout.riskHold, note: note?.trim() || null })],
-      );
+      await this.repo.startPayout(manager, payoutId, actorUserId, note?.trim() || null, reference);
+      await this.repo.audit(manager, {
+        actorUserId, action: 'PAYOUT_APPROVED', targetType: 'payout_request', targetId: payoutId,
+        metadata: { amountKobo: payout.amountKobo, reference, userId: payout.userId, riskHold: payout.riskHold, note: note?.trim() || null },
+      });
       return { ...payout, reference };
     });
     try {
-      const transfer = await this.paystack.initiateTransfer({ source: 'balance', amount: Number(claimed.amountKobo), recipient: claimed.providerRecipientCode, reference: claimed.reference, reason: 'Jump competition prize' });
+      const transfer = await this.paystack.initiateTransfer({ source: 'balance', amount: claimed.amountKobo, recipient: claimed.providerRecipientCode, reference: claimed.reference, reason: 'Jump competition prize' });
       if (transfer.reference !== claimed.reference) throw new ServiceUnavailableException('Payment provider returned an unexpected transfer reference');
-      await this.dataSource.query(
-        `UPDATE "payout_attempts" SET "providerTransferCode"=$1,"status"=$2,"providerPayload"=$3,"updatedAt"=now() WHERE "reference"=$4`,
-        [transfer.transfer_code, transfer.status.toUpperCase(), JSON.stringify(transfer), claimed.reference],
-      );
-      await this.dataSource.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_SENT','Your payout is on its way',$2,'/rewards')`,
-        [claimed.userId, `₦${(Number(claimed.amountKobo) / 100).toLocaleString('en-NG')} is being sent to your bank. It usually arrives within minutes.`],
-      );
+      await this.repo.recordTransfer(claimed.reference, transfer);
+      await this.repo.notify(this.dataSource.manager, {
+        userId: claimed.userId, type: 'PAYOUT_SENT', title: 'Your payout is on its way', link: '/rewards',
+        body: `₦${(claimed.amountKobo / 100).toLocaleString('en-NG')} is being sent to your bank. It usually arrives within minutes.`,
+      });
       return { reference: claimed.reference, status: transfer.status };
     } catch (error) {
-      // The request stays PROCESSING; reconciliation checks Paystack and settles it either way.
-      await this.dataSource.query(`UPDATE "payout_attempts" SET "status"='RECONCILIATION_REQUIRED',"updatedAt"=now() WHERE "reference"=$1`, [claimed.reference]);
+      await this.repo.flagTransferForReconciliation(claimed.reference);
       throw error;
     }
   }
 
-  /** Turns a request down with a reason the runner sees; they can fix the issue and request again. */
   async rejectPayout(actorUserId: string, payoutId: string, reason: string) {
     return this.dataSource.transaction(async (manager) => {
-      // TypeORM returns [rows, affected] for UPDATE ... RETURNING on Postgres.
-      const [rows] = await manager.query(
-        `UPDATE "payout_requests" p SET "status"='REJECTED',"rejectionReason"=$3,"decisionNote"=$3,"approvedByUserId"=$1,"reviewedAt"=now(),"updatedAt"=now()
-         FROM "payout_recipients" r
-         WHERE p."id"=$2 AND p."status"='PENDING_APPROVAL' AND r."id"=p."recipientId"
-         RETURNING p."id", p."creatorEarningId", r."userId"`,
-        [actorUserId, payoutId, reason],
-      ) as [Array<{ id: string; creatorEarningId: string | null; userId: string }>, number];
-      if (!rows[0]) throw new ConflictException('This payout was already reviewed');
-      if (rows[0].creatorEarningId) await manager.query(`UPDATE "creator_earnings" SET "status"='EARNED' WHERE "id"=$1`, [rows[0].creatorEarningId]);
-      await manager.query(
-        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,'PAYOUT_REJECTED','payout_request',$2,$3)`,
-        [actorUserId, payoutId, JSON.stringify({ reason, userId: rows[0].userId })],
-      );
-      await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'PAYOUT_REJECTED','Payout not approved',$2,'/rewards')`,
-        [rows[0].userId, `${reason} You can request it again once that’s sorted.`],
-      );
-      return { id: rows[0].id, status: 'REJECTED' };
+      const rejected = await this.repo.rejectPayout(manager, payoutId, actorUserId, reason);
+      if (!rejected) throw new ConflictException('This payout was already reviewed');
+      if (rejected.creatorEarningId) await this.repo.setCreatorEarningStatus(manager, rejected.creatorEarningId, 'EARNED');
+      await this.repo.audit(manager, { actorUserId, action: 'PAYOUT_REJECTED', targetType: 'payout_request', targetId: payoutId, metadata: { reason, userId: rejected.userId } });
+      await this.repo.notify(manager, { userId: rejected.userId, type: 'PAYOUT_REJECTED', title: 'Payout not approved', body: `${reason} You can request it again once that’s sorted.`, link: '/rewards' });
+      return { id: rejected.id, status: 'REJECTED' };
     });
   }
 
   async reconcile() {
     this.assertProviderEnabled();
-    const runs = await this.dataSource.query(`INSERT INTO "reconciliation_runs" ("provider") VALUES ('paystack') RETURNING "id"`) as Array<{ id: string }>;
-    const payments = await this.dataSource.query(`SELECT "reference" FROM "payment_intents" WHERE "status" IN ('PENDING','RECONCILIATION_REQUIRED') ORDER BY "createdAt" ASC LIMIT 100`) as Array<{ reference: string }>;
-    const transfers = await this.dataSource.query(`SELECT "reference" FROM "payout_attempts" WHERE "status" IN ('INITIATED','PENDING','PROCESSING','RECONCILIATION_REQUIRED') ORDER BY "createdAt" ASC LIMIT 100`) as Array<{ reference: string }>;
-    const paymentResults = await Promise.allSettled(payments.map(({ reference }) => this.verifyAndFulfill(reference)));
-    const transferResults = await Promise.allSettled(transfers.map(async ({ reference }) => {
+    const runId = await this.repo.startReconciliation();
+    const [payments, transfers] = await Promise.all([this.repo.openPaymentReferences(), this.repo.openTransferReferences()]);
+    const paymentResults = await Promise.allSettled(payments.map((reference) => this.verifyAndFulfill(reference)));
+    const transferResults = await Promise.allSettled(transfers.map(async (reference) => {
       const transfer = await this.paystack.verifyTransfer(reference);
       if (['success', 'failed', 'reversed'].includes(transfer.status)) await this.applyTransferEvent(reference, `transfer.${transfer.status}`);
     }));
@@ -472,25 +344,19 @@ export class PaymentsService {
       transfersChecked: transfers.length,
       failures: [...paymentResults, ...transferResults].filter((result) => result.status === 'rejected').length,
     };
-    await this.dataSource.query(`UPDATE "reconciliation_runs" SET "status"=$1,"summary"=$2,"completedAt"=now() WHERE "id"=$3`, [summary.failures ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED', JSON.stringify(summary), runs[0].id]);
+    await this.repo.finishReconciliation(runId, summary.failures ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED', summary);
     return summary;
   }
 
-  /** One bounded batch per minute. Verify first; never infer that an unconfirmed charge failed. */
   async sweepAbandonedCheckouts() {
     if (!this.config.get<boolean>('PAID_CONTESTS_ENABLED')) return { checked: 0, failures: 0 };
     this.assertProviderEnabled();
-    const payments = await this.dataSource.query(
-      `SELECT "reference" FROM "payment_intents"
-       WHERE "status" IN ('INITIATED','PENDING') AND "createdAt" <= now() - interval '15 minutes'
-         AND "updatedAt" <= now() - interval '5 minutes'
-       ORDER BY "createdAt" ASC LIMIT 20`,
-    ) as Array<{ reference: string }>;
+    const payments = await this.repo.abandonedCheckoutReferences();
     let next = 0;
     let failures = 0;
     await Promise.all(Array.from({ length: Math.min(5, payments.length) }, async () => {
       while (next < payments.length) {
-        const { reference } = payments[next++];
+        const reference = payments[next++];
         try { await this.verifyAndFulfill(reference); }
         catch { failures++; }
       }
@@ -537,20 +403,7 @@ export class PaymentsService {
     } else if (inbox.eventType.startsWith('refund.')) {
       const data = inbox.payload.data as { id?: number; status?: string; transaction?: { reference?: string } } | undefined;
       if (data?.transaction?.reference) {
-        await this.dataSource.transaction(async (manager) => {
-          const succeeded = data.status === 'processed';
-          await manager.query(
-            `UPDATE "refund_requests" r SET "status"=$1,"providerRefundId"=COALESCE($2,"providerRefundId"),"updatedAt"=now()
-             FROM "payment_intents" p WHERE p."id"=r."paymentIntentId" AND p."reference"=$3`,
-            [succeeded ? 'SUCCEEDED' : 'PROCESSING', data.id ? String(data.id) : null, data.transaction?.reference],
-          );
-          if (succeeded) {
-            await manager.query(
-              `UPDATE "payment_intents" SET "status"='REFUNDED',"updatedAt"=now() WHERE "reference"=$1 AND "status"='REFUND_PENDING'`,
-              [data.transaction?.reference],
-            );
-          }
-        });
+        await this.dataSource.transaction((manager) => this.repo.applyRefundEvent(manager, data.transaction!.reference!, data.status === 'processed', data.id ? String(data.id) : null));
       }
     }
     await this.webhooks.update({ id: inbox.id }, { processedAt: new Date() });
@@ -568,11 +421,7 @@ export class PaymentsService {
       const expired = intent.createdAt.getTime() <= Date.now() - 15 * 60 * 1000;
       const failed = expired && ['abandoned', 'failed'].includes(provider.status);
       const review = provider.status === 'reversed';
-      await this.dataSource.query(
-        `UPDATE "payment_intents" SET "status"=CASE WHEN $2 THEN 'FAILED' WHEN $3 THEN 'RECONCILIATION_REQUIRED' ELSE "status" END,"providerStatus"=$4,"updatedAt"=now()
-         WHERE "id"=$1 AND "status" IN ('INITIATED','PENDING','RECONCILIATION_REQUIRED','FAILED')`,
-        [intent.id, failed, review, provider.status],
-      );
+      await this.repo.settleUnpaidIntent(intent.id, failed, review, provider.status);
       return;
     }
     if (intent.purpose === 'WALLET_FUNDING') {
@@ -592,31 +441,27 @@ export class PaymentsService {
       const locked = await manager.findOneOrFail(PaymentIntent, { where: { id: intent.id }, lock: { mode: 'pessimistic_write' } });
       if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED', 'FAILED'].includes(locked.status)) return false;
       const table = await manager.findOneOrFail(CompetitionTable, { where: { id: challengeId }, lock: { mode: 'pessimistic_write' } });
-      const count = Number((await manager.query(`SELECT COUNT(*)::integer count FROM "table_registrations" WHERE "tableId"=$1 AND "userId"<>$2`, [table.id, table.creatorId]) as Array<{ count: number }>)[0].count);
+      const count = await this.repo.entrantsOtherThan(manager, table.id, table.creatorId);
       const blocked = await this.isPaidBlocked(locked.userId, manager);
       const alreadyRegistered = await manager.exists(TableRegistration, { where: { tableId: table.id, userId: locked.userId } });
       if (table.status !== 'OPEN_FOR_ENTRY' || (table.capacity !== null && count >= table.capacity) ||
           table.creatorId === locked.userId || blocked || alreadyRegistered) {
         locked.status = 'REFUND_PENDING';
         await manager.save(locked);
-        await manager.query(`INSERT INTO "refund_requests" ("paymentIntentId","amountKobo","currency","reason") VALUES ($1,$2,$3,'Competition entry unavailable') ON CONFLICT DO NOTHING`, [locked.id, locked.amountKobo, locked.currency]);
+        await this.repo.requestRefund(manager, { paymentIntentId: locked.id, amountKobo: locked.amountKobo, currency: locked.currency, reason: 'Competition entry unavailable' });
         return true;
       }
       locked.status = 'SUCCEEDED'; locked.providerStatus = provider.status; locked.providerTransactionId = String(provider.id);
       await manager.save(locked);
       await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: table.id, userId: locked.userId, paymentIntentId: locked.id }));
       await creditActivities(manager, { tableId: table.id, userId: locked.userId });
-      await manager.query(
-        `UPDATE "challenge_invitations" SET "status"='ACCEPTED',"respondedAt"=now()
-         WHERE "tableId"=$1 AND "invitedUserId"=$2 AND "status"='PENDING'`,
-        [table.id, locked.userId],
-      );
-      await this.postEntryLedger(manager, locked);
+      await this.repo.acceptPendingInvitation(manager, table.id, locked.userId);
+      await this.repo.postLedger(manager, { reference: `payment:${locked.reference}`, description: 'Verified Paystack competition entry', debit: 'processor_clearing', credit: 'contest_entry_liability', amountKobo: locked.amountKobo });
       return false;
     });
     if (needsRefund) {
       const refund = await this.paystack.createRefund({ transaction: reference, amount: intent.amountKobo, currency: intent.currency, merchant_note: 'Automatic refund: competition unavailable' });
-      await this.dataSource.query(`UPDATE "refund_requests" SET "status"=$1,"providerRefundId"=$2,"updatedAt"=now() WHERE "paymentIntentId"=$3`, [refund.status === 'processed' ? 'SUCCEEDED' : 'PROCESSING', String(refund.id), intent.id]);
+      await this.repo.recordRefund(intent.id, refund);
     }
   }
 
@@ -632,18 +477,14 @@ export class PaymentsService {
           (table.scoringClosesAt && table.scoringClosesAt <= new Date())) {
         locked.status = 'REFUND_PENDING';
         await manager.save(locked);
-        await manager.query(`INSERT INTO "refund_requests" ("paymentIntentId","amountKobo","currency","reason") VALUES ($1,$2,$3,'Prize funding unavailable') ON CONFLICT DO NOTHING`, [locked.id, locked.amountKobo, locked.currency]);
+        await this.repo.requestRefund(manager, { paymentIntentId: locked.id, amountKobo: locked.amountKobo, currency: locked.currency, reason: 'Prize funding unavailable' });
         return true;
       }
       if (!legacyFixed) {
-        const [total] = await manager.query(
-          `SELECT COALESCE(SUM("amountKobo"),0)::bigint AS amount FROM "payment_intents" WHERE "tableId"=$1 AND "purpose"='SPONSOR_FUNDING' AND "status"='SUCCEEDED'`,
-          [table.id],
-        ) as Array<{ amount: string }>;
-        if (Number(total.amount) + locked.amountKobo > 1_000_000_000) {
+        if (await this.repo.sponsorFundingTotal(manager, table.id) + locked.amountKobo > 1_000_000_000) {
           locked.status = 'REFUND_PENDING';
           await manager.save(locked);
-          await manager.query(`INSERT INTO "refund_requests" ("paymentIntentId","amountKobo","currency","reason") VALUES ($1,$2,$3,'Prize funding limit reached') ON CONFLICT DO NOTHING`, [locked.id, locked.amountKobo, locked.currency]);
+          await this.repo.requestRefund(manager, { paymentIntentId: locked.id, amountKobo: locked.amountKobo, currency: locked.currency, reason: 'Prize funding limit reached' });
           return true;
         }
       }
@@ -654,16 +495,14 @@ export class PaymentsService {
       if (legacyFixed) table.status = 'OPEN_FOR_ENTRY';
       table.fundedAt ??= new Date();
       await manager.save(table);
-      // A club's funded competition takes the club in once it opens.
       if (legacyFixed && table.communityId) await enrolClubMembers(manager, { tableId: table.id });
       if (legacyFixed) await announceCompetition(manager, table);
-      const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified funded competition prize') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
-      if (journal[0]) await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','sponsor_prize_liability')`, [journal[0].id, locked.amountKobo]);
+      await this.repo.postLedger(manager, { reference: `payment:${locked.reference}`, description: 'Verified funded competition prize', debit: 'processor_clearing', credit: 'sponsor_prize_liability', amountKobo: locked.amountKobo });
       return false;
     });
     if (needsRefund) {
       const refund = await this.paystack.createRefund({ transaction: intent.reference, amount: intent.amountKobo, currency: intent.currency, merchant_note: 'Automatic refund: prize funding unavailable' });
-      await this.dataSource.query(`UPDATE "refund_requests" SET "status"=$1,"providerRefundId"=$2,"updatedAt"=now() WHERE "paymentIntentId"=$3`, [refund.status === 'processed' ? 'SUCCEEDED' : 'PROCESSING', String(refund.id), intent.id]);
+      await this.repo.recordRefund(intent.id, refund);
     }
   }
 
@@ -671,80 +510,25 @@ export class PaymentsService {
     await this.dataSource.transaction(async (manager) => {
       const locked = await manager.findOneOrFail(PaymentIntent, { where: { id: intent.id }, lock: { mode: 'pessimistic_write' } });
       if (!['INITIATED', 'PENDING', 'RECONCILIATION_REQUIRED', 'FAILED'].includes(locked.status)) return;
-      const wallets = await manager.query(
-        `INSERT INTO "wallets" ("userId") VALUES ($1) ON CONFLICT ("userId") DO UPDATE SET "userId"=EXCLUDED."userId" RETURNING "id","balanceKobo"`,
-        [locked.userId],
-      ) as Array<{ id: string; balanceKobo: string }>;
-      const balanceAfter = Number(wallets[0].balanceKobo) + locked.amountKobo;
-      await manager.query(`UPDATE "wallets" SET "balanceKobo"=$1,"updatedAt"=now() WHERE "id"=$2`, [balanceAfter, wallets[0].id]);
-      await manager.query(
-        `INSERT INTO "wallet_transactions" ("walletId","type","amountKobo","balanceAfterKobo","reference","description") VALUES ($1,'FUNDING',$2,$3,$4,'Entry credit top-up') ON CONFLICT ("reference") DO NOTHING`,
-        [wallets[0].id, locked.amountKobo, balanceAfter, locked.reference],
-      );
+      const wallet = await this.repo.ensureWallet(manager, locked.userId);
+      const balanceAfter = wallet.balanceKobo + locked.amountKobo;
+      await this.repo.setWalletBalance(manager, wallet.id, balanceAfter);
+      await this.repo.recordWalletTransaction(manager, { walletId: wallet.id, type: 'FUNDING', amountKobo: locked.amountKobo, balanceAfterKobo: balanceAfter, reference: locked.reference, description: 'Entry credit top-up' });
       locked.status = 'SUCCEEDED';
       locked.providerStatus = provider.status;
       locked.providerTransactionId = String(provider.id);
       await manager.save(locked);
-      const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified wallet funding') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${locked.reference}`]) as Array<{ id: string }>;
-      if (journal[0]) {
-        await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','wallet_liability')`, [journal[0].id, locked.amountKobo]);
-      }
+      await this.repo.postLedger(manager, { reference: `payment:${locked.reference}`, description: 'Verified wallet funding', debit: 'processor_clearing', credit: 'wallet_liability', amountKobo: locked.amountKobo });
     });
   }
 
   private async applyTransferEvent(reference: string, eventType: string) {
     const status = eventType === 'transfer.success' ? 'SUCCEEDED' : eventType === 'transfer.reversed' ? 'REVERSED' : 'FAILED';
-    await this.dataSource.transaction(async (manager) => {
-      const attempts = await manager.query(`UPDATE "payout_attempts" SET "status"=$1,"updatedAt"=now() WHERE "reference"=$2 RETURNING "payoutRequestId"`, [status, reference]) as Array<{ payoutRequestId: string }>;
-      if (!attempts[0]) return;
-      await manager.query(`UPDATE "payout_requests" SET "status"=$1,"updatedAt"=now() WHERE "id"=$2`, [status, attempts[0].payoutRequestId]);
-      await manager.query(
-        `UPDATE "prize_awards" a SET "status"=$1 FROM "payout_requests" p WHERE p."awardId"=a."id" AND p."id"=$2`,
-        [status === 'SUCCEEDED' ? 'PAID' : status, attempts[0].payoutRequestId],
-      );
-      await manager.query(
-        `UPDATE "creator_earnings" e SET "status"=$1 FROM "payout_requests" p WHERE p."creatorEarningId"=e."id" AND p."id"=$2`,
-        [status === 'SUCCEEDED' ? 'PAID' : status, attempts[0].payoutRequestId],
-      );
-    });
+    await this.dataSource.transaction((manager) => this.repo.applyTransferEvent(manager, reference, status));
   }
 
   private async freezeDisputedFunds(reference: string, eventType: string) {
-    await this.dataSource.transaction(async (manager) => {
-      const intents = await manager.query(
-        `UPDATE "payment_intents" SET "status"='DISPUTED',"providerStatus"=$1,"updatedAt"=now()
-         WHERE "reference"=$2 AND "status" IN ('SUCCEEDED','DISPUTED') RETURNING "userId"`,
-        [eventType, reference],
-      ) as Array<{ userId: string }>;
-      if (!intents[0]) return;
-      await manager.query(
-        `UPDATE "wallets" SET "frozenAt"=COALESCE("frozenAt",now()),"freezeReason"='PAYMENT_DISPUTE',"updatedAt"=now() WHERE "userId"=$1`,
-        [intents[0].userId],
-      );
-      await manager.query(
-        `INSERT INTO "user_eligibility" ("userId","paidCompetitionEligible") VALUES ($1,false)
-         ON CONFLICT ("userId") DO UPDATE SET "paidCompetitionEligible"=false,"updatedAt"=now()`,
-        [intents[0].userId],
-      );
-      await manager.query(
-        `UPDATE "payout_requests" p SET "status"='SECURITY_HOLD',"updatedAt"=now()
-         FROM "payout_recipients" r WHERE p."recipientId"=r."id" AND r."userId"=$1
-           AND p."status" IN ('PENDING_APPROVAL','APPROVED')`,
-        [intents[0].userId],
-      );
-    });
-  }
-
-  private async postEntryLedger(manager: import('typeorm').EntityManager, intent: PaymentIntent) {
-    const journal = (await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Verified Paystack competition entry') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [`payment:${intent.reference}`])) as Array<{ id: string }>;
-    if (!journal[0]) return;
-    await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'processor_clearing' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('processor_clearing','contest_entry_liability')`, [journal[0].id, intent.amountKobo]);
-  }
-
-  private async postWalletEntryLedger(manager: import('typeorm').EntityManager, reference: string, amountKobo: number) {
-    const journal = await manager.query(`INSERT INTO "ledger_journals" ("reference","description") VALUES ($1,'Wallet-funded competition entry') ON CONFLICT ("reference") DO NOTHING RETURNING "id"`, [reference]) as Array<{ id: string }>;
-    if (!journal[0]) return;
-    await manager.query(`INSERT INTO "ledger_entries" ("journalId","accountId","currency","amountKobo") SELECT $1,"id",'NGN',CASE "code" WHEN 'wallet_liability' THEN $2::bigint ELSE -($2::bigint) END FROM "ledger_accounts" WHERE "code" IN ('wallet_liability','contest_entry_liability')`, [journal[0].id, amountKobo]);
+    await this.dataSource.transaction((manager) => this.repo.freezeDisputedPayer(manager, reference, eventType));
   }
 
   private assertPaidEnabled() {
@@ -775,17 +559,12 @@ export class PaymentsService {
     }
   }
 
-  /**
-   * Paid challenges, funding and payouts need KYC Level 2 (when switched on in the AML settings). The
-   * freeze put on an account after a payment dispute (paidCompetitionEligible=false) also blocks them.
-   */
   private async assertPaidEligibility(userId: string, manager: import('typeorm').EntityManager = this.dataSource.manager) {
     if (await this.isPaidBlocked(userId, manager)) throw new ForbiddenException('Paid features are paused on this account after a payment dispute. Contact support.');
     await this.aml.assertVerified(userId, manager);
   }
 
   private async isPaidBlocked(userId: string, manager: import('typeorm').EntityManager = this.dataSource.manager) {
-    const rows = await manager.query(`SELECT 1 FROM "user_eligibility" WHERE "userId"=$1 AND "paidCompetitionEligible"=false`, [userId]) as unknown[];
-    return rows.length > 0;
+    return this.repo.isPaidBlocked(manager, userId);
   }
 }

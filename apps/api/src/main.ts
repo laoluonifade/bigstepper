@@ -22,7 +22,6 @@ async function bootstrap() {
     }),
   );
   app.enableCors({
-    // The runner app and the admin console; nothing else may call the API from a browser.
     origin: [config.getOrThrow<string>('WEB_ORIGIN'), config.getOrThrow<string>('ADMIN_ORIGIN')],
     credentials: true,
   });
@@ -38,7 +37,6 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
   }
 
-  // Behind a reverse proxy, set HOST=127.0.0.1 so the port isn't reachable from outside.
   const host = config.get<string>('HOST') || '0.0.0.0';
   await app.listen(port, host);
   Logger.log(`API listening on http://${host}:${port}/v1`, 'Bootstrap');

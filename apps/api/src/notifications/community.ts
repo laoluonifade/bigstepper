@@ -1,11 +1,6 @@
 import type { EntityManager } from 'typeorm';
 import { enrolClubMembers } from '../tables/club-competitions';
 
-/**
- * Puts every runner in the Jump community club once (new sign-ups within a few minutes, everyone else
- * the first time this runs), following it too, and enters them in its live competitions. Someone who
- * leaves isn't put back. Nothing happens until the club exists.
- */
 export async function joinCommunityClub(manager: EntityManager, slug: string) {
   const [club] = await manager.query(`SELECT "id" FROM "clubs" WHERE "slug" = $1`, [slug]) as Array<{ id: string }>;
   if (!club) return 0;
@@ -26,11 +21,6 @@ export async function joinCommunityClub(manager: EntityManager, slug: string) {
   return joined.length;
 }
 
-/**
- * A public competition that just opened (made open, scheduled and now live, funded or approved): every
- * runner hears about it by push and email, except its host, anyone already in it, and anyone it already
- * reached another way (their club entered or invited them).
- */
 export async function announceNewCompetitions(manager: EntityManager) {
   const rows = await manager.query(
     `WITH fresh AS (

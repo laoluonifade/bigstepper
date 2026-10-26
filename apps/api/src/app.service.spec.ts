@@ -14,10 +14,9 @@ describe('public stats', () => {
     const first = await service.publicStats();
     expect(first).toMatchObject({ runners: 131, countries: 2, verifiedKm: 4210, topCountries: [{ code: 'NG', runners: 120 }, { code: 'GB', runners: 9 }] });
     expect(redis.set).toHaveBeenCalledWith('public-stats:v1', expect.any(String), 'EX', 600);
-    // Nothing about any one person: totals and country counts only.
     expect(JSON.stringify(first)).not.toMatch(/email|username|displayName/);
 
     await service.publicStats();
-    expect(query).toHaveBeenCalledTimes(2); // the second call came from the cache
+    expect(query).toHaveBeenCalledTimes(2);
   });
 });

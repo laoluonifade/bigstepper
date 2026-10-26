@@ -1,11 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Strava walks and runs used to import with zero steps, so they counted for nothing in step competitions.
- * Give the ones already imported an estimate from their verified distance (the same stride lengths Jump
- * uses the other way round, capped at 4 steps/s), then re-credit competitions that are still running.
- * Settled competitions are left exactly as they were paid out. New imports use Strava cadence instead.
- */
 export class StravaSteps1729203800000 implements MigrationInterface {
   name = 'StravaSteps1729203800000';
 
@@ -24,7 +18,6 @@ export class StravaSteps1729203800000 implements MigrationInterface {
       ) est
       WHERE a."id" = est."id"`);
 
-    // Same matching rules as verification; catches anything that was never credited at all.
     await queryRunner.query(`
       INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
       SELECT t."id", r."id", a."id",
@@ -45,7 +38,6 @@ export class StravaSteps1729203800000 implements MigrationInterface {
         AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
       ON CONFLICT ("tableId", "activityId") DO NOTHING`);
 
-    // Credits written with zero steps before the estimate existed.
     await queryRunner.query(`
       UPDATE "table_activity_credits" c SET "creditedSteps" = a."validatedSteps"
       FROM "activities" a, "competition_tables" t
@@ -70,6 +62,5 @@ export class StravaSteps1729203800000 implements MigrationInterface {
   }
 
   async down(): Promise<void> {
-    // Estimated steps can't be told apart from real ones afterwards; nothing to undo.
   }
 }

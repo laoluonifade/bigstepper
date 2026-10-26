@@ -20,7 +20,6 @@ export class AuthSession {
   @Column({ type: 'timestamptz', nullable: true })
   revokedAt: Date | null;
 
-  /** app: the runner app. admin: admin.startajump.com, signed in with an emailed code. */
   @Column({ type: 'varchar', length: 10, default: 'app' })
   scope: 'app' | 'admin';
 

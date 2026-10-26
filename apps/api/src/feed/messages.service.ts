@@ -9,7 +9,6 @@ export interface SendExtras {
   audioSeconds?: number;
 }
 
-/** What the push and inbox say about a new message: its text (cut short), or what was sent. */
 function preview(text: string, voiceNote: boolean, activity: boolean) {
   if (text) return text.length > 140 ? `${text.slice(0, 139).trimEnd()}…` : text;
   if (voiceNote) return '🎤 Voice note';
@@ -37,7 +36,6 @@ export class MessagesService {
     return runner;
   }
 
-  /** Direct conversations and your clubs' chats, newest first. */
   async inbox(userId: string) {
     const [direct, clubs] = await Promise.all([this.directInbox(userId), this.clubInbox(userId)]);
     return [...direct.map((row: Record<string, unknown>) => ({ type: 'direct', ...row })), ...clubs]
@@ -45,7 +43,6 @@ export class MessagesService {
       .slice(0, 60);
   }
 
-  /** Each club you're in that has a chat: its last message and how many you haven't read. */
   private async clubInbox(userId: string) {
     return this.dataSource.query(
       `SELECT 'club' AS "type", c."slug" AS "clubSlug", c."name" AS "clubName", c."logoUrl", c."accentColor", c."verifiedAt" IS NOT NULL AS "verified",
@@ -111,7 +108,6 @@ export class MessagesService {
        WHERE "senderId"=$1 AND "recipientId"=$2 AND "readAt" IS NULL`,
       [runner.userId, userId],
     );
-    // Reading the chat reads its notifications too, so the bell (and any push not yet sent) drops them.
     await this.dataSource.query(
       `UPDATE "notifications" SET "readAt"=now()
        WHERE "userId"=$1 AND "readAt" IS NULL AND "type" IN ('DIRECT_MESSAGE','MESSAGE_REACTION')
@@ -130,10 +126,6 @@ export class MessagesService {
     return { runner, canMessage: true, messages };
   }
 
-  /**
-   * The newest 100 messages matching a condition, oldest first, with replies, shared activities,
-   * competition invitations and reactions. Direct and club conversations share it.
-   */
   private async thread(where: string, params: unknown[]) {
     const messages = await this.dataSource.query(
       `SELECT m."id",m."senderId",m."recipientId",m."clubId",m."body",m."createdAt",m."editedAt",m."readAt",m."audioUrl",m."audioSeconds",
@@ -166,7 +158,6 @@ export class MessagesService {
     return messages.reverse().map((message) => ({ ...message, reactions: byMessage.get(message.id) ?? [] }));
   }
 
-  /** A club the user belongs to, by handle or id. Only members can read or write its chat. */
   private async memberClub(userId: string, clubRef: string) {
     const ref = clubRef.trim().toLowerCase();
     const [club] = await this.dataSource.query(
@@ -180,7 +171,6 @@ export class MessagesService {
     return club;
   }
 
-  /** The club's group chat, with everyone who wrote in it so names and pictures can show. */
   async clubConversation(userId: string, clubRef: string) {
     const club = await this.memberClub(userId, clubRef);
     const messages = await this.thread(`m."clubId"=$1`, [club.id]);
@@ -192,7 +182,6 @@ export class MessagesService {
        WHERE u."id" = ANY($1::uuid[])`,
       [[...new Set([userId, ...messages.map((message) => message.senderId)])]],
     );
-    // A few faces for the header, people with photos first.
     const faces = await this.dataSource.query(
       `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
@@ -200,7 +189,6 @@ export class MessagesService {
        WHERE m."clubId" = $1 ORDER BY (p."avatarUrl" IS NULL), m."joinedAt" LIMIT 5`,
       [club.id],
     );
-    // A locked chat is read-only for members; the owner and managers can still send.
     const canMessage = !club.chatLocked || club.myRole !== 'member';
     return { club: { ...club, faces }, people, canMessage, messages };
   }
@@ -215,7 +203,6 @@ export class MessagesService {
     return { read: true };
   }
 
-  /** Same rules as a direct message; members see it in the chat (no notification per message). */
   async sendToClub(userId: string, clubRef: string, body: string, extras: SendExtras = {}) {
     const club = await this.memberClub(userId, clubRef);
     if (club.chatLocked && club.myRole === 'member') throw new ForbiddenException('Only the owner and managers can send messages here right now');
@@ -231,7 +218,6 @@ export class MessagesService {
        RETURNING "id","senderId","recipientId","clubId","body","replyToId","activityId","audioUrl","audioSeconds","createdAt"`,
       [userId, club.id, trimmed, replyToId ?? null, activityId ?? null, audioUrl ?? null, audioUrl ? audioSeconds ?? null : null],
     );
-    // Your own message means you've read up to here.
     await this.dataSource.query(
       `INSERT INTO "club_chat_reads" ("clubId","userId","readAt") VALUES ($1,$2,now()) ON CONFLICT ("clubId","userId") DO UPDATE SET "readAt"=now()`,
       [club.id, userId],
@@ -239,12 +225,10 @@ export class MessagesService {
     return message;
   }
 
-  /** Text, a shared activity of your own, or your own voice note. */
   private async checkExtras(userId: string, trimmed: string, { activityId, audioUrl }: SendExtras) {
     if (!trimmed && !activityId && !audioUrl) throw new BadRequestException('Write a message');
     if (audioUrl && !this.cloudinary.isOwnVoiceNote(userId, audioUrl)) throw new BadRequestException('Record the voice note again');
     if (activityId) {
-      // Runners share their own activities; every activity is public, so anyone in the chat may see it.
       const owned = await this.dataSource.query(
         `SELECT 1 FROM "activities" WHERE "id"=$1 AND "userId"=$2 AND "verificationStatus"<>'REJECTED'`, [activityId, userId],
       ) as unknown[];

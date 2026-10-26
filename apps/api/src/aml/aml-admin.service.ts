@@ -4,7 +4,6 @@ import { AmlService } from './aml.service';
 
 const PERSON = `COALESCE(p."displayName", u."displayName") "displayName", p."username", p."avatarUrl", u."email"`;
 
-/** What admins see and decide in the console's Risk area. Every decision is written to the audit log. */
 @Injectable()
 export class AmlAdminService {
   constructor(private readonly dataSource: DataSource, private readonly aml: AmlService) {}
@@ -44,7 +43,6 @@ export class AmlAdminService {
     );
   }
 
-  /** Dismiss (false alarm), confirm (upheld) or escalate (investigate, and hold payouts) with a note. */
   async reviewFlag(actorUserId: string, flagId: string, decision: 'DISMISSED' | 'CONFIRMED' | 'ESCALATED', note: string) {
     const flag = await this.dataSource.transaction(async (manager) => {
       const [rows] = await manager.query(
@@ -61,7 +59,6 @@ export class AmlAdminService {
     return { id: flag.id, status: decision };
   }
 
-  /** Everything needed to judge one account: identity, risk, flags, linked accounts, competitions, payouts and money. */
   async userProfile(userId: string) {
     const [person] = await this.dataSource.query(
       `SELECT u."id", u."createdAt", u."emailVerified", u."lastSeenAt", ${PERSON},
@@ -99,7 +96,6 @@ export class AmlAdminService {
     return { person, risk, flags, linked, competitions, payouts, timeline };
   }
 
-  /** Other accounts that share a BVN, bank account, device or IP with this one. */
   linkedAccounts(userId: string) {
     return this.dataSource.query(
       `WITH links AS (
@@ -118,7 +114,6 @@ export class AmlAdminService {
     );
   }
 
-  /** Deposits, entries, winnings, fees, refunds and withdrawals, newest first. */
   moneyTimeline(userId: string) {
     return this.dataSource.query(
       `SELECT * FROM (

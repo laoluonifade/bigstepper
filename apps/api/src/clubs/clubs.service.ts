@@ -23,11 +23,6 @@ const inviteCode = () => randomBytes(6).toString('base64url').replace(/[-_]/g, '
 const isDuplicate = (error: unknown) =>
   error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505';
 
-/**
- * Clubs: a page with an about, logo and colour; an owner who can make members managers; managers who
- * edit the club, invite people and host competitions; and members, who are entered into the club's free
- * competitions automatically (see enrolClubMembers).
- */
 @Injectable()
 export class ClubsService {
   constructor(
@@ -62,7 +57,6 @@ export class ClubsService {
     }
   }
 
-  /** The club's link handle from its name: "Lagos Road Runners" → lagos-road-runners, then -2, -3… if taken. */
   private async freeSlug(name: string) {
     const base = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 34).replace(/-+$/, '');
     const root = base.length >= 3 ? base : `${base || 'club'}-club`.replace(/^-/, '');
@@ -73,7 +67,6 @@ export class ClubsService {
     for (let n = 2; ; n += 1) if (!taken.has(`${root}-${n}`)) return `${root}-${n}`;
   }
 
-  /** Your clubs (ones you're in or follow, with your role), or open clubs to discover, most followed first. */
   async list(viewerId: string, view: 'mine' | 'discover') {
     return this.dataSource.query(
       `SELECT c."id", c."slug", c."name", c."description", c."logoUrl", c."accentColor", c."location", c."privacy", c."verifiedAt" IS NOT NULL AS "verified",
@@ -90,7 +83,6 @@ export class ClubsService {
     );
   }
 
-  /** Clubs are addressed by their handle; the UUID still works for older links. */
   private async find(clubRef: string) {
     const ref = clubRef.trim().replace(/^\/+/, '').toLowerCase();
     const club = await this.clubs.findOne({ where: UUID_PATTERN.test(ref) ? { id: ref } : { slug: ref } });
@@ -110,10 +102,6 @@ export class ClubsService {
     return role;
   }
 
-  /**
-   * The club page, for anyone with the link (members of invite-only clubs see the same). Members also get
-   * the invite code; a visitor learns whether the invite in their link is valid.
-   */
   async get(clubRef: string, viewerId?: string | null, invite?: string, visitor?: string | null) {
     const club = await this.find(clubRef);
     void recordView(this.dataSource.manager, { clubId: club.id, viewerId, anonKey: visitor });
@@ -146,14 +134,12 @@ export class ClubsService {
       ...page,
       verified: Boolean(verifiedAt),
       suspended: Boolean(suspendedAt),
-      // Only the club's managers see why, and its plan.
       ...(manager ? { suspendedReason, plan: planOf(plan, planRenewsAt) } : {}),
       ...counts,
       faces,
       owner: owner ?? null,
       myRole: role,
       inviteValid: Boolean(invite && invite.toUpperCase() === code),
-      // Any member can share the club; managers can also reset the link.
       ...(role ? { inviteCode: code } : {}),
     };
   }
@@ -178,7 +164,6 @@ export class ClubsService {
     return this.get(club.id, actorId);
   }
 
-  /** Someone shared the club's page. */
   async shared(clubRef: string, viewerId: string, channel: string) {
     const club = await this.find(clubRef);
     await recordShare(this.dataSource.manager, { clubId: club.id, viewerId, channel });
@@ -204,7 +189,6 @@ export class ClubsService {
     return this.get(club.id, actorId);
   }
 
-  /** Anyone can see who's in an open club; an invite-only club shows its members to members. */
   async members(clubRef: string, viewerId?: string | null) {
     const club = await this.find(clubRef);
     if (club.privacy === 'invite' && !(await this.roleOf(club.id, viewerId))) throw new ForbiddenException('Join this club to see its members');
@@ -237,11 +221,6 @@ export class ClubsService {
     );
   }
 
-  /**
-   * The club's published challenges in three lists: live, upcoming (open to join, not started yet) and
-   * past, with each past one's top three and prize winners. Drafts and scheduled ones are only on the
-   * dashboard. Past challenges stay listed even when archived.
-   */
   async competitions(clubRef: string, viewerId?: string | null) {
     const club = await this.find(clubRef);
     const member = Boolean(await this.roleOf(club.id, viewerId));
@@ -274,7 +253,6 @@ export class ClubsService {
     };
   }
 
-  /** Follow a club to see its challenges and hear about new ones, without joining it. */
   async follow(userId: string, clubRef: string, following: boolean) {
     const club = await this.find(clubRef);
     if (following) await this.dataSource.query(`INSERT INTO "club_follows" ("clubId","userId") VALUES ($1,$2) ON CONFLICT DO NOTHING`, [club.id, userId]);
@@ -286,10 +264,6 @@ export class ClubsService {
     return { following, followerCount };
   }
 
-  /**
-   * Join from the club page: open clubs let anyone in, invite-only clubs need the invite in the link.
-   * New members go straight into the club's live free competitions.
-   */
   async join(userId: string, clubRef: string, invite?: string) {
     const club = await this.find(clubRef);
     if (club.privacy === 'invite' && invite?.toUpperCase() !== club.inviteCode) {
@@ -317,7 +291,6 @@ export class ClubsService {
     return { left: true };
   }
 
-  /** Managers add a runner by @username; they're entered into live club competitions like anyone who joins. */
   async addMember(actorId: string, clubRef: string, runner: { username?: string; userId?: string }) {
     const club = await this.find(clubRef);
     await this.assertManager(club.id, actorId);
@@ -342,7 +315,6 @@ export class ClubsService {
     }
   }
 
-  /** The owner makes members managers (role admin) or back again. */
   async setRole(actorId: string, clubRef: string, userId: string, role: 'admin' | 'member') {
     const club = await this.find(clubRef);
     if ((await this.roleOf(club.id, actorId)) !== 'owner') throw new ForbiddenException('Only the club owner can change roles');
@@ -360,7 +332,6 @@ export class ClubsService {
     return membership;
   }
 
-  /** The owner removes anyone; managers remove members (not other managers). */
   async removeMember(actorId: string, clubRef: string, userId: string) {
     const club = await this.find(clubRef);
     const actorRole = await this.assertManager(club.id, actorId);
@@ -372,10 +343,6 @@ export class ClubsService {
     return { removed: true };
   }
 
-  /**
-   * Email invitations with the club's invite link. People already on Jump also get a notification; new
-   * people land on the club page, sign up, and are joined on the way back.
-   */
   async invite(actorId: string, clubRef: string, emails: string[]) {
     const club = await this.find(clubRef);
     await this.assertManager(club.id, actorId);
@@ -405,7 +372,6 @@ export class ClubsService {
     return { invited: toInvite.length, alreadyMembers: members.size };
   }
 
-  /** A new invite code; links with the old one stop working for invite-only clubs. */
   async resetInvite(actorId: string, clubRef: string) {
     const club = await this.find(clubRef);
     await this.assertManager(club.id, actorId);

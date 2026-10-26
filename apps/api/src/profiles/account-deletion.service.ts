@@ -5,28 +5,14 @@ import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import { appleKeyConfigured, revokeAppleToken } from '../auth/apple';
 
-/** Unfinished: still open, running, or waiting to be settled. */
 const LIVE = `t."status" NOT IN ('SETTLED','CANCELLED','DRAFT') AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now() OR t."type" <> 'free')`;
 
-/**
- * Deleting a runner's account, as App Store and Play rules (and the privacy policy) promise.
- *
- * Money comes first: while anything is owed to or held for them (a wallet balance, an unpaid prize or
- * earnings, a cash competition not yet settled), or others depend on them (a club they own, a competition
- * they're hosting), it refuses and says what to sort out.
- *
- * Then, in one transaction: everything personal is deleted (activities and their GPS routes, posts,
- * messages, follows, memberships, entries in unfinished competitions, devices, sessions); the profile is
- * wiped; and the account row is kept but made anonymous, because payment, payout and identity-verification
- * records must legally be retained and point at it. The email is replaced, so it can sign up afresh.
- */
 @Injectable()
 export class AccountDeletionService {
   private readonly logger = new Logger(AccountDeletionService.name);
 
   constructor(private readonly dataSource: DataSource, @Optional() private readonly config?: ConfigService) {}
 
-  /** Why the account can't be deleted yet, or null when it can. */
   async blocker(userId: string, manager: EntityManager = this.dataSource.manager): Promise<string | null> {
     const [row] = await manager.query(
       `SELECT
@@ -53,17 +39,13 @@ export class AccountDeletionService {
   async delete(userId: string) {
     let appleRefreshToken: string | null = null;
     await this.dataSource.transaction(async (manager) => {
-      // Lock the account so a payout or entry can't slip in between the check and the deletion.
       await manager.query(`SELECT 1 FROM "users" WHERE "id" = $1 FOR UPDATE`, [userId]);
       const reason = await this.blocker(userId, manager);
       if (reason) throw new ConflictException(reason);
       [{ appleRefreshToken } = { appleRefreshToken: null }] = await manager.query(`SELECT "appleRefreshToken" FROM "users" WHERE "id" = $1`, [userId]) as Array<{ appleRefreshToken: string | null }>;
 
-      // Activity history: credits first (they guard finished boards), then sessions, which take their
-      // activities and GPS points with them.
       await manager.query(`DELETE FROM "table_activity_credits" c USING "activities" a WHERE c."activityId" = a."id" AND a."userId" = $1`, [userId]);
       await manager.query(`DELETE FROM "running_sessions" WHERE "userId" = $1`, [userId]);
-      // What they said and who they followed.
       await manager.query(`DELETE FROM "feed_posts" WHERE "userId" = $1`, [userId]);
       await manager.query(`DELETE FROM "feed_comments" WHERE "userId" = $1`, [userId]);
       await manager.query(`DELETE FROM "feed_post_reactions" WHERE "userId" = $1`, [userId]);
@@ -73,15 +55,12 @@ export class AccountDeletionService {
       await manager.query(`DELETE FROM "club_follows" WHERE "userId" = $1`, [userId]);
       await manager.query(`DELETE FROM "club_chat_reads" WHERE "userId" = $1`, [userId]);
       await manager.query(`DELETE FROM "club_memberships" WHERE "userId" = $1`, [userId]);
-      // Entries in competitions that aren't over; finished boards keep an anonymous row.
       await manager.query(`DELETE FROM "table_registrations" r USING "competition_tables" t WHERE r."tableId" = t."id" AND r."userId" = $1 AND ${LIVE}`, [userId]);
       await manager.query(`DELETE FROM "challenge_invitations" WHERE "invitedUserId" = $1`, [userId]);
-      // Devices, sign-ins and reminders.
       for (const table of ['push_tokens', 'notifications', 'auth_sessions', 'auth_action_tokens', 'user_devices', 'strava_accounts', 'challenge_reminder_deliveries']) {
         await manager.query(`DELETE FROM "${table}" WHERE "userId" = $1`, [userId]);
       }
 
-      // The profile, wiped. The handle frees up; nothing left points back at the person.
       const tag = randomBytes(6).toString('hex');
       await manager.query(
         `UPDATE "profiles" SET "username" = $2, "displayName" = 'Deleted runner', "avatarUrl" = NULL, "bio" = NULL, "whatsappNumber" = NULL,
@@ -89,7 +68,6 @@ export class AccountDeletionService {
          WHERE "userId" = $1`,
         [userId, `deleted_${tag}`],
       );
-      // The account row stays for the records that must, but can't be signed into or found.
       await manager.query(
         `UPDATE "users" SET "email" = $2, "passwordHash" = $3, "displayName" = 'Deleted runner', "emailVerified" = false, "deletedAt" = now(),
            "googleSub" = NULL, "appleSub" = NULL, "appleRefreshToken" = NULL WHERE "id" = $1`,
@@ -101,7 +79,6 @@ export class AccountDeletionService {
     return { deleted: true };
   }
 
-  /** Signed in with Apple: tell Apple Jump no longer has access. Best effort; the deletion already happened. */
   private async revokeApple(refreshToken: string) {
     const config = {
       bundleId: this.config?.get<string>('APPLE_BUNDLE_ID') || 'com.startajump.app',

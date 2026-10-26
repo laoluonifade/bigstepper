@@ -131,10 +131,6 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
     }));
   }
 
-  /**
-   * From 6pm Lagos time: runners who were active yesterday but not yet today get one email before their
-   * streak ends at midnight. `streakReminderSentOn` keeps it to one a day.
-   */
   private async sendStreakReminders() {
     const rows = await this.dataSource.query(
       `WITH local AS (SELECT (now() AT TIME ZONE $1) AS at),
@@ -153,7 +149,6 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
            AND NOT EXISTS (SELECT 1 FROM days WHERE days."userId"=p."userId" AND days.d = today.d)
          LIMIT 200
        ),
-       -- Gaps and islands: days minus their rank is constant within an unbroken run of days.
        islands AS (
          SELECT days."userId", days.d, days.d - (ROW_NUMBER() OVER (PARTITION BY days."userId" ORDER BY days.d))::integer AS island
          FROM days JOIN due ON due."userId"=days."userId"

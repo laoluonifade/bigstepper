@@ -1,6 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/** New creators wait for an admin before they can host paid challenges. Existing creators keep their status. */
 export class CreatorApproval1729201700000 implements MigrationInterface {
   name = 'CreatorApproval1729201700000';
 

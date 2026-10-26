@@ -5,16 +5,11 @@ import { AmlService, NewFlag } from './aml.service';
 
 const naira = (kobo: number) => `₦${(kobo / 100).toLocaleString('en-NG')}`;
 
-/** Paid challenges in the monitoring window, with the host left out of the entrants. */
 const PAID_ENTRIES = `
   SELECT r."tableId", r."userId", r."joinedAt", r."creditedDistanceMetres", r."creditedSteps", t."entryFeeKobo", t."scoringClosesAt"
   FROM "table_registrations" r JOIN "competition_tables" t ON t."id"=r."tableId"
   WHERE t."type"='paid' AND r."userId"<>t."creatorId" AND t."createdAt" >= now() - make_interval(days => $1)`;
 
-/**
- * Looks for the patterns of money being moved through challenges rather than raced for. Each finding
- * becomes a risk flag with its reason and evidence; flags drive the risk score and payout holds.
- */
 @Injectable()
 export class AmlMonitorService {
   private readonly logger = new Logger(AmlMonitorService.name);
@@ -43,7 +38,6 @@ export class AmlMonitorService {
     return { raised };
   }
 
-  /** The same two people in many paid challenges together, worse when prizes went between them. */
   private async repeatedPairs(s: AmlSettings): Promise<NewFlag[]> {
     const rows = await this.dataSource.query(
       `WITH e AS (${PAID_ENTRIES}),
@@ -62,7 +56,6 @@ export class AmlMonitorService {
     }));
   }
 
-  /** One person keeps beating the same person for money: entry fees flowing one way. */
   private async sameWinner(s: AmlSettings): Promise<NewFlag[]> {
     const rows = await this.dataSource.query(
       `SELECT w."winnerUserId" winner, r."userId" loser, count(DISTINCT w."tableId")::integer times,
@@ -82,7 +75,6 @@ export class AmlMonitorService {
     }));
   }
 
-  /** Two people in small paid challenges who take turns winning: wins rotated between them. */
   private async winRotation(s: AmlSettings): Promise<NewFlag[]> {
     const rows = await this.dataSource.query(
       `WITH e AS (${PAID_ENTRIES}),
@@ -104,7 +96,6 @@ export class AmlMonitorService {
     }));
   }
 
-  /** Paid challenges that open and close (or settle) very quickly, so nobody really races. */
   private async fastChallenges(s: AmlSettings): Promise<NewFlag[]> {
     const rows = await this.dataSource.query(
       `SELECT t."id", t."creatorId", t."code", t."guaranteedPrizeKobo" pot,
@@ -124,7 +115,6 @@ export class AmlMonitorService {
     }));
   }
 
-  /** A sudden jump in stakes or payouts against the account's own recent weeks. */
   private async spikes(s: AmlSettings): Promise<NewFlag[]> {
     const week = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
     const rows = await this.dataSource.query(
@@ -152,7 +142,6 @@ export class AmlMonitorService {
     }));
   }
 
-  /** Several accounts behind one device, bank account or IP: a way round per-person limits. */
   private async sharedIdentifiers(s: AmlSettings): Promise<NewFlag[]> {
     const flags: NewFlag[] = [];
     const paidUsers = `SELECT DISTINCT "userId" FROM "payment_intents" WHERE "status"='SUCCEEDED' UNION SELECT DISTINCT r."userId" FROM "payout_recipients" r`;
@@ -192,7 +181,6 @@ export class AmlMonitorService {
         evidence: { accounts: bank.users.length }, fingerprint: `SHARED_BANK_ACCOUNT:${bank.hash.slice(0, 24)}:${userId}`,
       });
     }
-    // Many people share mobile-network IPs, so an IP only counts when the accounts met in a paid challenge.
     const ips = await this.dataSource.query(
       `WITH e AS (${PAID_ENTRIES})
        SELECT d1."lastIp" ip, a."tableId", array_agg(DISTINCT a."userId"::text) users
@@ -212,7 +200,6 @@ export class AmlMonitorService {
     return flags;
   }
 
-  /** Paying into challenges and never running: entries that look like transfers to whoever wins. */
   private async noShowEntries(s: AmlSettings): Promise<NewFlag[]> {
     const rows = await this.dataSource.query(
       `WITH e AS (${PAID_ENTRIES}),
@@ -231,7 +218,6 @@ export class AmlMonitorService {
     }));
   }
 
-  /** Money in and straight back out: a payout requested soon after funding the wallet. */
   private async depositCycling(s: AmlSettings): Promise<NewFlag[]> {
     const rows = await this.dataSource.query(
       `SELECT p."id", rc."userId", COALESCE(a."amountKobo", e."amountKobo")::bigint amount, f.total funded

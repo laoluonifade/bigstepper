@@ -1,12 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * The admin console moves to admin.startajump.com with its own sign-in: a one-time code emailed to a
- * provisioned admin. Sessions now say which app they belong to, and admin endpoints only accept admin
- * sessions, so signing in to the runner app (even as an admin) never reaches them.
- *
- * Admins are still users with the admin (or compliance) role; the one existing admin keeps theirs.
- */
 export class AdminConsole1729204600000 implements MigrationInterface {
   name = 'AdminConsole1729204600000';
 

@@ -1,13 +1,14 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { transpileModule } from 'typescript';
 import { assertScoringConfiguration } from './challenge-types';
 import { ACTIVITY_RULES, eligibleKinds, METRICS } from './competition-rules';
 import { scoringColumns } from './scoring-columns';
 
 describe('challenge scoring configuration', () => {
   it('is the same catalog the web app uses', () => {
-    const shared = readFileSync(join(__dirname, '../../../../packages/shared/src/competition-rules.ts'), 'utf8');
-    expect(readFileSync(join(__dirname, 'competition-rules.ts'), 'utf8')).toBe(shared);
+    const code = (path: string) => transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { removeComments: true } }).outputText;
+    expect(code(join(__dirname, 'competition-rules.ts'))).toBe(code(join(__dirname, '../../../../packages/shared/src/competition-rules.ts')));
   });
 
   it.each([

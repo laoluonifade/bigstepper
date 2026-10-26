@@ -3,10 +3,6 @@ import { assertScoringConfiguration } from './challenge-types';
 import { ChallengeType, dailyMeasure, eligibleKinds, METRICS, ScoringMethod } from './competition-rules';
 import { ScoringFieldsDto } from './dto/scoring-fields.dto';
 
-/**
- * Checks the scoring settings against the rules catalog and returns the columns to store: only the
- * settings the chosen method uses, so a stray target can't change how a board is scored.
- */
 export function scoringColumns(input: ScoringFieldsDto & { challengeType: ChallengeType; scoringMethod: ScoringMethod; targetDistanceMetres?: number; reminderTimeZone?: string }, prizes: boolean) {
   const metric = METRICS[input.scoringMethod];
   const daily = dailyMeasure(input.challengeType, input.scoringMethod);

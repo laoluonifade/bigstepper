@@ -1,13 +1,10 @@
-/**
- * Calculate distance in metres between two lat/lng points using Haversine.
- */
 export function haversineMetres(
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number,
 ): number {
-  const R = 6371000; // Earth radius in metres
+  const R = 6371000;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;

@@ -22,21 +22,18 @@ export class AuthController {
     return this.authService.login(body.email, body.password);
   }
 
-  /** "Continue with Google": signs in, links Google to the account with that email, or creates one. */
   @Post('google')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   google(@Body() body: GoogleSignInDto) {
     return this.authService.googleSignIn(body.idToken, body.countryCode);
   }
 
-  /** "Sign in with Apple" on iPhone: signs in, links the account with that email, or creates one. */
   @Post('apple')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   apple(@Body() body: AppleSignInDto) {
     return this.authService.appleSignIn(body);
   }
 
-  /** The web's public Google client id, so the page knows whether (and how) to draw the Google button. */
   @Get('google/config')
   googleConfig() {
     return this.authService.googleConfig();

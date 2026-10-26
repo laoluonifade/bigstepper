@@ -4,8 +4,6 @@ export class EngagementEvents1729205700000 implements MigrationInterface {
   name = 'EngagementEvents1729205700000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Page views and shares of clubs and their competitions, for the club dashboard. A viewer is a
-    // signed-in runner (viewerId) or an anonymous visitor (a hash of their connection, never stored raw).
     await queryRunner.query(`
       CREATE TABLE "engagement_events" (
         "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

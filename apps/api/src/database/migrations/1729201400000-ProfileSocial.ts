@@ -1,6 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/** Profile photo (Cloudinary URL), a short bio, and the weekly goal (was browser-only, so it got lost). */
 export class ProfileSocial1729201400000 implements MigrationInterface {
   name = 'ProfileSocial1729201400000';
 

@@ -1,12 +1,3 @@
-/**
- * Every way to win a Jump competition, for every activity. The web form shows only what's listed here,
- * the API refuses anything that isn't, and the scoring engine reads the same definitions, so a format is
- * added in one place.
- *
- * The canonical copy lives in packages/shared/src/competition-rules.ts. apps/api/src/tables/competition-rules.ts
- * is an exact copy (the API is compiled on its own); a test fails if they ever differ. No imports here.
- */
-
 export type ChallengeType = 'RUN' | 'WALK' | 'DISTANCE' | 'CYCLING' | 'STEP' | 'TIMED';
 export type ActivityType = 'run' | 'walk' | 'cycle';
 
@@ -16,9 +7,7 @@ export type ScoringMethod =
   | 'FIRST_TO_TIME' | 'LONGEST_SESSION' | 'LONGEST_STREAK' | 'TARGET_DAYS' | 'PACE_CONSISTENCY' | 'DAILY_CONSISTENCY'
   | 'WEEKLY_CONSISTENCY' | 'MOST_STEPS' | 'FIRST_TO_STEPS' | 'MOST_STEPS_ONE_DAY' | 'AVERAGE_DAILY_STEPS';
 
-/** What an activity contributes. Time is moving time (pauses don't count) except where a metric says elapsed. */
 export type Measure = 'distance' | 'steps' | 'time' | 'elevation' | 'sessions';
-/** How a score reads on a board. */
 export type ScoreDisplay = 'distance' | 'steps' | 'duration' | 'sessions' | 'days' | 'elevation' | 'pace' | 'speed' | 'variation';
 
 export type Aggregate =
@@ -30,15 +19,10 @@ export interface MetricDefinition {
   measure: Measure;
   display: ScoreDisplay;
   better: 'higher' | 'lower';
-  /** A target the creator must set: the distance to race, or the amount to reach first. */
   target?: 'distance' | 'steps' | 'time' | 'sessions';
-  /** Needs a daily amount: the bar for a day to count (streaks, target days) or the minimum daily average. */
   daily?: 'required' | 'optional';
-  /** Uses the minimum number of qualifying sessions before a score counts. */
   minSessions?: true;
-  /** Safe to put cash on: hard to inflate with many tiny or doctored sessions. */
   prizes: boolean;
-  /** How a tie is broken, after the score itself. */
   tieBreak: string;
 }
 
@@ -49,7 +33,6 @@ export const METRICS: Record<ScoringMethod, MetricDefinition> = {
   FARTHEST_DISTANCE: { aggregate: 'total', measure: 'distance', display: 'distance', better: 'higher', prizes: true, tieBreak: EARLIEST },
   FIRST_TO_DISTANCE: { aggregate: 'firstTo', measure: 'distance', display: 'distance', better: 'higher', target: 'distance', prizes: true, tieBreak: FIRST_TO_TIE },
   FASTEST_FIXED_DISTANCE: { aggregate: 'fastest', measure: 'time', display: 'duration', better: 'lower', target: 'distance', prizes: true, tieBreak: 'Whoever set that time first.' },
-  /** Older timed races; same rules as fastest fixed distance. Kept for competitions created with it. */
   FASTEST_TIME: { aggregate: 'fastest', measure: 'time', display: 'duration', better: 'lower', target: 'distance', prizes: true, tieBreak: 'Whoever set that time first.' },
   BEST_PACE: { aggregate: 'averagePace', measure: 'time', display: 'pace', better: 'lower', target: 'distance', prizes: false, tieBreak: EARLIEST },
   BEST_AVERAGE_SPEED: { aggregate: 'averageSpeed', measure: 'time', display: 'speed', better: 'higher', target: 'distance', prizes: false, tieBreak: EARLIEST },
@@ -75,17 +58,13 @@ export const METRICS: Record<ScoringMethod, MetricDefinition> = {
 export interface ScoringOption {
   method: ScoringMethod;
   label: string;
-  /** One line under the label: how a winner is decided. */
   summary: string;
-  /** What the daily amount is measured in, when it isn't the metric's own measure. */
   dailyMeasure?: 'distance' | 'steps' | 'time';
 }
 
 export interface ActivityRules {
   label: string;
-  /** Plural noun for one qualifying session: "runs", "walks", "rides", "sessions". */
   sessions: string;
-  /** Which recorded activities count. Timed competitions let the creator narrow this. */
   kinds: ActivityType[];
   options: ScoringOption[];
 }
@@ -182,7 +161,6 @@ export const ACTIVITY_RULES: Record<ChallengeType, ActivityRules> = {
   },
 };
 
-/** Who competes, separate from how the score works. */
 export type CompetitionFormat = 'open' | 'invite' | 'head_to_head';
 
 export const FORMATS: Record<CompetitionFormat, { label: string; summary: string }> = {
@@ -195,7 +173,6 @@ export function scoringOption(challengeType: ChallengeType, method: ScoringMetho
   return ACTIVITY_RULES[challengeType]?.options.find((option) => option.method === method);
 }
 
-/** What the daily amount of this option is measured in, or null when it takes none. */
 export function dailyMeasure(challengeType: ChallengeType, method: ScoringMethod): 'distance' | 'steps' | 'time' | null {
   const metric = METRICS[method];
   if (!metric?.daily) return null;
@@ -214,11 +191,9 @@ export interface ScoringSettings {
   dailyTarget?: number | null;
   minSessions?: number | null;
   eligibleActivities?: ActivityType[] | null;
-  /** Cash on the line (paid or funded). */
   prizes?: boolean;
 }
 
-/** Why these settings can't be used, or null when they're fine. The API and the form use the same checks. */
 export function scoringProblem(settings: ScoringSettings): string | null {
   const activity = ACTIVITY_RULES[settings.challengeType];
   if (!activity) return 'Choose an activity';
@@ -244,7 +219,6 @@ export function scoringProblem(settings: ScoringSettings): string | null {
   return null;
 }
 
-/** The activity kinds a competition counts: the creator's choice for timed ones, else the activity's own. */
 export function eligibleKinds(challengeType: ChallengeType, chosen?: ActivityType[] | null): ActivityType[] {
   return chosen?.length ? chosen : ACTIVITY_RULES[challengeType]?.kinds ?? [];
 }

@@ -24,7 +24,6 @@ export class KycController {
   }
 }
 
-/** The admin console's Risk area. */
 @Controller('admin/risk')
 @UseGuards(JwtAuthGuard, AdminOnlyGuard)
 export class RiskAdminController {
@@ -67,7 +66,6 @@ export class RiskAdminController {
     return this.admin.auditLog({ targetId: targetId || undefined, action: action || undefined });
   }
 
-  /** Runs the monitoring rules now instead of waiting for the hourly scan. */
   @Post('scan')
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
   scan() {

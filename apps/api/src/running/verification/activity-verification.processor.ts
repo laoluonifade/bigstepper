@@ -10,35 +10,17 @@ import { RunningSession } from '../running-session.entity';
 import { refreshLeagueDistance } from '../../leagues/league-credits';
 import { creditActivities } from '../../tables/competition-credits';
 
-/** Faster than any human cadence (a sprint is about 4 steps/s); shaking a phone usually is. */
 const MAX_STEPS_PER_SECOND = 5.5;
-/** The shortest believable stride (a slow shuffle); the GPS route caps steps at distance ÷ this. */
 const MIN_STRIDE_METRES = 0.45;
-/** Slack for GPS under-measuring a short or twisty route before extra steps look like shaking. */
 const SHAKE_ALLOWANCE_STEPS = 150;
-/** Less than this and GPS saw no movement at all (it would read 0.00 km): nothing to save. */
 const MIN_MOVED_METRES = 5;
 
-/**
- * Whether a recorded activity counts, and how many of its steps do.
- *
- * Like Strava, distance comes from GPS alone, and steps only count while the GPS shows you moving. A
- * phone shaken in a hand or a pocket counts steps at a perfectly human rate, so steps can't stand in for
- * distance; they're capped at what the route allows (no stride is shorter than about 0.45 m, so 20 m of
- * GPS can't carry 3,000 steps), and far more steps than that is shaking, noted but never held against it.
- */
 export function judgeActivity(
   track: Pick<TrackMeasure, 'distanceMetres' | 'confidence' | 'usableCount' | 'reasons'>,
   samples: Array<Pick<GpsSample, 'stepCount' | 'recordedAt'>>,
   activityType: 'walk' | 'run' | 'cycle',
 ) {
   const reasons = new Set(track.reasons);
-  // Steps come from the phone's motion sensors. They're a bonus that's capped by the distance, never a
-  // way to gain, so step quirks are handled, not held against the activity:
-  // - a count that goes down (the counter restarted after a pause or an app restart) just carries on;
-  // - a burst the phone held back while in the background is judged over the time since the count last
-  //   moved, not the second it arrived in, and anything truly faster than a human is left out;
-  // - more steps than the distance allows are simply capped below.
   let steps = 0;
   const counted = samples.filter((sample) => sample.stepCount !== null);
   let ref = counted[0];
@@ -46,7 +28,7 @@ export function judgeActivity(
     const current = counted[index];
     const addedSteps = current.stepCount! - ref.stepCount!;
     if (addedSteps < 0) { ref = current; continue; }
-    if (addedSteps === 0) continue; // nothing new: keep timing from when it last moved
+    if (addedSteps === 0) continue;
     const seconds = (current.recordedAt.getTime() - ref.recordedAt.getTime()) / 1000;
     const last = index === counted.length - 1;
     if (seconds < 2 && !last) continue;
@@ -59,8 +41,6 @@ export function judgeActivity(
   if (track.distanceMetres < MIN_MOVED_METRES) reasons.add('NO_GPS_MOVEMENT');
   const stepCap = Math.ceil(track.distanceMetres / MIN_STRIDE_METRES);
   if (!cycling && steps > Math.max(stepCap * 2, stepCap + SHAKE_ALLOWANCE_STEPS)) reasons.add('STEPS_WITHOUT_MOVEMENT');
-  // Nothing is flagged: whatever distance GPS measured counts, and the reasons above are only notes
-  // for the runner. GPS that saw no movement at all (0.00 km) isn't an activity, so it isn't saved.
   return {
     status: track.distanceMetres >= MIN_MOVED_METRES ? 'VERIFIED' as const : 'REJECTED' as const,
     validatedSteps: cycling ? 0 : Math.min(steps, stepCap),
@@ -70,7 +50,6 @@ export function judgeActivity(
 
 interface VerificationJob {
   activityId: string;
-  /** A re-check of an already-flagged activity after the rules changed: only good news is announced. */
   recheck?: boolean;
 }
 
@@ -99,7 +78,6 @@ export class ActivityVerificationProcessor extends WorkerHost {
     const confidence = track.confidence;
     const cycling = activity.activityType === 'cycle';
     const noun = cycling ? 'ride' : activity.activityType;
-    // Steps still count as steps; they no longer turn into distance.
     const stepDistance = 0;
 
     await this.dataSource.transaction(async (manager) => {
@@ -110,7 +88,6 @@ export class ActivityVerificationProcessor extends WorkerHost {
           verificationStatus: status,
           validatedDistanceMetres: Math.round(validatedDistance),
           validatedSteps,
-          // Strava imports say at import whether steps came from cadence; Jump's come from the motion sensor.
           stepsSource: activity.stepsSource ?? (validatedSteps > 0 ? 'sensor' : null),
           stepDistanceMetres: stepDistance,
           movingSeconds,
@@ -123,7 +100,6 @@ export class ActivityVerificationProcessor extends WorkerHost {
       if (status === 'VERIFIED') {
         await creditActivities(manager, { activityId: activity.id });
         if (!cycling) await refreshLeagueDistance(manager, activity.userId);
-        // Every verified activity goes on the timeline by itself; posting it from the app adds a caption.
         await manager.query(
           `INSERT INTO "feed_posts" ("userId","body","activityId") SELECT $1,'',$2
            WHERE NOT EXISTS (SELECT 1 FROM "feed_posts" WHERE "activityId"=$2)`,
@@ -137,7 +113,6 @@ export class ActivityVerificationProcessor extends WorkerHost {
            WHERE c."activityId"=$1`, [activity.id, activity.userId, activity.activityType],
         );
       }
-      // A re-check that passes also settles any review the runner asked for.
       if (job.data.recheck && status === 'VERIFIED') {
         await manager.query(`UPDATE "activity_verification_reviews" SET "status"='APPROVED' WHERE "activityId"=$1 AND "status"='PENDING'`, [activity.id]);
       }
@@ -145,7 +120,6 @@ export class ActivityVerificationProcessor extends WorkerHost {
         `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,$5)`,
         status === 'VERIFIED'
           ? [activity.userId, 'ACTIVITY_VERIFIED', `Your ${noun} is verified`, 'Your distance and steps are checked. Open Jump to see your progress.', `/activities/${activity.id}`]
-          // Kept (with its GPS points) but off your lists: there was no distance to show.
           : [activity.userId, 'ACTIVITY_NO_DISTANCE', `Your ${noun} didn’t record any distance`, 'GPS didn’t pick up any movement, so it isn’t saved. Next time, wait for a GPS signal outdoors before you start.', null],
       );
     });

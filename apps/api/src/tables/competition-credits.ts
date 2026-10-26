@@ -3,16 +3,6 @@ import { ChallengeType, dailyMeasure, ScoringMethod } from './competition-rules'
 import { daysBetween, ScoredActivity, scoreEntrants } from './scoring-engine';
 import { timeEfforts } from './best-effort';
 
-/**
- * Puts verified activities on competition boards and re-totals them. One rule everywhere: a verified
- * walk, run or ride counts if it happened inside the competition's dates and is a kind the competition
- * counts, whenever the runner joined. So an activity recorded (or synced from Strava) before joining still
- * counts once they're in, and a late Strava upload counts the moment it's verified.
- *
- * Both distance and steps are recorded on every credit so any board can show km and steps; the scoring
- * engine decides what ranks. Competitions on the engine's rules (v2) count GPS distance and measured steps
- * only, skip activities under the creator's minimums, and never credit two overlapping activities.
- */
 export async function creditActivities(manager: EntityManager, scope: { activityId: string } | { tableId: string; userId: string }) {
   const [filter, params] = 'activityId' in scope
     ? ['a."id" = $1', [scope.activityId]]
@@ -42,17 +32,12 @@ export async function creditActivities(manager: EntityManager, scope: { activity
      RETURNING "id", "tableId", "activityId"`,
     params,
   ) as Array<{ id: string; tableId: string; activityId: string }>;
-  // Fastest-time races: the best stretch of the race distance within each activity.
   await timeEfforts(manager, credited);
   const tableIds = [...new Set(credited.map((row) => row.tableId))];
   if (tableIds.length) await retotal(manager, tableIds);
   return tableIds;
 }
 
-/**
- * Takes an activity off competition boards and re-totals them. With liveOnly, finished competitions keep
- * the result they were settled on.
- */
 export async function uncreditActivity(manager: EntityManager, activityId: string, { liveOnly = false } = {}) {
   const removed = await manager.query(
     `DELETE FROM "table_activity_credits" c USING "competition_tables" t
@@ -61,14 +46,12 @@ export async function uncreditActivity(manager: EntityManager, activityId: strin
      RETURNING c."tableId"`,
     [activityId],
   ) as [Array<{ tableId: string }>, number] | Array<{ tableId: string }>;
-  // A DELETE … RETURNING comes back from the driver as [rows, count].
   const rows = (Array.isArray(removed[0]) ? removed[0] : removed) as Array<{ tableId: string }>;
   const tableIds = [...new Set(rows.map((row) => row.tableId))];
   if (tableIds.length) await retotal(manager, tableIds);
   return tableIds;
 }
 
-/** Recomputes each entrant's totals and score on these competitions from their credits. */
 export async function retotal(manager: EntityManager, tableIds: string[]) {
   await manager.query(
     `UPDATE "table_registrations" r
@@ -103,7 +86,6 @@ interface TableRules {
   endDay: string;
 }
 
-/** Runs the scoring engine over each competition's credited activities and stores every entrant's score. */
 export async function rescore(manager: EntityManager, tableIds: string[]) {
   for (const tableId of tableIds) {
     const [table] = await manager.query(

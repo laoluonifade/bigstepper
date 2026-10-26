@@ -32,30 +32,22 @@ export class PaystackClient {
     return this.request<{ transfer_code: string; reference: string; status: string; amount: number; currency: string }>(`/transfer/verify/${encodeURIComponent(reference)}`);
   }
 
-  /** Nigerian banks that can receive NGN transfers (https://paystack.com/docs/api/miscellaneous/#bank). */
   listBanks() {
     return this.request<Array<{ name: string; code: string; active: boolean; is_deleted: boolean | null; type: string }>>(
       '/bank?country=nigeria&currency=NGN&perPage=100',
     );
   }
 
-  /** The account holder's name for a NUBAN, as the bank has it (https://paystack.com/docs/identity-verification/verify-account-number/). */
   resolveAccount(accountNumber: string, bankCode: string) {
     return this.request<{ account_number: string; account_name: string }>(
       `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
     );
   }
 
-  /** Creates the Paystack customer for an email, or returns the existing one (https://paystack.com/docs/api/customer/#create). */
   createCustomer(input: { email: string; first_name: string; last_name: string }) {
     return this.request<{ customer_code: string; id: number }>('/customer', { method: 'POST', body: JSON.stringify(input) });
   }
 
-  /**
-   * Starts identity validation: Paystack checks the BVN belongs to the named holder of the bank account.
-   * The result arrives as a customeridentification.success or .failed webhook
-   * (https://paystack.com/docs/identity-verification/validate-customer/).
-   */
   validateCustomer(customerCode: string, input: { country: 'NG'; type: 'bank_account'; account_number: string; bvn: string; bank_code: string; first_name: string; last_name: string }) {
     return this.request<unknown>(`/customer/${encodeURIComponent(customerCode)}/identification`, { method: 'POST', body: JSON.stringify(input) });
   }

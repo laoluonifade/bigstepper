@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { PaymentsRepository } from './payments.repository';
 import { PaymentsService } from './payments.service';
 
 describe('PaymentsService webhook signatures', () => {
@@ -10,6 +11,7 @@ describe('PaymentsService webhook signatures', () => {
     { getOrThrow: () => secret, get: (key: string) => key === 'PAID_CONTESTS_ENABLED' ? true : secret } as never,
     {} as never,
     {} as never,
+    new PaymentsRepository({} as never),
   );
 
   it('accepts the exact HMAC SHA512 signature for the raw body', () => {
@@ -47,7 +49,7 @@ describe('funded-free checkout', () => {
     getOrThrow: jest.fn((key) => key === 'WEB_ORIGIN' ? 'https://jump.example' : undefined),
   };
   const aml = { assertVerified: jest.fn(), assertPrizeFunding: jest.fn(), assertWalletFunding: jest.fn() };
-  const service = new PaymentsService(intents as never, {} as never, dataSource as never, config as never, paystack as never, aml as never);
+  const service = new PaymentsService(intents as never, {} as never, dataSource as never, config as never, paystack as never, aml as never, new PaymentsRepository(dataSource as never));
 
   it('uses the funder-selected amount for an open free challenge', async () => {
     const result = await service.fundPrize(user.id, table.id, 12_345);
@@ -118,12 +120,12 @@ describe('prize funding settlement', () => {
       query: jest.fn().mockResolvedValueOnce([{ amount: '0' }]).mockResolvedValueOnce([{ id: 'journal' }]).mockResolvedValueOnce([]),
     };
     const dataSource = { transaction: jest.fn(async (work: (transactionManager: typeof manager) => Promise<unknown>) => work(manager)) };
-    const service = new PaymentsService({} as never, {} as never, dataSource as never, {} as never, {} as never, {} as never);
+    const service = new PaymentsService({} as never, {} as never, dataSource as never, {} as never, {} as never, {} as never, new PaymentsRepository(dataSource as never));
 
     await (service as unknown as { fulfillPrizeFunding: (payment: typeof intent, provider: { id: number; status: string }) => Promise<void> })
       .fulfillPrizeFunding(intent, { id: 123, status: 'success' });
 
     expect(intent.status).toBe('SUCCEEDED');
-    expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('THEN $2::bigint ELSE -($2::bigint)'), ['journal', 10_000]);
+    expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('THEN $2::bigint ELSE -($2::bigint)'), ['journal', 10_000, 'processor_clearing', 'sponsor_prize_liability']);
   });
 });

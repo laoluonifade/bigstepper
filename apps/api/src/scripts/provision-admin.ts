@@ -1,14 +1,3 @@
-/**
- * Provision an admin for admin.startajump.com, by email. They sign in there with a one-time code sent
- * to that address; there is no admin password.
- *
- *   npm run admin:provision -- someone@startajump.com            make them an admin
- *   npm run admin:provision -- someone@startajump.com compliance  reviews and read-only money views
- *   npm run admin:provision -- someone@startajump.com remove      back to a normal runner
- *   npm run admin:provision -- list                              who has access
- *
- * An address with no Jump account gets a bare one (verified, no usable password) just for the console.
- */
 import { randomBytes } from 'node:crypto';
 import * as bcrypt from 'bcrypt';
 import dataSource from '../database/data-source';
@@ -29,7 +18,6 @@ async function main() {
     if (action === 'remove') {
       if (!existing) throw new Error(`No account for ${address}`);
       await dataSource.query(`UPDATE "users" SET "role" = 'runner' WHERE "id" = $1`, [existing.id]);
-      // Their open admin console sessions end now.
       await dataSource.query(`UPDATE "auth_sessions" SET "revokedAt" = now() WHERE "userId" = $1 AND "scope" = 'admin' AND "revokedAt" IS NULL`, [existing.id]);
       console.log(`${address} is no longer an admin.`);
       return;

@@ -7,11 +7,9 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MessagesService } from './messages.service';
 import { Reaction, REACTIONS } from './reactions';
 
-/** Two minutes of compressed audio is well under this. */
 const VOICE_NOTE_MAX_BYTES = 5 * 1024 * 1024;
 
 export class SendMessageDto {
-  /** May be empty when the message shares an activity. */
   @IsString() @MaxLength(1000)
   body: string;
 
@@ -21,7 +19,6 @@ export class SendMessageDto {
   @IsOptional() @IsUUID()
   activityId?: string;
 
-  /** A URL returned by POST /messages/voice. */
   @IsOptional() @IsString() @MaxLength(400)
   audioUrl?: string;
 
@@ -77,7 +74,6 @@ export class MessagesController {
     return this.messages.markRead(user.id, username);
   }
 
-  /** Step one of a voice note: upload the recording, then send the returned URL. Declared before `:username`. */
   @Post('voice')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: VOICE_NOTE_MAX_BYTES, files: 1 } }))
@@ -93,7 +89,6 @@ export class MessagesController {
   }
 }
 
-/** A club's group chat: the same messages as a DM, addressed to the club. Members only. */
 @Controller('clubs/:club/chat')
 @UseGuards(JwtAuthGuard)
 export class ClubChatController {

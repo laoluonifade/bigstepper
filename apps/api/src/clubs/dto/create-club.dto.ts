@@ -5,7 +5,6 @@ export class CreateClubDto {
   @Length(3, 100)
   name: string;
 
-  /** Made from the name when left out (the usual case); a number is added if it's taken. */
   @IsOptional()
   @IsString()
   @Length(3, 40)
@@ -19,7 +18,6 @@ export class CreateClubDto {
   privacy?: 'open' | 'invite';
 }
 
-/** What managers can change. The handle stays fixed so shared links keep working. */
 export class UpdateClubDto {
   @IsOptional() @IsString() @Length(3, 100)
   name?: string;
@@ -33,7 +31,6 @@ export class UpdateClubDto {
   @IsOptional() @IsString() @MaxLength(80)
   location?: string;
 
-  /** Empty string clears it. */
   @IsOptional() @IsString() @MaxLength(200)
   website?: string;
 
@@ -43,7 +40,6 @@ export class UpdateClubDto {
   @IsOptional() @IsIn(['open', 'invite'])
   privacy?: 'open' | 'invite';
 
-  /** Only the owner and managers can send in the club chat. */
   @IsOptional() @IsBoolean()
   chatLocked?: boolean;
 }

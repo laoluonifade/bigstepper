@@ -92,10 +92,6 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
     );
   }
 
-  /**
-   * Averages and consistency are measured over every day so far, so they move as days pass even with no
-   * new activity. Re-score those live competitions, plus any that closed in the last day for a final pass.
-   */
   private async rescoreCalendar() {
     const tables = (await this.dataSource.query(
       `SELECT "id" FROM "competition_tables"

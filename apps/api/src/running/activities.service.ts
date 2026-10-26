@@ -10,10 +10,8 @@ import { MAX_USABLE_ACCURACY_METRES, smoothTrack } from './track';
 import { ActivityVerificationReview } from './activity-verification-review.entity';
 import { Activity } from './activity.entity';
 
-/** How much of each end of someone else's route is left off their map. */
 const PRIVATE_ENDS_METRES = 200;
 
-/** The route without its first and last `metres`; nothing at all when it's too short to keep any. */
 export function hideEnds<T extends { lat: number; lon: number }>(points: T[], metres: number): T[] {
   const along = [0];
   for (let index = 1; index < points.length; index += 1) {
@@ -31,7 +29,6 @@ export class ActivitiesService {
     private readonly reviews: Repository<ActivityVerificationReview>,
   ) {}
 
-  /** Yours, newest first, minus any where GPS saw no movement at all (0.00 km isn't saved). */
   list(userId: string) {
     return this.activities.find({
       where: [{ userId, verificationStatus: Not('REJECTED') }, { userId, verificationStatus: 'REJECTED', validatedDistanceMetres: MoreThan(0) }],
@@ -50,7 +47,6 @@ export class ActivitiesService {
               COALESCE(SUM(a."validatedSteps") FILTER (WHERE a."verificationStatus"='VERIFIED'), 0)::integer AS steps,
               COALESCE(SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")) FILTER (WHERE a."verificationStatus"='VERIFIED'), 0)::bigint AS "distanceMetres"
        FROM "activities" a
-       -- Every day you moved is marked, even before verification finishes; totals stay verified-only.
        WHERE a."userId"=$1 AND a."verificationStatus"<>'REJECTED'
          AND (a."startedAt" AT TIME ZONE $3)::date >= ($2 || '-01')::date
          AND (a."startedAt" AT TIME ZONE $3)::date < (($2 || '-01')::date + INTERVAL '1 month')
@@ -68,11 +64,6 @@ export class ActivitiesService {
     );
   }
 
-  /**
-   * Deletes one of the runner's own activities and takes its distance back out of free challenges
-   * that are still running and of their league. Blocked when it counted toward a paid challenge or
-   * one that has finished, because those results can't change afterwards.
-   */
   async remove(userId: string, activityId: string) {
     return this.activities.manager.transaction(async (manager) => {
       const activity = await manager.findOne(Activity, { where: { id: activityId, userId }, lock: { mode: 'pessimistic_write' } });
@@ -87,7 +78,6 @@ export class ActivitiesService {
         throw new ConflictException(`This activity counts toward “${locked[0].title}”, which is paid or has finished, so it can’t be deleted.`);
       }
       await uncreditActivity(manager, activityId);
-      // Removing the session removes the activity, its GPS fixes and any review request with it.
       await manager.delete(RunningSession, { id: activity.runningSessionId });
       if (activity.activityType !== 'cycle') await refreshLeagueDistance(manager, userId);
       return { deleted: true };
@@ -103,19 +93,12 @@ export class ActivitiesService {
     const usable = samples
       .filter((sample) => sample.accuracy === null || sample.accuracy <= MAX_USABLE_ACCURACY_METRES)
       .filter((sample, index, all) => index === 0 || sample.recordedAt.getTime() > all[index - 1].recordedAt.getTime());
-    // Someone else's map leaves out where it starts and ends, so it doesn't show where they live.
     const smoothed = activity.userId === viewerId ? smoothTrack(usable) : hideEnds(smoothTrack(usable), PRIVATE_ENDS_METRES);
     const step = Math.max(1, Math.ceil(smoothed.length / 400));
     const points = smoothed.filter((_, index) => index % step === 0 || index === smoothed.length - 1);
     return { points: points.map((point) => [Number(point.lat.toFixed(6)), Number(point.lon.toFixed(6))]) };
   }
 
-
-  /**
-   * An activity for its page. Your own, whatever its status; anyone else's once it's verified, since
-   * every runner's activities are public (competitions are only fair when anyone can check the runs).
-   * Others' come with who did it, read-only.
-   */
   async view(viewerId: string, activityId: string) {
     const activity = await this.viewable(viewerId, activityId);
     if (activity.userId === viewerId) return { ...activity, mine: true };
@@ -124,7 +107,6 @@ export class ActivitiesService {
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
        FROM "profiles" p WHERE p."userId"=$1`, [activity.userId],
     ) as Array<Record<string, unknown>>;
-    // Verification notes are between Jump and the runner: nobody else sees them.
     return { ...activity, verificationReasons: [], mine: false, owner: owner ?? null };
   }
 

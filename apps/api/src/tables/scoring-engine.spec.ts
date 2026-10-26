@@ -23,7 +23,7 @@ describe('scoring engine', () => {
   it('totals distance, and counts one outing recorded twice only once', () => {
     const scores = score({}, [
       activity('amy', '2026-10-01', 7),
-      activity('amy', '2026-10-01', 7, { distance: 5100 }), // the same run imported again
+      activity('amy', '2026-10-01', 7, { distance: 5100 }),
       activity('amy', '2026-10-02', 7, { distance: 3000 }),
     ]);
     expect(scores.get('amy')!.score).toBe(8000);
@@ -42,10 +42,9 @@ describe('scoring engine', () => {
 
   it('ranks fixed-distance races on each activity’s best effort over the distance', () => {
     const scores = score({ method: 'FASTEST_FIXED_DISTANCE', targetDistanceMetres: 10_000 }, [
-      // A 14 km run whose fastest 10 km took 52:00: that's the time, not the whole run's.
       activity('amy', '2026-10-01', 7, { distance: 14_020, movingSeconds: 4832, completionSeconds: 3120 }),
       activity('amy', '2026-10-02', 7, { distance: 10_100, completionSeconds: 3300 }),
-      activity('ben', '2026-10-02', 7, { distance: 9_800, completionSeconds: null }), // never covered 10 km
+      activity('ben', '2026-10-02', 7, { distance: 9_800, completionSeconds: null }),
     ]);
     expect(scores.get('amy')!.score).toBe(3120);
     expect(scores.get('amy')!.rankScore).toBe(-3120);
@@ -67,7 +66,7 @@ describe('scoring engine', () => {
     const days = ['2026-10-01', '2026-10-02', '2026-10-04', '2026-10-05', '2026-10-06'];
     const scores = score({ method: 'LONGEST_STREAK', dailyTarget: 3000, dailyMeasure: 'distance' }, [
       ...days.map((day) => activity('amy', day, 7)),
-      activity('amy', '2026-10-03', 7, { distance: 1000 }), // below the bar: breaks the run
+      activity('amy', '2026-10-03', 7, { distance: 1000 }),
     ]);
     expect(scores.get('amy')!.score).toBe(3);
   });
@@ -102,7 +101,7 @@ describe('scoring engine', () => {
   it('scores average pace in seconds per km, lower ranking higher', () => {
     const scores = score({ method: 'BEST_PACE', targetDistanceMetres: 5000 }, [
       activity('amy', '2026-10-01', 7, { distance: 5000, movingSeconds: 1500 }),
-      activity('amy', '2026-10-02', 7, { distance: 3000, movingSeconds: 600 }), // shorter than the set distance
+      activity('amy', '2026-10-02', 7, { distance: 3000, movingSeconds: 600 }),
     ]);
     expect(scores.get('amy')!.score).toBe(300);
     expect(scores.get('amy')!.rankScore).toBe(-300);

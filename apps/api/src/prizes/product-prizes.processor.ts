@@ -4,7 +4,6 @@ import { Job, Queue } from 'bullmq';
 import { PRODUCT_PRIZES_QUEUE } from '../jobs/jobs.module';
 import { PrizeAwardsService } from './prize-awards.service';
 
-/** Every 15 minutes: decide winners for closed prize challenges, remind winners, and pass on forfeits. */
 @Injectable()
 @Processor(PRODUCT_PRIZES_QUEUE)
 export class ProductPrizesProcessor extends WorkerHost implements OnModuleInit {

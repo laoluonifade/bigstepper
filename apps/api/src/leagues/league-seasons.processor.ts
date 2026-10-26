@@ -6,7 +6,6 @@ import { LeagueSeasonsService } from './league-seasons.service';
 
 const CHECK_EVERY_MS = 10 * 60 * 1000;
 
-/** Checks every 10 minutes whether a league season has ended and closes it. */
 @Injectable()
 @Processor(LEAGUE_SEASONS_QUEUE)
 export class LeagueSeasonsProcessor extends WorkerHost implements OnModuleInit {

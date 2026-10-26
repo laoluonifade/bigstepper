@@ -5,7 +5,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { WinnerDetailsDto } from './dto/prizes.dto';
 import { PrizeAwardsService } from './prize-awards.service';
 
-/** Winners: their prizes, and the claim form. */
 @Controller('prizes')
 @UseGuards(JwtAuthGuard)
 export class PrizesController {

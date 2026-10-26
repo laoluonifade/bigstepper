@@ -8,16 +8,10 @@ import { adminCodeEmail } from '../mail/templates';
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
-/** Admin sessions are short: a working day. */
 const SESSION_MS = 12 * 60 * 60 * 1000;
 
 type Purpose = 'login' | 'confirm';
 
-/**
- * Sign-in for admin.startajump.com: no passwords, only a 6-digit code emailed to a provisioned admin
- * (a user whose role is admin or compliance; see scripts/provision-admin.ts). The same codes confirm
- * money actions (payout approval, reconciliation) in place of re-entering a password.
- */
 @Injectable()
 export class AdminAuthService {
   private readonly logger = new Logger(AdminAuthService.name);
@@ -29,7 +23,6 @@ export class AdminAuthService {
     private readonly config: ConfigService,
   ) {}
 
-  /** Always answers the same way, so it can't be used to find out who the admins are. */
   async requestLoginCode(email: string) {
     const [admin] = await this.dataSource.query(
       `SELECT "id", "email" FROM "users" WHERE lower("email") = lower($1) AND "role" IN ('admin','compliance')`,
@@ -70,7 +63,6 @@ export class AdminAuthService {
     return { signedOut: true };
   }
 
-  /** A fresh code for confirming a money action, sent to the signed-in admin. */
   async requestConfirmCode(userId: string) {
     const [admin] = await this.dataSource.query(`SELECT "email" FROM "users" WHERE "id" = $1`, [userId]) as Array<{ email: string }>;
     if (!admin) throw new ForbiddenException();
@@ -85,7 +77,6 @@ export class AdminAuthService {
   private async sendCode(userId: string, email: string, purpose: Purpose) {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     await this.dataSource.transaction(async (manager) => {
-      // One live code at a time: a new request cancels the old one.
       await manager.query(`UPDATE "admin_login_codes" SET "usedAt" = now() WHERE "userId" = $1 AND "purpose" = $2 AND "usedAt" IS NULL`, [userId, purpose]);
       await manager.query(
         `INSERT INTO "admin_login_codes" ("userId", "purpose", "codeHash", "expiresAt") VALUES ($1, $2, $3, $4)`,
@@ -98,12 +89,9 @@ export class AdminAuthService {
       await this.dataSource.query(`UPDATE "admin_login_codes" SET "usedAt" = now() WHERE "userId" = $1 AND "purpose" = $2 AND "usedAt" IS NULL`, [userId, purpose]);
       throw error;
     }
-    // Local development only: the code in the terminal, so a failing or unconfigured mailer never locks
-    // you out. Never in production.
     if (this.config.get<string>('NODE_ENV') !== 'production') this.logger.warn(`Dev admin ${purpose} code for ${email}: ${code}`);
   }
 
-  /** Checks a code once; five wrong tries burn it. */
   private async useCode(userId: string, purpose: Purpose, code: string) {
     return this.dataSource.transaction(async (manager) => {
       const [row] = await manager.query(
@@ -129,7 +117,6 @@ export class AdminAuthService {
   }
 }
 
-/** Codes are stored hashed with the user's id, so a database read never reveals a usable code. */
 function hash(userId: string, code: string) {
   return createHash('sha256').update(`${userId}:${code}`).digest('hex');
 }

@@ -51,14 +51,12 @@ export class StravaController {
     return this.strava.disconnect(user.id);
   }
 
-  /** Strava calls this once when the webhook subscription is created. */
   @Get('webhook')
   @SkipThrottle()
   verifyWebhook(@Query('hub.mode') mode: string, @Query('hub.verify_token') token: string, @Query('hub.challenge') challenge: string) {
     return this.strava.verifyWebhook(mode, token, challenge);
   }
 
-  /** Strava needs a 200 within two seconds, so the work happens after replying. */
   @Post('webhook')
   @SkipThrottle()
   @HttpCode(200)

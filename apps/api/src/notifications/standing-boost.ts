@@ -1,6 +1,5 @@
 import { METRICS, ScoringMethod } from '../tables/competition-rules';
 
-/** One competition a runner is in, with the runners either side of them. */
 export interface StandingRow {
   userId: string;
   tableId: string;
@@ -25,16 +24,11 @@ const first = (name: string | null) => (name ?? 'someone').trim().split(/\s+/)[0
 const noun = (type: string) => ({ RUN: 'run', WALK: 'walk', CYCLING: 'ride' } as Record<string, string>)[type] ?? 'activity';
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 
-/** Whether a board score means they've actually scored (0 km hasn't; a fastest time always has). */
 export function scored(method: string, score: number | null) {
   if (score === null || score === undefined) return false;
   return lowerIsBetter(method) ? true : Number(score) > 0;
 }
 
-/**
- * The difference between two scores in the board's own unit ("0.40 km", "1,200 steps", "2 days",
- * "42s"), or null where a gap doesn't read naturally (pace, speed, spread).
- */
 export function formatGap(method: string, a: number, b: number): string | null {
   const gap = Math.abs(Number(a) - Number(b));
   switch (metric(method)?.display) {
@@ -53,18 +47,15 @@ export function formatGap(method: string, a: number, b: number): string | null {
   }
 }
 
-/** How close the race is for them, lower = more worth a nudge. */
 function urgency(row: StandingRow) {
   const mine = row.score;
   if (!scored(row.scoringMethod, mine)) return 3;
   const rival = row.rank > 1 ? row.aheadScore : row.behindScore;
   if (rival === null || !scored(row.scoringMethod, rival)) return row.rank === 1 ? 2.9 : 3.5;
   const gap = Math.abs(Number(mine) - Number(rival)) / Math.max(Math.abs(Number(rival)), Math.abs(Number(mine)), 1);
-  // Chasing someone close beats defending a lead; both beat everything else.
   return (row.rank > 1 ? 0 : 1) + Math.min(0.99, gap);
 }
 
-/** The one competition to tell each runner about today: the tightest race they're in. */
 export function pickBoosts(rows: StandingRow[]): StandingRow[] {
   const best = new Map<string, StandingRow>();
   for (const row of rows) {
@@ -74,7 +65,6 @@ export function pickBoosts(rows: StandingRow[]): StandingRow[] {
   return [...best.values()];
 }
 
-/** Cheeky lines for each situation, a different one each day. `{gap}`, `{name}`, `{place}`, `{verb}`, `{others}` fill in. */
 const JOKES = {
   chasing: [
     '{gap} behind {name} for {place}. That’s basically a walk to the fridge. Go.',
@@ -108,7 +98,6 @@ const JOKES = {
   ],
 };
 
-/** The same line all day for one runner, a different one tomorrow. */
 function pick(lines: string[], row: StandingRow, day: string) {
   let hash = 0;
   for (const char of `${row.userId}:${row.tableId}:${day}`) hash = (hash * 31 + char.charCodeAt(0)) | 0;
@@ -117,7 +106,6 @@ function pick(lines: string[], row: StandingRow, day: string) {
 
 const fill = (line: string, values: Record<string, string>) => line.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? '');
 
-/** The evening push: where they stand, against whom, and a cheeky reason to move tonight. */
 export function boostMessage(row: StandingRow, day = new Date().toISOString().slice(0, 10)): Boost {
   const link = `/competitions/${row.code}`;
   const method = row.scoringMethod;

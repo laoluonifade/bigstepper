@@ -1,3 +1,4 @@
+import { PaymentsRepository } from './payments.repository';
 import { Module } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -12,7 +13,7 @@ import { PaymentEventsProcessor } from './payment-events.processor';
 @Module({
   imports: [TypeOrmModule.forFeature([PaymentIntent, ProviderWebhook]), BullModule.registerQueue({ name: PAYMENT_EVENTS_QUEUE })],
   controllers: [PaymentsController],
-  providers: [PaymentsService, PaystackClient, PaymentEventsProcessor],
+  providers: [PaymentsService, PaymentsRepository, PaystackClient, PaymentEventsProcessor],
   exports: [PaymentsService, PaystackClient],
 })
 export class PaymentsModule {}

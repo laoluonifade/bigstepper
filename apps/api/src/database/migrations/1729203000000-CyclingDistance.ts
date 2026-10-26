@@ -10,7 +10,6 @@ export class CyclingDistance1729203000000 implements MigrationInterface {
     await queryRunner.query(`ALTER TABLE "activities" ADD CONSTRAINT "activities_activityType_check" CHECK ("activityType" IN ('walk','run','cycle'))`);
     await queryRunner.query(`ALTER TABLE "competition_tables" DROP CONSTRAINT "competition_tables_challengeType_check"`);
     await queryRunner.query(`ALTER TABLE "competition_tables" ADD CONSTRAINT "competition_tables_challengeType_check" CHECK ("challengeType" IN ('WALK','RUN','DISTANCE','STEP','TIMED','CYCLING'))`);
-    // GPS cannot distinguish a bicycle from a slow car well enough for cash prizes.
     await queryRunner.query(`ALTER TABLE "competition_tables" ADD CONSTRAINT "cycling_free_only_check" CHECK ("challengeType"<>'CYCLING' OR "type"='free')`);
   }
 

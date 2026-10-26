@@ -66,8 +66,6 @@ export function validateEnvironment(env: Environment) {
     if (nodeEnv !== 'production') throw new Error('PAYMENTS_MODE=live only runs in production');
     if (!paystackSecretKey.startsWith('sk_live_')) throw new Error('PAYMENTS_MODE=live requires a live Paystack key (sk_live_…)');
   }
-  // One switch drives every money gate. `live` is the operator's confirmation that legal and
-  // Paystack approvals are in place; `test` is sandbox-only and never confirms them.
   const moneyEnabled = paymentsMode !== 'off';
   const live = paymentsMode === 'live';
   return {
@@ -75,9 +73,7 @@ export function validateEnvironment(env: Environment) {
     NODE_ENV: nodeEnv,
     PORT: integer(env.PORT, 3000, 'PORT'),
     WEB_ORIGIN: required(env, 'WEB_ORIGIN', 'http://localhost:5177'),
-    /** Every runner joins this club once (the Jump community club), so Jump can host competitions for everyone. */
     COMMUNITY_CLUB_SLUG: env.COMMUNITY_CLUB_SLUG?.trim().toLowerCase() || 'jump-community-club',
-    /** The admin console (admin.startajump.com), served separately from the runner app. */
     ADMIN_ORIGIN: env.ADMIN_ORIGIN || (nodeEnv === 'production' ? 'https://admin.startajump.com' : 'http://localhost:5178'),
     DATABASE_URL: connectionUrl(databaseUrl, 'DATABASE_URL', ['postgres:', 'postgresql:']),
     REDIS_URL: connectionUrl(redisUrl, 'REDIS_URL', ['redis:', 'rediss:']),
@@ -89,9 +85,7 @@ export function validateEnvironment(env: Environment) {
     LEGAL_APPROVAL_CONFIRMED: live,
     PAYSTACK_APPROVAL_CONFIRMED: live,
     PAYSTACK_SECRET_KEY: paystackSecretKey,
-    // Salt for BVN and account-number hashes, so duplicates can be matched without storing them.
     KYC_HASH_SECRET: env.KYC_HASH_SECRET?.trim() || `kyc:${jwtSecret}`,
-    // Sandbox only: verify KYC straight away instead of waiting for Paystack's identity webhook.
     KYC_SANDBOX_AUTOVERIFY: paymentsMode === 'test' && env.KYC_SANDBOX_AUTOVERIFY?.trim().toLowerCase() === 'true',
     ZEPTOMAIL_API_KEY: env.ZEPTOMAIL_API_KEY?.trim() || '',
     ZEPTOMAIL_API_URL: env.ZEPTOMAIL_API_URL?.trim() || 'https://api.zeptomail.com/v1.1/email',
@@ -100,24 +94,17 @@ export function validateEnvironment(env: Environment) {
     CLOUDINARY_CLOUD_NAME: env.CLOUDINARY_CLOUD_NAME?.trim() || '',
     CLOUDINARY_API_KEY: env.CLOUDINARY_API_KEY?.trim() || '',
     CLOUDINARY_API_SECRET: env.CLOUDINARY_API_SECRET?.trim() || '',
-    // "Continue with Google" stays off until the web client id is set. All three are public OAuth client ids;
-    // a Google ID token must be issued to one of them.
     GOOGLE_WEB_CLIENT_ID: env.GOOGLE_WEB_CLIENT_ID?.trim() || '',
     GOOGLE_IOS_CLIENT_ID: env.GOOGLE_IOS_CLIENT_ID?.trim() || '',
     GOOGLE_ANDROID_CLIENT_ID: env.GOOGLE_ANDROID_CLIENT_ID?.trim() || '',
-    // Sign in with Apple: tokens are checked against the app's bundle id. The key (Team ID, Key ID and the
-    // .p8 contents, newlines as \n) is only for revoking access when an account is deleted.
     APPLE_BUNDLE_ID: env.APPLE_BUNDLE_ID?.trim() || 'com.startajump.app',
     APPLE_TEAM_ID: env.APPLE_TEAM_ID?.trim() || '',
     APPLE_KEY_ID: env.APPLE_KEY_ID?.trim() || '',
     APPLE_PRIVATE_KEY: env.APPLE_PRIVATE_KEY?.trim() || '',
-    // Strava sign-in and activity sync stay off until the client id and secret are set.
     STRAVA_CLIENT_ID: env.STRAVA_CLIENT_ID?.trim() || '',
     STRAVA_CLIENT_SECRET: env.STRAVA_CLIENT_SECRET?.trim() || '',
     STRAVA_WEBHOOK_VERIFY_TOKEN: env.STRAVA_WEBHOOK_VERIFY_TOKEN?.trim() || '',
-    // e.g. https://api.startajump.com/v1/strava/webhook; with the verify token set, the API registers it on start-up.
     STRAVA_WEBHOOK_CALLBACK_URL: env.STRAVA_WEBHOOK_CALLBACK_URL?.trim() || '',
-    // Off until Strava raises the app's athlete limit: hides Strava sign-in and connect for everyone new.
     STRAVA_PUBLIC: env.STRAVA_PUBLIC?.trim().toLowerCase() === 'true',
   };
 }

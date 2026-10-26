@@ -24,7 +24,6 @@ export class FeedController {
     return this.feed.create(user.id, input);
   }
 
-  /** Step one of a photo post: upload, then send the returned URL with the post. */
   @Post('images')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: AVATAR_MAX_BYTES, files: 1 } }))

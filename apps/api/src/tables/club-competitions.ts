@@ -1,16 +1,6 @@
 import { EntityManager } from 'typeorm';
 import { creditActivities } from './competition-credits';
 
-/**
- * Club competitions include the whole club. Free and funded-free ones enrol members directly: everyone
- * when the competition opens, and each new member as they join the club. Places are filled in the order
- * people joined the club, never past the competition's capacity. Paid ones only invite (members choose
- * whether to pay); see inviteClubToPaid.
- *
- * Members outside a challenge's eligible countries aren't entered.
- *
- * Returns who was enrolled where, after crediting activities they'd already recorded in the window.
- */
 export async function enrolClubMembers(manager: EntityManager, scope: { tableId: string } | { clubId: string; userId: string }) {
   const [filter, params] = 'tableId' in scope
     ? ['t."id" = $1', [scope.tableId]]
@@ -58,7 +48,6 @@ export async function enrolClubMembers(manager: EntityManager, scope: { tableId:
   return enrolled;
 }
 
-/** A paid club competition that just opened: invite every member (they pay to enter, so nobody is enrolled). */
 export async function inviteClubToPaid(manager: EntityManager, tableId: string) {
   const invited = await manager.query(
     `INSERT INTO "challenge_invitations" ("tableId", "invitedUserId")

@@ -1,6 +1,5 @@
 import { IsBoolean, IsIn, IsObject, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
 
-/** KYC Level 2: the runner's legal name, BVN and a bank account in that name. */
 export class SubmitKycDto {
   @IsString() @Length(2, 80) firstName: string;
   @IsString() @Length(2, 80) lastName: string;

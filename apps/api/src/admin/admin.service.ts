@@ -36,11 +36,6 @@ export class AdminService {
     @InjectQueue(ACTIVITY_VERIFICATION_QUEUE) private readonly verificationQueue: Queue,
   ) {}
 
-  /**
-   * After the verification rules change: put flagged Jump recordings from the last `days` back through
-   * the checks. Ones that now pass are verified, credited and announced; the rest stay flagged, quietly.
-   * Activities an admin already decided aren't touched (they aren't FLAGGED any more).
-   */
   async recheckFlagged(actorUserId: string, days = 60) {
     const ids = await this.dataSource.transaction(async (manager) => {
       const rows = await manager.query(
@@ -57,7 +52,6 @@ export class AdminService {
       );
       return list;
     });
-    // A fresh job id each time: an earlier verification job for the same activity may still be in Redis.
     const stamp = Date.now();
     await Promise.all(ids.map((activityId) => this.verificationQueue.add(
       'verify-activity', { activityId, recheck: true },
@@ -66,12 +60,6 @@ export class AdminService {
     return { queued: ids.length };
   }
 
-  /* ───────── Club moderation and prizes ───────── */
-
-  /**
-   * Jump's enforcement on clubs: suspend (it keeps its page but can't run challenges; its live challenges
-   * keep going unless taken down) and its plan (for paid features). Both are audited.
-   */
   async moderateClub(actorUserId: string, clubId: string, input: { suspended?: boolean; reason?: string; plan?: 'free' | 'pro'; planRenewsAt?: string | null }) {
     if (input.suspended && (input.reason?.trim().length ?? 0) < 5) throw new BadRequestException('Say why the club is suspended; its managers see it');
     return this.dataSource.transaction(async (manager) => {
@@ -96,7 +84,6 @@ export class AdminService {
     });
   }
 
-  /** Takes a challenge down for breaking the rules: cancelled, off every list, and its host told why. */
   async takeDownChallenge(actorUserId: string, tableId: string, reason: string) {
     return this.dataSource.transaction(async (manager) => {
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
@@ -114,7 +101,6 @@ export class AdminService {
     });
   }
 
-  /** Premium placement: listed first in discovery until the given time (null ends it). */
   async promoteChallenge(actorUserId: string, tableId: string, until: string | null) {
     const end = until ? new Date(until) : null;
     if (end && end <= new Date()) throw new BadRequestException('Promote it until a time in the future');
@@ -125,7 +111,6 @@ export class AdminService {
     return { id: tableId, promotedUntil: end };
   }
 
-  /** Every winner and prize across clubs, with claim details (admins see them to resolve issues). */
   prizeAwards(status?: string) {
     const filter = ['AWAITING_DETAILS', 'DETAILS_SUBMITTED', 'READY_FOR_DISPATCH', 'SHIPPED', 'DELIVERED', 'FORFEITED', 'ISSUE'].includes(status ?? '') ? status : null;
     return this.dataSource.query(
@@ -148,7 +133,6 @@ export class AdminService {
     return this.awardsService.forfeit(awardId, reason);
   }
 
-  /** Decide winners now for a closed prize challenge (instead of waiting for the schedule). */
   async finalizePrizes(_actorUserId: string, tableId: string) {
     const table = await this.dataSource.getRepository(CompetitionTable).findOne({ where: { id: tableId } });
     if (!table?.prizeFulfilment) throw new NotFoundException('Prize competition not found');
@@ -157,7 +141,6 @@ export class AdminService {
   }
 
   async stats() {
-    // "Today" is the Lagos calendar day, not the last 24 hours.
     const [row] = await this.dataSource.query(
       `WITH today AS (SELECT (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS start)
        SELECT
@@ -175,10 +158,6 @@ export class AdminService {
     return row;
   }
 
-  /**
-   * Everyone on Jump for the admin list, newest activity first. Views match the stats: active today
-   * (used Jump), moved today (recorded an activity), new today, or everyone; q searches name, username, email.
-   */
   async people(input: { view?: string; q?: string; offset?: number }) {
     const view = ['active-today', 'moved-today', 'new-today'].includes(input.view ?? '') ? input.view : 'all';
     const term = input.q?.trim().toLowerCase().slice(0, 80) ?? '';
@@ -208,7 +187,6 @@ export class AdminService {
     return { total: rows[0]?.total ?? 0, people: rows.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'total'))) };
   }
 
-  /** Blue tick for a person. Only after they've verified their email; the tick is a badge, nothing more. */
   async verifyPerson(actorUserId: string, ref: string, verified: boolean) {
     const byId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
     const [person] = await this.dataSource.query(
@@ -233,7 +211,6 @@ export class AdminService {
     return { verified };
   }
 
-  /** Every club for the console, biggest first; q searches name and handle, verified narrows to ticked ones. */
   async clubs(input: { q?: string; verified?: boolean; offset?: number }) {
     const term = input.q?.trim().toLowerCase().replace(/[%_\\]/g, '').slice(0, 80) ?? '';
     const rows = await this.dataSource.query(
@@ -254,7 +231,6 @@ export class AdminService {
     return { total: rows[0]?.total ?? 0, clubs: rows.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'total'))) };
   }
 
-  /** Blue tick for a club. Clubs work the same without it; it marks the ones Jump has checked. */
   async verifyClub(actorUserId: string, clubId: string, verified: boolean) {
     const [club] = await this.dataSource.query(`SELECT "id", "slug", "name", "ownerUserId" FROM "clubs" WHERE "id" = $1`, [clubId]) as Array<{ id: string; slug: string; name: string; ownerUserId: string }>;
     if (!club) throw new NotFoundException('Club not found');
@@ -308,7 +284,6 @@ export class AdminService {
     return this.paymentsService.reconcile();
   }
 
-  /** Creator accounts for review: pending applications oldest first, the rest newest first. */
   creators(view: 'pending' | 'active' | 'suspended') {
     const status = view.toUpperCase();
     return this.dataSource.query(
@@ -326,10 +301,8 @@ export class AdminService {
     );
   }
 
-  /** Approve (ACTIVE) or suspend a creator. Only active creators can host paid challenges. */
   async reviewCreator(actorUserId: string, creatorId: string, status: 'ACTIVE' | 'SUSPENDED') {
     return this.dataSource.transaction(async (manager) => {
-      // TypeORM returns [rows, affected] for UPDATE ... RETURNING on Postgres.
       const [rows] = (await manager.query(
         `UPDATE "creator_profiles" SET "status"=$2,"reviewedAt"=now(),"reviewedByUserId"=$3,"updatedAt"=now()
          WHERE "id"=$1 AND "status" <> $2 RETURNING "id","userId","status","displayName"`,
@@ -367,7 +340,6 @@ export class AdminService {
 
   async resolveReview(actorUserId: string, reviewId: string, input: ResolveReviewDto) {
     return this.dataSource.transaction(async (manager) => {
-      // Lock the review alone: Postgres refuses FOR UPDATE on a LEFT JOINed relation, so the activity loads after.
       const review = await manager.findOne(ActivityVerificationReview, {
         where: { id: reviewId, status: 'PENDING' },
         lock: { mode: 'pessimistic_write' },
@@ -488,7 +460,6 @@ export class AdminService {
       ) as Array<{ count: number }>;
       if (Number(pending[0].count) > 0) throw new ConflictException('Activities are still pending review');
 
-      // Final scores from the same engine as the live board, recomputed now so nothing is stale.
       await rescore(manager, [tableId]);
       const standings = (await manager.query(
         `SELECT r."userId", r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds", r."score", r."targetReachedAt", r."qualified", r."joinedAt",
@@ -497,7 +468,6 @@ export class AdminService {
          ORDER BY ${RANK_ORDER}`,
         [tableId],
       )) as Array<{ userId: string; creditedDistanceMetres: number; creditedSteps: number; completionTimeSeconds: number | null; score: number | null; qualified: boolean; joinedAt: Date; rank: number }>;
-      // A winner needs a real score and to have met the minimums (a fastest-time race needs a finish).
       const eligible = standings.filter((row) => cashPrizeEligible(table, row.userId, fundingUserIds) && row.qualified && row.score !== null);
       const winner = eligible[0];
       if (table.type === 'paid' && standings.filter((row) => row.userId !== table.creatorId).length < table.minimumEntrants) {

@@ -18,7 +18,6 @@ export class LeagueMembership {
   @Column({ type: 'integer', default: 0 })
   creditedDistanceMetres: number;
 
-  /** Set when the season closes. */
   @Column({ type: 'integer', nullable: true })
   finalRank: number | null;
 

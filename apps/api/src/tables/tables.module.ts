@@ -1,3 +1,4 @@
+import { TablesRepository } from './tables.repository';
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { CHALLENGE_REMINDERS_QUEUE, CLUB_CHALLENGES_QUEUE } from '../jobs/jobs.module';
@@ -20,6 +21,6 @@ import { ClubChallengesProcessor } from './club-challenges.processor';
     PrizesModule,
   ],
   controllers: [TablesController, ChallengeStudioController],
-  providers: [TablesService, ChallengeRemindersProcessor, ChallengeStudioService, ClubChallengesProcessor, CloudinaryService],
+  providers: [TablesService, TablesRepository, ChallengeRemindersProcessor, ChallengeStudioService, ClubChallengesProcessor, CloudinaryService],
 })
 export class TablesModule {}

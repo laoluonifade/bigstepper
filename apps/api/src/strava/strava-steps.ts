@@ -1,19 +1,9 @@
 import { haversineMetres } from '../running/haversine';
 import { STRIDE_METRES } from '../running/track';
 
-/**
- * Comfortably above any real cadence (a fast run is about 3.2 steps/s) and below the 5.5 steps/s the
- * verifier treats as faked, so a GPS spike in a reconstructed count can never flag an honest import.
- */
 const MAX_STEPS_PER_SECOND = 4;
-/** A longer jump between samples is a pause or a dropout; count at most this much of it. */
 const MAX_INTERVAL_SECONDS = 10;
 
-/**
- * Strava doesn't share step counts, so rebuild a running total for each GPS sample. Cadence, when the
- * watch or phone recorded it, is the real thing; otherwise steps are estimated from distance using the
- * same stride lengths Jump uses to turn steps into distance. Returns null for rides.
- */
 export function stravaStepTotals(
   activityType: 'walk' | 'run' | 'cycle',
   offsets: number[],
@@ -23,7 +13,6 @@ export function stravaStepTotals(
 ): number[] | null {
   if (activityType === 'cycle' || offsets.length === 0) return null;
   const useCadence = hasCadence(offsets, cadence);
-  // Strava reports running cadence per foot (about 80–95); some devices do the same for walks (50–60).
   const perFoot = useCadence && median(cadence!.filter((value) => value > 0)) < (activityType === 'run' ? 120 : 80);
   const cumulative = distance?.length === offsets.length ? distance : null;
 
@@ -46,7 +35,6 @@ export function stravaStepTotals(
   return totals;
 }
 
-/** Whether the watch or phone recorded cadence for the whole track: real, measured steps. */
 export function hasCadence(offsets: number[], cadence?: number[]): cadence is number[] {
   return cadence?.length === offsets.length && cadence.some((value) => value > 0);
 }

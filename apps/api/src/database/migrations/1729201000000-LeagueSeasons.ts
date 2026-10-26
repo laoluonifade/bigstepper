@@ -9,9 +9,7 @@ export class LeagueSeasons1729201000000 implements MigrationInterface {
         ADD COLUMN "finalRank" integer CHECK ("finalRank" > 0),
         ADD COLUMN "outcome" varchar CHECK ("outcome" IN ('PROMOTED','RELEGATED','STAYED'))
     `);
-    // The rollover job relies on there never being two live seasons.
     await queryRunner.query(`CREATE UNIQUE INDEX "league_seasons_one_active_idx" ON "league_seasons" ((true)) WHERE "status" = 'ACTIVE'`);
-    // Distance was never credited before; backfill it from verified activities.
     await queryRunner.query(`
       UPDATE "league_memberships" m
       SET "creditedDistanceMetres" = COALESCE((

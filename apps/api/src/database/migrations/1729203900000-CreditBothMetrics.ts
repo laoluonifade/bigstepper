@@ -1,10 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Competition credits used to keep only the scoring metric (steps for step competitions, km for distance
- * ones), so boards couldn't show the other. Fill both in for competitions still running, re-credit any
- * verified activity that was missed, and re-total. Rankings don't change: they read the method's column.
- */
 export class CreditBothMetrics1729203900000 implements MigrationInterface {
   name = 'CreditBothMetrics1729203900000';
 
@@ -46,6 +41,5 @@ export class CreditBothMetrics1729203900000 implements MigrationInterface {
   }
 
   async down(): Promise<void> {
-    // The extra column values are harmless to keep; nothing to undo.
   }
 }

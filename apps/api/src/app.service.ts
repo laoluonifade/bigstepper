@@ -17,11 +17,6 @@ export class AppService {
     return 'Jump API';
   }
 
-  /**
-   * Jump in numbers, for brands deciding whether to sponsor: runners and walkers, the countries they're
-   * in (with the top few), verified kilometres and activities, competition entrants and competitions
-   * run. Cached for 10 minutes, so a shared link going round doesn't hammer the database.
-   */
   async publicStats() {
     const cached = await this.redis.get(STATS_KEY).catch(() => null);
     if (cached) return JSON.parse(cached);

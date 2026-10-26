@@ -1,6 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/** Funded free challenges take a 15% fee (and older funded ones kept 0%), which the original check rejected. */
 export class FundedPrizeFeeCheck1729202200000 implements MigrationInterface {
   name = 'FundedPrizeFeeCheck1729202200000';
 

@@ -31,7 +31,6 @@ export class TableRegistration {
   @Column({ type: 'integer', nullable: true })
   completionTimeSeconds: number | null;
 
-  /** Set by the scoring engine: the score in the metric's unit, and a bigger-is-better copy to rank by. */
   @Column({ type: 'double precision', nullable: true })
   score: number | null;
 

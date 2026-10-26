@@ -10,11 +10,6 @@ import { RunningSession } from './running-session.entity';
 import { Activity } from './activity.entity';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 
-/**
- * When a pause, resume or finish happened. Normally now; done offline, the phone sends the moment it
- * really happened when it reconnects. Kept honest: never in the future, never before `floor` (the start,
- * or the pause being ended), and nothing older than a day.
- */
 export function momentOf(at: string | undefined, floor: Date, now = new Date()) {
   if (!at) return now;
   const moment = new Date(at);
@@ -67,9 +62,6 @@ export class RunningService {
         throw new BadRequestException('Samples can only be added while the run is active');
       }
 
-      // A number the run already has with a different time means the phone started counting again (a
-      // reinstall, cleared storage): those are new points, so they go on the end instead of being dropped.
-      // The same number and time is a retried upload, ignored below.
       const taken = new Map((await manager.query(
         `SELECT "sequence", "recordedAt" FROM "gps_samples" WHERE "sessionId"=$1 AND "sequence"=ANY($2::integer[])`,
         [sessionId, input.map((sample) => sample.sequence)],
@@ -102,7 +94,6 @@ export class RunningService {
         where: { sessionId },
         order: { sequence: 'ASC' },
       });
-      // Same measurement verification uses, so the live number matches the verified one.
       session.distanceMetres = measureTrack(all, { activityType: session.activityType }).distanceMetres;
       session.stepCount = session.activityType === 'cycle' ? 0 : Math.max(0, ...all.map((sample) => sample.stepCount ?? 0));
       await manager.save(session);
@@ -117,7 +108,7 @@ export class RunningService {
       if (session.status !== 'RUNNING' && session.status !== 'PAUSED') {
         throw new ConflictException('This run is already finished. Delete it from your activities instead.');
       }
-      await manager.delete(RunningSession, { id: session.id }); // GPS fixes go with it (ON DELETE CASCADE)
+      await manager.delete(RunningSession, { id: session.id });
       return { discarded: true };
     });
   }

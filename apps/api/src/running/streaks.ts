@@ -1,3 +1,2 @@
-/** Streak days are counted on Lagos calendar days; most runners are in Nigeria. */
 export const STREAK_TIME_ZONE = 'Africa/Lagos';
 export const STREAK_DAY_SQL = `(a."startedAt" AT TIME ZONE '${STREAK_TIME_ZONE}')::date`;

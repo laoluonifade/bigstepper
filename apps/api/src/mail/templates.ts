@@ -4,7 +4,6 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
 
-/** Hosted on the web app so every mail client can load it; the alt text stands in when images are off. */
 const WORDMARK = '<img src="https://startajump.com/email-wordmark.png" width="73" height="28" alt="JUMP" style="display:block;border:0;height:28px;width:73px">';
 const SITE = 'https://startajump.com';
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
@@ -44,21 +43,12 @@ export function verificationEmail(to: { address: string; name?: string }, url: s
   };
 }
 
-/**
- * The founder's hello, sent when someone signs up. Deliberately a plain personal note, not a branded
- * template, and replies go to a real inbox.
- */
-/** First moves for a new runner, shown under the note. */
 const FIRST_MOVES: Array<[string, string]> = [
   ['Join a free competition', 'Your next walk or run counts toward it straight away.'],
   ['Record with your phone', 'Every kilometre is checked before it counts, so the board is fair.'],
   ['Bring a friend', 'Racing someone you know is the best reason to get out the door.'],
 ];
 
-/**
- * A personal note from the founder, in Jump's own look: the wordmark, a volt welcome, the note, three
- * first moves and one button. Sent from Laolu, and replies go to a real inbox.
- */
 export function welcomeEmail(to: { address: string; name?: string }): MailMessage {
   const first = to.name?.trim().split(/\s+/)[0];
   const paragraphs = [

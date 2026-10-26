@@ -1,6 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/** Active creators are eligible for paid challenges and payouts. Leaves existing (e.g. revoked) records alone. */
 export class CreatorsAreEligible1729201200000 implements MigrationInterface {
   name = 'CreatorsAreEligible1729201200000';
 
@@ -13,6 +12,5 @@ export class CreatorsAreEligible1729201200000 implements MigrationInterface {
   }
 
   public async down(): Promise<void> {
-    // Not reversible: we can't tell these rows apart from ones an admin set later.
   }
 }

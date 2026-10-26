@@ -4,7 +4,6 @@ import { Job, Queue } from 'bullmq';
 import { AML_MONITOR_QUEUE } from '../jobs/jobs.module';
 import { AmlMonitorService } from './aml-monitor.service';
 
-/** Every hour: run the transaction-monitoring rules and raise risk flags. */
 @Injectable()
 @Processor(AML_MONITOR_QUEUE)
 export class AmlMonitorProcessor extends WorkerHost implements OnModuleInit {
