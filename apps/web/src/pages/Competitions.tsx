@@ -50,6 +50,7 @@ import { rememberTable } from '../lib/local';
 import { countryName } from '../lib/countries';
 import { draftFor, ScoringPicker, scoringPayload, type ScoringDraft } from '../components/ScoringPicker';
 import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/shared/competition-rules';
+import { fundingForPrize } from '@jump/shared/prizes';
 import { activityLabel, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '../lib/scoring';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
 import { keys, useCreator, useDiscover, useFinalResult, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
@@ -371,7 +372,10 @@ export function NewCompetitionPage() {
   const later = clubExtras && publish !== 'now';
   const publishIso = later && publish === 'schedule' ? fromLocalInput(publishAt) : null;
   const draftOnCreate = mode === 'paid' || (mode === 'sponsored' && fundingStyle === 'FIXED') || later;
-  const guaranteedPrizeKobo = mode === 'paid' ? (capacityNumber ?? 0) * entryFeeKobo : mode === 'sponsored' && fundingStyle === 'FIXED' ? nairaInputToKobo(fixedPrize) : 0;
+  // The host types the prize itself; Jump's 15% goes on top, so they see what they'll actually pay.
+  const fixedPrizeKobo = nairaInputToKobo(fixedPrize);
+  const fixedFunding = fundingForPrize(fixedPrizeKobo);
+  const guaranteedPrizeKobo = mode === 'paid' ? (capacityNumber ?? 0) * entryFeeKobo : mode === 'sponsored' && fundingStyle === 'FIXED' ? fixedFunding.totalKobo : 0;
   const scoringFields = scoringPayload(scoring, unit, mode !== 'free');
   // Head-to-head invites its one opponent; other formats take lists.
   const inviteEmails = headToHead ? (opponent?.kind === 'email' ? [opponent.value] : []) : emailText.split(/[\s,;]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
@@ -382,6 +386,7 @@ export function NewCompetitionPage() {
     invitePhones.length ? `${invitePhones.length} ${invitePhones.length === 1 ? 'phone' : 'phones'}` : '',
   ].filter(Boolean).join(' · ');
   const isCharity = mode === 'sponsored' && fundingDestination === 'CHARITY';
+  const fixedHint = 'Minimum ₦10,000. Jump’s 15% fee is added on top.';
   const prizeSplitBps = isCharity ? [10000] : shares.map((value) => Math.round(Number(value) * 100));
   const hasPrize = mode !== 'free';
   const prizeError = hasPrize && !isCharity && (!Number.isInteger(Number(winnerCount)) || Number(winnerCount) < 1 || Number(winnerCount) > 100 ||
@@ -395,7 +400,7 @@ export function NewCompetitionPage() {
     cap: capMetres !== undefined && (capMetres < 1000 || capMetres > 500000) ? `Between ${formatDistance(1000, unit)} and ${formatDistance(500000, unit)}.` : undefined,
     target: scoringFields.problem ? `${scoringFields.problem}.` : undefined,
     paid: mode === 'paid' && (creator.data?.status !== 'ACTIVE' || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || guaranteedPrizeKobo > 1_000_000_000 || !Number.isSafeInteger(guaranteedPrizeKobo)) ? 'Use an active creator account, an entry fee of at least ₦1, and a full-capacity pot no greater than ₦10,000,000.' : undefined,
-    funding: mode === 'sponsored' && fundingStyle === 'FIXED' && (!Number.isSafeInteger(guaranteedPrizeKobo) || guaranteedPrizeKobo < 1_000_000 || guaranteedPrizeKobo > 1_000_000_000) ? 'Enter a fixed contribution from ₦10,000 to ₦10,000,000.' : mode === 'sponsored' && fundingDestination === 'CHARITY' && (fundingStyle !== 'FIXED' || charityName.trim().length < 2) ? 'Charity funding needs a fixed amount and charity name.' : undefined,
+    funding: mode === 'sponsored' && fundingStyle === 'FIXED' && (!Number.isSafeInteger(fixedPrizeKobo) || fixedPrizeKobo < 1_000_000 || guaranteedPrizeKobo > 1_000_000_000) ? `Enter ${isCharity ? 'an amount' : 'a prize'} from ₦10,000 to ₦8,500,000.` : mode === 'sponsored' && fundingDestination === 'CHARITY' && (fundingStyle !== 'FIXED' || charityName.trim().length < 2) ? 'Charity funding needs a fixed amount and charity name.' : undefined,
     prize: prizeError || (mode === 'paid' && guaranteedPrizeKobo < 100) ? 'Choose prize shares that total 100% and fit the maximum runner count.' : undefined,
     invites: !draftOnCreate && (inviteEmails.length > 50 || invitePhones.length > 50 || inviteEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || invitePhones.some((phone) => !/^\+[1-9]\d{7,14}$/.test(phone))) ? 'Use valid emails and international phone numbers, up to 50 of each.' : undefined,
     club: clubId && !club.data ? 'This club could not be loaded.' : club.data?.suspended ? 'Jump has suspended this club, so it can’t host competitions.' : undefined,
@@ -681,7 +686,7 @@ export function NewCompetitionPage() {
                 <Field label="Funding plan">
                   {(props) => <select {...props} className="field" value={fundingOption} onChange={(event) => setFundingOption(event.target.value as typeof fundingOption)}><option value="MULTI_WINNERS">Growing pool · many people fund winners</option><option value="FIXED_WINNERS">Fixed amount · I fund winners</option><option value="FIXED_CHARITY">Fixed amount · I fund charity</option></select>}
                 </Field>
-                {fundingStyle === 'FIXED' && <Field label="My fixed contribution · NGN" error={errors.funding} hint="Minimum ₦10,000. The amount shown is before Jump’s 15% fee.">{(props) => <input {...props} className="field num" type="text" inputMode="decimal" value={fixedPrize} onChange={(event) => setFixedPrize(formatNairaInput(event.target.value))} placeholder="10,000" />}</Field>}
+                {fundingStyle === 'FIXED' && <Field label={`${isCharity ? 'Amount for the charity' : 'Prize for the winners'} · NGN`} error={errors.funding} hint={fixedHint}>{(props) => <input {...props} className="field num" type="text" inputMode="decimal" value={fixedPrize} onChange={(event) => setFixedPrize(formatNairaInput(event.target.value))} placeholder="10,000" />}</Field>}
                 {fundingDestination === 'CHARITY' && <Field label="Charity name" error={errors.funding}>{(props) => <input {...props} className="field" maxLength={120} value={charityName} onChange={(event) => setCharityName(event.target.value)} />}</Field>}
               </>}
               <div className="grid gap-5 sm:grid-cols-2">
@@ -704,7 +709,7 @@ export function NewCompetitionPage() {
                   {(props) => <input {...props} className="field num" type="number" min="0.01" max="100" step="0.01" value={share} onChange={(event) => setShares((current) => current.map((part, partIndex) => partIndex === index ? event.target.value : part))} required />}
                 </Field>)}
               </div>}
-              {mode === 'paid' ? <PrizeBreakdown potKobo={guaranteedPrizeKobo} mode={mode} shares={prizeSplitBps} /> : <p className="text-[13px] text-ink-2">Jump retains 15%. {fundingDestination === 'CHARITY' ? 'The other 85% is held for the charity until an admin verifies the recipient.' : 'Your percentages split the remaining 85% between eligible winners.'}</p>}
+              {mode === 'paid' ? <PrizeBreakdown potKobo={guaranteedPrizeKobo} mode={mode} shares={prizeSplitBps} /> : fundingStyle === 'FIXED' ? <FundingTotal prizeKobo={fixedPrizeKobo} charity={isCharity} /> : <p className="text-[13px] text-ink-2">Jump retains 15%. {fundingDestination === 'CHARITY' ? 'The other 85% is held for the charity until an admin verifies the recipient.' : 'Your percentages split the remaining 85% between eligible winners.'}</p>}
               <p className="text-[12px] leading-relaxed text-ink-3">{mode === 'paid'
                 ? 'This is a fixed guaranteed pot based on a full competition, even if fewer runners join. Jump must confirm that the full prize is funded before opening paid entry.'
                 : fundingStyle === 'FIXED' ? 'Entry is free. The competition opens after your fixed contribution is confirmed.' : 'Joining opens immediately, with no creator funding required. Anyone can contribute any amount from ₦1 through Paystack before scoring closes and still compete for the cash prize.'}</p>
@@ -1666,6 +1671,30 @@ export function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; cou
 }
 
 /** The reward preview uses the same integer rounding as settlement: leftover kobo goes to first place. */
+/** A fixed prize: what the winners (or charity) get, Jump's fee on top, and the total the host pays. */
+function FundingTotal({ prizeKobo, charity }: { prizeKobo: number; charity: boolean }) {
+  if (prizeKobo < 1_000_000) return null;
+  const { totalKobo, feeKobo } = fundingForPrize(prizeKobo);
+  const rows = [
+    { label: charity ? 'For the charity' : 'Prize for the winners', value: prizeKobo, strong: false },
+    { label: 'Jump fee · 15%', value: feeKobo, strong: false },
+    { label: 'You pay', value: totalKobo, strong: true },
+  ];
+  return (
+    <div className="rounded-md border border-line bg-paper p-4">
+      <dl className="divide-y divide-line">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-baseline justify-between gap-4 py-2 text-[14px]">
+            <dt className={row.strong ? 'font-bold' : 'text-ink-2'}>{row.label}</dt>
+            <dd className={cx('num', row.strong ? 'text-[18px] font-extrabold' : 'font-semibold')}>{formatMoney(row.value)}</dd>
+          </div>
+        ))}
+      </dl>
+      {!charity && <p className="mt-2 text-[12px] text-ink-3">Your percentages split the full prize between eligible winners.</p>}
+    </div>
+  );
+}
+
 function PrizeBreakdown({ potKobo, mode, shares }: { potKobo: number; mode: 'paid' | 'sponsored'; shares: number[] }) {
   if (potKobo < 100 || !shares.length || shares.reduce((sum, part) => sum + part, 0) !== 10000) return null;
   const split = mode === 'paid' ? prizeSplit(potKobo, 3500, 500) : prizeSplit(potKobo, 1500, 0);

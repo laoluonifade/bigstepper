@@ -100,8 +100,8 @@ const ACTIVITY_CHOICES = [
   { value: 'cycle', label: 'Ride', icon: CycleIcon, fill: brand.ink, iconOn: colors.volt },
 ] as const;
 
-/** Less than this and GPS hasn't really seen you move: End offers to discard instead of saving. */
-const MIN_SAVE_METRES = 20;
+/** Shorter than this (0.1 km) isn't saved as an activity (the API drops it too): End offers to discard instead. */
+const MIN_SAVE_METRES = 100;
 
 const SNAP = { duration: 300, easing: Easing.out(Easing.cubic) };
 
@@ -287,9 +287,9 @@ function Scoreboard() {
   const compact = useAnimatedStyle(() => ({ opacity: interpolate(offset.value, [travel * 0.65, travel], [0, 1], Extrapolation.CLAMP) }));
 
   async function confirmFinish() {
-    // Barely moved: there's nothing to submit, so offer to throw it away instead.
+    // Too short to count: there's nothing to submit, so offer to throw it away instead.
     if (recorder.distanceMetres < MIN_SAVE_METRES) {
-      if (await confirm({ title: `Nothing to save yet`, message: `GPS hasn’t seen you move, so this ${noun} wouldn’t count. Discard it?`, cancelLabel: 'Keep going', confirmLabel: 'Discard', destructive: true })) void recorder.discard();
+      if (await confirm({ title: 'Too short to save', message: `Jump saves ${noun}s from 0.1 km, and this one is ${formatDistance(recorder.distanceMetres, unit)}. Keep going, or discard it.`, cancelLabel: 'Keep going', confirmLabel: 'Discard', destructive: true })) void recorder.discard();
       return;
     }
     if (await confirm({ title: `Finish this ${noun}?`, message: `${formatDistance(recorder.distanceMetres, unit)} will be submitted for verification.`, cancelLabel: 'Keep going', confirmLabel: 'Finish' })) void finish();

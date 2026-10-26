@@ -7,8 +7,8 @@ import type { CheckoutResponse, CompetitionTable, StandingRow, Unit } from '@jum
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { PrizeTerms } from '@/components/ClubPrizes';
 import { PrizeAds } from '@/components/PrizeAd';
@@ -21,6 +21,7 @@ import { ShareCompetitionSheet } from '@/components/ShareCompetition';
 import { Sheet } from '@/components/Sheet';
 import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, Footer, haptic, HardShadow, LiveTag, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow } from '@/components/ui';
 import { api, isApiError, patch, post, WEB_URL } from '@/lib/api';
+import { Storage } from '@/lib/kv';
 import { useAuth } from '@/lib/auth';
 import { confirmCheckout, openCheckout } from '@/lib/checkout';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '@/lib/payments';
@@ -115,6 +116,30 @@ export default function CompetitionDetailScreen() {
 
   const refresh = () => { void table.refetch(); void standings.refetch(); void registration.refetch(); };
 
+  // The first time someone opens a competition they don't host, glide down to how it's scored and say
+  // so, so they know what it's about before joining. Once per competition.
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const [listY, setListY] = useState<number | null>(null);
+  const [rulesY, setRulesY] = useState<number | null>(null);
+  const [spotlight, setSpotlight] = useState(false);
+  const tour = table.data && user && table.data.creatorId !== user.id && created !== '1' ? `jump_rules_seen_${table.data.id}` : null;
+  useEffect(() => {
+    if (!tour || listY === null || rulesY === null) return;
+    try {
+      if (Storage.getItemSync(tour)) return;
+      Storage.setItemSync(tour, '1');
+    } catch { return; }
+    const timers = [
+      setTimeout(() => {
+        scroller.current?.scrollTo({ y: Math.max(0, listY + rulesY - 12), animated: true });
+        setSpotlight(true);
+        toast({ tone: 'info', title: 'How this competition works', message: 'Have a read, then head back up to join.', action: { label: 'Back to top', run: () => scroller.current?.scrollTo({ y: 0, animated: true }) } });
+      }, 700),
+      setTimeout(() => setSpotlight(false), 4_500),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [tour, listY, rulesY]);
+
   if (table.isLoading) return <Screen><Stack.Screen options={{ title: '' }} /><Loading /></Screen>;
   if (table.error || !table.data) {
     return <Screen>
@@ -143,7 +168,7 @@ export default function CompetitionDetailScreen() {
 
   // While you're in and it's live, where you stand stays pinned at the bottom, however long the board.
   const racing = Boolean(registration.data?.joined) && ['open', 'entry-closed'].includes(competitionPhase(t, now));
-  return <Screen refreshing={table.isRefetching} onRefresh={refresh}
+  return <Screen ref={scroller} refreshing={table.isRefetching} onRefresh={refresh}
     footer={racing ? <Footer style={{ borderTopWidth: 0, paddingTop: 8 }}><YourRace table={t} rows={standings.data ?? []} viewerId={user?.id} unit={unit} now={now} /></Footer> : undefined}>
     {/* The page has its own big title; the header stays clear (the code lives on the share card). */}
     <Stack.Screen options={{ title: '' }} />
@@ -181,7 +206,7 @@ export default function CompetitionDetailScreen() {
     {/* What's up for grabs, in one slim line like the Compete page's Strava note. */}
     {t.productPrizes?.prizes.length ? <View style={{ marginTop: 16 }}><PrizeAds terms={t.productPrizes} clubName={t.club?.name} website={t.club?.website} /></View> : null}
 
-    <View style={{ gap: 40, marginTop: 32 }}>
+    <View style={{ gap: 40, marginTop: 32 }} onLayout={(event) => setListY(event.nativeEvent.layout.y)}>
       <View>
         <SectionTitle aside={isFinal ? <Tag background={colors.volt} border={colors.edge}>Final</Tag> : t.status === 'PENDING_FUNDING' ? <Tag border={colors.line} color={colors.ink2}>Draft</Tag>
           // Only a race that's actually on pulses; one that has ended (or not started) says so instead.
@@ -199,7 +224,7 @@ export default function CompetitionDetailScreen() {
       {!me && !isHost && <HowItWorks table={t} unit={unit} />}
       <KeyDates table={t} now={now} />
       {manages && !CLOSED_STATUSES.includes(t.status) && <HostTools table={t} now={now} />}
-      <Rules table={t} unit={unit} />
+      <View onLayout={(event) => setRulesY(event.nativeEvent.layout.y)}><Rules table={t} unit={unit} spotlight={spotlight} /></View>
       {isHost && t.status === 'OPEN_FOR_ENTRY' && <InvitationsPanel table={t} />}
     </View>
   </Screen>;
@@ -486,7 +511,7 @@ function ShareBox({ table, rows, viewerId, unit }: { table: CompetitionTable; ro
   </Card>;
 }
 
-function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
+function Rules({ table, unit, spotlight }: { table: CompetitionTable; unit: Unit; spotlight?: boolean }) {
   const items = [
     ...rulesLines(table, unit),
     ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance, and there are no cash prizes.'] : []),
@@ -498,7 +523,7 @@ function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
     ...(table.type === 'sponsored' && table.fundingDestination === 'CHARITY' ? [`Only the host funds this fixed amount. Jump retains ${table.platformFeeBps / 100}%; the remaining ${(10000 - table.platformFeeBps) / 100}% is held for ${table.charityName ?? 'the charity'} until an admin verifies the recipient. No runner cash prize is paid.`] : []),
     ...(table.type === 'sponsored' && table.fundingDestination !== 'CHARITY' ? [`${table.guaranteedPrizeKobo ? 'The host funds the fixed prize before entry opens' : 'The competition opens without creator funding. Anyone may contribute from ₦1 before scoring closes and still be eligible to win'}. Eligible winners split ${(10000 - table.platformFeeBps) / 100}% of verified contributions according to the creator’s percentages; Jump retains ${table.platformFeeBps / 100}%.`] : []),
   ];
-  return <Card style={{ padding: 20 }}>
+  return <Card style={[{ padding: 20 }, spotlight && { borderWidth: 2, borderColor: colors.track }]}>
     <Eyebrow style={{ marginBottom: 12 }}>How it’s scored</Eyebrow>
     <View style={{ gap: 10 }}>
       {items.map((item) => <View key={item} style={{ flexDirection: 'row', gap: 10 }}>

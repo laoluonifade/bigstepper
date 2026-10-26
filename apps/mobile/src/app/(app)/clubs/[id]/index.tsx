@@ -13,7 +13,7 @@ import { CompetitionRow } from '@/components/competition';
 import { ArrowRightIcon, CameraIcon, CheckIcon, FeedIcon, LinkIcon, LockIcon, PlusIcon, ShareIcon } from '@/components/icons';
 import { Leaderboard } from '@/components/Leaderboard';
 import { Sheet } from '@/components/Sheet';
-import { Avatar, Button, CopyButton, EmptyState, ErrorNotice, FieldLabel, haptic, HardShadow, Loading, Notice, Screen, SectionTitle, Skeleton, TextField, Txt, useNow, VerifiedTick } from '@/components/ui';
+import { Avatar, Button, CopyButton, EmptyState, ErrorNotice, FieldLabel, haptic, HardShadow, Loading, Notice, Screen, SectionTitle, Segmented, Skeleton, TextField, Txt, useNow, VerifiedTick } from '@/components/ui';
 import { api, isApiError, patch, post, WEB_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { keys, useUnit } from '@/lib/queries';
@@ -108,7 +108,7 @@ export default function ClubScreen() {
         : <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Button style={{ flex: 1 }} full variant="dark" icon={<FeedIcon size={16} color={colors.paper} />} title="Club chat" onPress={() => router.push(`/clubs/${c.slug}/chat`)} />
           <SquareButton label="Share the club" onPress={() => shareClub(c)}><ShareIcon size={17} /></SquareButton>
-          {isManager(role) && <ActionMenu label="Club options" trigger={<HardShadow offset={2} radius={radius.base}><View style={styles.square}><Text style={{ fontFamily: fontFamily('bold'), fontSize: 20 }}>⋯</Text></View></HardShadow>} actions={[
+          {isManager(role) && <ActionMenu label="Club options" trigger={<HardShadow offset={2} radius={radius.base}><View style={styles.square}><Text style={{ fontFamily: fontFamily('bold'), fontSize: 20, color: colors.ink }}>⋯</Text></View></HardShadow>} actions={[
             { label: 'Dashboard', run: () => router.push(`/clubs/${c.slug}/dashboard`) },
             ...(c.suspended ? [] : [{ label: 'New competition', run: () => router.push({ pathname: '/competitions/new', params: { club: c.slug } }) }]),
             { label: 'Edit club', run: () => setEditing(true) },
@@ -298,12 +298,18 @@ function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {
             </View>
             <Txt size={12} color="ink3" numberOfLines={1} style={{ marginTop: 2 }}>{`${entry.username ? `@${entry.username} · ` : ''}joined ${formatDate(entry.joinedAt, { year: 'numeric' })}`}</Txt>
           </Pressable>
-          {entry.role !== 'member' && <View style={[styles.role, entry.role === 'owner' ? { backgroundColor: colors.ink } : { backgroundColor: 'rgba(18,18,18,0.07)' }]}><Txt size={11} weight="bold" color={entry.role === 'owner' ? 'paper' : 'ink'}>{ROLE_LABEL[entry.role]}</Txt></View>}
+          {entry.role !== 'member' && <View style={[styles.role, entry.role === 'owner' ? { backgroundColor: colors.ink } : { backgroundColor: colors.inkWash }]}><Txt size={11} weight="bold" color={entry.role === 'owner' ? 'paper' : 'ink'}>{ROLE_LABEL[entry.role]}</Txt></View>}
           {actions.length > 0 && <ActionMenu label={`Options for ${name}`} title={name} actions={actions} />}
         </View>;
       })}
     </View>
   </View>;
+}
+
+/** A number as wa.me wants it: digits with the country code. Nigerian 0803… becomes 234803…. */
+function whatsappNumber(input: string) {
+  const digits = input.replace(/\D/g, '');
+  return /^0\d{10}$/.test(digits) ? `234${digits.slice(1)}` : digits;
 }
 
 /** Managers: the invite link, email invites, adding someone by username, and resetting the link. */
@@ -312,6 +318,8 @@ function InvitePanel({ club }: { club: Club }) {
   const link = `${WEB_URL}/clubs/${club.slug}?invite=${club.inviteCode ?? ''}`;
   const message = `Join ${club.name} on Jump: ${link}`;
   const [emails, setEmails] = useState('');
+  const [via, setVia] = useState<'email' | 'whatsapp'>('email');
+  const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
   const addresses = emails.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
   const invite = useMutation({
@@ -344,9 +352,15 @@ function InvitePanel({ club }: { club: Club }) {
       </Pressable>
     </View>
     <View style={[styles.panel, { gap: 16 }]}>
-      <TextField label="Invite by email" hint="Separate with commas or new lines. Up to 50 at a time." multiline autoCapitalize="none" keyboardType="email-address" value={emails} onChangeText={setEmails} placeholder="ada@example.com, tunde@example.com" style={{ minHeight: 80 }} />
-      <ErrorNotice error={invite.error} />
-      <Button size="sm" variant="dark" loading={invite.isPending} disabled={!addresses.length || addresses.length > 50} title={invite.isPending ? 'Sending…' : `Send ${addresses.length > 1 ? `${addresses.length} invites` : 'invite'}`} onPress={() => invite.mutate()} />
+      <Segmented label="Invite by" value={via} onChange={setVia} options={[{ value: 'email', label: 'Email' }, { value: 'whatsapp', label: 'WhatsApp' }]} />
+      {via === 'email' ? <>
+        <TextField label="Email addresses" hint="Separate with commas or new lines. Up to 50 at a time." multiline autoCapitalize="none" keyboardType="email-address" value={emails} onChangeText={setEmails} placeholder="ada@example.com, tunde@example.com" style={{ minHeight: 80 }} />
+        <ErrorNotice error={invite.error} />
+        <Button size="sm" variant="dark" loading={invite.isPending} disabled={!addresses.length || addresses.length > 50} title={invite.isPending ? 'Sending…' : `Send ${addresses.length > 1 ? `${addresses.length} invites` : 'invite'}`} onPress={() => invite.mutate()} />
+      </> : <>
+        <TextField label="Their WhatsApp number" optional hint="Opens WhatsApp with the invite ready to send. Leave it empty to pick a chat or group." keyboardType="phone-pad" value={phone} onChangeText={setPhone} placeholder="0803 123 4567" />
+        <Button size="sm" variant="dark" title="Send on WhatsApp" onPress={() => void Linking.openURL(`https://wa.me/${whatsappNumber(phone)}?text=${encodeURIComponent(message)}`)} />
+      </>}
       <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16 }}>
         <FieldLabel label="Add someone on Jump" />
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -439,7 +453,7 @@ const styles = StyleSheet.create({
   member: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
   role: { borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 2 },
   panel: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 20 },
-  code: { marginTop: 12, borderRadius: radius.lg, backgroundColor: 'rgba(18,18,18,0.05)', paddingHorizontal: 12, paddingVertical: 8, fontFamily: mono, fontSize: 12, color: colors.ink2 },
+  code: { marginTop: 12, borderRadius: radius.lg, backgroundColor: colors.inkWash, paddingHorizontal: 12, paddingVertical: 8, fontFamily: mono, fontSize: 12, color: colors.ink2 },
   swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: colors.edge, alignItems: 'center', justifyContent: 'center' },
   lock: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 12 },
 });

@@ -75,6 +75,8 @@ export function validateEnvironment(env: Environment) {
     NODE_ENV: nodeEnv,
     PORT: integer(env.PORT, 3000, 'PORT'),
     WEB_ORIGIN: required(env, 'WEB_ORIGIN', 'http://localhost:5177'),
+    /** Every runner joins this club once (the Jump community club), so Jump can host competitions for everyone. */
+    COMMUNITY_CLUB_SLUG: env.COMMUNITY_CLUB_SLUG?.trim().toLowerCase() || 'jump-community-club',
     /** The admin console (admin.startajump.com), served separately from the runner app. */
     ADMIN_ORIGIN: env.ADMIN_ORIGIN || (nodeEnv === 'production' ? 'https://admin.startajump.com' : 'http://localhost:5178'),
     DATABASE_URL: connectionUrl(databaseUrl, 'DATABASE_URL', ['postgres:', 'postgresql:']),

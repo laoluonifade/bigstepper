@@ -20,9 +20,16 @@ describe('FeedService', () => {
   });
 
   it('trims text and attaches an owned verified activity', async () => {
-    query.mockResolvedValueOnce([{ id: 'activity' }]).mockResolvedValueOnce([{ id: 'post', createdAt: new Date() }]);
+    query.mockResolvedValueOnce([{ id: 'activity' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'post', createdAt: new Date() }]);
     await service.create('runner', { body: '  Good run  ', activityId: 'activity' });
-    expect(query.mock.calls[1][1]).toEqual(['runner', 'Good run', 'activity', null]);
+    expect(query.mock.calls[2][1]).toEqual(['runner', 'Good run', 'activity', null]);
+  });
+
+  it('adds the caption to the post the activity made by itself instead of posting it twice', async () => {
+    query.mockResolvedValueOnce([{ id: 'activity' }]).mockResolvedValueOnce([{ id: 'auto', createdAt: new Date() }]);
+    await expect(service.create('runner', { body: 'Good run', activityId: 'activity' })).resolves.toMatchObject({ id: 'auto' });
+    expect(query.mock.calls[1][1]).toEqual(['runner', 'activity', 'Good run', null]);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO "feed_posts"'))).toBe(false);
   });
 
   it('rejects invalid feed scopes and pages', async () => {

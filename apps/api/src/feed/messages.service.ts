@@ -9,6 +9,13 @@ export interface SendExtras {
   audioSeconds?: number;
 }
 
+/** What the push and inbox say about a new message: its text (cut short), or what was sent. */
+function preview(text: string, voiceNote: boolean, activity: boolean) {
+  if (text) return text.length > 140 ? `${text.slice(0, 139).trimEnd()}…` : text;
+  if (voiceNote) return '🎤 Voice note';
+  return activity ? 'Shared an activity' : 'Sent you a message';
+}
+
 @Injectable()
 export class MessagesService {
   private readonly logger = new Logger(MessagesService.name);
@@ -41,7 +48,8 @@ export class MessagesService {
   /** Each club you're in that has a chat: its last message and how many you haven't read. */
   private async clubInbox(userId: string) {
     return this.dataSource.query(
-      `SELECT 'club' AS "type", c."slug" AS "clubSlug", c."name" AS "clubName", c."logoUrl", c."accentColor",
+      `SELECT 'club' AS "type", c."slug" AS "clubSlug", c."name" AS "clubName", c."logoUrl", c."accentColor", c."verifiedAt" IS NOT NULL AS "verified",
+              (SELECT count(*) FROM "club_memberships" cm WHERE cm."clubId" = c."id")::integer AS "memberCount",
               last."body", last."createdAt", last."kind", COALESCE(p."displayName", u."displayName", 'Someone') AS "senderName", last."senderId",
               (SELECT count(*) FROM "direct_messages" x WHERE x."clubId" = c."id" AND x."senderId" <> $1
                  AND x."createdAt" > COALESCE(r."readAt", m."joinedAt"))::integer AS "unreadCount"
@@ -270,8 +278,8 @@ export class MessagesService {
     );
     await this.notify(
       `INSERT INTO "notifications" ("userId","type","title","body","link")
-       SELECT $2,'DIRECT_MESSAGE',p."displayName" || ' sent you a message','Open Messages to reply.','/messages/' || p."username"
-       FROM "profiles" p WHERE p."userId"=$1`, [userId, runner.userId],
+       SELECT $2,'DIRECT_MESSAGE',p."displayName",$3,'/messages/' || p."username"
+       FROM "profiles" p WHERE p."userId"=$1`, [userId, runner.userId, preview(trimmed, Boolean(audioUrl), Boolean(activityId))],
     );
     return message;
   }

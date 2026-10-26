@@ -164,7 +164,16 @@ export class FeedService {
       )) as Array<{ id: string }>;
       if (!owned.length) throw new BadRequestException('Choose one of your verified activities');
     }
-    const [post] = await this.dataSource.query(
+    // The activity already went up by itself when it was verified: posting it fills in that post.
+    // (Claimed in a CTE: a bare UPDATE … RETURNING comes back from TypeORM as [rows, count].)
+    const [filled] = input.activityId ? await this.dataSource.query(
+      `WITH auto AS (
+         UPDATE "feed_posts" SET "body"=$3,"imageUrl"=$4
+         WHERE "id"=(SELECT "id" FROM "feed_posts" WHERE "userId"=$1 AND "activityId"=$2 AND "body"='' AND "imageUrl" IS NULL ORDER BY "createdAt" LIMIT 1)
+         RETURNING "id","createdAt"
+       ) SELECT * FROM auto`, [userId, input.activityId, body, input.imageUrl ?? null],
+    ) as Array<{ id: string; createdAt: string }> : [];
+    const [post] = filled ? [filled] : await this.dataSource.query(
       `INSERT INTO "feed_posts" ("userId","body","activityId","imageUrl") VALUES ($1,$2,$3,$4)
        RETURNING "id","createdAt"`, [userId, body, input.activityId ?? null, input.imageUrl ?? null],
     );

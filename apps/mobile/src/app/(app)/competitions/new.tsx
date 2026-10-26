@@ -2,7 +2,7 @@ import { prizeSplit } from '@jump/shared/competition';
 import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/shared/competition-rules';
 import { countryName } from '@jump/shared/countries';
 import { formatDateTime, formatDistance, formatMoney, formatNairaInput, fromLocalInput, nairaInputToKobo, toLocalInput, toMetres } from '@jump/shared/format';
-import { EMPTY_PRIZES, PRIZE_KIND, prizeProblem, prizesPayload, type PrizeDraft } from '@jump/shared/prizes';
+import { EMPTY_PRIZES, fundingForPrize, PRIZE_KIND, prizeProblem, prizesPayload, type PrizeDraft } from '@jump/shared/prizes';
 import { draftFor, scoringPayload, type ScoringDraft } from '@jump/shared/scoring-draft';
 import { templateById } from '@jump/shared/templates';
 import type { Club, CompetitionTable } from '@jump/shared/types';
@@ -117,7 +117,10 @@ export default function NewCompetitionScreen() {
   const later = clubExtras && publish !== 'now';
   const publishIso = later && publish === 'schedule' ? fromLocalInput(publishAt) : null;
   const draftOnCreate = mode === 'paid' || (mode === 'sponsored' && fundingStyle === 'FIXED') || later;
-  const guaranteedPrizeKobo = mode === 'paid' ? (capacityNumber ?? 0) * entryFeeKobo : mode === 'sponsored' && fundingStyle === 'FIXED' ? nairaInputToKobo(fixedPrize) : 0;
+  // The host types the prize itself; Jump's 15% goes on top, so they see what they'll actually pay.
+  const fixedPrizeKobo = nairaInputToKobo(fixedPrize);
+  const fixedFunding = fundingForPrize(fixedPrizeKobo);
+  const guaranteedPrizeKobo = mode === 'paid' ? (capacityNumber ?? 0) * entryFeeKobo : mode === 'sponsored' && fundingStyle === 'FIXED' ? fixedFunding.totalKobo : 0;
   const scoringFields = scoringPayload(scoring, unit, mode !== 'free');
   // Head-to-head invites its one opponent; other formats take lists.
   const inviteEmails = headToHead ? (opponent?.kind === 'email' ? [opponent.value] : []) : emailText.split(/[\s,;]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
@@ -128,6 +131,7 @@ export default function NewCompetitionScreen() {
     invitePhones.length ? `${invitePhones.length} ${invitePhones.length === 1 ? 'phone' : 'phones'}` : '',
   ].filter(Boolean).join(' · ');
   const isCharity = mode === 'sponsored' && fundingDestination === 'CHARITY';
+  const fixedHint = 'Minimum ₦10,000. Jump’s 15% fee is added on top.';
   const prizeSplitBps = isCharity ? [10000] : shares.map((value) => Math.round(Number(value) * 100));
   const hasPrize = mode !== 'free';
   const prizeError = hasPrize && !isCharity && (!Number.isInteger(Number(winnerCount)) || Number(winnerCount) < 1 || Number(winnerCount) > 100
@@ -141,7 +145,7 @@ export default function NewCompetitionScreen() {
     cap: capMetres !== undefined && (capMetres < 1000 || capMetres > 500000) ? `Between ${formatDistance(1000, unit)} and ${formatDistance(500000, unit)}.` : undefined,
     target: scoringFields.problem ? `${scoringFields.problem}.` : undefined,
     paid: mode === 'paid' && (creator.data?.status !== 'ACTIVE' || entryFeeKobo < 100 || guaranteedPrizeKobo < 100 || guaranteedPrizeKobo > 1_000_000_000 || !Number.isSafeInteger(guaranteedPrizeKobo)) ? 'Use an active creator account, an entry fee of at least ₦1, and a full-capacity pot no greater than ₦10,000,000.' : undefined,
-    funding: mode === 'sponsored' && fundingStyle === 'FIXED' && (!Number.isSafeInteger(guaranteedPrizeKobo) || guaranteedPrizeKobo < 1_000_000 || guaranteedPrizeKobo > 1_000_000_000) ? 'Enter a fixed contribution from ₦10,000 to ₦10,000,000.' : mode === 'sponsored' && fundingDestination === 'CHARITY' && (fundingStyle !== 'FIXED' || charityName.trim().length < 2) ? 'Charity funding needs a fixed amount and charity name.' : undefined,
+    funding: mode === 'sponsored' && fundingStyle === 'FIXED' && (!Number.isSafeInteger(fixedPrizeKobo) || fixedPrizeKobo < 1_000_000 || guaranteedPrizeKobo > 1_000_000_000) ? `Enter ${isCharity ? 'an amount' : 'a prize'} from ₦10,000 to ₦8,500,000.` : mode === 'sponsored' && fundingDestination === 'CHARITY' && (fundingStyle !== 'FIXED' || charityName.trim().length < 2) ? 'Charity funding needs a fixed amount and charity name.' : undefined,
     prize: prizeError || (mode === 'paid' && guaranteedPrizeKobo < 100) ? 'Choose prize shares that total 100% and fit the maximum runner count.' : undefined,
     invites: !draftOnCreate && (inviteEmails.length > 50 || invitePhones.length > 50 || inviteEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || invitePhones.some((phone) => !/^\+[1-9]\d{7,14}$/.test(phone))) ? 'Use valid emails and international phone numbers, up to 50 of each.' : undefined,
     club: clubId && !club.data ? 'This club could not be loaded.' : club.data?.suspended ? 'Jump has suspended this club, so it can’t host competitions.' : undefined,
@@ -317,7 +321,7 @@ export default function NewCompetitionScreen() {
               { value: 'FIXED_WINNERS', label: 'Fixed amount', detail: 'I fund winners' },
               { value: 'FIXED_CHARITY', label: 'Fixed amount for charity', detail: 'I fund a charity' },
             ]} />
-            {fundingStyle === 'FIXED' && <TextField label="My fixed contribution · NGN" error={errors.funding} hint="Minimum ₦10,000. The amount shown is before Jump’s 15% fee." keyboardType="decimal-pad" value={fixedPrize} onChangeText={(text) => setFixedPrize(formatNairaInput(text))} placeholder="10,000" />}
+            {fundingStyle === 'FIXED' && <TextField label={`${isCharity ? 'Amount for the charity' : 'Prize for the winners'} · NGN`} error={errors.funding} hint={fixedHint} keyboardType="decimal-pad" value={fixedPrize} onChangeText={(text) => setFixedPrize(formatNairaInput(text))} placeholder="10,000" />}
             {fundingDestination === 'CHARITY' && <TextField label="Charity name" error={errors.funding} maxLength={120} value={charityName} onChangeText={setCharityName} />}
           </>}
           {mode === 'paid' && <>
@@ -330,6 +334,7 @@ export default function NewCompetitionScreen() {
           </View>}
           {errors.prize ? <Hint error>{errors.prize}</Hint> : null}
           {mode === 'paid' ? <PrizeBreakdown potKobo={guaranteedPrizeKobo} shares={prizeSplitBps} />
+            : fundingStyle === 'FIXED' ? <FundingTotal prizeKobo={fixedPrizeKobo} charity={isCharity} />
             : <Txt size={13} color="ink2">{`Jump retains 15%. ${fundingDestination === 'CHARITY' ? 'The other 85% is held for the charity until an admin verifies the recipient.' : 'Your percentages split the remaining 85% between eligible winners.'}`}</Txt>}
           <Txt size={12} color="ink3" leading={1.5}>{mode === 'paid' ? 'This is a fixed guaranteed pot based on a full competition, even if fewer runners join. Jump must confirm that the full prize is funded before opening paid entry.'
             : fundingStyle === 'FIXED' ? 'Entry is free. The competition opens after your fixed contribution is confirmed.' : 'Joining opens immediately, with no creator funding required. Anyone can contribute any amount from ₦1 through Paystack before scoring closes and still compete for the cash prize.'}</Txt>
@@ -456,6 +461,24 @@ function PrizeBreakdown({ potKobo, shares }: { potKobo: number; shares: number[]
       <Txt size={row.strong ? 18 : 14} weight={row.strong ? 'extrabold' : 'semibold'} num>{formatMoney(row.value)}</Txt>
     </View>)}
     <Txt size={12} color="ink3" style={{ marginTop: 8 }}>The card shows the winner reward pool after fees.</Txt>
+  </View>;
+}
+
+/** A fixed prize: what the winners (or charity) get, Jump's fee on top, and the total the host pays. */
+function FundingTotal({ prizeKobo, charity }: { prizeKobo: number; charity: boolean }) {
+  if (prizeKobo < 1_000_000) return null;
+  const { totalKobo, feeKobo } = fundingForPrize(prizeKobo);
+  const rows = [
+    { label: charity ? 'For the charity' : 'Prize for the winners', value: prizeKobo, strong: false },
+    { label: 'Jump fee · 15%', value: feeKobo, strong: false },
+    { label: 'You pay', value: totalKobo, strong: true },
+  ];
+  return <View style={styles.breakdown}>
+    {rows.map((row, index) => <View key={row.label} style={[styles.breakdownRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
+      <Txt size={14} weight={row.strong ? 'bold' : 'regular'} color={row.strong ? 'ink' : 'ink2'}>{row.label}</Txt>
+      <Txt size={row.strong ? 18 : 14} weight={row.strong ? 'extrabold' : 'semibold'} num>{formatMoney(row.value)}</Txt>
+    </View>)}
+    {!charity && <Txt size={12} color="ink3" style={{ marginTop: 8 }}>Your percentages split the full prize between eligible winners.</Txt>}
   </View>;
 }
 

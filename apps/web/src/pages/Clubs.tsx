@@ -8,7 +8,7 @@ import { ClubLogo } from '../components/ClubLogo';
 import { Modal } from '../components/Modal';
 import { useConfirm } from '../components/ConfirmDialog';
 import { prepare } from '../components/Profile';
-import { Avatar, CopyButton, cx, EmptyState, ErrorNotice, Field, Loading, Notice, PageHeader, SectionTitle, Skeleton, useNow, VerifiedTick } from '../components/ui';
+import { Avatar, CopyButton, cx, EmptyState, ErrorNotice, Field, Loading, Notice, PageHeader, SectionTitle, Segmented, Skeleton, useNow, VerifiedTick } from '../components/ui';
 import { api, isApiError, patch, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { flag } from '../lib/countries';
@@ -507,6 +507,12 @@ function ShareClubButton({ club }: { club: Club }) {
   return <button type="button" className="flex h-11 w-11 shrink-0 items-center justify-center rounded border-[1.5px] border-ink bg-card shadow-hard-sm hover:bg-paper" onClick={() => void share()} aria-label="Share the club" title="Share the club"><ShareIcon size={17} /></button>;
 }
 
+/** A number as wa.me wants it: digits with the country code. Nigerian 0803… becomes 234803…. */
+function whatsappNumber(input: string) {
+  const digits = input.replace(/\D/g, '');
+  return /^0\d{10}$/.test(digits) ? `234${digits.slice(1)}` : digits;
+}
+
 /** Managers: the invite link, email invites, adding someone by username, and resetting the link. */
 function InvitePanel({ club }: { club: Club }) {
   const queryClient = useQueryClient();
@@ -514,6 +520,8 @@ function InvitePanel({ club }: { club: Club }) {
   const link = `${window.location.origin}/clubs/${club.slug}?invite=${club.inviteCode ?? ''}`;
   const message = `Join ${club.name} on Jump: ${link}`;
   const [emails, setEmails] = useState('');
+  const [via, setVia] = useState<'email' | 'whatsapp'>('email');
+  const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
   const addresses = emails.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
   const invite = useMutation({
@@ -559,13 +567,19 @@ function InvitePanel({ club }: { club: Club }) {
     </section>
 
     <section className="space-y-5 rounded-2xl border-[1.5px] border-ink bg-card p-5">
-      <form onSubmit={(event) => { event.preventDefault(); invite.mutate(); }}>
-        <Field label="Invite by email" hint="Separate with commas or new lines. Up to 50 at a time.">
+      <Segmented label="Invite by" size="sm" value={via} onChange={setVia} options={[{ value: 'email', label: 'Email' }, { value: 'whatsapp', label: 'WhatsApp' }]} />
+      {via === 'email' ? <form onSubmit={(event) => { event.preventDefault(); invite.mutate(); }}>
+        <Field label="Email addresses" hint="Separate with commas or new lines. Up to 50 at a time.">
           {(props) => <textarea {...props} className="field min-h-20 py-2.5" value={emails} onChange={(event) => setEmails(event.target.value)} placeholder="ada@example.com, tunde@example.com" />}
         </Field>
         <ErrorNotice error={invite.error} className="mt-2" />
         <button className="btn-dark btn-sm mt-2" disabled={invite.isPending || !addresses.length || addresses.length > 50}>{invite.isPending ? 'Sending…' : `Send ${addresses.length > 1 ? `${addresses.length} invites` : 'invite'}`}</button>
-      </form>
+      </form> : <div>
+        <Field label="Their WhatsApp number" hint="Opens WhatsApp with the invite ready to send. Leave it empty to pick a chat or group.">
+          {(props) => <input {...props} className="field num" type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="0803 123 4567" />}
+        </Field>
+        <a className="btn-dark btn-sm mt-2" href={`https://wa.me/${whatsappNumber(phone)}?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer noopener">Send on WhatsApp</a>
+      </div>}
       <form className="border-t border-line pt-5" onSubmit={(event) => { event.preventDefault(); add.mutate(); }}>
         <Field label="Add someone on Jump" hint="By their @username. They’re added straight away.">
           {(props) => <div className="flex gap-2">

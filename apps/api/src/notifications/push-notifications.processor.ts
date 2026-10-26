@@ -7,12 +7,15 @@ import { PUSH_NOTIFICATIONS_QUEUE } from '../jobs/jobs.module';
 import { RANK_ORDER } from '../tables/scoring-engine';
 import { boostMessage, pickBoosts, StandingRow } from './standing-boost';
 import { claimPodiumsToAnnounce } from '../tables/trophies';
+import { announceNewCompetitions, joinCommunityClub } from './community';
 
 type Pending = { id: string; userId: string; type: string; title: string; body: string; link: string | null; createdAt: Date; readAt?: Date | null };
 type ExpoMessage = { to: string; title: string; body: string; sound: 'default'; badge: number; channelId: string; data: { id: string; link: string | null; type: string } };
 type ExpoTicket = { status: 'ok' | 'error'; id?: string; message?: string; details?: { error?: string } };
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+/** The Expo project the app is built under (owner/slug in app.json); tokens from any other can't be reached. */
+const EXPO_PROJECT = '@ayomicoderrs/jump';
 /** Older than this when we reach it (the worker was down, say): mark it handled rather than buzz late. */
 const STALE_MINUTES = 30;
 /** Messages arrive on their own channel so runners can mute chat without muting results. */
@@ -41,12 +44,16 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     await this.queue.upsertJobScheduler('push-notifications', { every: 5_000 }, { name: 'send-push' });
     await this.queue.upsertJobScheduler('standing-boost', { every: 15 * 60_000 }, { name: 'standing-boost' });
     await this.queue.upsertJobScheduler('podium-announce', { every: 10 * 60_000 }, { name: 'podium-announce' });
+    await this.queue.upsertJobScheduler('competition-announce', { every: 60_000 }, { name: 'competition-announce' });
+    await this.queue.upsertJobScheduler('community-club', { every: 2 * 60_000 }, { name: 'community-club' });
   }
 
   async process(job: Job): Promise<void> {
     if (job.name === 'send-push') await this.sendPending();
     if (job.name === 'standing-boost') await this.queueStandingBoosts();
     if (job.name === 'podium-announce') await this.announcePodiums();
+    if (job.name === 'competition-announce') await this.announceCompetitions();
+    if (job.name === 'community-club') await this.joinCommunityClub();
   }
 
   /**
@@ -70,6 +77,18 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     );
     this.logger.log(`Announced ${rows.length} podium finishes`);
     return rows.length;
+  }
+
+  /** New public competitions go to everyone; it's notifications, so the sweep sends the pushes and emails. */
+  async announceCompetitions() {
+    const { competitions, notified } = await this.dataSource.transaction((manager) => announceNewCompetitions(manager));
+    if (competitions) this.logger.log(`Announced ${competitions} new competitions to ${notified} runners`);
+  }
+
+  async joinCommunityClub() {
+    const slug = this.config.get<string>('COMMUNITY_CLUB_SLUG') ?? 'jump-community-club';
+    const joined = await this.dataSource.transaction((manager) => joinCommunityClub(manager, slug));
+    if (joined) this.logger.log(`Added ${joined} runners to the community club`);
   }
 
   /**
@@ -164,7 +183,7 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [rows.map((row) => row.id)]);
   }
 
-  private async send(messages: ExpoMessage[]) {
+  private async send(messages: ExpoMessage[], retried = false): Promise<void> {
     if (!messages.length) return;
     const accessToken = this.config.get<string>('EXPO_ACCESS_TOKEN');
     const response = await fetch(EXPO_PUSH_URL, {
@@ -172,10 +191,44 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
       body: JSON.stringify(messages),
     });
-    if (!response.ok) throw new Error(`Expo push failed: ${response.status} ${await response.text().catch(() => '')}`);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      const stale = retried ? null : this.otherProjectTokens(text);
+      if (!stale) throw new Error(`Expo push failed: ${response.status} ${text}`);
+      // Phones registered under the old Expo account: their tokens can't share a request with today's
+      // (Expo turns the whole batch down), and nothing can reach them anyway. Drop them; send the rest.
+      await this.dataSource.query(`DELETE FROM "push_tokens" WHERE "token"=ANY($1::varchar[])`, [stale]);
+      this.logger.warn(`Removed ${stale.length} push tokens from another Expo project`);
+      const drop = new Set(stale);
+      return this.send(messages.filter((message) => !drop.has(message.to)), true);
+    }
     const { data } = await response.json() as { data: ExpoTicket[] };
+    // Anything Expo turned down is logged by kind, so a broken setup (no APNs key on EAS, say) shows up.
+    const failed = data.filter((ticket) => ticket.status === 'error' && ticket.details?.error !== 'DeviceNotRegistered');
+    if (failed.length) {
+      const kinds = [...new Set(failed.map((ticket) => `${ticket.details?.error ?? 'unknown'}: ${ticket.message ?? ''}`))];
+      this.logger.warn(`Expo refused ${failed.length} of ${messages.length} pushes — ${kinds.join(' | ')}`);
+    }
     // A phone that uninstalled Jump (or turned notifications off for good) stops getting pushes.
     const gone = data.flatMap((ticket, index) => (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered' ? [messages[index].to] : []));
     if (gone.length) await this.dataSource.query(`DELETE FROM "push_tokens" WHERE "token"=ANY($1::varchar[])`, [gone]);
   }
+
+  /** From a PUSH_TOO_MANY_EXPERIENCE_IDS refusal: the tokens that belong to a project other than Jump's. */
+  private otherProjectTokens(body: string): string[] | null {
+    try {
+      const { errors } = JSON.parse(body) as { errors?: Array<{ code?: string; details?: Record<string, string[]> }> };
+      const error = errors?.find((item) => item.code === 'PUSH_TOO_MANY_EXPERIENCE_IDS');
+      if (!error?.details) return null;
+      const projects = Object.entries(error.details);
+      const ours = this.config.get<string>('EXPO_PROJECT') || EXPO_PROJECT;
+      // Ours if it's there; otherwise whichever project most phones are on.
+      const keep = projects.find(([project]) => project === ours) ?? projects.sort((a, b) => b[1].length - a[1].length)[0];
+      const stale = projects.filter((entry) => entry !== keep).flatMap(([, tokens]) => tokens);
+      return stale.length ? stale : null;
+    } catch {
+      return null;
+    }
+  }
+
 }

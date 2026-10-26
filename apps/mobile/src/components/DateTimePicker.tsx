@@ -1,7 +1,7 @@
 import RNDateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fontFamily, radius } from '@/lib/theme';
+import { colors, fontFamily, radius, scheme } from '@/lib/theme';
 import { CalendarIcon, ClockIcon } from './icons';
 import { Sheet } from './Sheet';
 import { Button, FieldLabel, haptic, Hint } from './ui';
@@ -80,7 +80,7 @@ export function DateTimePicker({ label, hint, value, min, onChange, timeOnly }: 
       footer={<Button full title="Done" variant="dark" onPress={() => { commit(draft); setEditing(null); }} />}>
       <View style={{ alignItems: 'center' }}>
         <RNDateTimePicker value={draft} mode={editing ?? 'date'} display={editing === 'time' ? 'spinner' : 'inline'} minuteInterval={5}
-          minimumDate={editing === 'date' ? minimum : undefined} accentColor={colors.track} textColor={colors.ink} themeVariant="light"
+          minimumDate={editing === 'date' ? minimum : undefined} accentColor={colors.track} textColor={colors.ink} themeVariant={scheme}
           onChange={(_, picked) => picked && setDraft(picked)} style={{ alignSelf: 'stretch' }} />
       </View>
     </Sheet>}

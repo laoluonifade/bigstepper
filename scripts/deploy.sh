@@ -18,7 +18,7 @@ rsync -az --delete \
 
 # Env vars the server should take from apps/api/.env.production. Only these, and only when set locally,
 # so an empty or missing local value never blanks the server's. Values are never printed.
-SYNCED_ENV='GOOGLE_WEB_CLIENT_ID|GOOGLE_IOS_CLIENT_ID|GOOGLE_ANDROID_CLIENT_ID|APPLE_BUNDLE_ID|APPLE_TEAM_ID|APPLE_KEY_ID|APPLE_PRIVATE_KEY'
+SYNCED_ENV='EXPO_ACCESS_TOKEN|GOOGLE_WEB_CLIENT_ID|GOOGLE_IOS_CLIENT_ID|GOOGLE_ANDROID_CLIENT_ID|APPLE_BUNDLE_ID|APPLE_TEAM_ID|APPLE_KEY_ID|APPLE_PRIVATE_KEY'
 ENV_LINES="$(grep -E "^($SYNCED_ENV)=.+" "$ROOT/apps/api/.env.production" || true)"
 if [ -n "$ENV_LINES" ]; then
   echo "→ Syncing env: $(printf '%s\n' "$ENV_LINES" | cut -d= -f1 | tr '\n' ' ')"

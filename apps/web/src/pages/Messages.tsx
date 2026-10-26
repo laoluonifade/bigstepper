@@ -19,7 +19,7 @@ import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecord
 import type { Activity, AvatarStyle, CheckoutResponse, Unit } from '../lib/types';
 
 type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; senderId: string; unreadCount: number };
-type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; unreadCount: number };
+type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; unreadCount: number };
 type InboxRow = DirectRow | ClubRow;
 /** Whoever wrote a message: the other person in a DM, any member in a club chat. */
 type Person = { displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; username?: string | null };
@@ -498,7 +498,7 @@ function ClubInboxRow({ row }: { row: ClubRow }) {
   return <Link to="/clubs/$id/chat" params={{ id: row.clubSlug }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
     <ClubLogo club={{ name: row.clubName, logoUrl: row.logoUrl }} size={48} />
     <span className="min-w-0 flex-1">
-      <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.clubName}</span> <span className="text-[13px] text-ink-3">club</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
+      <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.clubName}</span>{row.verified && <VerifiedTick className="ml-1" />} <span className="ml-1 rounded-full bg-ink/[0.07] px-1.5 py-0.5 align-[2px] text-[10px] font-bold uppercase tracking-wide text-ink-2">{row.memberCount ? `Club · ${row.memberCount}` : 'Club'}</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
       <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{row.senderId === user.id ? 'You' : row.senderName.split(' ')[0]}: {preview}</span><UnreadBadge count={row.unreadCount} /></span>
     </span>
   </Link>;

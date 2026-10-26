@@ -13,7 +13,7 @@ import { useUnreadMessages } from '@/lib/queries';
 import { colors, fontFamily, GUTTER } from '@/lib/theme';
 
 type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; senderId: string; unreadCount: number; readAt?: string | null };
-type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; unreadCount: number };
+type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; unreadCount: number };
 type InboxRow = DirectRow | ClubRow;
 
 const preview = (row: InboxRow) => (row.kind === 'voice' ? '🎤 Voice note' : row.body || 'Shared an activity');
@@ -36,8 +36,9 @@ export default function MessagesScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
               <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text numberOfLines={1} style={styles.name}>{row.type === 'club' ? row.clubName : row.displayName}</Text>
-                {row.type === 'direct' && row.verified ? <VerifiedTick /> : null}
-                <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{row.type === 'club' ? 'club' : `@${row.username}`}</Txt>
+                {row.verified ? <VerifiedTick /> : null}
+                {row.type === 'club' ? <View style={styles.clubTag}><Txt size={10} weight="bold" upper tracking={0.06}>{row.memberCount ? `Club · ${row.memberCount}` : 'Club'}</Txt></View>
+                  : <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{`@${row.username}`}</Txt>}
               </View>
               <Txt size={12} weight={row.unreadCount ? 'semibold' : 'regular'} color={row.unreadCount ? 'ink' : 'ink3'}>{when(row.createdAt)}</Txt>
             </View>
@@ -57,4 +58,5 @@ export default function MessagesScreen() {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: GUTTER, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   name: { fontFamily: fontFamily('bold'), fontSize: 15, color: colors.ink, flexShrink: 1 },
+  clubTag: { borderRadius: 999, backgroundColor: colors.inkWash, paddingHorizontal: 7, paddingVertical: 2 },
 });

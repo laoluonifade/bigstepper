@@ -58,3 +58,16 @@ export function prizesPayload(draft: PrizeDraft) {
     committed: true as const,
   };
 }
+
+/** Jump's fee on cash a host puts up, taken from what they pay (the API's calculatePrizeBreakdown). */
+export const JUMP_FEE_BPS = 1500;
+
+/**
+ * A host types the prize winners should share; this is what they pay so that, after Jump's fee, the
+ * prize is exactly that (or a kobo over, never under).
+ */
+export function fundingForPrize(prizeKobo: number) {
+  let totalKobo = Math.ceil(prizeKobo * 10_000 / (10_000 - JUMP_FEE_BPS));
+  while (totalKobo - Math.floor(totalKobo * JUMP_FEE_BPS / 10_000) < prizeKobo) totalKobo += 1;
+  return { totalKobo, feeKobo: totalKobo - prizeKobo };
+}

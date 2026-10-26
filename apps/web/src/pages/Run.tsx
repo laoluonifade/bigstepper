@@ -227,12 +227,17 @@ function signalStrength(accuracy: number | null) {
   return 1;
 }
 
+/** Shorter than this (0.1 km) isn't saved as an activity. */
+const MIN_SAVE_METRES = 100;
+
 function Scoreboard() {
   const recorder = useRecorder();
   const navigate = useNavigate();
   const unit = useUnit();
   const now = useNow(1000);
   const [confirming, setConfirming] = useState<'finish' | 'discard' | null>(null);
+  // Under 0.1 km isn't saved (the API drops it too), so Finish offers to discard instead.
+  const tooShort = confirming === 'finish' && recorder.distanceMetres < MIN_SAVE_METRES;
   const recording = recorder.phase === 'recording';
   const finishing = recorder.phase === 'finishing';
   const seconds = movingSeconds(recorder.session, now);
@@ -317,12 +322,12 @@ function Scoreboard() {
         </p>}
 
         {confirming ? <div className="mt-5 animate-rise">
-          <p className="text-[19px] font-bold tracking-tight">{confirming === 'finish' ? `Finish this ${noun}?` : `Discard this ${noun}?`}</p>
-          <p className="mt-1 text-[14px] text-ink-2">{confirming === 'finish' ? `${formatDistance(recorder.distanceMetres, unit)} will be submitted for verification.` : 'Nothing is saved or counted. This can’t be undone.'}</p>
+          <p className="text-[19px] font-bold tracking-tight">{tooShort ? 'Too short to save' : confirming === 'finish' ? `Finish this ${noun}?` : `Discard this ${noun}?`}</p>
+          <p className="mt-1 text-[14px] text-ink-2">{tooShort ? `Jump saves ${noun}s from 0.1 km, and this one is ${formatDistance(recorder.distanceMetres, unit)}. Keep going, or discard it.` : confirming === 'finish' ? `${formatDistance(recorder.distanceMetres, unit)} will be submitted for verification.` : 'Nothing is saved or counted. This can’t be undone.'}</p>
           <div className="mt-4 grid grid-cols-2 gap-3 pb-4">
             <button type="button" className="btn-secondary min-h-14 rounded-full" onClick={() => setConfirming(null)} disabled={finishing}>{confirming === 'finish' ? 'Keep going' : 'Keep it'}</button>
-            <button type="button" className={cx('btn min-h-14 rounded-full border-2 border-ink text-paper shadow-hard active:translate-x-[3px] active:translate-y-[3px] active:shadow-none', confirming === 'finish' ? 'bg-ink' : 'bg-bad')} onClick={() => void (confirming === 'finish' ? finish() : discard())} disabled={finishing}>
-              {finishing ? 'Saving…' : confirming === 'finish' ? 'Finish' : 'Discard'}
+            <button type="button" className={cx('btn min-h-14 rounded-full border-2 border-ink text-paper shadow-hard active:translate-x-[3px] active:translate-y-[3px] active:shadow-none', confirming === 'finish' && !tooShort ? 'bg-ink' : 'bg-bad')} onClick={() => void (confirming === 'finish' && !tooShort ? finish() : discard())} disabled={finishing}>
+              {finishing ? 'Saving…' : confirming === 'finish' && !tooShort ? 'Finish' : 'Discard'}
             </button>
           </div>
         </div> : <div className="mt-5 flex items-start justify-center gap-10 pb-3">
