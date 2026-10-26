@@ -24,11 +24,11 @@ describe('judgeActivity', () => {
   });
 
   it('caps a short walk padded with thousands of shaken steps, without flagging the real walk', () => {
-    const verdict = judgeActivity(track(50), samples(120, 12), 'walk');
+    const verdict = judgeActivity(track(150), samples(120, 12), 'walk');
     expect(verdict.status).toBe('VERIFIED');
     expect(verdict.reasons.has('STEPS_WITHOUT_MOVEMENT')).toBe(true);
-    // Shaking gains nothing: steps are capped to what 50 m allows.
-    expect(verdict.validatedSteps).toBe(Math.ceil(50 / 0.45));
+    // Shaking gains nothing: steps are capped to what 150 m allows.
+    expect(verdict.validatedSteps).toBe(Math.ceil(150 / 0.45));
   });
 
   it('does not flag steps the phone held back while the screen was locked', () => {

@@ -18,8 +18,6 @@ const MIN_STRIDE_METRES = 0.45;
 const SHAKE_ALLOWANCE_STEPS = 150;
 /** At least this share of fixes must be accurate enough to use (cities and tall buildings knock some out). */
 const MIN_GPS_CONFIDENCE = 0.35;
-/** Shorter than this (0.1 km) isn't an activity: it's not saved, counted or posted. The apps say so before finishing. */
-export const MIN_ACTIVITY_METRES = 100;
 
 /**
  * Whether a recorded activity counts, and how many of its steps do.
@@ -101,18 +99,6 @@ export class ActivityVerificationProcessor extends WorkerHost {
     const movingSeconds = track.movingSeconds;
     const confidence = track.confidence;
     const cycling = activity.activityType === 'cycle';
-    if (!job.data.recheck && validatedDistance < MIN_ACTIVITY_METRES) {
-      await this.dataSource.transaction(async (manager) => {
-        await manager.delete(Activity, { id: activity.id, verificationStatus: 'PENDING_VERIFICATION' });
-        await manager.delete(RunningSession, { id: activity.runningSessionId }); // GPS fixes go with it
-        await manager.query(
-          `INSERT INTO "notifications" ("userId","type","title","body") VALUES ($1,'ACTIVITY_TOO_SHORT',$2,$3)`,
-          [activity.userId, `Your ${activity.activityType} was too short to save`, 'Jump saves walks, runs and rides from 0.1 km. Head outdoors and GPS will pick you up.'],
-        );
-      });
-      this.logger.log(`Activity ${activity.id} removed: ${Math.round(validatedDistance)} m is too short`);
-      return;
-    }
     // Steps still count as steps; they no longer turn into distance.
     const stepDistance = 0;
 

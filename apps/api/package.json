@@ -11,7 +11,8 @@
     "test": "jest --passWithNoTests",
     "migration:run": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:run",
     "migration:revert": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:revert",
-    "admin:provision": "ts-node -P tsconfig.json src/scripts/provision-admin.ts"
+    "admin:provision": "ts-node -P tsconfig.json src/scripts/provision-admin.ts",
+    "activity:credit": "ts-node -P tsconfig.json src/scripts/credit-activity.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.2.3",

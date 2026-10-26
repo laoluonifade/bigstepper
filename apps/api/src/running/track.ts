@@ -11,8 +11,8 @@ export function stepDistanceMetres(steps: number, activityType: 'walk' | 'run' |
 export const MAX_USABLE_ACCURACY_METRES = 50;
 /** Faster than this between two points isn't on foot (≈ a 1:51/km sprint). */
 export const MAX_FOOT_SPEED_MPS = 9;
-/** 45 km/h allows typical cycling; GPS alone still cannot distinguish a slow car. */
-export const MAX_CYCLING_SPEED_MPS = 12.5;
+/** 72 km/h: fast road riding, descents and e-bikes count. A car is caught by the sustained-speed rule, not this cap. */
+export const MAX_CYCLING_SPEED_MPS = 20;
 /** Slower than this isn't walking: it's the phone's position drifting while you stand still. */
 export const MIN_FOOT_SPEED_MPS = 0.4;
 /** Fixes are averaged with their neighbours this far either side, so random wobble cancels out. */

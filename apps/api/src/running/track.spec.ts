@@ -98,7 +98,13 @@ describe('measureTrack', () => {
   });
 
   it('flags sustained vehicle-speed travel on a cycling activity', () => {
-    expect(measureTrack(track(120, 16), { activityType: 'cycle' }).reasons.has('IMPLAUSIBLE_SPEED')).toBe(true);
+    expect(measureTrack(track(120, 25), { activityType: 'cycle' }).reasons.has('IMPLAUSIBLE_SPEED')).toBe(true);
+  });
+
+  it('counts a fast ride (about 54 km/h) instead of dropping it as too fast', () => {
+    const fast = measureTrack(track(120, 15), { activityType: 'cycle' });
+    expect(fast.distanceMetres).toBeGreaterThan(1_500);
+    expect(fast.reasons.has('IMPLAUSIBLE_SPEED')).toBe(false);
   });
 
   it('ignores fixes worse than ±50 m (indoor Wi-Fi location)', () => {
