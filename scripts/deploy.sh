@@ -56,6 +56,8 @@ fi
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 git archive "$SHA" | tar -x -C "$BUILD"
+# mktemp makes the folder private (700); rsync would copy that onto the app folder and lock Caddy out.
+chmod 755 "$BUILD"
 
 echo "→ Syncing code"
 rsync -az --delete \
@@ -96,6 +98,10 @@ ssh "$HOST" "chown -R deploy:deploy $APP_DIR && sudo -u deploy bash -c '
 ' && systemctl restart startajump-api"
 
 echo "→ Health check"
+for site in https://startajump.com https://admin.startajump.com; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$site/" || true)"
+  [ "$code" = "200" ] || { echo "✗ $site returned $code"; SITE_DOWN=1; }
+done
 HEALTHY=""
 for _ in $(seq 1 20); do
   if curl -fsS --max-time 5 https://api.startajump.com/v1/health >/dev/null 2>&1; then HEALTHY=1; break; fi
@@ -108,6 +114,8 @@ if [ -z "$HEALTHY" ]; then
   exit 1
 fi
 echo "  API healthy (Postgres and Redis up)"
+[ -z "${SITE_DOWN:-}" ] || { echo "✗ The API is up but the web or admin site isn't serving. Check: ssh $HOST 'ls -ld $APP_DIR $APP_DIR/apps/web/dist'"; exit 1; }
+echo "  Web and admin serving"
 
 if [ -z "$ROLLBACK" ]; then
   TAG="deploy-$(date -u +%Y%m%d-%H%M)-$SHORT"
