@@ -78,7 +78,7 @@ describe('PushNotificationsProcessor', () => {
   it('drops phones still on the old Expo project and sends to the rest, when Expo refuses the mixed batch', async () => {
     const { processor, query } = setup([{ id: 'n1', userId: 'u1', type: 'X', title: 'x', body: 'y', link: null, createdAt: now() }],
       [{ token: 'ExponentPushToken[old]', userId: 'u1' }, { token: 'ExponentPushToken[new]', userId: 'u1' }]);
-    const refusal = { errors: [{ code: 'PUSH_TOO_MANY_EXPERIENCE_IDS', details: { '@ayomicoder/jump': ['ExponentPushToken[old]'], '@ayomicoderrs/jump': ['ExponentPushToken[new]'] } }] };
+    const refusal = { errors: [{ code: 'PUSH_TOO_MANY_EXPERIENCE_IDS', details: { '@ayomicoder/jump': ['ExponentPushToken[old]'], '@startajump/jump': ['ExponentPushToken[new]'] } }] };
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: false, status: 400, text: async () => JSON.stringify(refusal) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [{ status: 'ok' }] }) });

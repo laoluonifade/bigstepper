@@ -14,7 +14,7 @@ type ExpoMessage = { to: string; title: string; body: string; sound: 'default'; 
 type ExpoTicket = { status: 'ok' | 'error'; id?: string; message?: string; details?: { error?: string } };
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
-const EXPO_PROJECT = '@ayomicoderrs/jump';
+const EXPO_PROJECT = '@startajump/jump';
 const STALE_MINUTES = 30;
 const CHANNEL_FOR: Record<string, string> = { DIRECT_MESSAGE: 'messages', MESSAGE_REACTION: 'messages' };
 const BOOST_FROM = 17;
