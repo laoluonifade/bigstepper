@@ -4,86 +4,110 @@ import type { CompetitionTable, StandingRow, Unit } from '@jump/shared/types';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
 import { ComponentRef, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { Linking, PixelRatio, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { WEB_URL, post } from '@/lib/api';
 // Share pictures look the same whoever posts them, so they use the brand palette, not the theme's.
 import { brand as colors, colors as theme, fontFamily, mono, radius } from '@/lib/theme';
 import { CopyIcon, JumpLogo, LinkIcon, ShareIcon } from './icons';
 import { Sheet } from './Sheet';
+import { Sticker } from './Stickers';
 import { Avatar, Button, haptic, Txt } from './ui';
 
-/** The card's base size in points; it's captured at 3× for a 1080 px wide image. */
+/** The card's base size in points; it's captured at 1080 px wide, like the leaderboard picture. */
 const BASE = { story: { w: 360, h: 640 }, post: { w: 360, h: 450 } } as const;
-const PAPER = colors.paper;
+const PAD = 22;
+
+type Person = CompetitionCardData['podium'][number];
+type Faces = Map<string, { name: string; url: string | null; style?: StandingRow['avatarStyle'] }>;
+
+/** Where each of the top three sits on the podium: left, top, width, height, tilt. First is raised in the middle. */
+const PODIUM = {
+  story: [[106, 0, 104, 146, 2], [0, 18, 98, 128, -4], [218, 22, 98, 124, 4]],
+  post: [[106, 0, 104, 110, 2], [0, 12, 98, 98, -4], [218, 16, 98, 94, 4]],
+} as const;
+const PLACES = [{ place: '1st', bg: colors.volt }, { place: '2nd', bg: colors.card }, { place: '3rd', bg: colors.track }];
+
+/** One of the top three as a sticker: place, face, name and score, as on the leaderboard picture. */
+function PodiumSticker({ person, index, story, mine, faces }: { person: Person; index: number; story: boolean; mine: boolean; faces: Faces }) {
+  const [x, y, w, h, tilt] = PODIUM[story ? 'story' : 'post'][index];
+  const first = index === 0;
+  const size = story ? (first ? 40 : 34) : (first ? 32 : 28);
+  const face = faces.get(person.userId);
+  return <Sticker p={colors} bg={PLACES[index].bg} tilt={tilt} padded={false} width={w} style={{ position: 'absolute', left: x, top: y }}>
+    <View style={{ height: h - 3, alignItems: 'center', paddingTop: story ? 10 : 7 }}>
+      <Text style={[styles.place, { fontSize: first ? 10 : 9 }]}>{PLACES[index].place}</Text>
+      <View style={{ marginTop: 2, borderRadius: size, borderWidth: 1.2, borderColor: colors.ink }}><Avatar name={face?.name ?? person.name} src={face?.url} avatarStyle={face?.style} size={size} round /></View>
+      <Text style={[styles.podiumName, { fontSize: first ? 11.5 : 10.5 }]} numberOfLines={1}>{mine ? 'You' : person.name.split(' ')[0]}</Text>
+      <Text style={[styles.podiumScore, { fontSize: story ? (first ? 22 : 18) : (first ? 18 : 15) }]} numberOfLines={1} adjustsFontSizeToFit>{person.score}</Text>
+    </View>
+  </Sticker>;
+}
 
 /**
- * The competition as a picture to post: what it is, what's at stake, who's winning, and the join code at
- * billboard size. The same layout as the web's canvas card, drawn with views.
+ * The competition as a picture to post, in the leaderboard picture's sticker style: what it is, what wins,
+ * who's on the podium, and the join code big enough to type from a story.
  */
-function CompetitionCard({ data, format, avatars }: { data: CompetitionCardData; format: CardFormat; avatars: Map<string, { name: string; url: string | null; style?: StandingRow['avatarStyle'] }> }) {
+function CompetitionCard({ data, format, faces }: { data: CompetitionCardData; format: CardFormat; faces: Faces }) {
   const { w: W, h: H } = BASE[format];
   const story = format === 'story';
-  const k = story ? 1 : 0.8;
-  const rows = [...data.podium.slice(0, 3)];
-  if (data.me?.scored && !rows.some((row) => row.userId === data.me!.userId)) rows.push(data.me);
-  const callout = data.me ? (data.me.scored && data.me.rank ? `I’M #${data.me.rank} · BEAT ME` : 'I’M IN · JOIN ME') : 'JOIN ME';
-  const lanes = Array.from({ length: 8 }, (_, lane) => {
-    const lift = lane * (story ? 31 : 23);
-    return `M-40 ${H * 0.98 - lift}C${W * 0.35} ${H * 0.82 - lift} ${W * 0.62} ${H * 0.42 - lift * 0.8} ${W + 40} ${H * 0.3 - lift * 0.7}`;
-  });
-  return <View style={{ width: W, height: H, backgroundColor: colors.ink, overflow: 'hidden' }}>
-    <Svg width={W} height={H} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <RadialGradient id="glowTop" cx={W} cy={0} rx={W * 1.05} ry={W * 1.05} gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor="#FF5A1F" stopOpacity="0.42" /><Stop offset="1" stopColor="#FF5A1F" stopOpacity="0" /></RadialGradient>
-        <RadialGradient id="glowLow" cx={0} cy={H} rx={W * 0.95} ry={W * 0.95} gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={colors.volt} stopOpacity="0.22" /><Stop offset="1" stopColor={colors.volt} stopOpacity="0" /></RadialGradient>
-      </Defs>
-      <Rect width={W} height={H} fill="url(#glowTop)" />
-      <Rect width={W} height={H} fill="url(#glowLow)" />
-      {lanes.map((d, index) => <Path key={index} d={d} fill="none" stroke="rgba(242,239,232,0.06)" strokeWidth={7} />)}
-      <Path d={`M-40 ${H * 0.9}C${W * 0.3} ${H * 0.86} ${W * 0.7} ${H * 0.7} ${W + 40} ${H * (story ? 0.56 : 0.6)}`} fill="none" stroke={data.accent} strokeOpacity={0.85} strokeWidth={5} />
-    </Svg>
-    <View style={{ flex: 1, paddingHorizontal: 28, paddingTop: story ? 34 : 24 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <JumpLogo height={22 * k} color={PAPER} />
-        <View style={[styles.callout, { height: 25 * k + 2 }]}><Text style={[styles.calloutText, { fontSize: 10 * k + 0.5 }]}>{callout}</Text></View>
+  const podium = data.podium.slice(0, 3);
+  const callout = data.me ? (data.me.scored && data.me.rank ? `I’m #${data.me.rank} · beat me` : 'I’m in · join me') : 'Join me';
+  const meBelow = story && data.me?.scored && !podium.some((row) => row.userId === data.me!.userId) ? data.me : null;
+  const cash = data.stakes.startsWith('₦');
+  const chips = [data.stakes, `${data.entrants} in`, data.timing].filter(Boolean);
+  return <View style={{ width: W, height: H, backgroundColor: colors.paper, overflow: 'hidden', paddingHorizontal: PAD, paddingTop: PAD }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <JumpLogo height={14} color={colors.ink} />
+      <View style={styles.tag}><Text style={styles.tagText} numberOfLines={1}>{callout}</Text></View>
+    </View>
+    <Text style={[styles.title, { marginTop: story ? 24 : 12, fontSize: story ? 30 : 21, lineHeight: story ? 32 : 22, height: story ? 64 : 44 }]} numberOfLines={2} adjustsFontSizeToFit>{data.title}</Text>
+    <View style={[styles.tag, { alignSelf: 'flex-start', marginTop: story ? 10 : 8 }]}><Text style={styles.tagText} numberOfLines={1}>{data.kind}</Text></View>
+
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: story ? 22 : 12 }}>
+      <Sticker p={colors} bg={data.accent} tilt={-2} style={{ flex: 1.35, zIndex: 1, marginTop: 4 }}>
+        <Text style={[styles.big, { fontSize: story ? 58 : 44, lineHeight: story ? 60 : 46 }]} numberOfLines={1} adjustsFontSizeToFit>{data.big}</Text>
+        <Text style={styles.label} numberOfLines={1}>{data.small}</Text>
+      </Sticker>
+      <View style={{ flex: 1, marginLeft: -4, zIndex: 2 }}>
+        {chips.map((text, index) => <Sticker key={index} p={colors} bg={index === 0 && cash ? colors.ink : colors.card} tilt={[3, -2, 2][index]} padded={false} style={{ marginTop: index ? -3 : 0, marginLeft: index === 1 ? -8 : 0 }}>
+          <Text style={[styles.chip, { paddingVertical: story ? 9 : 6 }, index === 0 && cash && { color: colors.volt }]} numberOfLines={1} adjustsFontSizeToFit>{text}</Text>
+        </Sticker>)}
       </View>
-      <Text style={[styles.kind, { marginTop: story ? 38 : 22, fontSize: 10.5 * k }]} numberOfLines={1}>{data.kind.toUpperCase()}</Text>
-      <Text style={[styles.big, { color: data.accent, fontSize: story ? 110 : 70, lineHeight: story ? 104 : 68 }]} numberOfLines={1} adjustsFontSizeToFit>{data.big.toUpperCase()}</Text>
-      <Text style={[styles.small, { fontSize: 13 * k + 0.5 }]} numberOfLines={1}>{data.small.toUpperCase()}</Text>
-      <Text style={[styles.title, { fontSize: story ? 23 : 17, lineHeight: story ? 27 : 20, marginTop: story ? 20 : 12 }]} numberOfLines={story ? 2 : 1}>{data.title}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: story ? 14 : 10 }}>
-        {[data.stakes, `${data.entrants} IN`, data.timing].filter(Boolean).map((text, index) => <View key={index} style={[styles.chip, index === 0 && data.stakes.startsWith('₦') && { backgroundColor: colors.volt }]}>
-          <Text style={[styles.chipText, { fontSize: 8.5 * k + 0.5 }, index === 0 && data.stakes.startsWith('₦') && { color: colors.ink }]}>{text.toUpperCase()}</Text>
-        </View>)}
+    </View>
+
+    <View style={{ height: story ? 150 : 112, marginTop: story ? 24 : 12 }}>
+      {podium.length ? [1, 2, 0].map((index) => podium[index] ? <PodiumSticker key={index} person={podium[index]} index={index} story={story} mine={podium[index].userId === data.me?.userId} faces={faces} /> : null)
+        : <Sticker p={colors} bg={colors.card} tilt={-1} style={{ marginTop: story ? 40 : 26 }}>
+          <Text style={styles.empty}>Nobody’s scored yet.</Text>
+          <Text style={styles.label}>First run takes it</Text>
+        </Sticker>}
+    </View>
+    {meBelow && <Sticker p={colors} bg={colors.volt} tilt={1} padded={false} style={{ marginTop: 14 }}>
+      <View style={styles.meLine}>
+        <Text style={styles.meRank}>{meBelow.rank}</Text>
+        <Text style={styles.meName}>You</Text>
+        <Text style={styles.meScore}>{meBelow.score}</Text>
       </View>
-      <View style={[styles.board, { marginTop: story ? 18 : 10, paddingVertical: story ? 14 : 10 }]}>
-        <Text style={[styles.boardTitle, { fontSize: 8.5 * k + 0.5 }]}>LIVE LEADERBOARD</Text>
-        {!rows.length && <Text style={[styles.boardEmpty, { fontSize: 13 * k }]}>Nobody’s scored yet. First run takes it.</Text>}
-        {rows.map((row) => {
-          const mine = row.userId === data.me?.userId;
-          const person = avatars.get(row.userId);
-          return <View key={row.userId} style={[styles.boardRow, { height: story ? 35 : 26 }, mine && { backgroundColor: 'rgba(228,255,58,0.85)' }]}>
-            <View style={[styles.medal, { width: 20 * k, height: 20 * k, backgroundColor: row.rank === 1 ? '#FFD34E' : row.rank === 2 ? '#C9CFD6' : row.rank === 3 ? '#E0A06A' : 'rgba(18,18,18,0.08)' }]}>
-              <Text style={{ fontFamily: fontFamily('black'), fontSize: 10.5 * k, color: colors.ink }}>{row.rank}</Text>
-            </View>
-            <View style={{ borderRadius: 30, borderWidth: 1, borderColor: colors.edge }}><Avatar name={person?.name ?? row.name} src={person?.url} avatarStyle={person?.style} size={story ? 23 : 18} round /></View>
-            <Text style={[styles.boardName, { fontSize: 12 * k }]} numberOfLines={1}>{mine ? 'You' : row.name.split(' ')[0]}</Text>
-            <Text style={[styles.boardName, { fontSize: 12 * k, flex: 0 }]}>{row.score}</Text>
-          </View>;
-        })}
-      </View>
-      <View style={[styles.cta, { marginTop: story ? 16 : 10, height: story ? 83 : 64 }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.ctaLabel, { fontSize: 10.5 * k }]}>JOIN WITH CODE</Text>
-          <Text style={[styles.code, { fontSize: story ? 38 : 30 }]} numberOfLines={1} adjustsFontSizeToFit>{data.code}</Text>
+    </Sticker>}
+
+    <View style={{ position: 'absolute', left: PAD, right: PAD, bottom: story ? 44 : 38 }}>
+      <Sticker p={colors} bg={colors.ink} tilt={-1.5} padded={false}>
+        <View style={[styles.code, { height: story ? 76 : 60 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.codeLabel}>Join with code</Text>
+            <Text style={[styles.codeText, { fontSize: story ? 38 : 30 }]} numberOfLines={1} adjustsFontSizeToFit>{data.code}</Text>
+          </View>
+          <View style={[styles.arrow, { width: story ? 44 : 38, height: story ? 44 : 38 }]}>
+            <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M4 20 20 4M9 4h11v11" fill="none" stroke={colors.ink} strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
+          </View>
         </View>
-        <View style={[styles.arrow, { width: 44 * k, height: 44 * k }]}>
-          <Svg width={20 * k} height={20 * k} viewBox="0 0 24 24"><Path d="M4 20 20 4M9 4h11v11" fill="none" stroke={colors.volt} strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
-        </View>
-      </View>
-      <Text style={[styles.link, { marginTop: 'auto', marginBottom: story ? 20 : 10, fontSize: 10.5 * k }]}>{data.link}</Text>
+      </Sticker>
+    </View>
+    <View style={{ position: 'absolute', left: PAD, right: PAD, bottom: PAD - 6, flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text style={[styles.footer, { flexShrink: 1, marginRight: 8 }]} numberOfLines={1}>{data.link}</Text>
+      <Text style={[styles.footer, { color: colors.track }]}>MOVE. COMPETE. WIN.</Text>
     </View>
   </View>;
 }
@@ -98,7 +122,7 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
   // Counted for the host's numbers (views and shares on the club dashboard). Fire and forget.
   const track = (channel: string) => void post(`/tables/${table.id}/shared`, { channel }).catch(() => undefined);
   const data = useMemo(() => competitionCardData(table, rows, viewerId, unit, Date.now(), `${WEB_URL.replace(/^https?:\/\//, '')}/competitions/${table.code}`), [table, rows, viewerId, unit]);
-  const avatars = useMemo(() => new Map(rows.map((row) => [row.userId, { name: row.displayName, url: row.avatarUrl ?? null, style: row.avatarStyle }])), [rows]);
+  const faces = useMemo(() => new Map(rows.map((row) => [row.userId, { name: row.displayName, url: row.avatarUrl ?? null, style: row.avatarStyle }])), [rows]);
   const mine = rows.find((row) => row.userId === viewerId);
   const caption = mine && hasScored(table.scoringMethod, mine.score)
     ? `I’m #${mine.rank} in “${table.title}” on Jump. Think you can beat me? Join with code ${table.code}`
@@ -110,7 +134,9 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
     setBusy(true);
     setStatus(null);
     try {
-      const uri = await captureRef(card, { format: 'png', quality: 1, width: 1080, height: Math.round((1080 * h) / w), result: 'tmpfile' });
+      // iOS reads the size in points and renders at the screen's scale; Android reads pixels. Either way: 1080 px wide.
+      const across = Platform.OS === 'ios' ? 1080 / PixelRatio.get() : 1080;
+      const uri = await captureRef(card, { format: 'png', quality: 1, width: across, height: (across * h) / w, result: 'tmpfile' });
       if (await Sharing.isAvailableAsync()) { track('card'); await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: table.title, UTI: 'public.png' }); }
       else setStatus('Sharing isn’t available on this phone.');
     } catch {
@@ -123,20 +149,24 @@ export function ShareCompetitionSheet({ open, onOpenChange, table, rows, viewerI
   return <Sheet open={open} onOpenChange={onOpenChange} title="Share this competition">
     <View style={{ flexDirection: 'row', gap: 8 }} accessibilityRole="tablist">
       {([['story', 'Story', 'Instagram · WhatsApp status'], ['post', 'Post', 'X · chats · feed']] as const).map(([value, label, hint]) => <Pressable key={value} onPress={() => { haptic(); setFormat(value); }}
-        accessibilityRole="tab" accessibilityState={{ selected: format === value }} style={[styles.format, format === value && { backgroundColor: colors.ink }]}>
-        <Txt size={14} weight="bold" color={format === value ? 'paper' : 'ink'}>{label}</Txt>
-        <Txt size={11} style={{ color: format === value ? 'rgba(242,239,232,0.7)' : colors.ink3 }}>{hint}</Txt>
+        accessibilityRole="tab" accessibilityState={{ selected: format === value }} style={[styles.format, format === value && { backgroundColor: theme.ink }]}>
+        <Txt size={14} weight="bold" style={{ color: format === value ? theme.paper : theme.ink }}>{label}</Txt>
+        <Txt size={11} style={{ color: format === value ? theme.paper : theme.ink3, opacity: format === value ? 0.7 : 1 }}>{hint}</Txt>
       </Pressable>)}
     </View>
     {/* The preview is the card itself, scaled down; the capture renders it full size. */}
     <View style={{ alignItems: 'center', marginTop: 16 }}>
       <View style={[styles.preview, { width: w * preview, height: h * preview }]}>
         <View style={{ transform: [{ scale: preview }], transformOrigin: 'top left' }}>
-          <View ref={card} collapsable={false}><CompetitionCard data={data} format={format} avatars={avatars} /></View>
+          <CompetitionCard data={data} format={format} faces={faces} />
         </View>
       </View>
     </View>
-    <Button full title={busy ? 'Making your card…' : 'Share card'} icon={<ShareIcon size={16} />} loading={busy} style={{ marginTop: 16 }} onPress={() => void share()} />
+    {/* What's captured: the same card at full size, off screen (capturing the shrunk preview saved a zoomed-in corner). */}
+    <View style={styles.offscreen} pointerEvents="none">
+      <View ref={card} collapsable={false}><CompetitionCard data={data} format={format} faces={faces} /></View>
+    </View>
+    <Button full title={busy ? 'Making your card…' : 'Share card'} icon={<ShareIcon size={16} color={theme.onAccent} />} loading={busy} style={{ marginTop: 16 }} onPress={() => void share()} />
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
       <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="WhatsApp" onPress={() => { track('whatsapp'); void Linking.openURL(`https://wa.me/?text=${encodeURIComponent(`${caption} ${url}`)}`); }} />
       <Button variant="secondary" size="sm" full style={{ flex: 1 }} title="X" onPress={() => { track('x'); void Linking.openURL(`https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(url)}`); }} />
@@ -163,25 +193,26 @@ const styles = StyleSheet.create({
   linkText: { flex: 1, fontFamily: mono, fontSize: 13, color: theme.ink },
   copyLink: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, borderRadius: radius.md, backgroundColor: colors.volt, paddingHorizontal: 12 },
   copyLinkText: { fontFamily: fontFamily('bold', 'wide'), fontSize: 11, letterSpacing: 0.6, color: colors.ink },
-  format: { flex: 1, borderRadius: 12, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 8 },
-  preview: { borderRadius: 12, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.ink, overflow: 'hidden' },
-  callout: { borderRadius: 999, backgroundColor: colors.volt, paddingHorizontal: 11, justifyContent: 'center' },
-  calloutText: { fontFamily: fontFamily('black', 'wide'), color: colors.ink },
-  kind: { fontFamily: fontFamily('extrabold', 'wide'), color: 'rgba(242,239,232,0.65)' },
-  big: { fontFamily: fontFamily('extrabold', 'narrow'), letterSpacing: -2, marginLeft: -2, marginTop: 4 },
-  small: { fontFamily: fontFamily('extrabold', 'wide'), color: PAPER, marginTop: 4 },
-  title: { fontFamily: fontFamily('extrabold'), color: PAPER },
-  chip: { borderRadius: 999, backgroundColor: 'rgba(242,239,232,0.12)', paddingHorizontal: 10, paddingVertical: 5 },
-  chipText: { fontFamily: fontFamily('extrabold', 'wide'), color: PAPER },
-  board: { borderRadius: 12, backgroundColor: PAPER, paddingHorizontal: 6 },
-  boardTitle: { fontFamily: fontFamily('extrabold', 'wide'), color: 'rgba(18,18,18,0.5)', marginLeft: 8, marginBottom: 4 },
-  boardEmpty: { fontFamily: fontFamily('bold'), color: colors.ink, marginLeft: 8, paddingVertical: 8 },
-  boardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 8, paddingHorizontal: 8 },
-  medal: { borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  boardName: { flex: 1, fontFamily: fontFamily('extrabold'), color: colors.ink },
-  cta: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.volt, paddingHorizontal: 16 },
-  ctaLabel: { fontFamily: fontFamily('black', 'wide'), color: colors.ink },
-  code: { fontFamily: mono.replace('Regular', 'SemiBold'), color: colors.ink, marginTop: 2 },
-  arrow: { borderRadius: 40, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  link: { fontFamily: fontFamily('bold'), color: 'rgba(242,239,232,0.7)', textAlign: 'center' },
+  format: { flex: 1, borderRadius: 12, borderWidth: 1.5, borderColor: theme.ink, backgroundColor: theme.card, paddingHorizontal: 12, paddingVertical: 8 },
+  preview: { borderRadius: 12, backgroundColor: colors.paper, overflow: 'hidden' },
+  offscreen: { position: 'absolute', left: -10_000, top: 0 },
+  tag: { borderRadius: 9, backgroundColor: colors.ink, paddingHorizontal: 9, paddingVertical: 4, maxWidth: 316 },
+  tagText: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 8.5, letterSpacing: 0.4, textTransform: 'uppercase', color: colors.volt },
+  title: { fontFamily: fontFamily('black', 'wide'), textTransform: 'uppercase', color: colors.ink },
+  big: { fontFamily: fontFamily('extrabold', 'narrow'), letterSpacing: -1, textTransform: 'uppercase', color: colors.onAccent },
+  label: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 9, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.ink, marginTop: 2 },
+  chip: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 9, letterSpacing: 0.4, textTransform: 'uppercase', color: colors.ink, textAlign: 'center', paddingHorizontal: 8 },
+  place: { alignSelf: 'flex-start', marginLeft: 11, fontFamily: fontFamily('black', 'wide'), textTransform: 'uppercase', color: colors.ink },
+  podiumName: { fontFamily: fontFamily('bold'), color: colors.ink, marginTop: 5, maxWidth: '88%' },
+  podiumScore: { fontFamily: fontFamily('extrabold', 'narrow'), color: colors.ink, letterSpacing: -0.3, maxWidth: '90%' },
+  empty: { fontFamily: fontFamily('extrabold'), fontSize: 16, color: colors.ink },
+  meLine: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 34, paddingHorizontal: 14 },
+  meRank: { width: 22, fontFamily: fontFamily('extrabold', 'narrow'), fontSize: 15, color: colors.ink },
+  meName: { flex: 1, fontFamily: fontFamily('extrabold'), fontSize: 13, color: colors.ink },
+  meScore: { fontFamily: fontFamily('extrabold', 'narrow'), fontSize: 16, color: colors.ink },
+  code: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
+  codeLabel: { fontFamily: fontFamily('black', 'wide'), fontSize: 9.5, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.volt },
+  codeText: { fontFamily: mono.replace('Regular', 'SemiBold'), color: colors.paper, marginTop: 2 },
+  arrow: { borderRadius: 40, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
+  footer: { fontFamily: fontFamily('bold', 'wide'), fontSize: 7.5, textTransform: 'uppercase', color: colors.ink2 },
 });
