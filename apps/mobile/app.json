@@ -49,6 +49,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-background-task",
       [
         "expo-splash-screen",
         {
@@ -90,7 +91,7 @@
       [
         "expo-sensors",
         {
-          "motionPermission": "Jump counts your steps during a walk or run, for step competitions and to confirm you are really moving."
+          "motionPermission": "Jump counts your steps during a walk or run, for step competitions and to confirm you are really moving, and can remind you to record when you are out walking or running."
         }
       ],
       "expo-font",

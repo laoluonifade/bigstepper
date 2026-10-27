@@ -26,6 +26,8 @@ import { colors, fontFamily, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecording } from '@/lib/voice';
 import { ActivityBadge, ActivityPicker } from './ActivityRow';
+import { DuelCard, DuelComposer } from './Duel';
+import type { Duel } from '@/lib/duels';
 import { ActivityIcon, CheckIcon, CopyIcon, EditIcon, FlagIcon, LockIcon, MicIcon, PauseIcon, PlayIcon, ReplyIcon, SendIcon, TrashIcon } from './icons';
 import { Avatar, Button, ErrorNotice, haptic, LiveDot, Skeleton, TextField, Txt, VerifiedTick, type TextFieldRef } from './ui';
 
@@ -36,6 +38,7 @@ export type Message = {
   id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null;
   reactions: Array<{ userId: string; reaction: Reaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null;
   tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean;
+  duel?: Duel | null;
   /** When the other person read it; direct messages only. */
   readAt?: string | null;
 };
@@ -78,7 +81,7 @@ export function UnreadBadge({ count }: { count: number }) {
  * A conversation: a DM with one runner, or a club's group chat. Both are the same messages underneath,
  * so replies, reactions, edits, voice notes and shared activities work the same in each.
  */
-export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, group = false, onData }: {
+export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, group = false, onData, duelWith }: {
   queryKey: readonly unknown[];
   /** GET loads it, POST sends, POST /read marks it read. */
   path: string;
@@ -87,6 +90,8 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
   group?: boolean;
   /** Hands the loaded thread to the screen, for its header. */
   onData?: (data: T) => void;
+  /** In a DM: who a duel from the composer goes to. */
+  duelWith?: { username: string; name: string };
 }) {
   const user = useUser();
   const unit = useUnit();
@@ -99,6 +104,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [pickingActivity, setPickingActivity] = useState(false);
+  const [duelling, setDuelling] = useState(false);
   const stashedDraft = useRef<{ body: string; replyTo: Message | null }>({ body: '', replyTo: null });
   const composer = useRef<TextFieldRef>(null);
   // Near real time while you're in the chat (polls stop when the app is in the background).
@@ -262,6 +268,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
         </View> : <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
           <View style={styles.field}>
             {!editing && <Pressable onPress={() => setPickingActivity(true)} style={styles.inline} accessibilityLabel="Share an activity"><ActivityIcon size={19} color={colors.ink2} /></Pressable>}
+            {!editing && duelWith && !body.trim() && <Pressable onPress={() => { haptic(); setDuelling(true); }} style={styles.inline} accessibilityLabel={`Challenge ${duelWith.name} to a duel`}><Text style={{ fontSize: 18 }}>⚔️</Text></Pressable>}
             <TextInput ref={composer} value={body} onChangeText={setBody} multiline maxLength={1000} placeholder="Message…" placeholderTextColor={colors.ink3} selectionColor={colors.track}
               style={styles.input} accessibilityLabel={editing ? 'Edit message' : group ? 'Write to the club' : 'Write a private message'} />
           </View>
@@ -274,6 +281,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
       </View>}
     <ActivityPicker open={pickingActivity} onOpenChange={setPickingActivity} unit={unit} activities={(myActivities.data ?? []).filter((activity) => activity.verificationStatus !== 'REJECTED')}
       onPick={(activity) => send.mutate({ text: body.trim(), reply: replyTo, activityId: activity.id })} />
+    {duelWith && <DuelComposer open={duelling} onOpenChange={setDuelling} username={duelWith.username} name={duelWith.name} unit={unit} onSent={() => void queryClient.invalidateQueries({ queryKey })} />}
   </KeyboardAvoidingView>;
 }
 
@@ -372,7 +380,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
   const mine = message.senderId === viewerId;
   // Your own messages are an ink bubble in light mode. Inverted, that turned into a glaring cream block in
   // dark mode, so there they're a raised grey instead, styled like any other bubble.
-  const dark = mine && !message.invitationId && scheme === 'light';
+  const dark = mine && !message.invitationId && !message.duel && scheme === 'light';
   const raised = mine && scheme === 'dark';
   const ownReaction = message.reactions.find((item) => item.userId === viewerId)?.reaction;
   const react = useMutation({
@@ -412,6 +420,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
       <Txt size={12} weight="bold" color={dark ? 'paper' : 'ink'}>{message.replyToSenderId === viewerId ? 'You' : nameOf(message.replyToSenderId ?? '')}</Txt>
       <Txt size={12} numberOfLines={1} style={{ opacity: 0.75, color: dark ? colors.paper : colors.ink }}>{message.replyToBody}</Txt>
     </View> : null}
+    {message.duel && <DuelCard duel={message.duel} viewerId={viewerId} unit={unit} />}
     {message.activity && <SharedActivityCard activity={message.activity} unit={unit} dark={dark} raised={raised} mine={mine} />}
     {message.audioUrl && <VoiceNotePlayer id={message.id} src={message.audioUrl} seconds={message.audioSeconds ?? 0} dark={dark} sending={Boolean(message.pending)} />}
     {message.body ? <Txt size={16} leading={1.35} color={dark ? 'paper' : 'ink'} style={message.activity ? { marginTop: 6 } : undefined}>{message.body}</Txt> : null}

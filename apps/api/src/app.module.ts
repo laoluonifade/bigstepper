@@ -29,6 +29,7 @@ import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { PrizesModule } from './prizes/prizes.module';
 import { AmlModule } from './aml/aml.module';
 import { SafetyModule } from './safety/safety.module';
+import { DuelsModule } from './duels/duels.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { SafetyModule } from './safety/safety.module';
     MailModule,
     AmlModule,
     SafetyModule,
+    DuelsModule,
     FeedModule,
     JobsModule,
     AuthModule,

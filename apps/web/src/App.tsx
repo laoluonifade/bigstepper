@@ -75,6 +75,7 @@ const feed = createRoute({ getParentRoute: () => root, path: '/feed', validateSe
 const feedPost = createRoute({ getParentRoute: () => root, path: '/feed/$id', component: protectedPage(() => import('./pages/Feed'), 'FeedPostPage') });
 const messages = createRoute({ getParentRoute: () => root, path: '/messages', component: protectedPage(() => import('./pages/Messages'), 'MessagesPage') });
 const conversation = createRoute({ getParentRoute: () => root, path: '/messages/$username', component: protectedPage(() => import('./pages/Messages'), 'ConversationPage') });
+const duel = createRoute({ getParentRoute: () => root, path: '/duels/$id', component: protectedPage(() => import('./pages/Duel'), 'DuelPage') });
 const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', validateSearch: (search: Record<string, unknown>): { club?: string; template?: string } => ({ ...(typeof search.club === 'string' ? { club: search.club } : {}), ...(typeof search.template === 'string' ? { template: search.template } : {}) }), component: protectedPage(() => import('./pages/Competitions'), 'NewCompetitionPage') });
 const run = createRoute({ getParentRoute: () => root, path: '/run', component: protectedPage(() => import('./pages/Run'), 'RunPage') });
 const runSession = createRoute({ getParentRoute: () => root, path: '/runs/$id', component: protectedPage(() => import('./pages/Run'), 'RunSessionPage') });
@@ -121,7 +122,7 @@ const routeTree = root.addChildren([
   home, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
-  dashboard, setup, welcome, leaderboard, feed, feedPost, messages, conversation, newCompetition, run, runSession, activities, activity,
+  dashboard, setup, welcome, leaderboard, feed, feedPost, messages, conversation, duel, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, clubChat, clubDashboard, prizes, rewards, identity, wallet, creator, notifications, profile, paymentReturn,
 ]);
 

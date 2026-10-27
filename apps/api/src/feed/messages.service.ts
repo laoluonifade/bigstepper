@@ -2,6 +2,7 @@ import { blockedBetween, blockedBy, reportedBy } from '../safety/safety.sql';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { DataSource } from 'typeorm';
+import { duelJson } from '../duels/duels.sql';
 
 export interface SendExtras {
   replyToId?: string;
@@ -76,7 +77,7 @@ export class MessagesService {
          FROM (
            SELECT CASE WHEN "senderId"=$1 THEN "recipientId" ELSE "senderId" END peer,
                   "body","createdAt","senderId","id","readAt",
-                  CASE WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
+                  CASE WHEN "duelId" IS NOT NULL THEN 'duel' WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
            FROM "direct_messages" WHERE ("senderId"=$1 OR "recipientId"=$1) AND "clubId" IS NULL
          ) m ORDER BY peer,"createdAt" DESC,"id" DESC
        )
@@ -150,8 +151,10 @@ export class MessagesService {
               CASE WHEN a."id" IS NULL THEN NULL ELSE json_build_object(
                 'id', a."id", 'activityType', a."activityType", 'startedAt', a."startedAt", 'verificationStatus', a."verificationStatus",
                 'distanceMetres', CASE WHEN a."verificationStatus"='VERIFIED' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."recordedDistanceMetres" END,
-                'movingSeconds', a."movingSeconds", 'steps', a."validatedSteps") END "activity"
+                'movingSeconds', a."movingSeconds", 'steps', a."validatedSteps") END "activity",
+              ${duelJson('d')} "duel"
        FROM "direct_messages" m
+       LEFT JOIN "duels" d ON d."id"=m."duelId"
        LEFT JOIN "activities" a ON a."id"=m."activityId"
        LEFT JOIN "challenge_invitations" i ON i."id"=m."invitationId"
        LEFT JOIN "competition_tables" t ON t."id"=i."tableId"
@@ -293,7 +296,7 @@ export class MessagesService {
     if (!trimmed) throw new BadRequestException('Write a message');
     const [message] = await this.dataSource.query(
       `UPDATE "direct_messages" SET "body"=$3,"editedAt"=now()
-       WHERE "id"=$1 AND "senderId"=$2 AND "invitationId" IS NULL
+       WHERE "id"=$1 AND "senderId"=$2 AND "invitationId" IS NULL AND "duelId" IS NULL
        RETURNING "id","body","editedAt"`,
       [messageId, userId, trimmed],
     ) as Array<{ id: string; body: string; editedAt: string }>;

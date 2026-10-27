@@ -12,6 +12,7 @@ export interface Trophy {
   rank: number;
   entrants: number;
   score: number | null;
+  kind: 'competition' | 'duel';
 }
 
 const ENDED = `t."deletedAt" IS NULL AND t."status" NOT IN ('CANCELLED','DRAFT','SCHEDULED','PENDING_FUNDING','PENDING_APPROVAL')
@@ -30,12 +31,19 @@ export async function trophiesFor(manager: EntityManager, userId: string) {
               count(*) OVER (PARTITION BY r."tableId")::integer AS "entrants"
        FROM "table_registrations" r WHERE r."tableId" IN (SELECT "id" FROM ended)
      )
-     SELECT e."id" AS "tableId", e."code", e."title", e."challengeType", e."scoringMethod", e."bannerUrl",
-            COALESCE(e."scoringClosesAt", e."prizesFinalizedAt", e."createdAt") AS "endedAt",
-            x."rank", x."entrants", x."score"::float8 AS "score"
-     FROM ranked x JOIN ended e ON e."id" = x."tableId"
-     WHERE x."userId" = $1 AND ${PODIUM}
-     ORDER BY "endedAt" DESC LIMIT 100`,
+     SELECT * FROM (
+       SELECT e."id" AS "tableId", e."code", e."title", e."challengeType", e."scoringMethod", e."bannerUrl",
+              COALESCE(e."scoringClosesAt", e."prizesFinalizedAt", e."createdAt") AS "endedAt",
+              x."rank", x."entrants", x."score"::float8 AS "score", 'competition' AS "kind"
+       FROM ranked x JOIN ended e ON e."id" = x."tableId"
+       WHERE x."userId" = $1 AND ${PODIUM}
+       UNION ALL
+       SELECT d."id", '', 'Duel vs ' || COALESCE(p."displayName", 'a runner'),
+              CASE d."activity" WHEN 'run' THEN 'RUN' WHEN 'walk' THEN 'WALK' WHEN 'cycle' THEN 'CYCLING' ELSE 'DISTANCE' END, 'DUEL', NULL,
+              d."settledAt", 1, 2, (CASE WHEN d."challengerId" = $1 THEN d."challengerMetres" ELSE d."opponentMetres" END)::float8, 'duel'
+       FROM "duels" d LEFT JOIN "profiles" p ON p."userId" = CASE WHEN d."challengerId" = $1 THEN d."opponentId" ELSE d."challengerId" END
+       WHERE d."status" = 'FINISHED' AND d."winnerId" = $1
+     ) won ORDER BY "endedAt" DESC LIMIT 100`,
     [userId],
   ) as Trophy[];
   return { wins: trophies.filter((trophy) => trophy.rank === 1).length, podiums: trophies.length, trophies };

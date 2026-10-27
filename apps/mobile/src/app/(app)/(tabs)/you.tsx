@@ -20,6 +20,7 @@ import { useAuth, useUser } from '@/lib/auth';
 import { openWeb } from '@/lib/links';
 import { unregisterForPush } from '@/lib/push';
 import { setSoundsEnabled, useSoundsEnabled } from '@/lib/sounds';
+import { moveNudgeEnabled, moveNudgeSupported, setMoveNudge } from '@/lib/move-nudge';
 import { keys, useActivities, useNotifications, useProfile, useUnit } from '@/lib/queries';
 import { colors, GUTTER, radius, setThemePreference, themePreference, type ThemePreference } from '@/lib/theme';
 import { toast } from '@/lib/toast';
@@ -44,6 +45,7 @@ export default function YouScreen() {
   const social = useQuery({ queryKey: ['runner', profile.data?.username ?? ''], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(profile.data!.username)}`), enabled: Boolean(profile.data?.username) });
   const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | 'delete' | 'invite' | null>(null);
   const soundsOn = useSoundsEnabled();
+  const [nudgeOn, setNudgeOn] = useState(moveNudgeEnabled);
   // What's picked shows straight away, even before the restart that applies it.
   const [chosenTheme, setChosenTheme] = useState<ThemePreference>(themePreference);
   const save = useSaveProfile();
@@ -130,6 +132,13 @@ export default function YouScreen() {
           </View>
           <Switch value={soundsOn} onValueChange={(on) => { haptic('select'); setSoundsEnabled(on); }} trackColor={{ true: colors.track, false: colors.line }} thumbColor={colors.white} accessibilityLabel="Sounds" />
         </Row>
+        {moveNudgeSupported && <Row>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt size={14} weight="semibold">Remind me to record</Txt>
+            <Txt size={13} color="ink3">A nudge when you’re walking or running without recording</Txt>
+          </View>
+          <Switch value={nudgeOn} onValueChange={(on) => { haptic('select'); setNudgeOn(on); void setMoveNudge(on).then(setNudgeOn); }} trackColor={{ true: colors.track, false: colors.line }} thumbColor={colors.white} accessibilityLabel="Remind me to record" />
+        </Row>}
         <Row onPress={() => setSheet('email')}>
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>Email updates</Txt>
           <Txt size={13} color="ink3">{emailOn === 2 ? 'All on' : emailOn === 1 ? '1 of 2 on' : 'Off'}</Txt>

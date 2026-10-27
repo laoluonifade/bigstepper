@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { ActivityIcon, ArrowLeftIcon, CameraIcon, CloseIcon, CommentIcon, CycleIcon, FeedIcon, HeartIcon, RunIcon, SendIcon, ShareIcon, TrashIcon } from '../components/icons';
 import { ReactionBar } from '../components/ReactionBar';
 import { ActivityBadge, activityMetres, ActivityPicker } from '../components/ActivityPicker';
+import { DuelCard } from '../components/Duel';
 import { MentionText, MentionTextarea } from '../components/Mentions';
 import { RantTabs } from '../components/RantTabs';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton, VerifiedTick } from '../components/ui';
@@ -15,6 +16,7 @@ import { useUser } from '../lib/auth';
 import { activityName, formatDistance, formatDuration, shortAgo } from '../lib/format';
 import type { AvatarStyle, Unit } from '../lib/types';
 import { useActivities, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
+import type { Duel } from '../lib/duels';
 import { reactionEmoji as symbolFor, REACTIONS, type Reaction } from '../lib/reactions';
 
 type FeedPost = {
@@ -39,6 +41,8 @@ type FeedPost = {
   topReactions?: Reaction[];
   commentCount: number;
   imageUrl?: string | null;
+  /** A duel this post follows, live and then with its result. */
+  duel?: Duel | null;
 };
 
 type FeedComment = { id: string; postId: string; userId: string; body: string; createdAt: string; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; pending?: boolean };
@@ -238,6 +242,7 @@ function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCance
       {/* In the list these are part of the card, so a tap anywhere opens the post. */}
       {item.imageUrl && <img src={item.imageUrl} alt="" loading="lazy" className="mt-2.5 max-h-[420px] w-full rounded-2xl border border-line object-cover" />}
       {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={false} />}
+      {item.duel && <DuelCard duel={item.duel} viewerId={viewerId} unit={unit} actions={false} className="z-[1] mt-2.5" />}
       <ActionBar item={item} viewerId={viewerId} />
       {confirmingDelete && <div className="relative z-[1] mt-2 flex items-center justify-end gap-4 text-[13px]">
         <span className="text-ink-2">Delete this post?</span>
@@ -379,6 +384,7 @@ export function FeedPostPage() {
         {item.body && <p className="mt-4 whitespace-pre-wrap break-words text-[19px] leading-relaxed"><MentionText text={item.body} /></p>}
         {item.imageUrl && <PostImage src={item.imageUrl} className="mt-3 max-h-[560px]" />}
         {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} />}
+        {item.duel && <DuelCard duel={item.duel} viewerId={user.id} unit={unit} actions={false} className="mt-3" />}
         <p className="mt-4 text-[14px] text-ink-3">
           <time dateTime={item.createdAt}>{posted.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {posted.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</time>
         </p>

@@ -1,6 +1,7 @@
 import { blockedBetween, reportedBy } from '../safety/safety.sql';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { duelJson } from '../duels/duels.sql';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
 import { CreateFeedPostDto } from './create-feed-post.dto';
@@ -32,7 +33,7 @@ export class FeedService {
     if (scope !== 'following' && scope !== 'explore') throw new BadRequestException('Invalid feed scope');
     if (!/^(0|[1-9]\d{0,3})$/.test(page)) throw new BadRequestException('Invalid feed page');
     return this.dataSource.query(
-      `SELECT f."id", f."body", f."imageUrl", f."createdAt", f."userId", f."activityId",
+      `SELECT f."id", f."body", f."imageUrl", f."createdAt", f."userId", f."activityId", ${duelJson('d')} "duel",
               p."username", p."displayName", p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               a."activityType", a."startedAt", a."validatedSteps",
@@ -47,10 +48,12 @@ export class FeedService {
        FROM "feed_posts" f
        JOIN "profiles" p ON p."userId"=f."userId"
        LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus"='VERIFIED'
-       WHERE ($2='explore' OR f."userId"=$1 OR EXISTS (
-           SELECT 1 FROM "follows" follow WHERE follow."followerId"=$1 AND follow."followingId"=f."userId"
+       LEFT JOIN "duels" d ON d."id"=f."duelId"
+       WHERE ($2='explore' OR f."userId"=$1 OR d."opponentId"=$1 OR EXISTS (
+           SELECT 1 FROM "follows" follow WHERE follow."followerId"=$1 AND (follow."followingId"=f."userId" OR follow."followingId"=d."opponentId")
          ))
          AND (f."activityId" IS NULL OR a."id" IS NOT NULL)
+         AND (d."id" IS NULL OR NOT ${blockedBetween('$1', 'd."opponentId"')})
          AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}
        ORDER BY f."createdAt" DESC, f."id" DESC LIMIT 20 OFFSET $3`,
       [viewerId, scope, Number(page) * 20],
@@ -59,7 +62,7 @@ export class FeedService {
 
   async post(viewerId: string, postId: string) {
     const [post] = await this.dataSource.query(
-      `SELECT f."id",f."body",f."imageUrl",f."createdAt",f."userId",f."activityId",
+      `SELECT f."id",f."body",f."imageUrl",f."createdAt",f."userId",f."activityId",${duelJson('d')} "duel",
               p."username",p."displayName",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               a."activityType",a."startedAt",a."validatedSteps",
@@ -72,6 +75,7 @@ export class FeedService {
                 GROUP BY r."reaction" ORDER BY COUNT(*) DESC, r."reaction" LIMIT 3) top) "topReactions"
        FROM "feed_posts" f JOIN "profiles" p ON p."userId"=f."userId"
        LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus"='VERIFIED'
+       LEFT JOIN "duels" d ON d."id"=f."duelId"
        WHERE f."id"=$2 AND (f."activityId" IS NULL OR a."id" IS NOT NULL)
          AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}`,
       [viewerId, postId],

@@ -12,6 +12,8 @@ import { colors, fontFamily, GUTTER, radius, score, wideLabel } from '@/lib/them
 import { confirm } from '@/lib/dialog';
 import { ActionMenu } from './ActionMenu';
 import { ActivityBadge } from './ActivityRow';
+import { DuelCard } from './Duel';
+import type { Duel } from '@/lib/duels';
 import { CommentIcon, HeartIcon, SendIcon, ShareIcon, TrashIcon } from './icons';
 import { blockRunner, openReport } from './Safety';
 import { PhotoViewer, MentionText, ReactionPicker } from './social';
@@ -39,6 +41,8 @@ export type FeedPost = {
   topReactions?: Reaction[];
   commentCount: number;
   imageUrl?: string | null;
+  /** A duel this post follows, live and then with its result. */
+  duel?: Duel | null;
 };
 
 export type FeedComment = { id: string; postId: string; userId: string; body: string; createdAt: string; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; pending?: boolean };
@@ -78,6 +82,7 @@ export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; u
       {item.body ? <View style={{ marginTop: 4 }}><MentionText text={item.body} /></View> : null}
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" transition={150} /> : null}
       {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} /> : null}
+      {item.duel ? <View style={{ marginTop: 8 }}><DuelCard duel={item.duel} viewerId={viewerId} unit={unit} actions={false} /></View> : null}
       <ActionBar item={item} viewerId={viewerId} />
     </View>
   </Pressable>;

@@ -9,6 +9,7 @@ export const PUSH_NOTIFICATIONS_QUEUE = 'push-notifications';
 export const PRODUCT_PRIZES_QUEUE = 'product-prizes';
 export const AML_MONITOR_QUEUE = 'aml-monitor';
 export const CLUB_CHALLENGES_QUEUE = 'club-challenges';
+export const DUELS_QUEUE = 'duels';
 
 @Module({
   imports: [BullModule.registerQueue({ name: ACTIVITY_VERIFICATION_QUEUE })],

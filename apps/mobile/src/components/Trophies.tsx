@@ -1,6 +1,6 @@
 import { formatDate, ordinal } from '@jump/shared/format';
 import { useQuery } from '@tanstack/react-query';
-import { router, usePathname } from 'expo-router';
+import { router, usePathname, type Href } from 'expo-router';
 import { useEffect, useId, useState } from 'react';
 import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
@@ -18,7 +18,12 @@ import { haptic, SectionTitle, Txt } from './ui';
 export interface Trophy {
   tableId: string; code: string; title: string; challengeType: string; scoringMethod: string; bannerUrl: string | null;
   endedAt: string; rank: number; entrants: number; score: number | null;
+  /** A won duel: tableId is the duel's id and there's no code. */
+  kind?: 'competition' | 'duel';
 }
+
+/** Where a trophy opens: the competition's final board, or the duel. */
+const trophyPath = (trophy: Trophy): Href => (trophy.kind === 'duel' ? `/duels/${trophy.tableId}` : `/competitions/${trophy.code}`);
 export type TrophyCabinetData = { wins: number; podiums: number; trophies: Trophy[] };
 
 const METAL_FOR = { 1: METALS.gold, 2: METALS.silver, 3: METALS.bronze } as const;
@@ -79,7 +84,7 @@ export function TrophyCabinet({ username, own = false }: { username?: string; ow
         <Txt size={13} color="ink2" leading={1.45} style={{ flex: 1 }}>Finish in the top three of a competition and your medal lands here.</Txt>
       </View>
       : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }}>
-        {data.trophies.map((trophy) => <Pressable key={trophy.tableId} onPress={() => { haptic(); router.push(`/competitions/${trophy.code}`); }}
+        {data.trophies.map((trophy) => <Pressable key={trophy.tableId} onPress={() => { haptic(); router.push(trophyPath(trophy)); }}
           accessibilityRole="button" accessibilityLabel={`${ordinal(trophy.rank)} in ${trophy.title}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]}>
           <TrophyMedal rank={trophy.rank} size={58} />
           <Txt size={13} weight="bold" numberOfLines={2} align="center" style={{ marginTop: 6 }}>{trophy.title}</Txt>
@@ -145,7 +150,7 @@ export function TrophyCelebration() {
   const headline = shown.rank === 1 ? 'You won.' : `${ordinal(shown.rank)} place.`;
   const share = () => {
     haptic('medium');
-    void Share.share({ message: `${shown.rank === 1 ? '🥇 I won' : shown.rank === 2 ? '🥈 I came 2nd in' : '🥉 I came 3rd in'} ${shown.title} on Jump. ${WEB_URL}/competitions/${shown.code}` });
+    void Share.share({ message: `${shown.rank === 1 ? '🥇 I won' : shown.rank === 2 ? '🥈 I came 2nd in' : '🥉 I came 3rd in'} ${shown.title} on Jump. ${WEB_URL}${String(trophyPath(shown))}` });
   };
   return <Modal visible transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={close}>
     <View style={[styles.screen, { paddingTop: insets.top + 40, paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
@@ -164,8 +169,8 @@ export function TrophyCelebration() {
       </View>
       <Animated.View entering={FadeInDown.delay(760)} style={{ alignSelf: 'stretch', gap: 10 }}>
         <Pressable onPress={share} style={({ pressed }) => [styles.primary, pressed && styles.pressed]} accessibilityRole="button"><Text style={styles.primaryText}>Share it</Text></Pressable>
-        <Pressable onPress={() => { haptic(); close(); router.push(`/competitions/${shown.code}`); }} style={({ pressed }) => [styles.secondary, pressed && styles.pressed]} accessibilityRole="button">
-          <Text style={styles.secondaryText}>See the final board</Text>
+        <Pressable onPress={() => { haptic(); close(); router.push(trophyPath(shown)); }} style={({ pressed }) => [styles.secondary, pressed && styles.pressed]} accessibilityRole="button">
+          <Text style={styles.secondaryText}>{shown.kind === 'duel' ? 'See the duel' : 'See the final board'}</Text>
         </Pressable>
         <Pressable onPress={close} hitSlop={8} style={{ alignSelf: 'center', padding: 8 }} accessibilityRole="button"><Text style={styles.close}>Close</Text></Pressable>
       </Animated.View>

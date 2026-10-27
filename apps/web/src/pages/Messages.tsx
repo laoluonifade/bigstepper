@@ -5,6 +5,7 @@ import { CSSProperties, FormEvent, ReactNode, useEffect, useLayoutEffect, useMem
 import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon, FlagIcon } from '../components/icons';
 import { ActivityBadge, ActivityPicker } from '../components/ActivityPicker';
 import { ClubLogo } from '../components/ClubLogo';
+import { DuelCard, DuelComposer } from '../components/Duel';
 import { EmojiPicker } from '../components/EmojiPicker';
 import { ReactionBar } from '../components/ReactionBar';
 import { Avatar, cx, EmptyState, ErrorNotice, Skeleton, VerifiedTick } from '../components/ui';
@@ -17,16 +18,17 @@ import { keys, useActivities, useUnit, useUnreadMessages } from '../lib/queries'
 import { REACTIONS, type Reaction } from '../lib/reactions';
 import { toast } from '../lib/toast';
 import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecording } from '../lib/voice';
+import type { Duel } from '../lib/duels';
 import type { Activity, AvatarStyle, CheckoutResponse, Unit } from '../lib/types';
 
-type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; senderId: string; unreadCount: number };
-type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity'; createdAt: string; unreadCount: number };
+type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; senderId: string; unreadCount: number };
+type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
 type InboxRow = DirectRow | ClubRow;
 /** Whoever wrote a message: the other person in a DM, any member in a club chat. */
 type Person = { displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; username?: string | null };
 type MessageReaction = Reaction;
 type SharedActivity = { id: string; activityType: 'walk' | 'run' | 'cycle'; startedAt: string; verificationStatus: string; distanceMetres: number; movingSeconds: number; steps: number };
-type Message = { id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null; reactions: Array<{ userId: string; reaction: MessageReaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null; tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean };
+type Message = { id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null; reactions: Array<{ userId: string; reaction: MessageReaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null; tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean; duel?: Duel | null };
 type Thread = { canMessage: boolean; lockedReason?: string | null; messages: Message[] };
 type Conversation = Thread & { runner: Person & { username: string }; blockedByMe?: boolean };
 type ClubConversation = Thread & {
@@ -48,7 +50,7 @@ export function MessagesPage() {
         <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={48} className="shrink-0 rounded-full" />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.displayName}</span>{row.verified && <VerifiedTick className="ml-1" />} <span className="text-[13px] text-ink-3">@{row.username}</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
-          <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{row.kind === 'voice' ? '🎤 Voice note' : row.body || 'Shared an activity'}</span><UnreadBadge count={row.unreadCount} /></span>
+          <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{inboxPreview(row)}</span><UnreadBadge count={row.unreadCount} /></span>
         </span>
       </Link>}</li>)}
     </ul>}
@@ -64,6 +66,7 @@ export function ConversationPage() {
     path={`/messages/${encodeURIComponent(username)}`}
     back={{ to: '/messages' }}
     senderOf={(data) => data.runner}
+    duelWith={(data) => ({ username, name: data.runner.displayName })}
     header={(data) => <>
       <Avatar name={data.runner.displayName} src={data.runner.avatarUrl} avatarStyle={data.runner.avatarStyle} size={42} className="rounded-full" />
       <div className="min-w-0"><h1 className="wide truncate text-[16px] font-black uppercase md:text-[18px]">{data.runner.displayName}{data.runner.verified && <VerifiedTick size={16} className="ml-1.5" />}</h1><Link to="/runners/$username" params={{ username }} search={{}} className="block truncate text-[12px] text-ink-2 hover:underline md:text-[13px]">@{username}</Link></div>
@@ -115,7 +118,7 @@ export function ClubChatPage() {
  * A conversation: a DM with one runner, or a club's group chat. Both are the same messages underneath,
  * so replies, reactions, edits, voice notes and shared activities work the same in each.
  */
-function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, senderOf, group = false }: {
+function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, senderOf, group = false, duelWith }: {
   queryKey: readonly unknown[];
   /** GET loads it, POST sends, POST /read marks it read. */
   path: string;
@@ -124,6 +127,8 @@ function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, sen
   back: { to: '/messages' } | { to: '/clubs/$id'; id: string };
   senderOf: (data: T, senderId: string) => Person;
   group?: boolean;
+  /** In a DM: who a duel from the composer goes to. */
+  duelWith?: (data: T) => { username: string; name: string };
 }) {
   const user = useUser();
   const queryClient = useQueryClient();
@@ -133,6 +138,7 @@ function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, sen
   const stashedDraft = useRef<{ body: string; replyTo: Message | null }>({ body: '', replyTo: null });
   const [showEmoji, setShowEmoji] = useState(false);
   const [pickingActivity, setPickingActivity] = useState(false);
+  const [duelling, setDuelling] = useState(false);
   const sendVoice = (recording: VoiceRecording) => send.mutate({ text: '', reply: replyTo, voice: { ...recording, localUrl: URL.createObjectURL(recording.blob) } });
   const voice = useVoiceRecorder(sendVoice);
   const voiceError = voice.error;
@@ -310,6 +316,7 @@ function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, sen
           <div className="flex min-w-0 flex-1 items-end rounded-3xl border border-line bg-paper pl-1 pr-1 focus-within:border-ink">
             <button ref={emojiAnchor} type="button" className="flex h-10 w-9 shrink-0 items-center justify-center rounded-full text-[20px] text-ink-2 hover:text-ink" onClick={() => setShowEmoji((open) => !open)} aria-label="Choose emoji" aria-expanded={showEmoji}>☺</button>
             {!editing && <button ref={activityAnchor} type="button" className="flex h-10 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 hover:text-ink" onClick={() => setPickingActivity((open) => !open)} aria-label="Share an activity" aria-expanded={pickingActivity}><ActivityIcon size={19} /></button>}
+            {!editing && duelWith && !body.trim() && <button type="button" className="flex h-10 shrink-0 items-center gap-1 rounded-full px-1.5 text-[13px] font-bold text-ink-2 hover:text-ink" onClick={() => setDuelling(true)} aria-label={`Challenge ${duelWith(conversation.data).name} to a duel`} title="Challenge to a duel"><span aria-hidden="true">⚔️</span><span className="hidden sm:inline">Duel</span></button>}
             <textarea ref={composerRef} rows={1} className="max-h-[168px] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 text-[15px] leading-snug outline-none placeholder:text-ink-3" aria-label={editing ? 'Edit message' : group ? 'Write to the club' : 'Write a private message'} maxLength={1000} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape' && editing) { event.preventDefault(); stopEditing(); } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); sendOrSave(); } }} placeholder="Message…" />
           </div>
           {editing
@@ -321,6 +328,7 @@ function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, sen
         {showEmoji && <EmojiPicker anchor={emojiAnchor} onClose={() => setShowEmoji(false)} onPick={(emoji) => { setBody((value) => value + emoji); composerRef.current?.focus(); }} />}
         {pickingActivity && <ActivityPicker anchor={activityAnchor} unit={unit} activities={(myActivities.data ?? []).filter((activity) => activity.verificationStatus !== 'REJECTED')} onClose={() => setPickingActivity(false)} onPick={(activity) => { setPickingActivity(false); send.mutate({ text: body.trim(), reply: replyTo, activityId: activity.id }); }} />}
       </form>}
+      {duelling && duelWith && <DuelComposer {...duelWith(conversation.data)} unit={unit} onClose={() => setDuelling(false)} onSent={() => { void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] }); }} />}
     </>}
   </div>;
 }
@@ -340,7 +348,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
   const lastTap = useRef(0);
   const [burst, setBurst] = useState(0);
   const mine = message.senderId === viewerId;
-  const dark = mine && !message.invitationId;
+  const dark = mine && !message.invitationId && !message.duel;
   const ownReaction = message.reactions.find((item) => item.userId === viewerId)?.reaction;
   const react = useMutation({
     mutationFn: (reaction: MessageReaction | null) => reaction ? post(`/messages/${message.id}/reaction`, { reaction }) : api(`/messages/${message.id}/reaction`, { method: 'DELETE' }),
@@ -373,7 +381,8 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
       onPointerUp={() => { clearHold(); if (dragDistance.current >= 56) { suppressClick.current = true; setShowReactions(false); onReply(); } pointerStart.current = null; dragDistance.current = 0; setDragX(0); }}
       onPointerCancel={() => { clearHold(); pointerStart.current = null; dragDistance.current = 0; setDragX(0); }}>
       {showName && <p className="mb-1 ml-1 text-[12px] font-bold text-ink-2">{sender.displayName}{sender.verified && <VerifiedTick size={12} className="ml-1" />}</p>}
-      <div className={cx('px-3.5 py-2', corners, beingEdited && 'ring-2 ring-volt ring-offset-2 ring-offset-paper', dark ? 'bg-ink text-paper' : mine ? 'border border-ink bg-volt text-ink' : 'border border-line bg-card text-ink')}>
+      <div className={cx('px-3.5 py-2', corners, beingEdited && 'ring-2 ring-volt ring-offset-2 ring-offset-paper', dark ? 'bg-ink text-paper' : mine && !message.duel ? 'border border-ink bg-volt text-ink' : 'border border-line bg-card text-ink', message.duel && 'p-1.5')}>
+        {message.duel && <DuelCard duel={message.duel} viewerId={viewerId} unit={unit} />}
         <div ref={reactionAnchor} role="button" tabIndex={0} aria-label="Message: tap for reactions, double-tap to love, swipe right to reply" aria-expanded={showReactions} className="cursor-pointer outline-offset-4"
           onClick={() => {
             if (suppressClick.current) { suppressClick.current = false; return; }
@@ -387,10 +396,11 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
           {message.replyToBody && <div className={cx('mb-1.5 rounded-xl border-l-[3px] px-2.5 py-1 text-[12px]', dark ? 'border-volt bg-paper/10' : 'border-track bg-paper')}><span className="block font-bold">{message.replyToSenderId === viewerId ? 'You' : nameOf(message.replyToSenderId ?? '')}</span><span className="block truncate opacity-75">{message.replyToBody}</span></div>}
           {message.activity && <SharedActivityCard activity={message.activity} unit={unit} dark={dark} mine={mine} />}
           {message.audioUrl && <VoiceNotePlayer id={message.id} src={message.audioUrl} seconds={message.audioSeconds ?? 0} dark={dark} sending={Boolean(message.pending)} />}
-          <p className={cx('whitespace-pre-wrap break-words text-[15px] leading-snug', message.activity && message.body && 'mt-1.5')}>
+          {/* A duel with nothing typed alongside it shows just the time, not an empty line. */}
+          <p className={cx('whitespace-pre-wrap break-words text-[15px] leading-snug', (message.activity || message.duel) && message.body && 'mt-1.5', message.duel && !message.body && 'flow-root px-2', message.duel && message.body && 'px-2 pb-1')}>
             {message.body}
             {/* Time sits inline at the end of the text, like most chat apps. */}
-            <span className={cx('float-right ml-2 mt-1.5 text-[10.5px] leading-none', dark ? 'text-paper/55' : 'text-ink-3')}>{message.pending ? (message.audioUrl ? null : <><ClockIcon size={11} className="mr-0.5 inline align-[-1px]" />Sending</>) : <>{message.editedAt && 'Edited · '}{time}{mine && !message.pending && <CheckIcon size={11} className="ml-0.5 inline align-[-1px]" />}</>}</span>
+            <span className={cx('float-right ml-2 mt-1.5 text-[10.5px] leading-none', dark ? 'text-paper/55' : 'text-ink-3', message.duel && !message.body && 'mb-1')}>{message.pending ? (message.audioUrl ? null : <><ClockIcon size={11} className="mr-0.5 inline align-[-1px]" />Sending</>) : <>{message.editedAt && 'Edited · '}{time}{mine && !message.pending && <CheckIcon size={11} className="ml-0.5 inline align-[-1px]" />}</>}</span>
           </p>
         </div>
         {message.invitationId ? <InvitationActions message={message} received={message.recipientId === viewerId} queryKey={queryKey} /> : inviteCode && <Link to="/competitions/$code" params={{ code: inviteCode }} className="mt-2 inline-block text-[12px] font-bold underline">View competition</Link>}
@@ -498,6 +508,8 @@ function gapMinutes(earlier: Message, later: Message) {
   return (new Date(later.createdAt).getTime() - new Date(earlier.createdAt).getTime()) / 60_000;
 }
 
+const inboxPreview = (row: InboxRow) => row.kind === 'voice' ? '🎤 Voice note' : row.kind === 'duel' ? '⚔️ Duel challenge' : row.body || 'Shared an activity';
+
 function UnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="num min-w-[20px] shrink-0 rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${count} unread messages`}>{count > 9 ? '9+' : count}</span> : null;
 }
@@ -505,7 +517,7 @@ function UnreadBadge({ count }: { count: number }) {
 /** A club's chat in the inbox: its logo, who wrote last, and what. */
 function ClubInboxRow({ row }: { row: ClubRow }) {
   const user = useUser();
-  const preview = row.kind === 'voice' ? '🎤 Voice note' : row.body || 'Shared an activity';
+  const preview = inboxPreview(row);
   return <Link to="/clubs/$id/chat" params={{ id: row.clubSlug }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
     <ClubLogo club={{ name: row.clubName, logoUrl: row.logoUrl }} size={48} />
     <span className="min-w-0 flex-1">

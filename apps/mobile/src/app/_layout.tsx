@@ -14,6 +14,7 @@ import { Toaster } from '@/components/Toaster';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { detachRecorder, restoreRecorder, useRecorder } from '@/lib/recorder';
 import { listenForPush, registerForPush } from '@/lib/push';
+import { syncMoveNudge } from '@/lib/move-nudge';
 import { colors, FONT_FILES, scheme, systemSchemeChanged } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -40,6 +41,7 @@ function Routes({ fontsReady }: { fontsReady: boolean }) {
   useEffect(() => {
     if (!user) return;
     void registerForPush();
+    void syncMoveNudge();
     return listenForPush(queryClient);
     // Once per runner signing in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
