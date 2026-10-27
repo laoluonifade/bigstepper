@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OPEN_PAYMENT_STATUSES, useSavedPayments } from '@/lib/payments';
 import { useNotifications, useUnit, useUnreadMessages } from '@/lib/queries';
 import { movingSeconds, useRecorder } from '@/lib/recorder';
-import { colors, GUTTER, radius, score } from '@/lib/theme';
+import { brand, colors, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { ArrowRightIcon, BellIcon, FeedIcon, JumpLogo, SearchIcon } from './icons';
 import { StravaSyncBar } from './strava';
 import { IconButton, LiveDot, Screen, Txt, useNow } from './ui';
@@ -53,12 +53,12 @@ export function LiveRunBar() {
   if (!live) return null;
   return <Pressable onPress={() => router.navigate('/run')} accessibilityRole="button" accessibilityLabel="Back to your activity"
     style={({ pressed }) => [styles.liveBar, pressed && { opacity: 0.85 }]}>
-    <LiveDot live={recorder.phase === 'recording'} color={recorder.phase === 'recording' ? colors.track : colors.paper} />
-    <Txt size={11} weight="bold" upper tracking={0.14} color="paper">{recorder.phase === 'recording' ? 'Recording' : 'Paused'}</Txt>
+    <LiveDot live={recorder.phase === 'recording'} color={recorder.phase === 'recording' ? brand.track : brand.paper} />
+    <Txt size={11} weight="bold" upper tracking={0.14} style={{ color: brand.paper }}>{recorder.phase === 'recording' ? 'Recording' : 'Paused'}</Txt>
     <View style={{ flex: 1 }} />
-    <Text style={[score(22), { color: colors.volt }]}>{formatDistanceNumber(recorder.distanceMetres, unit)}<Text style={{ fontSize: 12, color: colors.onInkMuted }}> {unit}</Text></Text>
-    <Text style={[score(22), { color: colors.paper }]}>{formatDuration(movingSeconds(recorder.session, now))}</Text>
-    <ArrowRightIcon size={18} color={colors.paper} />
+    <Text style={[score(22), { color: brand.volt }]}>{formatDistanceNumber(recorder.distanceMetres, unit)}<Text style={{ fontSize: 12, color: 'rgba(242,239,232,0.6)' }}> {unit}</Text></Text>
+    <Text style={[score(22), { color: brand.paper }]}>{formatDuration(movingSeconds(recorder.session, now))}</Text>
+    <ArrowRightIcon size={18} color={brand.paper} />
   </Pressable>;
 }
 
@@ -80,6 +80,6 @@ function PendingPaymentsBar() {
 
 const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: GUTTER, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, backgroundColor: colors.paper },
-  liveBar: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24 },
+  liveBar: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 2, borderColor: scheme === 'dark' ? colors.line : brand.ink, backgroundColor: scheme === 'dark' ? '#1E1E21' : brand.ink, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24 },
   paymentBar: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.warnWash, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24 },
 });
