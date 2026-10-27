@@ -1,15 +1,20 @@
 import { formatDistance } from '@jump/shared/format';
-import type { Unit } from '@jump/shared/types';
+import type { AvatarStyle, Unit } from '@jump/shared/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Defs, Path, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { post } from '@/lib/api';
-import { duelKey, duelLine, duelPhase, isReady, sides, standing, type Duel, type DuelActivity } from '@/lib/duels';
-import { colors, fontFamily, radius, score, wideLabel } from '@/lib/theme';
+import { useUser } from '@/lib/auth';
+import { useProfile } from '@/lib/queries';
+import { DUEL_VERB, duelKey, duelLine, duelPhase, isReady, sides, standing, type Duel, type DuelActivity } from '@/lib/duels';
+import { brand, colors, fontFamily, radius, score, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { Sheet } from './Sheet';
+import { CrownIcon, DuelIcon } from './icons';
+import { Sticker } from './Stickers';
 import { Avatar, Button, ErrorNotice, haptic, LiveDot, TextField, Txt } from './ui';
 
 const HOLD_MS = 1_200;
@@ -78,39 +83,100 @@ export function DuelActions({ duel, viewerId, size = 'sm' }: { duel: Duel; viewe
   return <View style={{ marginTop: 12, gap: 6 }}>{body}<ErrorNotice error={act.error} /></View>;
 }
 
-const PHASE_LABEL = { pending: 'Challenge', accepted: 'Accepted', countdown: 'Starting', live: 'Live', settling: 'Finishing', finished: 'Final', declined: 'Declined', cancelled: 'Cancelled', expired: 'Expired' } as const;
+const PHASE_LABEL = { pending: 'Challenge', accepted: 'Accepted', countdown: 'Starting', live: 'Live', settling: 'Finishing', finished: 'Final', declined: 'Declined', cancelled: 'Called off', expired: 'Expired' } as const;
+const RING = { challenger: brand.track, opponent: brand.volt } as const;
 
-/** A duel as a card: what it is, who's in it and where it stands. Tapping opens the duel. */
-export function DuelCard({ duel, viewerId, unit, actions = true }: { duel: Duel; viewerId: string; unit: Unit; actions?: boolean }) {
+/** The jagged burst behind "VS". */
+function VsBurst({ size }: { size: number }) {
+  const points = Array.from({ length: 24 }, (_, index) => {
+    const r = index % 2 ? size * 0.36 : size * 0.5;
+    const angle = (Math.PI * 2 * index) / 24 - Math.PI / 2;
+    return `${(size / 2 + r * Math.cos(angle)).toFixed(1)},${(size / 2 + r * Math.sin(angle)).toFixed(1)}`;
+  }).join(' ');
+  return <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-8deg' }] }}>
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+      <Polygon points={points} fill={brand.track} stroke={brand.ink} strokeWidth={2} strokeLinejoin="round" />
+    </Svg>
+    <Text style={{ fontFamily: fontFamily('black', 'wide'), fontSize: size * 0.3, color: brand.ink, letterSpacing: -0.5 }}>VS</Text>
+  </View>;
+}
+
+/** Speed lanes and two glows, orange from one corner and volt from the other: the arena's floor. */
+function ArenaBackdrop() {
+  return <Svg style={StyleSheet.absoluteFill} viewBox="0 0 300 300" preserveAspectRatio="none">
+    <Defs>
+      <RadialGradient id="duelLeft" cx="0" cy="0" r="220" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={brand.track} stopOpacity="0.45" /><Stop offset="1" stopColor={brand.track} stopOpacity="0" /></RadialGradient>
+      <RadialGradient id="duelRight" cx="300" cy="300" r="220" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={brand.volt} stopOpacity="0.3" /><Stop offset="1" stopColor={brand.volt} stopOpacity="0" /></RadialGradient>
+    </Defs>
+    <Rect width="300" height="300" fill="url(#duelLeft)" />
+    <Rect width="300" height="300" fill="url(#duelRight)" />
+    {Array.from({ length: 9 }, (_, lane) => <Path key={lane} d={`M${-60 + lane * 46} 300 L${60 + lane * 46} 0`} stroke="rgba(242,239,232,0.06)" strokeWidth={10} />)}
+  </Svg>;
+}
+
+/**
+ * The two of them squared up: faces in their colours either side of a VS burst, the challenge on a tilted
+ * sticker, and once it's going, a tug-of-war bar of who's pulling ahead. Always dark, like a fight poster.
+ */
+export function DuelArena({ duel, viewerId, unit, big = false, live }: { duel: Duel; viewerId: string; unit: Unit; big?: boolean; live?: { challenger: number; opponent: number } }) {
   const phase = duelPhase(duel);
   const done = standing(duel);
-  const showScores = phase === 'finished';
-  const person = (who: 'challenger' | 'opponent') => {
+  const metres = live ?? (phase === 'finished' ? { challenger: done.challenger.metres, opponent: done.opponent.metres } : null);
+  const face = big ? 84 : 58;
+  const km = formatDistance(duel.targetMetres, unit).split(' ');
+  const fighter = (who: 'challenger' | 'opponent', tilt: number) => {
     const runner = duel[who];
     const won = phase === 'finished' && duel.winnerId === runner.userId;
-    return <View style={styles.person}>
-      <View style={[styles.face, won && { borderColor: colors.volt, borderWidth: 3 }]}><Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={44} round /></View>
-      <Txt size={13} weight="bold" numberOfLines={1} align="center">{runner.userId === viewerId ? 'You' : runner.displayName.split(' ')[0]}</Txt>
-      {showScores ? <Text style={[score(18), { textAlign: 'center' }]}>{formatDistance(done[who].metres, unit)}</Text> : null}
-      {won ? <Txt size={11} weight="bold" upper color="ink2">🏆 Winner</Txt> : null}
+    const lost = phase === 'finished' && duel.winnerId !== null && !won;
+    return <View style={{ flex: 1, alignItems: 'center', opacity: lost ? 0.45 : 1 }}>
+      <View style={{ height: big ? 32 : 22, justifyContent: 'flex-end' }}>{won ? <CrownIcon size={big ? 26 : 18} color={brand.volt} /> : null}</View>
+      <View style={{ borderRadius: face, borderWidth: big ? 4 : 3, borderColor: RING[who], padding: 2, transform: [{ rotate: `${tilt}deg` }] }}>
+        <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={face} round />
+      </View>
+      <View style={[styles.nameTag, { backgroundColor: RING[who], transform: [{ rotate: `${-tilt}deg` }] }]}>
+        <Text style={styles.nameText} numberOfLines={1}>{runner.userId === viewerId ? 'You' : runner.displayName.split(' ')[0]}</Text>
+      </View>
+      {metres ? <Text style={[score(big ? 30 : 22), { color: brand.paper, marginTop: 4 }]}>{formatDistance(metres[who], unit)}</Text> : null}
     </View>;
   };
-  return <Pressable onPress={() => router.push(`/duels/${duel.id}`)} style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]} accessibilityRole="button" accessibilityLabel={`Duel: ${duelLine(duel, unit)}`}>
+  const total = metres ? metres.challenger + metres.opponent : 0;
+  const lit = phase === 'live' || phase === 'countdown';
+  return <View style={[styles.arena, big && { borderRadius: 22, paddingVertical: 18 }]}>
+    <ArenaBackdrop />
     <View style={styles.row}>
-      <Text style={wideLabel(11)}>⚔️ Duel</Text>
-      <View style={[styles.pill, phase === 'live' || phase === 'countdown' ? { backgroundColor: colors.track } : phase === 'finished' ? { backgroundColor: colors.volt } : null]}>
-        {phase === 'live' ? <LiveDot live color={colors.paper} size={7} /> : null}
-        <Text style={[styles.pillText, (phase === 'live' || phase === 'countdown') && { color: colors.paper }, phase === 'finished' && { color: colors.onAccent }]}>{PHASE_LABEL[phase]}</Text>
+      <View style={styles.duelTag}><DuelIcon size={13} color={brand.ink} strokeWidth={2.6} /><Text style={styles.duelTagText}>Duel</Text></View>
+      <View style={[styles.pill, lit ? { backgroundColor: brand.track } : phase === 'finished' ? { backgroundColor: brand.volt } : null]}>
+        {phase === 'live' ? <LiveDot live color={brand.ink} size={7} /> : null}
+        <Text style={[styles.pillText, (lit || phase === 'finished') && { color: brand.ink }]}>{PHASE_LABEL[phase]}</Text>
       </View>
     </View>
-    <Text style={[score(26), { marginTop: 6 }]} numberOfLines={1} adjustsFontSizeToFit>{duelLine(duel, unit)}</Text>
-    <View style={[styles.row, { marginTop: 10, alignItems: 'flex-start' }]}>
-      {person('challenger')}
-      <Text style={styles.vs}>VS</Text>
-      {person('opponent')}
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 6 }}>
+      {fighter('challenger', -4)}
+      <View style={{ marginTop: big ? 44 : 30 }}><VsBurst size={big ? 70 : 52} /></View>
+      {fighter('opponent', 4)}
     </View>
-    {phase === 'finished' && duel.winnerId === null ? <Txt size={13} weight="semibold" align="center" style={{ marginTop: 6 }}>It’s a draw</Txt> : null}
-    {phase === 'live' || phase === 'countdown' || phase === 'settling' ? <Txt size={13} weight="semibold" align="center" style={{ marginTop: 8, textDecorationLine: 'underline' }}>Watch it live</Txt> : null}
+    <View style={{ alignItems: 'center', marginTop: big ? 16 : 10 }}>
+      <Sticker p={brand} bg={brand.volt} tilt={-2} padded={false}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingHorizontal: 16, paddingVertical: 6 }}>
+          <Text style={[score(big ? 46 : 34), { color: brand.ink }]}>{km[0]}<Text style={{ fontSize: big ? 22 : 16 }}>{` ${km[1] ?? ''}`}</Text></Text>
+          <Text style={styles.terms}>{`${DUEL_VERB[duel.activity]}\n${duel.minutes} min`}</Text>
+        </View>
+      </Sticker>
+    </View>
+    {metres ? <View style={styles.tug}>
+      <View style={{ flex: total ? Math.max(metres.challenger, total * 0.04) : 1, backgroundColor: brand.track }} />
+      <View style={styles.tugMid} />
+      <View style={{ flex: total ? Math.max(metres.opponent, total * 0.04) : 1, backgroundColor: brand.volt }} />
+    </View> : null}
+    {phase === 'finished' && duel.winnerId === null ? <Text style={[styles.banner, { color: brand.paper }]}>It’s a draw</Text> : null}
+    {!big && (lit || phase === 'settling') ? <Text style={[styles.banner, { color: brand.volt }]}>Tap to watch it live →</Text> : null}
+  </View>;
+}
+
+/** A duel in a chat or the feed: the arena, then whatever it needs from you. Tapping opens the duel. */
+export function DuelCard({ duel, viewerId, unit, actions = true }: { duel: Duel; viewerId: string; unit: Unit; actions?: boolean }) {
+  return <Pressable onPress={() => router.push(`/duels/${duel.id}`)} style={({ pressed }) => [{ minWidth: 260 }, pressed && { opacity: 0.92, transform: [{ scale: 0.99 }] }]} accessibilityRole="button" accessibilityLabel={`Duel: ${duelLine(duel, unit)}`}>
+    <DuelArena duel={duel} viewerId={viewerId} unit={unit} />
     {actions ? <DuelActions duel={duel} viewerId={viewerId} /> : null}
   </Pressable>;
 }
@@ -124,15 +190,18 @@ function Chips<T extends string | number>({ options, value, onChange, label }: {
     {options.map(([option, text]) => {
       const on = option === value;
       return <Pressable key={String(option)} onPress={() => { haptic('select'); onChange(option); }} accessibilityRole="radio" accessibilityState={{ selected: on }} accessibilityLabel={label(option)}
-        style={[styles.chip, on && { backgroundColor: colors.ink, borderColor: colors.ink }]}>
-        <Text style={[styles.chipText, on && { color: colors.paper }]}>{text}</Text>
+        style={[styles.chip, on && { backgroundColor: brand.volt, borderColor: brand.ink, borderWidth: 2, transform: [{ rotate: '-2deg' }] }]}>
+        <Text style={[styles.chipText, on && { color: brand.ink, fontFamily: fontFamily('black', 'wide'), fontSize: 13 }]}>{text}</Text>
       </Pressable>;
     })}
   </View>;
 }
 
 /** Set up a duel from a DM: what, how far and how long. It lands in the chat with a hold-to-accept. */
-export function DuelComposer({ open, onOpenChange, username, name, unit, onSent }: { open: boolean; onOpenChange: (open: boolean) => void; username: string; name: string; unit: Unit; onSent?: () => void }) {
+export function DuelComposer({ open, onOpenChange, them, unit, onSent }: { open: boolean; onOpenChange: (open: boolean) => void; them: { username: string; name: string; avatarUrl: string | null; avatarStyle?: AvatarStyle }; unit: Unit; onSent?: () => void }) {
+  const { username, name } = them;
+  const user = useUser();
+  const profile = useProfile().data;
   const [activity, setActivity] = useState<DuelActivity>('run');
   const [km, setKm] = useState<number | null>(5);
   const [customKm, setCustomKm] = useState('');
@@ -154,6 +223,15 @@ export function DuelComposer({ open, onOpenChange, username, name, unit, onSent 
     description="First to the distance wins. If time runs out, whoever went farthest wins. The winner gets it in their trophy cabinet."
     footer={<Button full variant="primary" title={valid ? `Send · ${duelLine({ activity, targetMetres: Math.round(distance * 1000), minutes: time }, unit)}` : 'Send duel'} disabled={!valid} loading={send.isPending} onPress={() => send.mutate()} />}>
     <View style={{ gap: 16 }}>
+      {/* What they'll get, updating as you pick. */}
+      <DuelArena viewerId={user.id} unit={unit} duel={{
+        id: 'preview', status: 'PENDING', activity, targetMetres: valid ? Math.round(distance * 1000) : 5_000, minutes: valid ? time : 30,
+        challengerId: user.id, opponentId: 'them',
+        challenger: { userId: user.id, username: profile?.username ?? '', displayName: profile?.displayName ?? 'You', avatarUrl: profile?.avatarUrl ?? null, avatarStyle: profile?.gender === 'male' ? 'masculine' : profile?.gender === 'female' ? 'feminine' : 'neutral' },
+        opponent: { userId: 'them', username, displayName: name, avatarUrl: them.avatarUrl, avatarStyle: them.avatarStyle },
+        acceptedAt: null, challengerReadyAt: null, opponentReadyAt: null, startsAt: null, endsAt: null, expiresAt: '', settledAt: null,
+        challengerMetres: null, opponentMetres: null, challengerReachedAt: null, opponentReachedAt: null, winnerId: null,
+      }} />
       <View style={{ gap: 8 }}>
         <Text style={wideLabel(11)}>Activity</Text>
         <Chips options={ACTIVITIES} value={activity} onChange={setActivity} label={(value) => `Activity ${value}`} />
@@ -175,15 +253,20 @@ export function DuelComposer({ open, onOpenChange, username, name, unit, onSent 
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  card: { minWidth: 240, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 14 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 9, paddingVertical: 3 },
-  pillText: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 9.5, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.ink },
-  person: { flex: 1, alignItems: 'center', gap: 4 },
-  face: { borderRadius: 30, borderWidth: 1.5, borderColor: colors.edge, padding: 1 },
-  vs: { fontFamily: fontFamily('black', 'wide'), fontSize: 16, color: colors.track, marginTop: 14 },
-  hold: { height: 48, borderRadius: radius.xl, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.paper, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  holdFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.volt },
-  holdText: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 13, letterSpacing: 0.8, textTransform: 'uppercase', color: colors.ink },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: radius.full, backgroundColor: 'rgba(242,239,232,0.14)', paddingHorizontal: 9, paddingVertical: 3 },
+  pillText: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 9.5, letterSpacing: 0.6, textTransform: 'uppercase', color: brand.paper },
+  hold: { height: 54, borderRadius: radius.xl, borderWidth: 2, borderColor: brand.ink, backgroundColor: brand.volt, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  holdFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: brand.track },
+  holdText: { fontFamily: fontFamily('black', 'wide'), fontSize: 14, letterSpacing: 1, textTransform: 'uppercase', color: brand.ink },
+  arena: { borderRadius: 18, borderWidth: 2, borderColor: brand.ink, backgroundColor: brand.ink, overflow: 'hidden', padding: 14 },
+  duelTag: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, backgroundColor: brand.volt, paddingHorizontal: 9, paddingVertical: 4, transform: [{ rotate: '-3deg' }] },
+  duelTagText: { fontFamily: fontFamily('black', 'wide'), fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', color: brand.ink },
+  nameTag: { marginTop: -8, borderRadius: 7, borderWidth: 1.5, borderColor: brand.ink, paddingHorizontal: 8, paddingVertical: 2, maxWidth: '92%' },
+  nameText: { fontFamily: fontFamily('black', 'wide'), fontSize: 10.5, letterSpacing: 0.4, textTransform: 'uppercase', color: brand.ink },
+  terms: { fontFamily: fontFamily('black', 'wide'), fontSize: 10, lineHeight: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: brand.ink },
+  tug: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', marginTop: 14, borderWidth: 1.5, borderColor: brand.paper },
+  tugMid: { width: 3, backgroundColor: brand.ink },
+  banner: { fontFamily: fontFamily('black', 'wide'), fontSize: 12, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'center', marginTop: 12 },
   chip: { borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 8 },
   chipText: { fontFamily: fontFamily('bold'), fontSize: 14, color: colors.ink },
 });

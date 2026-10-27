@@ -98,7 +98,7 @@ export class DuelsService {
         const started = (await this.repo.start(db, duelId))!;
         await this.repo.postToFeed(db, started);
         const body = `${duelLine(started)}. Start recording now — the clock is running.`;
-        await this.repo.notify(db, [duel.challengerId, duel.opponentId].map((id) => ({ userId: id, type: 'DUEL_STARTED', title: 'Your duel is live 🔥', body, link, email: false })));
+        await this.repo.notify(db, [duel.challengerId, duel.opponentId].map((id) => ({ userId: id, type: 'DUEL_STARTED', title: 'Your duel is live', body, link, email: false })));
         return { status: 'LIVE' };
       }
       if (!fresh(mine)) {

@@ -64,7 +64,7 @@ export function DuelPage() {
         <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={40} className="rounded-full" />
         <div className="min-w-0 flex-1 leading-tight">
           <Link to="/runners/$username" params={{ username: runner.username }} search={{}} className="block truncate text-[15px] font-bold hover:underline">{mine ? 'You' : runner.displayName}</Link>
-          <span className="block truncate text-[12px] text-ink-3">{won ? '🏆 Winner' : reachedAt ? `Reached ${formatDistance(data.targetMetres, unit)}` : ahead ? 'In front' : `@${runner.username}`}</span>
+          <span className="block truncate text-[12px] text-ink-3">{won ? 'Winner' : reachedAt ? `Reached ${formatDistance(data.targetMetres, unit)}` : ahead ? 'In front' : `@${runner.username}`}</span>
         </div>
         <span className="score num text-[30px]">{formatDistance(metres, unit)}</span>
       </div>
@@ -77,7 +77,7 @@ export function DuelPage() {
   return <div className="mx-auto max-w-[600px] animate-rise">
     {back}
     <header className="mb-5">
-      <p className="eyebrow mb-2 flex items-center gap-2">{phase === 'live' && <LiveDot live className="text-track" />}⚔️ {data.challenger.displayName.split(' ')[0]} vs {data.opponent.displayName.split(' ')[0]}</p>
+      <p className="eyebrow mb-2 flex items-center gap-2">{phase === 'live' && <LiveDot live className="text-track" />}{data.challenger.displayName.split(' ')[0]} vs {data.opponent.displayName.split(' ')[0]}</p>
       <h1 className="display text-[30px] sm:text-[40px]">{duelLine(data, unit)}</h1>
       <p className="mt-3 text-[14px] leading-relaxed text-ink-2">First to the distance wins. If nobody gets there, the farthest when time’s up wins.</p>
     </header>
@@ -97,7 +97,7 @@ export function DuelPage() {
       </div>}
       {phase === 'finished' && <div className={cx(box, data.winnerId ? 'bg-volt text-ink' : 'bg-card')}>
         <span className="display text-[26px]">
-          {data.winnerId === null ? 'It’s a draw' : data.winnerId === user.id ? 'You won 🏆' : `${(data.winnerId === data.challengerId ? data.challenger : data.opponent).displayName.split(' ')[0]} won 🏆`}
+          {data.winnerId === null ? 'It’s a draw' : data.winnerId === user.id ? 'You won' : `${(data.winnerId === data.challengerId ? data.challenger : data.opponent).displayName.split(' ')[0]} won`}
         </span>
         {data.winnerId === user.id && <span className="text-[13px]">It’s in your trophy cabinet.</span>}
       </div>}

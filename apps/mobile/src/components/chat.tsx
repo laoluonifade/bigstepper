@@ -28,7 +28,7 @@ import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecord
 import { ActivityBadge, ActivityPicker } from './ActivityRow';
 import { DuelCard, DuelComposer } from './Duel';
 import type { Duel } from '@/lib/duels';
-import { ActivityIcon, CheckIcon, CopyIcon, EditIcon, FlagIcon, LockIcon, MicIcon, PauseIcon, PlayIcon, ReplyIcon, SendIcon, TrashIcon } from './icons';
+import { ActivityIcon, CheckIcon, DuelIcon, CopyIcon, EditIcon, FlagIcon, LockIcon, MicIcon, PauseIcon, PlayIcon, ReplyIcon, SendIcon, TrashIcon } from './icons';
 import { Avatar, Button, ErrorNotice, haptic, LiveDot, Skeleton, TextField, Txt, VerifiedTick, type TextFieldRef } from './ui';
 
 /** Whoever wrote a message: the other person in a DM, any member in a club chat. */
@@ -91,7 +91,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
   /** Hands the loaded thread to the screen, for its header. */
   onData?: (data: T) => void;
   /** In a DM: who a duel from the composer goes to. */
-  duelWith?: { username: string; name: string };
+  duelWith?: { username: string; name: string; avatarUrl: string | null; avatarStyle?: AvatarStyle };
 }) {
   const user = useUser();
   const unit = useUnit();
@@ -268,7 +268,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
         </View> : <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
           <View style={styles.field}>
             {!editing && <Pressable onPress={() => setPickingActivity(true)} style={styles.inline} accessibilityLabel="Share an activity"><ActivityIcon size={19} color={colors.ink2} /></Pressable>}
-            {!editing && duelWith && !body.trim() && <Pressable onPress={() => { haptic(); setDuelling(true); }} style={styles.inline} accessibilityLabel={`Challenge ${duelWith.name} to a duel`}><Text style={{ fontSize: 18 }}>⚔️</Text></Pressable>}
+            {!editing && duelWith && !body.trim() && <Pressable onPress={() => { haptic(); setDuelling(true); }} style={styles.inline} accessibilityLabel={`Challenge ${duelWith.name} to a duel`}><DuelIcon size={19} color={colors.ink2} /></Pressable>}
             <TextInput ref={composer} value={body} onChangeText={setBody} multiline maxLength={1000} placeholder="Message…" placeholderTextColor={colors.ink3} selectionColor={colors.track}
               style={styles.input} accessibilityLabel={editing ? 'Edit message' : group ? 'Write to the club' : 'Write a private message'} />
           </View>
@@ -281,7 +281,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
       </View>}
     <ActivityPicker open={pickingActivity} onOpenChange={setPickingActivity} unit={unit} activities={(myActivities.data ?? []).filter((activity) => activity.verificationStatus !== 'REJECTED')}
       onPick={(activity) => send.mutate({ text: body.trim(), reply: replyTo, activityId: activity.id })} />
-    {duelWith && <DuelComposer open={duelling} onOpenChange={setDuelling} username={duelWith.username} name={duelWith.name} unit={unit} onSent={() => void queryClient.invalidateQueries({ queryKey })} />}
+    {duelWith && <DuelComposer open={duelling} onOpenChange={setDuelling} them={duelWith} unit={unit} onSent={() => void queryClient.invalidateQueries({ queryKey })} />}
   </KeyboardAvoidingView>;
 }
 

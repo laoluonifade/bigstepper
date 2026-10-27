@@ -42,7 +42,7 @@ export class DuelsProcessor extends WorkerHost implements OnModuleInit {
     const [challengerName, opponentName] = await Promise.all([this.repo.displayName(duel.challengerId), this.repo.displayName(duel.opponentId)]);
     const link = `/duels/${duel.id}`;
     const line = duelLine(duel);
-    const title = (me: string, them: string) => winnerId === null ? `Your duel with ${them} was a draw` : winnerId === me ? `You won your duel against ${them} 🏆` : `${them} won your duel`;
+    const title = (me: string, them: string) => winnerId === null ? `Your duel with ${them} was a draw` : winnerId === me ? `You won your duel against ${them}` : `${them} won your duel`;
     await this.repo.notify(this.repo.dataSource, [
       { userId: duel.challengerId, type: 'DUEL_RESULT', title: title(duel.challengerId, opponentName), body: `${line}. See how it finished.`, link, email: true },
       { userId: duel.opponentId, type: 'DUEL_RESULT', title: title(duel.opponentId, challengerName), body: `${line}. See how it finished.`, link, email: true },

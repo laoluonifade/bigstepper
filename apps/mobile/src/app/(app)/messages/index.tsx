@@ -16,7 +16,7 @@ type DirectRow = { type: 'direct'; username: string; displayName: string; avatar
 type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
 type InboxRow = DirectRow | ClubRow;
 
-const preview = (row: InboxRow) => (row.kind === 'voice' ? '🎤 Voice note' : row.kind === 'duel' ? '⚔️ Duel challenge' : row.body || 'Shared an activity');
+const preview = (row: InboxRow) => (row.kind === 'voice' ? '🎤 Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity');
 const when = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 export default function MessagesScreen() {

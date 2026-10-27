@@ -4,14 +4,15 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
-import { DuelActions } from '@/components/Duel';
-import { Avatar, Button, ErrorNotice, LiveDot, Skeleton, Txt } from '@/components/ui';
+import { DuelActions, DuelArena } from '@/components/Duel';
+import { FinishFlagIcon } from '@/components/icons';
+import { Avatar, Button, ErrorNotice, Skeleton, Txt } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { DUEL_VERB, duelKey, duelLine, duelPhase, sides, standing, type DuelPerson, type DuelView } from '@/lib/duels';
 import { useUnit } from '@/lib/queries';
 import { useRecorder, type ActivityKind } from '@/lib/recorder';
-import { colors, display, GUTTER, radius, score, wideLabel } from '@/lib/theme';
+import { brand, colors, display, GUTTER, radius, score, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
 const clock = (ms: number) => {
@@ -76,29 +77,33 @@ export default function DuelScreen() {
     const share = Math.min(1, metres / data.targetMetres);
     const won = phase === 'finished' && data.winnerId === runner.userId;
     const ahead = (phase === 'live' || phase === 'settling') && leader === runner.userId;
+    const tone = who === 'challenger' ? brand.track : brand.volt;
     return <View style={[styles.lane, (won || ahead) && { borderColor: colors.ink, borderWidth: 2 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={40} round />
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Txt size={15} weight="bold" numberOfLines={1}>{mine ? 'You' : runner.displayName}</Txt>
-          <Txt size={12} color="ink3" numberOfLines={1}>{won ? '🏆 Winner' : reachedAt ? `Reached ${formatDistance(data.targetMetres, unit)}` : ahead ? 'In front' : `@${runner.username}`}</Txt>
+          <Txt size={12} color="ink3" numberOfLines={1}>{won ? 'Winner' : reachedAt ? `Reached ${formatDistance(data.targetMetres, unit)}` : ahead ? 'In front' : `${Math.round(share * 100)}% of the way`}</Txt>
         </View>
-        <Text style={score(30)}>{formatDistance(metres, unit)}</Text>
+        <Text style={score(34)}>{formatDistance(metres, unit)}</Text>
       </View>
-      <View style={styles.track}><View style={[styles.fill, { width: `${Math.max(share * 100, metres > 0 ? 2 : 0)}%`, backgroundColor: who === 'challenger' ? colors.track : colors.volt }]} /></View>
+      <View style={styles.road}>
+        <View style={styles.base} />
+        <View style={[styles.trail, { width: `${share * 100}%`, backgroundColor: tone }]} />
+        {[0.25, 0.5, 0.75].map((mark) => <View key={mark} style={[styles.tick, { left: `${mark * 100}%` }]} />)}
+        <View style={styles.flag}><FinishFlagIcon size={22} color={colors.ink} /></View>
+        <View style={[styles.runner, { left: `${share * 100}%` }]}>
+          <View style={{ borderRadius: 20, borderWidth: 3, borderColor: tone, backgroundColor: brand.ink }}>
+            <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={30} round />
+          </View>
+        </View>
+      </View>
     </View>;
   };
 
   return <ScrollView style={{ flex: 1, backgroundColor: colors.paper }} contentContainerStyle={{ padding: GUTTER, paddingBottom: 48, gap: 16 }}>
     <Stack.Screen options={{ title: 'Duel' }} />
-    <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {phase === 'live' ? <LiveDot live /> : null}
-        <Text style={wideLabel(11)}>{`⚔️ ${data.challenger.displayName.split(' ')[0]} vs ${data.opponent.displayName.split(' ')[0]}`}</Text>
-      </View>
-      <Text style={display(30)}>{duelLine(data, unit)}</Text>
-      <Txt size={13} color="ink2">First to the distance wins. If nobody gets there, the farthest when time’s up wins.</Txt>
-    </View>
+    <DuelArena duel={data} viewerId={user.id} unit={unit} big live={phase === 'live' || phase === 'settling' ? { challenger: standings.challenger.metres, opponent: standings.opponent.metres } : undefined} />
+    <Txt size={13} color="ink2" align="center">{`${duelLine(data, unit)}. First there wins — if nobody makes it, the farthest when time’s up wins.`}</Txt>
 
     {phase === 'countdown' ? <Animated.View key={Math.ceil(startsIn / 1000)} entering={ZoomIn.duration(250)} style={styles.clock}>
       <Text style={[score(96), { color: colors.onAccent }]}>{startsIn > 1000 ? Math.ceil(startsIn / 1000) : 'GO'}</Text>
@@ -114,7 +119,7 @@ export default function DuelScreen() {
     </View> : null}
     {phase === 'finished' ? <View style={[styles.clock, { backgroundColor: data.winnerId ? colors.volt : colors.card }]}>
       <Text style={[display(26), { color: data.winnerId ? colors.onAccent : colors.ink, textAlign: 'center' }]}>
-        {data.winnerId === null ? 'It’s a draw' : data.winnerId === user.id ? 'You won 🏆' : `${(data.winnerId === data.challengerId ? data.challenger : data.opponent).displayName.split(' ')[0]} won 🏆`}
+        {data.winnerId === null ? 'It’s a draw' : data.winnerId === user.id ? 'You won' : `${(data.winnerId === data.challengerId ? data.challenger : data.opponent).displayName.split(' ')[0]} won`}
       </Text>
       {data.winnerId === user.id ? <Txt size={13} align="center" style={{ color: colors.onAccent }}>It’s in your trophy cabinet.</Txt> : null}
     </View> : null}
@@ -140,6 +145,10 @@ export default function DuelScreen() {
 const styles = StyleSheet.create({
   clock: { alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radius['2xl'], borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.volt, paddingVertical: 22, paddingHorizontal: 16 },
   lane: { gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 14 },
-  track: { height: 12, borderRadius: 6, backgroundColor: colors.inkWash, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 6 },
+  road: { height: 40, justifyContent: 'center', marginRight: 26 },
+  base: { position: 'absolute', left: 0, right: 0, height: 8, borderRadius: 4, backgroundColor: colors.inkWash },
+  trail: { position: 'absolute', left: 0, height: 8, borderRadius: 4 },
+  tick: { position: 'absolute', width: 2, height: 14, backgroundColor: colors.line },
+  flag: { position: 'absolute', right: -26 },
+  runner: { position: 'absolute', marginLeft: -18 },
 });

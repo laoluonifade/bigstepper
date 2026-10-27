@@ -2,7 +2,7 @@ import { MoreMenu, openBlock, openReport, unblockRunner } from '../components/Sa
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { CSSProperties, FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon, FlagIcon } from '../components/icons';
+import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon, FlagIcon, DuelIcon } from '../components/icons';
 import { ActivityBadge, ActivityPicker } from '../components/ActivityPicker';
 import { ClubLogo } from '../components/ClubLogo';
 import { DuelCard, DuelComposer } from '../components/Duel';
@@ -316,7 +316,7 @@ function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, sen
           <div className="flex min-w-0 flex-1 items-end rounded-3xl border border-line bg-paper pl-1 pr-1 focus-within:border-ink">
             <button ref={emojiAnchor} type="button" className="flex h-10 w-9 shrink-0 items-center justify-center rounded-full text-[20px] text-ink-2 hover:text-ink" onClick={() => setShowEmoji((open) => !open)} aria-label="Choose emoji" aria-expanded={showEmoji}>☺</button>
             {!editing && <button ref={activityAnchor} type="button" className="flex h-10 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 hover:text-ink" onClick={() => setPickingActivity((open) => !open)} aria-label="Share an activity" aria-expanded={pickingActivity}><ActivityIcon size={19} /></button>}
-            {!editing && duelWith && !body.trim() && <button type="button" className="flex h-10 shrink-0 items-center gap-1 rounded-full px-1.5 text-[13px] font-bold text-ink-2 hover:text-ink" onClick={() => setDuelling(true)} aria-label={`Challenge ${duelWith(conversation.data).name} to a duel`} title="Challenge to a duel"><span aria-hidden="true">⚔️</span><span className="hidden sm:inline">Duel</span></button>}
+            {!editing && duelWith && !body.trim() && <button type="button" className="flex h-10 shrink-0 items-center gap-1 rounded-full px-1.5 text-[13px] font-bold text-ink-2 hover:text-ink" onClick={() => setDuelling(true)} aria-label={`Challenge ${duelWith(conversation.data).name} to a duel`} title="Challenge to a duel"><DuelIcon size={18} /><span className="hidden sm:inline">Duel</span></button>}
             <textarea ref={composerRef} rows={1} className="max-h-[168px] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 text-[15px] leading-snug outline-none placeholder:text-ink-3" aria-label={editing ? 'Edit message' : group ? 'Write to the club' : 'Write a private message'} maxLength={1000} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape' && editing) { event.preventDefault(); stopEditing(); } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); sendOrSave(); } }} placeholder="Message…" />
           </div>
           {editing
@@ -508,7 +508,7 @@ function gapMinutes(earlier: Message, later: Message) {
   return (new Date(later.createdAt).getTime() - new Date(earlier.createdAt).getTime()) / 60_000;
 }
 
-const inboxPreview = (row: InboxRow) => row.kind === 'voice' ? '🎤 Voice note' : row.kind === 'duel' ? '⚔️ Duel challenge' : row.body || 'Shared an activity';
+const inboxPreview = (row: InboxRow) => row.kind === 'voice' ? '🎤 Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity';
 
 function UnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="num min-w-[20px] shrink-0 rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${count} unread messages`}>{count > 9 ? '9+' : count}</span> : null;

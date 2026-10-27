@@ -23,12 +23,15 @@ const COOLDOWN_MS = 3 * 60 * 60_000;
 const FIRST_HOUR = 6;
 const LAST_HOUR = 21;
 
-const load = <T,>(name: string): T | null => {
-  try { return require(name) as T; } catch { return null; }
-};
-// Missing from builds made before this was added: there it all quietly does nothing.
-const BackgroundTask = Platform.OS === 'ios' ? load<typeof BackgroundTaskModule>('expo-background-task') : null;
-const Notifications = load<typeof NotificationsModule>('expo-notifications');
+// Missing from builds made before this was added: there it all quietly does nothing. Metro needs each
+// require spelled out, so they're written out one by one.
+const BackgroundTask: typeof BackgroundTaskModule | null = (() => {
+  if (Platform.OS !== 'ios') return null;
+  try { return require('expo-background-task') as typeof BackgroundTaskModule; } catch { return null; }
+})();
+const Notifications: typeof NotificationsModule | null = (() => {
+  try { return require('expo-notifications') as typeof NotificationsModule; } catch { return null; }
+})();
 
 export const moveNudgeSupported = BackgroundTask !== null;
 
@@ -47,7 +50,7 @@ async function check() {
   if (steps < STEPS) return;
   Storage.setItemSync(LAST_KEY, String(Date.now()));
   await Notifications.scheduleNotificationAsync({
-    content: { title: 'Out moving? 👟', body: `${steps.toLocaleString('en-GB')} steps in the last 10 minutes. Tap to record it so it counts.`, data: { link: '/run' } },
+    content: { title: 'Out moving?', body: `${steps.toLocaleString('en-GB')} steps in the last 10 minutes. Tap to record it so it counts.`, data: { link: '/run' } },
     trigger: null,
   });
 }

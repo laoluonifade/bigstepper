@@ -40,7 +40,7 @@ export default function ConversationScreen() {
       path={`/messages/${encodeURIComponent(username)}`}
       senderOf={(data) => data.runner}
       onData={onData}
-      duelWith={{ username, name }}
+      duelWith={{ username, name, avatarUrl: runner?.avatarUrl ?? null, avatarStyle: runner?.avatarStyle }}
       empty={(data) => <>
         <Avatar name={data.runner.displayName} src={data.runner.avatarUrl} avatarStyle={data.runner.avatarStyle} size={72} round />
         <Txt size={15} weight="bold" style={{ marginTop: 12 }}>{data.runner.displayName}</Txt>

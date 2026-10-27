@@ -174,6 +174,32 @@ export const StopIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const DuelIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <Path d="M20 4 9.5 14.5" />
+    <Path d="M7 12l5 5" />
+    <Path d="M9.5 14.5 5 19" />
+    <Path d="M4 4l10.5 10.5" />
+    <Path d="M17 12l-5 5" />
+    <Path d="M14.5 14.5 19 19" />
+  </Icon>
+);
+
+export const CrownIcon = (p: IconProps) => (
+  <Icon {...p} strokeLinejoin="round">
+    <Path d="M3 18 5 7l4.5 5L12 5l2.5 7L19 7l2 11z" />
+    <Path d="M4 21h16" />
+  </Icon>
+);
+
+export const FinishFlagIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <Path d="M5 21V3" />
+    <Path d="M5 4h14v10H5" />
+    <Path d="M5 4h3.5v3.33H5zM12 4h3.5v3.33H12zM8.5 7.33H12v3.34H8.5zM15.5 7.33H19v3.34h-3.5zM5 10.67h3.5V14H5zM12 10.67h3.5V14H12z" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
 export const FlagIcon = (p: IconProps) => (
   <Icon {...p}>
     <Path d="M5 21V4" />

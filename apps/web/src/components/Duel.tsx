@@ -7,6 +7,7 @@ import { formatDistance } from '../lib/format';
 import { toast } from '../lib/toast';
 import type { Unit } from '../lib/types';
 import { useConfirm } from './ConfirmDialog';
+import { CrownIcon, DuelIcon } from './icons';
 import { Modal } from './Modal';
 import { Avatar, cx, ErrorNotice, LiveDot } from './ui';
 
@@ -112,13 +113,13 @@ export function DuelCard({ duel, viewerId, unit, actions = true, className }: { 
       </span>
       <span className="block w-full truncate text-[13px] font-bold">{runner.userId === viewerId ? 'You' : runner.displayName.split(' ')[0]}</span>
       {phase === 'finished' && <span className="score num text-[18px]">{formatDistance(done[who].metres, unit)}</span>}
-      {won && <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2">🏆 Winner</span>}
+      {won && <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2"><CrownIcon size={13} />Winner</span>}
     </div>;
   };
   return <div className={cx('relative min-w-[240px] rounded-2xl border-[1.5px] border-ink bg-card p-3.5 text-left text-ink', className)}>
     <Link to="/duels/$id" params={{ id: duel.id }} className="absolute inset-0 rounded-2xl" aria-label={`Open duel: ${duelLine(duel, unit)}`} />
     <div className="flex items-center justify-between gap-2">
-      <p className="wide text-[11px] font-extrabold uppercase tracking-[0.12em]">⚔️ Duel</p>
+      <p className="wide inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em]"><DuelIcon size={14} />Duel</p>
       <span className={cx('wide inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-[0.08em]', running ? 'bg-track text-paper' : phase === 'finished' ? 'bg-volt text-ink' : 'bg-ink/[0.07] text-ink')}>
         {phase === 'live' && <LiveDot live className="h-[7px] w-[7px]" />}
         {PHASE_LABEL[phase]}

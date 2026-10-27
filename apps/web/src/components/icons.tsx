@@ -315,6 +315,32 @@ export const JUMP_LOGO = {
  * The Jump wordmark in `currentColor`. `motion="enter"` lifts the arrow in on mount; `motion="loop"` keeps it
  * nudging upward, for waiting states.
  */
+export const DuelIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20 4 9.5 14.5" />
+    <path d="M7 12l5 5" />
+    <path d="M9.5 14.5 5 19" />
+    <path d="M4 4l10.5 10.5" />
+    <path d="M17 12l-5 5" />
+    <path d="M14.5 14.5 19 19" />
+  </Icon>
+);
+
+export const CrownIcon = (p: IconProps) => (
+  <Icon {...p} strokeLinejoin="round">
+    <path d="M3 18 5 7l4.5 5L12 5l2.5 7L19 7l2 11z" />
+    <path d="M4 21h16" />
+  </Icon>
+);
+
+export const FinishFlagIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 21V3" />
+    <path d="M5 4h14v10H5" />
+    <path d="M5 4h3.5v3.33H5zM12 4h3.5v3.33H12zM8.5 7.33H12v3.34H8.5zM15.5 7.33H19v3.34h-3.5zM5 10.67h3.5V14H5zM12 10.67h3.5V14H12z" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
 export function JumpLogo({ height = 24, className = '', motion }: { height?: number; className?: string; motion?: 'enter' | 'loop' }) {
   return (
     <svg
