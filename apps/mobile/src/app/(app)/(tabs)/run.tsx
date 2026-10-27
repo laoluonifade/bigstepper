@@ -298,7 +298,7 @@ function Scoreboard() {
   async function finish() {
     const activity = await recorder.finish();
     if (activity) {
-      // The celebration on the activity page brings the haptics.
+      haptic('success');
       playSound('finish');
       router.push({ pathname: '/activities/[id]', params: { id: activity.id, fresh: '1' } });
     }

@@ -1,7 +1,8 @@
 /**
  * Durable GPS sample buffer, as the web's IndexedDB one: every fix is written to SQLite with a sequence
- * number *before* upload, and only deleted once the API has acknowledged it. Retries resend the exact same
- * sequence numbers, which keeps uploads idempotent. Synchronous, so the background location task can write
+ * number *before* upload. An acknowledged one is marked uploaded, not deleted, and the whole run stays on
+ * the phone until it's saved, so finishing can send everything again if the server turns out to be
+ * missing some. Retries resend the exact same sequence numbers, which keeps uploads idempotent. Synchronous, so the background location task can write
  * a batch of fixes in one go even if the rest of the app isn't running.
  */
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -32,6 +33,9 @@ function open() {
       CREATE TABLE IF NOT EXISTS samples (runId TEXT NOT NULL, sequence INTEGER NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy REAL, stepCount INTEGER, recordedAt TEXT NOT NULL, PRIMARY KEY (runId, sequence));
       CREATE TABLE IF NOT EXISTS meta (runId TEXT PRIMARY KEY NOT NULL, lastSequence INTEGER NOT NULL);
     `);
+    // Phones that recorded before points were kept until saving: their table has no uploaded column yet.
+    const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(samples)');
+    if (!columns.some((column) => column.name === 'uploaded')) db.execSync('ALTER TABLE samples ADD COLUMN uploaded INTEGER NOT NULL DEFAULT 0');
   }
   return db;
 }
@@ -52,7 +56,7 @@ export function appendSamples(runId: string, samples: Array<Omit<BufferedSample,
 }
 
 export function pendingSamples(runId: string, limit = 500): BufferedSample[] {
-  return open().getAllSync<Row>('SELECT * FROM samples WHERE runId = ? ORDER BY sequence LIMIT ?', runId, limit).map((row) => ({
+  return open().getAllSync<Row>('SELECT * FROM samples WHERE runId = ? AND uploaded = 0 ORDER BY sequence LIMIT ?', runId, limit).map((row) => ({
     runId: row.runId,
     sequence: row.sequence,
     latitude: row.latitude,
@@ -64,13 +68,23 @@ export function pendingSamples(runId: string, limit = 500): BufferedSample[] {
 }
 
 export function countPending(runId: string): number {
+  return open().getFirstSync<{ count: number }>('SELECT COUNT(*) AS count FROM samples WHERE runId = ? AND uploaded = 0', runId)?.count ?? 0;
+}
+
+/** Every point recorded for the run, uploaded or not: what the server should have by the time it's finished. */
+export function countRecorded(runId: string): number {
   return open().getFirstSync<{ count: number }>('SELECT COUNT(*) AS count FROM samples WHERE runId = ?', runId)?.count ?? 0;
+}
+
+/** The server is missing points: queue every one recorded for the run to be sent again. */
+export function resendAll(runId: string) {
+  open().runSync('UPDATE samples SET uploaded = 0 WHERE runId = ?', runId);
 }
 
 export function acknowledge(runId: string, sequences: number[]) {
   const database = open();
   database.withTransactionSync(() => {
-    for (const sequence of sequences) database.runSync('DELETE FROM samples WHERE runId = ? AND sequence = ?', runId, sequence);
+    for (const sequence of sequences) database.runSync('UPDATE samples SET uploaded = 1 WHERE runId = ? AND sequence = ?', runId, sequence);
   });
 }
 

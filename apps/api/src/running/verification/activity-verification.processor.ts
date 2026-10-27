@@ -116,11 +116,9 @@ export class ActivityVerificationProcessor extends WorkerHost {
       if (job.data.recheck && status === 'VERIFIED') {
         await manager.query(`UPDATE "activity_verification_reviews" SET "status"='APPROVED' WHERE "activityId"=$1 AND "status"='PENDING'`, [activity.id]);
       }
-      if (!(job.data.recheck && status !== 'VERIFIED')) await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,$2,$3,$4,$5)`,
-        status === 'VERIFIED'
-          ? [activity.userId, 'ACTIVITY_VERIFIED', `Your ${noun} is verified`, 'Your distance and steps are checked. Open Jump to see your progress.', `/activities/${activity.id}`]
-          : [activity.userId, 'ACTIVITY_NO_DISTANCE', `Your ${noun} didn’t record any distance`, 'GPS didn’t pick up any movement, so it isn’t saved. Next time, wait for a GPS signal outdoors before you start.', null],
+      if (status === 'VERIFIED') await manager.query(
+        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'ACTIVITY_VERIFIED',$2,$3,$4)`,
+        [activity.userId, `Your ${noun} is verified`, 'Your distance and steps are checked. Open Jump to see your progress.', `/activities/${activity.id}`],
       );
     });
     this.logger.log(`Activity ${activity.id} processed as ${status}`);

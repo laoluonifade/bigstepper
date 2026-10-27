@@ -20,7 +20,7 @@ import { AppState } from 'react-native';
 import { api, isApiError, post } from './api';
 import { syncLiveActivity } from './liveActivity';
 import { keys } from './queries';
-import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, getActiveRun, pendingSamples, setActiveRun } from './run-buffer';
+import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, countRecorded, getActiveRun, pendingSamples, resendAll, setActiveRun } from './run-buffer';
 import { Storage } from './kv';
 import { colors } from './theme';
 import { toast } from './toast';
@@ -308,15 +308,12 @@ function sync(): Promise<void> {
       if (server.status === 'RUNNING' && !(await flush())) return;
       for (const moment of moments) {
         if (moment.type === 'finish') {
-          // A last step checkpoint may have been saved while paused: open it up briefly to take it.
-          if (server.status === 'PAUSED' && countPending(id) > 0) {
-            server = await post<RunSession>(`/runs/${id}/resume`, { at: moment.at });
-            if (!(await flush())) return;
-          }
-          const activity = await post<Activity>(`/runs/${id}/finish`, { at: moment.at });
+          if (countPending(id) > 0 && !(await flush())) return;
+          const activity = await submitFinish(id, moment.at);
           setQueuedMoments(id, []);
           await reset();
           set({ phase: 'idle', connection: 'online' });
+          if (!activity) return;
           queryClient?.setQueryData(keys.activity(activity.id), activity);
           void queryClient?.invalidateQueries({ queryKey: keys.activities });
           toast({ tone: 'ok', title: 'Back in signal', message: `Your ${activity.activityType === 'cycle' ? 'ride' : activity.activityType} is submitted and being checked.`, action: { label: 'View', run: () => router.push(`/activities/${activity.id}`) } });
@@ -590,15 +587,9 @@ async function finish(): Promise<Activity | null> {
   const at = new Date().toISOString();
   // With earlier offline moments still to replay, this one joins the queue behind them.
   if (queuedMoments(id).length > 0) return finishOffline(id, at);
-  let status = state.session?.status;
+  const status = state.session?.status;
   try {
     if (countPending(id) > 0) {
-      // Samples are only accepted while RUNNING, so briefly resume a paused run to upload the tail.
-      if (status === 'PAUSED') {
-        const resumed = await post<RunSession>(`/runs/${id}/resume`);
-        set({ session: resumed });
-        status = resumed.status;
-      }
       if (!(await flush())) {
         // No signal: finish on the phone; it submits itself once Jump can be reached.
         if (state.connection === 'offline') return finishOffline(id, at);
@@ -606,9 +597,10 @@ async function finish(): Promise<Activity | null> {
         throw new Error(`${left} GPS ${left === 1 ? 'point is' : 'points are'} still waiting to upload. Check your connection and press finish again.`);
       }
     }
-    const activity = await post<Activity>(`/runs/${id}/finish`, { at });
+    const activity = await submitFinish(id, at);
     await reset();
     set({ phase: 'idle' });
+    if (!activity) return null;
     queryClient?.setQueryData(keys.activity(activity.id), activity);
     void queryClient?.invalidateQueries({ queryKey: keys.activities });
     return activity;
@@ -622,6 +614,29 @@ async function finish(): Promise<Activity | null> {
 }
 
 /** Finished with no signal: saved on the phone, submitted by `sync()` when Jump can be reached. */
+/**
+ * Finish, telling the server how many points this phone recorded. If it has fewer (an upload went
+ * missing), everything is sent again and finishing retried, so the saved distance is the recorded one.
+ * Null when GPS measured nothing at all: there's no activity, and the run is simply gone.
+ */
+async function submitFinish(id: string, at: string): Promise<Activity | null> {
+  const body = { at, sampleCount: countRecorded(id) };
+  try {
+    return await post<Activity>(`/runs/${id}/finish`, body);
+  } catch (error) {
+    if (isApiError(error, 409)) {
+      resendAll(id);
+      if (!(await flush())) throw error;
+      return post<Activity>(`/runs/${id}/finish`, body);
+    }
+    if (isApiError(error, 422)) {
+      toast({ tone: 'info', title: 'Nothing to save', message: 'GPS didn’t measure any distance, so there’s no activity to keep.' });
+      return null;
+    }
+    throw error;
+  }
+}
+
 function finishOffline(id: string, at: string): null {
   queueMoment(id, { type: 'finish', at });
   set({ phase: 'saved' });

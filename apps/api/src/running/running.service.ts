@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
@@ -17,6 +17,8 @@ export function momentOf(at: string | undefined, floor: Date, now = new Date()) 
   const earliest = Math.max(floor.getTime(), now.getTime() - 24 * 60 * 60 * 1000);
   return new Date(Math.min(now.getTime(), Math.max(earliest, moment.getTime())));
 }
+
+const MIN_SAVED_METRES = 5;
 
 @Injectable()
 export class RunningService {
@@ -58,7 +60,7 @@ export class RunningService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!session) throw new NotFoundException('Run session not found');
-      if (session.status !== 'RUNNING') {
+      if (session.status !== 'RUNNING' && session.status !== 'PAUSED') {
         throw new BadRequestException('Samples can only be added while the run is active');
       }
 
@@ -113,8 +115,8 @@ export class RunningService {
     });
   }
 
-  async finish(userId: string, sessionId: string, at?: string) {
-    const activity = await this.dataSource.transaction(async (manager) => {
+  async finish(userId: string, sessionId: string, at?: string, sampleCount?: number) {
+    const outcome = await this.dataSource.transaction(async (manager) => {
       const session = await manager.findOne(RunningSession, {
         where: { id: sessionId, userId },
         lock: { mode: 'pessimistic_write' },
@@ -122,9 +124,20 @@ export class RunningService {
       if (!session) throw new NotFoundException('Run session not found');
 
       const existing = await manager.findOne(Activity, { where: { runningSessionId: sessionId } });
-      if (existing) return existing;
+      if (existing) return { activity: existing };
       if (!['RUNNING', 'PAUSED'].includes(session.status)) {
         throw new BadRequestException('This run cannot be finished');
+      }
+
+      if (sampleCount !== undefined) {
+        const received = await manager.count(GpsSample, { where: { sessionId } });
+        if (received < sampleCount) {
+          throw new ConflictException(`Jump has ${received} of the ${sampleCount} GPS points from this run. Sending the rest again.`);
+        }
+        if (session.distanceMetres < MIN_SAVED_METRES) {
+          await manager.delete(RunningSession, { id: session.id });
+          return { activity: null };
+        }
       }
 
       const finishedAt = momentOf(at, session.pausedAt ?? session.startedAt);
@@ -137,22 +150,26 @@ export class RunningService {
       await manager.save(session);
 
       const elapsedSeconds = Math.max(0, Math.floor((finishedAt.getTime() - session.startedAt.getTime()) / 1000));
-      return manager.save(
-        Activity,
-        manager.create(Activity, {
-          runningSessionId: session.id,
-          userId,
-          activityType: session.activityType,
-          recordedDistanceMetres: session.distanceMetres,
-          recordedSteps: session.stepCount,
-          verificationStatus: 'PENDING_VERIFICATION',
-          elapsedSeconds,
-          movingSeconds: Math.max(0, elapsedSeconds - session.pausedSeconds),
-          startedAt: session.startedAt,
-          finishedAt,
-        }),
-      );
+      return {
+        activity: await manager.save(
+          Activity,
+          manager.create(Activity, {
+            runningSessionId: session.id,
+            userId,
+            activityType: session.activityType,
+            recordedDistanceMetres: session.distanceMetres,
+            recordedSteps: session.stepCount,
+            verificationStatus: 'PENDING_VERIFICATION',
+            elapsedSeconds,
+            movingSeconds: Math.max(0, elapsedSeconds - session.pausedSeconds),
+            startedAt: session.startedAt,
+            finishedAt,
+          }),
+        ),
+      };
     });
+    if (!outcome.activity) throw new UnprocessableEntityException('GPS didn’t measure any distance, so there’s nothing to save.');
+    const activity = outcome.activity;
 
     await this.verificationQueue.add(
       'verify-activity',

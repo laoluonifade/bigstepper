@@ -3,7 +3,7 @@ import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AddSamplesDto } from './dto/add-samples.dto';
 import { RunningService } from './running.service';
-import { RunMomentDto } from './dto/run-moment.dto';
+import { FinishRunDto, RunMomentDto } from './dto/run-moment.dto';
 import { StartRunDto } from './dto/start-run.dto';
 
 @Controller('runs')
@@ -34,9 +34,9 @@ export class RunningController {
   finish(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) sessionId: string,
-    @Body() body?: RunMomentDto,
+    @Body() body?: FinishRunDto,
   ) {
-    return this.runningService.finish(user.id, sessionId, body?.at);
+    return this.runningService.finish(user.id, sessionId, body?.at, body?.sampleCount);
   }
 
   @Post(':id/discard')
