@@ -10,6 +10,7 @@ import { AdminCreatorsPage } from './pages/Creators';
 import { OverviewPage } from './pages/Overview';
 import { AdminPayoutsPage } from './pages/Payouts';
 import { AdminPeoplePage } from './pages/People';
+import { ReportsPage } from './pages/Reports';
 import { ReviewsPage } from './pages/Reviews';
 import { RiskPage } from './pages/Risk';
 import { AdminLink, useLocation } from './router';
@@ -26,6 +27,7 @@ const SECTIONS: Section[] = [
   { path: '/payouts', label: 'Payouts', icon: (size) => <WalletIcon size={size} />, page: () => <AdminPayoutsPage />, adminOnly: true, primary: true },
   { path: '/risk', label: 'Risk', icon: (size) => <FlagIcon size={size} />, page: () => <RiskPage />, adminOnly: true, primary: true },
   { path: '/people', label: 'People', icon: (size) => <UsersIcon size={size} />, page: () => <AdminPeoplePage />, adminOnly: true, primary: true },
+  { path: '/reports', label: 'Reports', icon: (size) => <FlagIcon size={size} />, page: () => <ReportsPage />, adminOnly: false },
   { path: '/reviews', label: 'Activity reviews', short: 'Reviews', icon: (size) => <ActivityIcon size={size} />, page: () => <ReviewsPage />, adminOnly: false },
   { path: '/competitions', label: 'Paid competitions', short: 'Competitions', icon: (size) => <TableIcon size={size} />, page: () => <AdminChallengesPage />, adminOnly: true },
   { path: '/creators', label: 'Creators', icon: (size) => <ShieldIcon size={size} />, page: () => <AdminCreatorsPage />, adminOnly: true },

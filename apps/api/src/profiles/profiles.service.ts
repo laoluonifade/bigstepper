@@ -1,5 +1,6 @@
+import { blockedBetween, blockedBy } from '../safety/safety.sql';
 import { trophiesFor } from '../tables/trophies';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { CloudinaryService } from './cloudinary.service';
@@ -53,6 +54,7 @@ export class ProfilesService {
     if (input.weightKg !== undefined) changes.weightKg = input.weightKg;
     if (input.emailActivityEnabled !== undefined) changes.emailActivityEnabled = input.emailActivityEnabled;
     if (input.emailDigestEnabled !== undefined) changes.emailDigestEnabled = input.emailDigestEnabled;
+    if (input.messagesFrom !== undefined) changes.messagesFrom = input.messagesFrom;
     Object.assign(profile, changes);
     try {
       const saved = await this.profiles.save(profile);
@@ -122,7 +124,8 @@ export class ProfilesService {
       `SELECT (SELECT COUNT(*) FROM "follows" WHERE "followingId" = $1)::integer "followers",
               (SELECT COUNT(*) FROM "follows" WHERE "followerId" = $1)::integer "following",
               EXISTS (SELECT 1 FROM "follows" WHERE "followerId" = $2 AND "followingId" = $1) "followedByMe",
-              EXISTS (SELECT 1 FROM "follows" WHERE "followerId" = $1 AND "followingId" = $2) "followsMe"`,
+              EXISTS (SELECT 1 FROM "follows" WHERE "followerId" = $1 AND "followingId" = $2) "followsMe",
+              ${blockedBy('$2', '$1')} "blockedByMe"`,
       [profile.userId, viewerId ?? null],
     );
     const base = {
@@ -140,6 +143,7 @@ export class ProfilesService {
       following: counts.following,
       followedByMe: counts.followedByMe,
       followsMe: counts.followsMe,
+      blockedByMe: counts.blockedByMe,
     };
     const [totals] = await this.dataSource.query(
       `SELECT COALESCE(SUM(${DISTANCE}), 0)::bigint "totalMetres",
@@ -174,6 +178,8 @@ export class ProfilesService {
   async follow(followerId: string, username: string) {
     const target = await this.byUsername(username);
     if (target.userId === followerId) throw new BadRequestException('You can’t follow yourself');
+    const [blocked] = await this.dataSource.query(`SELECT 1 WHERE ${blockedBetween('$1', '$2')}`, [followerId, target.userId]) as unknown[];
+    if (blocked) throw new ForbiddenException('You can’t follow this runner.');
     const created = await this.dataSource.query(
       `INSERT INTO "follows" ("followerId", "followingId") VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING "followerId"`,
       [followerId, target.userId],

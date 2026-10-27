@@ -1,3 +1,4 @@
+import { blockedBetween, reportedBy } from '../safety/safety.sql';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CloudinaryService } from '../profiles/cloudinary.service';
@@ -22,7 +23,7 @@ export class FeedService {
       `INSERT INTO "notifications" ("userId","type","title","body","link")
        SELECT tagged."userId",'RANT_MENTION',author."displayName" || ' mentioned you in ' || $4,'Open Jump to see it.','/feed/' || $2
        FROM "profiles" tagged JOIN "profiles" author ON author."userId"=$1
-       WHERE lower(tagged."username")=ANY($3::text[]) AND tagged."userId"<>$1`,
+       WHERE lower(tagged."username")=ANY($3::text[]) AND tagged."userId"<>$1 AND NOT ${blockedBetween('tagged."userId"', '$1')}`,
       [authorId, postId, usernames, where],
     );
   }
@@ -50,6 +51,7 @@ export class FeedService {
            SELECT 1 FROM "follows" follow WHERE follow."followerId"=$1 AND follow."followingId"=f."userId"
          ))
          AND (f."activityId" IS NULL OR a."id" IS NOT NULL)
+         AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}
        ORDER BY f."createdAt" DESC, f."id" DESC LIMIT 20 OFFSET $3`,
       [viewerId, scope, Number(page) * 20],
     );
@@ -70,25 +72,26 @@ export class FeedService {
                 GROUP BY r."reaction" ORDER BY COUNT(*) DESC, r."reaction" LIMIT 3) top) "topReactions"
        FROM "feed_posts" f JOIN "profiles" p ON p."userId"=f."userId"
        LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus"='VERIFIED'
-       WHERE f."id"=$2 AND (f."activityId" IS NULL OR a."id" IS NOT NULL)`,
+       WHERE f."id"=$2 AND (f."activityId" IS NULL OR a."id" IS NOT NULL)
+         AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}`,
       [viewerId, postId],
     ) as Array<Record<string, unknown>>;
     if (!post) throw new NotFoundException('Post not found');
     return post;
   }
 
-  private async assertVisible(postId: string) {
+  private async assertVisible(viewerId: string, postId: string) {
     const rows = await this.dataSource.query(
       `SELECT 1 FROM "feed_posts" f JOIN "profiles" p ON p."userId"=f."userId"
        LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus"='VERIFIED'
-       WHERE f."id"=$1 AND (f."activityId" IS NULL OR a."id" IS NOT NULL)`,
-      [postId],
+       WHERE f."id"=$1 AND (f."activityId" IS NULL OR a."id" IS NOT NULL) AND NOT ${blockedBetween('$2', 'f."userId"')}`,
+      [postId, viewerId],
     ) as unknown[];
     if (!rows.length) throw new NotFoundException('Post not found');
   }
 
   async react(viewerId: string, postId: string, reaction: string) {
-    await this.assertVisible(postId);
+    await this.assertVisible(viewerId, postId);
     const changed = await this.dataSource.query(
       `INSERT INTO "feed_post_reactions" ("postId","userId","reaction") VALUES ($1,$2,$3)
        ON CONFLICT ("postId","userId") DO UPDATE SET "reaction"=EXCLUDED."reaction"
@@ -106,26 +109,27 @@ export class FeedService {
   }
 
   async unreact(viewerId: string, postId: string) {
-    await this.assertVisible(postId);
+    await this.assertVisible(viewerId, postId);
     await this.dataSource.query(`DELETE FROM "feed_post_reactions" WHERE "postId"=$1 AND "userId"=$2`, [postId, viewerId]);
     return { reaction: null };
   }
 
   async comments(viewerId: string, postId: string) {
-    await this.assertVisible(postId);
+    await this.assertVisible(viewerId, postId);
     return this.dataSource.query(
       `SELECT c."id",c."postId",c."userId",c."body",c."createdAt",p."username",p."displayName",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified"
        FROM (SELECT * FROM "feed_comments" WHERE "postId"=$1 ORDER BY "createdAt" DESC,"id" DESC LIMIT 100) c
        JOIN "profiles" p ON p."userId"=c."userId"
-       ORDER BY c."createdAt" ASC,c."id" ASC`, [postId],
+       WHERE NOT ${blockedBetween('$2', 'c."userId"')} AND NOT ${reportedBy('$2', 'comment', 'c."id"')}
+       ORDER BY c."createdAt" ASC,c."id" ASC`, [postId, viewerId],
     );
   }
 
   async comment(viewerId: string, postId: string, body: string) {
     const trimmed = body.trim();
     if (!trimmed) throw new BadRequestException('Write a comment');
-    await this.assertVisible(postId);
+    await this.assertVisible(viewerId, postId);
     const [row] = await this.dataSource.query(
       `INSERT INTO "feed_comments" ("postId","userId","body") VALUES ($1,$2,$3) RETURNING "id","postId","userId","body","createdAt"`,
       [postId, viewerId, trimmed],

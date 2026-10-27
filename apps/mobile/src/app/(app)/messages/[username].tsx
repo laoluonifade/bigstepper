@@ -1,16 +1,22 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { ActionMenu } from '@/components/ActionMenu';
 import { ChatThread, VerifiedName, type Person, type Thread } from '@/components/chat';
+import { blockRunner, openReport, unblockRunner } from '@/components/Safety';
 import { Avatar, Txt } from '@/components/ui';
 import { colors } from '@/lib/theme';
 
-type Conversation = Thread & { runner: Person & { username: string } };
+type Conversation = Thread & { runner: Person & { username: string }; blockedByMe?: boolean };
 
 export default function ConversationScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
+  const queryClient = useQueryClient();
   const [runner, setRunner] = useState<Conversation['runner'] | null>(null);
-  const onData = useCallback((data: Conversation) => setRunner(data.runner), []);
+  const [blocked, setBlocked] = useState(false);
+  const onData = useCallback((data: Conversation) => { setRunner(data.runner); setBlocked(Boolean(data.blockedByMe)); }, []);
+  const name = runner?.displayName ?? `@${username}`;
   return <View style={{ flex: 1, backgroundColor: colors.paper }}>
     <Stack.Screen options={{
       headerTitleAlign: 'left',
@@ -21,6 +27,13 @@ export default function ConversationScreen() {
           <Txt size={12} color="ink2" numberOfLines={1}>@{username}</Txt>
         </View>
       </Pressable>,
+      headerRight: () => <ActionMenu label="Conversation options" actions={[
+        { label: 'View profile', run: () => router.push(`/runners/${username}`) },
+        { label: `Report ${name}`, run: () => openReport({ targetType: 'profile', target: username, name }) },
+        blocked
+          ? { label: `Unblock @${username}`, run: () => void unblockRunner(queryClient, username, name) }
+          : { label: `Block @${username}`, danger: true, run: () => void blockRunner(queryClient, username, name) },
+      ]} />,
     }} />
     <ChatThread<Conversation>
       queryKey={['messages', username]}

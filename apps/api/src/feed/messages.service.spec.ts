@@ -8,20 +8,32 @@ describe('MessagesService', () => {
   beforeEach(() => query.mockReset());
 
   it('allows a direct message from a runner profile', async () => {
-    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{ id: 'message' }]);
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'message' }]);
     await service.send('me', 'other', 'Hello');
-    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Hello', null, null, null, null]);
+    expect(query.mock.calls[3][1]).toEqual(['me', 'other', 'Hello', null, null, null, null]);
   });
 
   it('sends trimmed text and checks that a reply belongs to this conversation', async () => {
-    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{}]).mockResolvedValueOnce([{ id: 'message' }]);
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{}]).mockResolvedValueOnce([{ id: 'message' }]);
     await service.send('me', 'other', '  Good run  ', { replyToId: 'reply-id' });
-    expect(query.mock.calls[2][1]).toEqual(['me', 'other', 'Good run', 'reply-id', null, null, null]);
+    expect(query.mock.calls[4][1]).toEqual(['me', 'other', 'Good run', 'reply-id', null, null, null]);
   });
 
   it('rejects replying to a message in another conversation', async () => {
-    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]);
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     await expect(service.send('me', 'other', 'Hello', { replyToId: 'someone-elses-message' })).rejects.toThrow('this conversation');
+  });
+
+  it('refuses a message between runners where either has blocked the other', async () => {
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{ '?column?': 1 }]);
+    await expect(service.send('me', 'other', 'Hello')).rejects.toThrow('can’t message this runner');
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a message to a runner who only takes messages from people they follow', async () => {
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ '?column?': 1 }]);
+    await expect(service.send('me', 'other', 'Hello')).rejects.toThrow('only gets messages from runners they follow');
+    expect(query).toHaveBeenCalledTimes(3);
   });
 
   it('does not allow a stranger to react to a message', async () => {
@@ -37,9 +49,9 @@ describe('MessagesService', () => {
   });
 
   it('sends trimmed text without a reply', async () => {
-    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([{ id: 'message' }]);
+    query.mockResolvedValueOnce([{ userId: 'other', username: 'other' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'message' }]);
     await service.send('me', 'other', '  Good run  ');
-    expect(query.mock.calls[1][1]).toEqual(['me', 'other', 'Good run', null, null, null, null]);
+    expect(query.mock.calls[3][1]).toEqual(['me', 'other', 'Good run', null, null, null, null]);
   });
 
   it('edits only the sender’s regular message', async () => {

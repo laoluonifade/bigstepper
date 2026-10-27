@@ -1,7 +1,8 @@
+import { MoreMenu, openBlock, openReport, unblockRunner } from '../components/Safety';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { CSSProperties, FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon } from '../components/icons';
+import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon, FlagIcon } from '../components/icons';
 import { ActivityBadge, ActivityPicker } from '../components/ActivityPicker';
 import { ClubLogo } from '../components/ClubLogo';
 import { EmojiPicker } from '../components/EmojiPicker';
@@ -26,8 +27,8 @@ type Person = { displayName: string; avatarUrl: string | null; avatarStyle?: Ava
 type MessageReaction = Reaction;
 type SharedActivity = { id: string; activityType: 'walk' | 'run' | 'cycle'; startedAt: string; verificationStatus: string; distanceMetres: number; movingSeconds: number; steps: number };
 type Message = { id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null; reactions: Array<{ userId: string; reaction: MessageReaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null; tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean };
-type Thread = { canMessage: boolean; messages: Message[] };
-type Conversation = Thread & { runner: Person & { username: string } };
+type Thread = { canMessage: boolean; lockedReason?: string | null; messages: Message[] };
+type Conversation = Thread & { runner: Person & { username: string }; blockedByMe?: boolean };
 type ClubConversation = Thread & {
   club: { id: string; slug: string; name: string; logoUrl: string | null; accentColor: string; verified: boolean; memberCount: number; faces: Person[]; chatLocked: boolean; myRole: 'owner' | 'admin' | 'member' };
   people: Array<Person & { userId: string }>;
@@ -56,6 +57,8 @@ export function MessagesPage() {
 
 export function ConversationPage() {
   const { username } = useParams({ strict: false }) as { username: string };
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   return <ChatThread<Conversation>
     queryKey={['messages', username]}
     path={`/messages/${encodeURIComponent(username)}`}
@@ -64,6 +67,13 @@ export function ConversationPage() {
     header={(data) => <>
       <Avatar name={data.runner.displayName} src={data.runner.avatarUrl} avatarStyle={data.runner.avatarStyle} size={42} className="rounded-full" />
       <div className="min-w-0"><h1 className="wide truncate text-[16px] font-black uppercase md:text-[18px]">{data.runner.displayName}{data.runner.verified && <VerifiedTick size={16} className="ml-1.5" />}</h1><Link to="/runners/$username" params={{ username }} search={{}} className="block truncate text-[12px] text-ink-2 hover:underline md:text-[13px]">@{username}</Link></div>
+      <MoreMenu label="Conversation options" className="ml-auto shrink-0" items={[
+        { label: 'View profile', onSelect: () => void navigate({ to: '/runners/$username', params: { username }, search: {} }) },
+        { label: `Report ${data.runner.displayName}`, onSelect: () => openReport({ targetType: 'profile', target: username, name: data.runner.displayName }) },
+        data.blockedByMe
+          ? { label: `Unblock @${username}`, onSelect: () => void unblockRunner(queryClient, username, data.runner.displayName) }
+          : { label: `Block @${username}`, danger: true, onSelect: () => openBlock({ username, name: data.runner.displayName }) },
+      ]} />
     </>}
     empty={(data) => <>
       <Avatar name={data.runner.displayName} src={data.runner.avatarUrl} avatarStyle={data.runner.avatarStyle} size={72} className="rounded-full" />
@@ -281,7 +291,7 @@ function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, sen
         })}
       </div>
       {conversation.data.canMessage === false ? <p className="flex shrink-0 items-center justify-center gap-2 border-t border-line bg-card px-4 py-4 pb-[max(env(safe-area-inset-bottom),1rem)] text-center text-[13px] text-ink-2 md:mt-3 md:rounded-2xl md:border">
-        <LockIcon size={14} /> Only the owner and managers can send messages here.
+        <LockIcon size={14} /> {conversation.data.lockedReason ?? 'Only the owner and managers can send messages here.'}
       </p> : <form onSubmit={submit} className={`shrink-0 border-t border-line bg-card px-3 pt-2 md:mt-3 md:rounded-2xl md:border md:p-3 ${viewport?.keyboardOpen ? 'pb-2' : 'pb-[max(env(safe-area-inset-bottom),0.5rem)]'}`}>
         <ErrorNotice error={send.error} className="mb-2" />
         <ErrorNotice error={edit.error} className="mb-2" />
@@ -397,6 +407,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
         { label: 'Reply', icon: <ReplyIcon size={16} />, onSelect: () => { setShowReactions(false); onReply(); } },
         ...(message.body ? [{ label: 'Copy', icon: <CopyIcon size={16} />, onSelect: () => { setShowReactions(false); void navigator.clipboard?.writeText(message.body); } }] : []),
         ...(dark && !message.activity && !message.audioUrl ? [{ label: 'Edit', icon: <EditIcon size={16} />, onSelect: () => { setShowReactions(false); onEdit(); } }] : []),
+        ...(!mine && !message.pending ? [{ label: 'Report', icon: <FlagIcon size={16} />, onSelect: () => { setShowReactions(false); openReport({ targetType: 'message', target: message.id }); } }] : []),
       ]} />}
       <ErrorNotice error={react.error} className="mt-1" />
     </div>

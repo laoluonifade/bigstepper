@@ -32,6 +32,9 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   lastSeenAt: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  suspendedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

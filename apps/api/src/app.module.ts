@@ -28,6 +28,7 @@ import { GeoModule } from './geo/geo.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { PrizesModule } from './prizes/prizes.module';
 import { AmlModule } from './aml/aml.module';
+import { SafetyModule } from './safety/safety.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AmlModule } from './aml/aml.module';
     RedisModule,
     MailModule,
     AmlModule,
+    SafetyModule,
     FeedModule,
     JobsModule,
     AuthModule,

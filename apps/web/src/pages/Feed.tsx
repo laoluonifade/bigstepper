@@ -1,3 +1,4 @@
+import { MoreMenu, openBlock, openReport } from '../components/Safety';
 import { InfiniteData, QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -206,6 +207,14 @@ function Composer({ unit }: { unit: Unit }) {
   </form>;
 }
 
+/** Someone else's Rant: report it, or block them. */
+function PostMenu({ item, className }: { item: Pick<FeedPost, 'id' | 'username' | 'displayName'>; className?: string }) {
+  return <MoreMenu label="Post options" className={className} items={[
+    { label: 'Report this Rant', onSelect: () => openReport({ targetType: 'rant', target: item.id }) },
+    { label: `Block @${item.username}`, danger: true, onSelect: () => openBlock({ username: item.username, name: item.displayName }) },
+  ]} />;
+}
+
 function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCancelDelete, onDelete, deleting }: {
   item: FeedPost; unit: Unit; viewerId: string; confirmingDelete: boolean; onAskDelete: () => void; onCancelDelete: () => void; onDelete: () => void; deleting: boolean;
 }) {
@@ -221,6 +230,7 @@ function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCance
         <span className="text-ink-3" aria-hidden="true">·</span>
         <time dateTime={item.createdAt} className="shrink-0 text-ink-3" title={new Date(item.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>{shortAgo(item.createdAt)}</time>
         {item.userId === viewerId && !confirmingDelete && <button type="button" className="relative z-[1] ml-auto shrink-0 self-center rounded-full p-1 text-ink-3 hover:bg-bad-wash hover:text-bad" onClick={onAskDelete} aria-label="Delete post"><TrashIcon size={15} /></button>}
+        {item.userId !== viewerId && <PostMenu item={item} className="ml-auto shrink-0 self-center" />}
       </p>
       {/* The whole card opens the post; links and buttons inside sit above this overlay. */}
       <Link to="/feed/$id" params={{ id: item.id }} className="absolute inset-0" aria-label={`Open post by ${item.displayName}`} />
@@ -364,6 +374,7 @@ export function FeedPostPage() {
             <span className="block truncate text-[14px] text-ink-3">@{item.username}</span>
           </div>
           {item.userId !== user.id && <Link to="/messages/$username" params={{ username: item.username }} className="h-9 shrink-0 rounded-full border border-line px-4 text-[13px] font-bold leading-9 hover:border-ink">Message</Link>}
+          {item.userId !== user.id && <PostMenu item={item} className="shrink-0" />}
         </div>
         {item.body && <p className="mt-4 whitespace-pre-wrap break-words text-[19px] leading-relaxed"><MentionText text={item.body} /></p>}
         {item.imageUrl && <PostImage src={item.imageUrl} className="mt-3 max-h-[560px]" />}
@@ -450,6 +461,10 @@ function Comments({ post: item, viewerId, replyField }: { post: FeedPost; viewer
             <Link to="/runners/$username" params={{ username: entry.username }} search={{}} className="truncate font-bold hover:underline">{entry.displayName}</Link>
             <time dateTime={entry.createdAt} className="shrink-0 text-[13px] text-ink-3">{entry.pending ? 'Posting…' : shortAgo(entry.createdAt)}</time>
             {entry.userId === viewerId && !entry.pending && <button type="button" className="ml-auto shrink-0 self-center rounded-full p-1 text-ink-3 hover:bg-bad-wash hover:text-bad" onClick={() => removeComment.mutate(entry.id)} disabled={removeComment.isPending} aria-label="Delete comment"><TrashIcon size={14} /></button>}
+            {entry.userId !== viewerId && !entry.pending && <MoreMenu label="Comment options" className="ml-auto shrink-0 self-center" items={[
+              { label: 'Report this comment', onSelect: () => openReport({ targetType: 'comment', target: entry.id }) },
+              { label: `Block @${entry.username}`, danger: true, onSelect: () => openBlock({ username: entry.username, name: entry.displayName }) },
+            ]} />}
           </p>
           <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-snug"><MentionText text={entry.body} /></p>
         </div>

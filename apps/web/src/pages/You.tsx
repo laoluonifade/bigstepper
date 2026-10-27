@@ -1,3 +1,4 @@
+import { MoreMenu, openBlock, openReport, unblockRunner } from '../components/Safety';
 import { StravaConnection } from './Strava';
 import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +31,7 @@ import { activityName, formatDate, formatDistanceNumber, formatDuration, formatM
 import { profileStats } from '../lib/progress';
 import { useStored } from '../lib/local';
 import { keys, useActivities, useCreator, useCreatorEarnings, useNotifications, useOpenNotification, useProfile, useUnit, useWallet } from '../lib/queries';
+import type { AvatarStyle } from '@jump/shared/types';
 import type { CreatorProfile, Gender, PayoutRecipient, PrizeAward, Profile, PublicProfile, Unit } from '../lib/types';
 import { COUNTRIES } from '../lib/countries';
 import { Modal } from '../components/Modal';
@@ -104,6 +106,16 @@ export function ProfileSettingsPage() {
               <Segmented<Unit> label="Distance units" value={me.preferredUnit} onChange={(value) => save.mutate({ preferredUnit: value })} options={[{ value: 'km', label: 'km' }, { value: 'mi', label: 'miles' }]} />
             </div>
           </div>
+          <div className={ROW}>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-semibold">Who can message me</span>
+              <span className="block text-[13px] text-ink-3">{me.messagesFrom === 'following' ? 'Only runners you follow' : 'Any runner'}</span>
+            </span>
+            <div className="w-52">
+              <Segmented<'everyone' | 'following'> label="Who can message me" value={me.messagesFrom ?? 'everyone'} onChange={(value) => save.mutate({ messagesFrom: value })}
+                options={[{ value: 'everyone', label: 'Everyone' }, { value: 'following', label: 'I follow' }]} />
+            </div>
+          </div>
           <button type="button" className={ROW} onClick={() => setSheet('email')}>
             <span className="flex-1 text-left text-[14px] font-semibold">Email updates</span>
             <span className="text-[13px] text-ink-3">{emailOn === 2 ? 'All on' : emailOn === 1 ? '1 of 2 on' : 'Off'}</span>
@@ -141,7 +153,13 @@ export function ProfileSettingsPage() {
             <span className="flex-1 text-[14px] font-semibold">Change password</span>
             <ChevronRightIcon size={16} className="text-ink-3" />
           </Link>
+          <Link to="/delete-account" className={ROW}>
+            <span className="flex-1 text-[14px] font-semibold text-bad">Delete account</span>
+            <ChevronRightIcon size={16} className="text-bad" />
+          </Link>
         </SettingsGroup>
+
+        <BlockedRunners />
 
         <button type="button" className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-bold text-bad transition-colors hover:bg-bad-wash" onClick={() => void logout()}>
           <LogoutIcon size={16} /> Log out
@@ -164,6 +182,23 @@ export function ProfileSettingsPage() {
       {sheet === 'email' && <EmailSheet profile={me} onClose={() => setSheet(null)} />}
     </div>
   );
+}
+
+/** Who you've blocked, with Unblock beside each. */
+function BlockedRunners() {
+  const queryClient = useQueryClient();
+  const blocks = useQuery({ queryKey: ['blocks'], queryFn: () => api<Array<{ username: string; displayName: string; avatarUrl: string | null; avatarStyle: AvatarStyle }>>('/me/blocks') });
+  return <SettingsGroup title="Blocked runners">
+    {blocks.isLoading ? <div className={ROW}><span className="text-[13px] text-ink-3">Loading…</span></div>
+      : !blocks.data?.length ? <div className={ROW}><span className="text-[13px] text-ink-3">Nobody. Block a runner from the ⋯ menu on their profile, a Rant or a comment.</span></div>
+        : blocks.data.map((runner) => <div key={runner.username} className={ROW}>
+          <Link to="/runners/$username" params={{ username: runner.username }} search={{}} className="flex min-w-0 flex-1 items-center gap-3">
+            <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={34} className="rounded-full" />
+            <span className="min-w-0"><span className="block truncate text-[14px] font-semibold">{runner.displayName}</span><span className="block truncate text-[12px] text-ink-3">@{runner.username}</span></span>
+          </Link>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => void unblockRunner(queryClient, runner.username, runner.displayName)}>Unblock</button>
+        </div>)}
+  </SettingsGroup>;
 }
 
 const ROW = 'flex min-h-[54px] w-full items-center gap-3 px-4 py-2.5 transition-colors hover:bg-ink/[0.03]';
@@ -757,6 +792,7 @@ export function NotificationsPage() {
 export function RunnerPage() {
   const { username } = useParams({ strict: false }) as { username: string };
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { tab = 'activity' } = useSearch({ strict: false }) as { tab?: 'followers' | 'following' | 'activity' };
   const navigate = useNavigate();
   const unit = useUnit();
@@ -802,9 +838,19 @@ export function RunnerPage() {
             {!isMe && user && <Link to="/messages/$username" params={{ username: data.username }} className="btn-secondary btn-sm min-w-[calc(50%-0.25rem)] flex-1 sm:min-w-0">Message</Link>}
             {!isMe && <RunnerChallengeInvite username={data.username} />}
             <ShareProfileButton username={data.username} displayName={data.displayName} iconOnly />
+            {!isMe && user && <MoreMenu label="Runner options" className="self-center" items={[
+              { label: `Report ${data.displayName}`, onSelect: () => openReport({ targetType: 'profile', target: data.username, name: data.displayName }) },
+              data.blockedByMe
+                ? { label: `Unblock @${data.username}`, onSelect: () => void unblockRunner(queryClient, data.username, data.displayName) }
+                : { label: `Block @${data.username}`, danger: true, onSelect: () => openBlock({ username: data.username, name: data.displayName }) },
+            ]} />}
           </>
         }
       >
+        {data.blockedByMe && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-paper p-3 text-[13px]">
+          <span><strong>You blocked this runner.</strong> <span className="text-ink-2">You won’t see their Rants, comments or messages, and neither of you can message or follow the other.</span></span>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => void unblockRunner(queryClient, data.username, data.displayName)}>Unblock</button>
+        </div>}
         {data.followsMe && !isMe && <p className="mt-3 text-[12px] font-semibold text-ink-2">Follows you</p>}
         <ProfileStats stats={data.stats} unit={unit} />
       </ProfileHero>

@@ -45,6 +45,9 @@ export class UpdateProfileDto {
   @IsOptional() @IsBoolean()
   emailActivityEnabled?: boolean;
 
+  @IsOptional() @IsIn(['everyone', 'following'])
+  messagesFrom?: 'everyone' | 'following';
+
   @IsOptional() @IsBoolean()
   emailDigestEnabled?: boolean;
 

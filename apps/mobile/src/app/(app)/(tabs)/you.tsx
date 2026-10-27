@@ -98,6 +98,21 @@ export default function YouScreen() {
         </Row>
       </Group>
 
+      <Group title="Privacy">
+        <Row>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt size={14} weight="semibold">Who can message me</Txt>
+            <Txt size={13} color="ink3">{me.messagesFrom === 'following' ? 'Only runners you follow' : 'Any runner'}</Txt>
+          </View>
+          <Segmented<'everyone' | 'following'> size="sm" label="Who can message me" value={me.messagesFrom ?? 'everyone'} onChange={(value) => save.mutate({ messagesFrom: value })}
+            options={[{ value: 'everyone', label: 'Everyone' }, { value: 'following', label: 'I follow' }]} />
+        </Row>
+        <Row onPress={() => router.push('/blocked' as Href)}>
+          <Txt size={14} weight="semibold" style={{ flex: 1 }}>Blocked runners</Txt>
+          <ChevronRightIcon size={16} color={colors.ink3} />
+        </Row>
+      </Group>
+
       <Group title="Preferences">
         <Row>
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>Distance units</Txt>

@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ActionBar, ActivityAttachment, PostImage, updatePost, type FeedComment, type FeedPost } from '@/components/feed';
+import { ActionMenu } from '@/components/ActionMenu';
+import { ActionBar, ActivityAttachment, PostImage, PostMenu, updatePost, type FeedComment, type FeedPost } from '@/components/feed';
+import { blockRunner, openReport } from '@/components/Safety';
 import { SendIcon, TrashIcon } from '@/components/icons';
 import { MentionInput, MentionText } from '@/components/social';
 import { Avatar, ErrorNotice, Footer, Loading, Screen, Skeleton, Txt, VerifiedTick, type TextFieldRef } from '@/components/ui';
@@ -86,6 +88,7 @@ export default function FeedPostScreen() {
             <Txt size={14} color="ink3" numberOfLines={1}>@{item.username}</Txt>
           </View>
           {item.userId !== user.id && <Pressable onPress={() => router.push(`/messages/${item.username}`)} style={styles.message}><Txt size={13} weight="bold">Message</Txt></Pressable>}
+          {item.userId !== user.id && <PostMenu item={item} />}
         </View>
         {item.body ? <View style={{ marginTop: 16 }}><MentionText text={item.body} size={19} /></View> : null}
         {item.imageUrl ? <PostImage uri={item.imageUrl} /> : null}
@@ -103,6 +106,10 @@ export default function FeedPostScreen() {
                 <Text onPress={() => router.push(`/runners/${entry.username}`)} numberOfLines={1} style={[styles.name, { fontSize: 14 }]}>{entry.displayName}</Text>
                 <Txt size={13} color="ink3">{entry.pending ? 'Posting…' : shortAgo(entry.createdAt)}</Txt>
                 {entry.userId === user.id && !entry.pending && <Pressable onPress={() => removeComment.mutate(entry.id)} disabled={removeComment.isPending} hitSlop={8} style={{ marginLeft: 'auto' }} accessibilityLabel="Delete comment"><TrashIcon size={14} color={colors.ink3} /></Pressable>}
+                {entry.userId !== user.id && !entry.pending && <View style={{ marginLeft: 'auto' }}><ActionMenu label="Comment options" actions={[
+                  { label: 'Report this comment', run: () => openReport({ targetType: 'comment', target: entry.id }) },
+                  { label: `Block @${entry.username}`, danger: true, run: () => void blockRunner(queryClient, entry.username, entry.displayName) },
+                ]} /></View>}
               </View>
               <View style={{ marginTop: 4 }}><MentionText text={entry.body} /></View>
             </View>

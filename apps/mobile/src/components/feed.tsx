@@ -10,8 +10,10 @@ import Animated, { ZoomIn } from 'react-native-reanimated';
 import { api, post, WEB_URL } from '@/lib/api';
 import { colors, fontFamily, GUTTER, radius, score, wideLabel } from '@/lib/theme';
 import { confirm } from '@/lib/dialog';
+import { ActionMenu } from './ActionMenu';
 import { ActivityBadge } from './ActivityRow';
 import { CommentIcon, HeartIcon, SendIcon, ShareIcon, TrashIcon } from './icons';
+import { blockRunner, openReport } from './Safety';
 import { PhotoViewer, MentionText, ReactionPicker } from './social';
 import { Avatar, haptic, Txt, VerifiedTick } from './ui';
 
@@ -49,6 +51,15 @@ export function updatePost(queryClient: QueryClient, id: string, change: (item: 
 
 const openRunner = (username: string) => router.push(`/runners/${username}`);
 
+/** Someone else's Rant: report it, or block them. */
+export function PostMenu({ item }: { item: Pick<FeedPost, 'id' | 'username' | 'displayName'> }) {
+  const queryClient = useQueryClient();
+  return <ActionMenu label="Post options" actions={[
+    { label: 'Report this Rant', run: () => openReport({ targetType: 'rant', target: item.id }) },
+    { label: `Block @${item.username}`, danger: true, run: () => void blockRunner(queryClient, item.username, item.displayName) },
+  ]} />;
+}
+
 export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; unit: Unit; viewerId: string; onDelete: () => void }) {
   return <Pressable onPress={() => router.push(`/feed/${item.id}`)} style={({ pressed }) => [styles.post, pressed && { backgroundColor: 'rgba(18,18,18,0.02)' }]} accessibilityLabel={`Post by ${item.displayName}`}>
     <Pressable onPress={() => openRunner(item.username)} accessibilityLabel={`View ${item.displayName}'s profile`}>
@@ -60,8 +71,9 @@ export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; u
         {item.verified ? <VerifiedTick size={16} /> : null}
         <Txt size={14} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>@{item.username}</Txt>
         <Txt size={14} color="ink3">· {shortAgo(item.createdAt)}</Txt>
-        {item.userId === viewerId && <Pressable onPress={() => void confirm({ title: 'Delete this post?', cancelLabel: 'Keep', confirmLabel: 'Delete', destructive: true }).then((ok) => { if (ok) onDelete(); })}
-          hitSlop={8} style={{ marginLeft: 'auto', padding: 4 }} accessibilityLabel="Delete post"><TrashIcon size={15} color={colors.ink3} /></Pressable>}
+        {item.userId === viewerId ? <Pressable onPress={() => void confirm({ title: 'Delete this post?', cancelLabel: 'Keep', confirmLabel: 'Delete', destructive: true }).then((ok) => { if (ok) onDelete(); })}
+          hitSlop={8} style={{ marginLeft: 'auto', padding: 4 }} accessibilityLabel="Delete post"><TrashIcon size={15} color={colors.ink3} /></Pressable>
+          : <View style={{ marginLeft: 'auto' }}><PostMenu item={item} /></View>}
       </View>
       {item.body ? <View style={{ marginTop: 4 }}><MentionText text={item.body} /></View> : null}
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" transition={150} /> : null}

@@ -46,6 +46,9 @@ export class Profile {
   @Column({ default: true })
   emailActivityEnabled: boolean;
 
+  @Column({ type: 'varchar', length: 12, default: 'everyone' })
+  messagesFrom: 'everyone' | 'following';
+
   @Column({ type: 'varchar', length: 20, nullable: true })
   whatsappNumber: string | null;
 

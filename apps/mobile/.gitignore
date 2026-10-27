@@ -44,3 +44,6 @@ example
 
 # EAS credentials (keystore passwords): never commit
 credentials.json
+
+# Google Play upload key for eas submit
+google-play-service-account.json

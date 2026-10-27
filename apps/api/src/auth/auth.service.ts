@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, ConflictException, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, ConflictException, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { MailService } from '../mail/mail.service';
 import { passwordResetEmail, verificationEmail, welcomeEmail } from '../mail/templates';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -319,6 +319,7 @@ export class AuthService {
   }
 
   private async generateToken(user: User) {
+    if (user.suspendedAt) throw new ForbiddenException('This account is suspended. Contact start@startajump.com if you think this is a mistake.');
     const session = await this.sessionsRepo.save(
       this.sessionsRepo.create({
         userId: user.id,

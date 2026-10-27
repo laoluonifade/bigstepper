@@ -1,3 +1,4 @@
+import { blockedBetween, blockedBy, reportedBy } from '../safety/safety.sql';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { DataSource } from 'typeorm';
@@ -14,6 +15,10 @@ function preview(text: string, voiceNote: boolean, activity: boolean) {
   if (voiceNote) return '🎤 Voice note';
   return activity ? 'Shared an activity' : 'Sent you a message';
 }
+
+const CLOSED_TO = (sender: string, recipient: string) =>
+  `EXISTS (SELECT 1 FROM "profiles" rp WHERE rp."userId"=${recipient} AND rp."messagesFrom"='following'
+     AND NOT EXISTS (SELECT 1 FROM "follows" rf WHERE rf."followerId"=${recipient} AND rf."followingId"=${sender}))`;
 
 @Injectable()
 export class MessagesService {
@@ -84,6 +89,7 @@ export class MessagesService {
               COALESCE(u."count",0) "unreadCount"
        FROM latest l JOIN "profiles" p ON p."userId"=l.peer
        LEFT JOIN unread u ON u."senderId"=l.peer
+       WHERE NOT ${blockedBetween('$1', 'l.peer')}
        ORDER BY l."createdAt" DESC LIMIT 50`, [userId],
     );
   }
@@ -120,10 +126,18 @@ export class MessagesService {
   async conversation(userId: string, username: string) {
     const runner = await this.recipient(username);
     if (runner.userId === userId) throw new BadRequestException('You cannot message yourself');
-    const messages = await this.thread(
-      `(m."senderId"=$1 AND m."recipientId"=$2) OR (m."senderId"=$2 AND m."recipientId"=$1)`, [userId, runner.userId],
-    );
-    return { runner, canMessage: true, messages };
+    const [messages, [block]] = await Promise.all([
+      this.thread(
+        `((m."senderId"=$1 AND m."recipientId"=$2) OR (m."senderId"=$2 AND m."recipientId"=$1)) AND NOT ${reportedBy('$1', 'message', 'm."id"')}`, [userId, runner.userId],
+      ),
+      this.dataSource.query(
+        `SELECT ${blockedBy('$1', '$2')} AS "byMe", ${blockedBy('$2', '$1')} AS "byThem", ${CLOSED_TO('$1', '$2')} AS "closed"`, [userId, runner.userId],
+      ) as Promise<Array<{ byMe: boolean; byThem: boolean; closed: boolean }>>,
+    ]);
+    const lockedReason = block.byMe ? `You blocked @${runner.username}. Unblock them from their profile to message again.`
+      : block.byThem ? 'You can’t message this runner.'
+      : block.closed ? `@${runner.username} only gets messages from runners they follow.` : null;
+    return { runner, canMessage: !lockedReason, lockedReason, blockedByMe: block.byMe, messages };
   }
 
   private async thread(where: string, params: unknown[]) {
@@ -173,7 +187,9 @@ export class MessagesService {
 
   async clubConversation(userId: string, clubRef: string) {
     const club = await this.memberClub(userId, clubRef);
-    const messages = await this.thread(`m."clubId"=$1`, [club.id]);
+    const messages = await this.thread(
+      `m."clubId"=$1 AND NOT ${blockedBy('$2', 'm."senderId"')} AND NOT ${reportedBy('$2', 'message', 'm."id"')}`, [club.id, userId],
+    );
     const people = await this.dataSource.query(
       `SELECT p."userId", p."username", COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
@@ -248,6 +264,10 @@ export class MessagesService {
     await this.checkExtras(userId, trimmed, extras);
     const runner = await this.recipient(username);
     if (runner.userId === userId) throw new BadRequestException('You cannot message yourself');
+    const [blocked] = await this.dataSource.query(`SELECT 1 WHERE ${blockedBetween('$1', '$2')}`, [userId, runner.userId]) as unknown[];
+    if (blocked) throw new ForbiddenException('You can’t message this runner.');
+    const [closed] = await this.dataSource.query(`SELECT 1 WHERE ${CLOSED_TO('$1', '$2')}`, [userId, runner.userId]) as unknown[];
+    if (closed) throw new ForbiddenException(`@${runner.username} only gets messages from runners they follow.`);
     if (replyToId) {
       const reply = await this.dataSource.query(
         `SELECT 1 FROM "direct_messages" WHERE "id"=$1 AND (("senderId"=$2 AND "recipientId"=$3) OR ("senderId"=$3 AND "recipientId"=$2))`,

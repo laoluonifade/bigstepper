@@ -1,3 +1,4 @@
+import { SafetyHost } from './Safety';
 import { StravaSyncBar } from '../pages/Strava';
 import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
 import { Link, Outlet, useLocation, type LinkProps } from '@tanstack/react-router';
@@ -169,7 +170,7 @@ function SignedInShell() {
     },
   ];
 
-  if (fullscreen) return <Outlet />;
+  if (fullscreen) return <><Outlet /><SafetyHost /></>;
 
   return (
     <div className="min-h-screen md:pl-60">
@@ -241,6 +242,7 @@ function SignedInShell() {
           <OnboardingGate />
           <Outlet />
         </div>
+        <SafetyHost />
       </div>
 
       {/* Mobile tabs */}

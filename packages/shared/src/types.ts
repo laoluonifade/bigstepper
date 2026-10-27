@@ -36,6 +36,8 @@ export interface Profile {
   /** Private optional setting; never included in public profiles. */
   weightKg: number | null;
   emailActivityEnabled: boolean;
+  /** Who can start a DM: anyone, or only runners this person follows. */
+  messagesFrom?: 'everyone' | 'following';
   emailDigestEnabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -87,6 +89,8 @@ export interface PublicProfile {
   followers: number;
   following: number;
   followedByMe: boolean;
+  /** You blocked them: their Rants and messages are hidden from you and they can’t message you. */
+  blockedByMe?: boolean;
   followsMe: boolean;
   stats: PublicStats;
   recent?: Array<{ id?: string; activityType: 'walk' | 'run' | 'cycle'; startedAt: string; metres: number; movingSeconds: number }>;

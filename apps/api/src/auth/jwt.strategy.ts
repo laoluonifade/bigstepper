@@ -27,6 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!session || session.expiresAt <= new Date()) {
       throw new UnauthorizedException('Session is no longer valid');
     }
+    if (session.user.suspendedAt && session.scope !== 'admin') throw new UnauthorizedException('This account is suspended');
     void this.sessions.manager.query(
       `UPDATE "users" SET "lastSeenAt" = now() WHERE "id" = $1 AND ("lastSeenAt" IS NULL OR "lastSeenAt" < now() - interval '5 minutes')`,
       [payload.sub],

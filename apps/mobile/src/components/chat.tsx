@@ -15,6 +15,7 @@ import Animated, { Easing, FadeIn, runOnJS, useAnimatedStyle, useSharedValue, wi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { setOpenChat } from '@/lib/push';
+import { openReport } from './Safety';
 import { api, patch, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { confirmCheckout, openCheckout } from '@/lib/checkout';
@@ -25,7 +26,7 @@ import { colors, fontFamily, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecording } from '@/lib/voice';
 import { ActivityBadge, ActivityPicker } from './ActivityRow';
-import { ActivityIcon, CheckIcon, CopyIcon, EditIcon, LockIcon, MicIcon, PauseIcon, PlayIcon, ReplyIcon, SendIcon, TrashIcon } from './icons';
+import { ActivityIcon, CheckIcon, CopyIcon, EditIcon, FlagIcon, LockIcon, MicIcon, PauseIcon, PlayIcon, ReplyIcon, SendIcon, TrashIcon } from './icons';
 import { Avatar, Button, ErrorNotice, haptic, LiveDot, Skeleton, TextField, Txt, VerifiedTick, type TextFieldRef } from './ui';
 
 /** Whoever wrote a message: the other person in a DM, any member in a club chat. */
@@ -38,7 +39,7 @@ export type Message = {
   /** When the other person read it; direct messages only. */
   readAt?: string | null;
 };
-export type Thread = { canMessage: boolean; messages: Message[] };
+export type Thread = { canMessage: boolean; lockedReason?: string | null; messages: Message[] };
 type SendDraft = { text: string; reply: Message | null; activityId?: string; voice?: VoiceRecording };
 type SentMessage = Pick<Message, 'id' | 'senderId' | 'recipientId' | 'body' | 'createdAt' | 'replyToId'>;
 
@@ -244,7 +245,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
       </View>}
     />
     {data.canMessage === false
-      ? <View style={[styles.locked, { paddingBottom: keyboardShown ? 12 : Math.max(insets.bottom, 16) }]}><LockIcon size={14} color={colors.ink2} /><Txt size={13} color="ink2">Only the owner and managers can send messages here.</Txt></View>
+      ? <View style={[styles.locked, { paddingBottom: keyboardShown ? 12 : Math.max(insets.bottom, 16) }]}><LockIcon size={14} color={colors.ink2} /><Txt size={13} color="ink2" style={{ flexShrink: 1 }}>{data.lockedReason ?? 'Only the owner and managers can send messages here.'}</Txt></View>
       : <View style={[styles.composer, { paddingBottom: keyboardShown ? 8 : Math.max(insets.bottom, 8) }]}>
         <ErrorNotice error={send.error} />
         <ErrorNotice error={edit.error} />
@@ -452,6 +453,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
       { label: 'Reply', icon: <ReplyIcon size={18} color={colors.ink} />, onSelect: onReply },
       ...(message.body ? [{ label: 'Copy', icon: <CopyIcon size={18} color={colors.ink} />, onSelect: () => void Clipboard.setStringAsync(message.body).then(() => toast({ tone: 'ok', message: 'Copied.' })) }] : []),
       ...(dark && !message.activity && !message.audioUrl ? [{ label: 'Edit', icon: <EditIcon size={18} color={colors.ink} />, onSelect: onEdit }] : []),
+      ...(!mine && !message.pending ? [{ label: 'Report', icon: <FlagIcon size={18} color={colors.bad} />, danger: true, onSelect: () => openReport({ targetType: 'message', target: message.id }) }] : []),
     ]}>{body}</MessageMenu>
   </View>;
 }

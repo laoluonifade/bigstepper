@@ -1,16 +1,18 @@
 import { countryName } from '@jump/shared/countries';
 import { activityName, formatDate, formatDistanceNumber, formatDuration, formatPace, formatRelative, formatSpeed } from '@jump/shared/format';
 import type { PublicProfile } from '@jump/shared/types';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActionMenu } from '@/components/ActionMenu';
 import { ActivityBadge } from '@/components/ActivityRow';
 import { LockIcon } from '@/components/icons';
 import { OptionSheet } from '@/components/Sheet';
 import { ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '@/components/Profile';
+import { blockRunner, openReport, unblockRunner } from '@/components/Safety';
 import { TrophyCabinet } from '@/components/Trophies';
-import { Avatar, Button, EmptyState, ErrorNotice, Loading, Screen, Txt } from '@/components/ui';
+import { Avatar, Button, EmptyState, ErrorNotice, Loading, Notice, Screen, Txt } from '@/components/ui';
 import { api, isApiError, post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useUnit } from '@/lib/queries';
@@ -23,6 +25,7 @@ export default function RunnerScreen() {
   const params = useLocalSearchParams<{ username: string; tab?: Tab }>();
   const username = params.username;
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const unit = useUnit();
   const [tab, setTab] = useState<Tab>(params.tab === 'followers' || params.tab === 'following' ? params.tab : 'activity');
   const runner = useQuery({ queryKey: ['runner', username.toLowerCase()], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(username)}`) });
@@ -55,6 +58,12 @@ export default function RunnerScreen() {
         <View style={styles.actionRow}>
           <FollowButton username={data.username} following={data.followedByMe} preview={isMe} style={{ flex: 1 }} />
           <ShareProfileButton username={data.username} displayName={data.displayName} size="md" />
+          {!isMe && user && <ActionMenu label="Runner options" actions={[
+            { label: `Report ${data.displayName}`, run: () => openReport({ targetType: 'profile', target: data.username, name: data.displayName }) },
+            data.blockedByMe
+              ? { label: `Unblock @${data.username}`, run: () => void unblockRunner(queryClient, data.username, data.displayName) }
+              : { label: `Block @${data.username}`, danger: true, run: () => void blockRunner(queryClient, data.username, data.displayName) },
+          ]} />}
         </View>
         {!isMe && <View style={styles.actionRow}>
           {user && <Button variant="secondary" full style={{ flex: 1 }} title="Message" onPress={() => router.push(`/messages/${data.username}`)} />}
@@ -62,6 +71,10 @@ export default function RunnerScreen() {
         </View>}
       </View>}
     >
+      {data.blockedByMe ? <Notice tone="neutral" title="You blocked this runner" style={{ marginTop: 16 }}
+        action={<Button size="sm" variant="secondary" title="Unblock" onPress={() => void unblockRunner(queryClient, data.username, data.displayName)} />}>
+        You won’t see their Rants, comments or messages, and neither of you can message or follow the other.
+      </Notice> : null}
       {data.followsMe && !isMe ? <Txt size={12} weight="semibold" color="ink2" style={{ marginTop: 12 }}>Follows you</Txt> : null}
       <ProfileStats stats={data.stats} unit={unit} />
     </ProfileHero>

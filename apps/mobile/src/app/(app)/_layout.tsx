@@ -7,6 +7,7 @@ import { useNotifications, useProfile } from '@/lib/queries';
 import { setAppBadge } from '@/lib/push';
 import { StandingNudge } from '@/components/StandingNudge';
 import { TrophyCelebration } from '@/components/Trophies';
+import { ReportHost } from '@/components/Safety';
 import { UsernamePrompt } from '@/components/UsernamePrompt';
 import { colors, fontFamily } from '@/lib/theme';
 
@@ -64,5 +65,6 @@ export default function AppLayout() {
   <TrophyCelebration />
   {/* Still on the generated sign-up username: pick your own. */}
   <UsernamePrompt />
+  <ReportHost />
   </>;
 }
