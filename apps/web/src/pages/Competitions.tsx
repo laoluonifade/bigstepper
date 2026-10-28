@@ -735,7 +735,7 @@ export function NewCompetitionPage() {
             else create.mutate();
           }}
         >
-          {challengeType === 'CYCLING' ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice> : <PriceTags value={mode} onChange={(value) => {
+          <PriceTags value={mode} onChange={(value) => {
             setMode(value);
             if (value !== 'free') setPrizesOn(false);
             // Cash needs a way of winning that's hard to game; fall back to the activity's first one that is.
@@ -743,7 +743,7 @@ export function NewCompetitionPage() {
               const safe = ACTIVITY_RULES[challengeType].options.find((option) => METRICS[option.method].prizes);
               if (safe) setScoring(draftFor(challengeType, safe.method, scoring));
             }
-          }} />}
+          }} />
           {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>
             {mode === 'paid'
               ? `All ${club.data.memberCount} members are invited once Jump approves it; they choose whether to pay to enter.`
@@ -814,10 +814,7 @@ export function NewCompetitionPage() {
             unit={unit}
             prizes={mode !== 'free'}
             error={errors.target}
-            onChange={(next) => {
-              if (next.challengeType === 'CYCLING') setMode('free');
-              setScoring(next);
-            }}
+            onChange={setScoring}
           />
 
           <fieldset>
@@ -1327,7 +1324,7 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
     <section>
       <SectionTitle>How it works</SectionTitle>
       <p className="mb-5 max-w-xl text-[15px] leading-relaxed text-ink-2">
-        {cycling ? 'Record rides with Jump. GPS-verified cycling distance updates the leaderboard; rides do not score in running leagues or foot-activity competitions. Cycling is free to enter and has no cash prize.' : distance ? 'Verified runs, walks and rides all add to your distance. Record them in Jump or sync from Strava, and the leaderboard updates when verification finishes.' : 'A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.'}
+        {cycling ? 'Record rides with Jump. GPS-verified cycling distance updates the leaderboard; rides do not score in running leagues or foot-activity competitions.' : distance ? 'Verified runs, walks and rides all add to your distance. Record them in Jump or sync from Strava, and the leaderboard updates when verification finishes.' : 'A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.'}
       </p>
       <ol className="grid gap-3 sm:grid-cols-3">
         {steps.map((step, index) => (
@@ -1522,7 +1519,7 @@ function ShareBox({ table, url, rows, viewerId, unit }: { table: CompetitionTabl
 function Rules({ table, unit }: { table: CompetitionTable; unit: Unit }) {
   const items = [
     ...rulesLines(table, unit),
-    ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance, and there are no cash prizes.'] : []),
+    ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance.'] : []),
     ...(table.eligibleCountries?.length ? [`Open to people whose Jump profile country is ${table.eligibleCountries.map(countryName).join(', ')}.`] : []),
     ...(table.reminderTime ? [`Joined runners may receive a daily email reminder at ${table.reminderTime.slice(0, 5)} (${table.reminderTimeZone}). No reminder is sent after they record an activity that day.`] : []),
     ...(table.type === 'paid' && table.minimumEntrants > 1 ? [`Needs at least ${table.minimumEntrants} entrants to go ahead.`] : []),

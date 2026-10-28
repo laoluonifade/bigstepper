@@ -1,7 +1,7 @@
 import { prizeSplit } from '@jump/shared/competition';
 import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/shared/competition-rules';
 import { countryName } from '@jump/shared/countries';
-import { formatDateTime, formatDistance, formatMoney, formatNairaInput, fromLocalInput, nairaInputToKobo, toLocalInput, toMetres } from '@jump/shared/format';
+import { distanceValue, formatDateTime, formatDistance, formatMoney, formatNairaInput, fromLocalInput, nairaInputToKobo, toLocalInput, toMetres } from '@jump/shared/format';
 import { EMPTY_PRIZES, fundingForPrize, PRIZE_KIND, prizeProblem, prizesPayload, type PrizeDraft } from '@jump/shared/prizes';
 import { draftFor, scoringPayload, type ScoringDraft } from '@jump/shared/scoring-draft';
 import { templateById } from '@jump/shared/templates';
@@ -60,7 +60,7 @@ const AUDIENCE_VERB = { all: '', run: 'run', walk: 'walk', cycle: 'ride' } as co
 
 export default function NewCompetitionScreen() {
   const lift = useKeyboardLift();
-  const { club: clubId, template: templateId } = useLocalSearchParams<{ club?: string; template?: string }>();
+  const { club: clubId, template: templateId, convert } = useLocalSearchParams<{ club?: string; template?: string; convert?: string }>();
   // "Challenge someone" starters arrive with everything set; the runner just names it and invites.
   const [preset] = useState(() => templateById(templateId));
   const queryClient = useQueryClient();
@@ -108,6 +108,29 @@ export default function NewCompetitionScreen() {
   const [format, setFormat] = useState<CompetitionFormat>(preset ? (preset.capacity === 2 ? 'head_to_head' : 'invite') : 'open');
   const [emailText, setEmailText] = useState('');
   const [phoneText, setPhoneText] = useState('');
+  // Making a free competition paid: the same form, filled in from it, and paid is the only choice.
+  const original = useQuery({ queryKey: keys.table(convert ?? ''), queryFn: () => api<CompetitionTable>(`/tables/${convert}`), enabled: Boolean(convert) });
+  const [filled, setFilled] = useState(false);
+  useEffect(() => {
+    const table = original.data;
+    if (!table || filled) return;
+    setFilled(true);
+    setMode('paid');
+    setTitle(table.title);
+    setDescription(table.description ?? '');
+    const target = METRICS[table.scoringMethod].target;
+    const amount = target === 'distance' ? (table.targetDistanceMetres ? String(Number(distanceValue(table.targetDistanceMetres, unit).toFixed(2))) : '')
+      : target === 'steps' ? String(table.targetSteps ?? '') : target === 'time' ? (table.targetSeconds ? String(table.targetSeconds / 3600) : '') : target === 'sessions' ? String(table.targetSessions ?? '') : '';
+    const base = draftFor(table.challengeType, table.scoringMethod);
+    setScoring(METRICS[table.scoringMethod].prizes ? { ...base, target: amount || base.target } : draftFor(table.challengeType, ACTIVITY_RULES[table.challengeType].options.find((option) => METRICS[option.method].prizes)?.method ?? table.scoringMethod));
+    const start = table.startsAt && new Date(table.startsAt) > new Date() ? new Date(table.startsAt) : new Date();
+    setStartsAt(toLocalInput(start));
+    const days = table.startsAt && table.scoringClosesAt ? Math.max(1, Math.round((new Date(table.scoringClosesAt).getTime() - new Date(table.startsAt).getTime()) / 86_400_000)) : 7;
+    setDuration(days);
+    setScoringClosesAt(toLocalInput(new Date(start.getTime() + days * 86_400_000)));
+    if (table.capacity) setCapacity(String(table.capacity));
+    if (table.reminderTime) { setRemindDaily(true); setReminderTime(table.reminderTime.slice(0, 5)); }
+  }, [original.data, filled, unit]);
 
   // Room for the whole club, with space for people who join later.
   useEffect(() => {
@@ -191,7 +214,7 @@ export default function NewCompetitionScreen() {
     };
   };
   const create = useMutation({
-    mutationFn: (asDraft: boolean = false) => asDraft ? post<CompetitionTable>('/tables', draftPayload()) : post<CompetitionTable>(mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
+    mutationFn: (asDraft: boolean = false) => asDraft ? post<CompetitionTable>('/tables', draftPayload()) : post<CompetitionTable>(original.data ? `/tables/${original.data.id}/convert-paid` : mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
       title: title.trim(),
       ...(description.trim() ? { description: description.trim() } : {}),
       ...scoringFields.fields,
@@ -226,8 +249,9 @@ export default function NewCompetitionScreen() {
           toast({ tone: 'warn', message: `Created, but we couldn’t invite @${opponent.username}: ${error instanceof Error ? error.message : 'try again from the competition page.'}` });
         });
       }
-      await Promise.all([queryClient.invalidateQueries({ queryKey: keys.tables }), queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] })]);
+      await Promise.all([queryClient.invalidateQueries({ queryKey: keys.tables }), queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] }), queryClient.invalidateQueries({ queryKey: keys.table(table.code) })]);
       haptic('success');
+      if (original.data) toast({ tone: 'ok', title: 'Sent to Jump', message: 'It’s now a paid competition. Entry opens once Jump approves it.' });
       if (create.variables) toast({ tone: 'ok', title: 'Saved as a draft', message: mode === 'free' ? 'Only you can see it. Hold the + on Explore to find it.' : 'Saved as a free draft for now. Prize and entry-fee details are set when you finish it.' });
       router.replace({ pathname: '/competitions/[code]', params: { code: table.code, created: '1' } });
     },
@@ -268,16 +292,16 @@ export default function NewCompetitionScreen() {
   return <View style={{ flex: 1, paddingBottom: lift }}>
     <Screen ownKeyboard footer={<Footer>
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        {!later ? <Button style={{ flex: 1 }} full size="lg" variant="secondary" title="Save as draft" loading={create.isPending && Boolean(create.variables)} onPress={() => create.mutate(true)} /> : null}
+        {!later && !convert ? <Button style={{ flex: 1 }} full size="lg" variant="secondary" title="Save as draft" loading={create.isPending && Boolean(create.variables)} onPress={() => create.mutate(true)} /> : null}
         <Button style={{ flex: 1 }} full size="lg" title={later ? submitLabel : mode === 'free' ? 'Create' : submitLabel} loading={create.isPending && !create.variables} disabled={Boolean(blocker)} onPress={() => (blocker ? toast({ tone: 'warn', message: blocker }) : create.mutate(false))} />
       </View>
       {later ? <Txt size={12} color="ink3" align="center" numberOfLines={1} style={{ marginTop: 6 }}>{submitHint}</Txt> : null}
     </Footer>}>
-      <PageHeader eyebrow="New competition" title="Set up a competition" description="Choose the activity and exact scoring method before you publish." />
+      {convert
+        ? <PageHeader eyebrow="Make it paid" title={original.data?.title ?? 'Make it paid'} description="Set the entry fee and prizes. It keeps its link, and Jump reviews it before entry opens." />
+        : <PageHeader eyebrow="New competition" title="Set up a competition" description="Choose the activity and exact scoring method before you publish." />}
       <View style={{ gap: 24 }}>
-        {challengeType === 'CYCLING'
-          ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice>
-          : <PriceTags value={mode} onChange={changeMode} />}
+        {convert ? null : <PriceTags value={mode} onChange={changeMode} />}
         {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>
           {mode === 'paid' ? `All ${club.data.memberCount} members are invited once Jump approves it; they choose whether to pay to enter.`
             : inviteClubMembers ? `${club.data.official && enrolAudience !== 'all' ? `Members who ${AUDIENCE_VERB[enrolAudience]}` : `All ${club.data.memberCount} members`} are entered automatically, and anyone who joins the club later is added while it’s open.`
@@ -308,7 +332,7 @@ export default function NewCompetitionScreen() {
             </Pressable>}
         </View>
 
-        <ScoringPicker draft={scoring} unit={unit} prizes={mode !== 'free'} error={errors.target} onChange={(next) => { if (next.challengeType === 'CYCLING') setMode('free'); setScoring(next); }} />
+        <ScoringPicker draft={scoring} unit={unit} prizes={mode !== 'free'} error={errors.target} onChange={setScoring} />
 
         <View>
           <FieldLabel label="Length" />

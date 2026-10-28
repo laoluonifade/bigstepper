@@ -39,7 +39,7 @@ describe('challenge scoring configuration', () => {
   it('keeps cash prizes to formats that are hard to game', () => {
     expect(() => assertScoringConfiguration({ challengeType: 'RUN', scoringMethod: 'MOST_SESSIONS', prizes: true })).toThrow('cash prizes');
     expect(() => assertScoringConfiguration({ challengeType: 'RUN', scoringMethod: 'FARTHEST_DISTANCE', prizes: true })).not.toThrow();
-    expect(() => assertScoringConfiguration({ challengeType: 'CYCLING', scoringMethod: 'FARTHEST_DISTANCE', prizes: true })).toThrow('cash prizes');
+    expect(() => assertScoringConfiguration({ challengeType: 'CYCLING', scoringMethod: 'FARTHEST_DISTANCE', prizes: true })).not.toThrow();
   });
 
   it('only allows the activity kinds an activity includes', () => {

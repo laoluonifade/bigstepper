@@ -138,7 +138,6 @@ export class TablesService {
   async create(creatorId: string, input: CreateTableDto) {
     const sponsored = Boolean(input.fundedFree || input.guaranteedPrizeKobo);
     const challengeType = input.challengeType ?? 'RUN';
-    if (challengeType === 'CYCLING' && sponsored) throw new BadRequestException('Cycling competitions are free only until bicycle verification is stronger');
     const scoring = scoringColumns({ ...input, challengeType, scoringMethod: input.scoringMethod ?? ACTIVITY_RULES[challengeType].options[0].method }, sponsored);
     const format = input.format ?? (input.visibility === 'private' ? 'invite' : 'open');
     if (format === 'head_to_head' && input.capacity !== 2) throw new BadRequestException('Head-to-head is for exactly two people');
@@ -231,10 +230,43 @@ export class TablesService {
   }
 
   async createPaidDraft(creatorId: string, input: CreateCreatorPaidChallengeDto) {
-    if (input.challengeType === 'CYCLING') throw new BadRequestException('Cycling competitions cannot have cash prizes yet');
-    const scoring = scoringColumns(input, true);
     await this.assertCommunityManager(creatorId, input.communityId);
     if (input.inviteClubMembers && !input.communityId) throw new BadRequestException('Choose a club before inviting its members');
+    const { columns, clubPrizes } = await this.paidColumns(creatorId, input);
+    return this.saveWithInvites(this.tables.create({
+      creatorId,
+      code: randomBytes(4).toString('hex').toUpperCase(),
+      ...columns,
+    }), input, async (manager, created) => {
+      if (clubPrizes) await savePrizes(manager, created.id, clubPrizes.prizes);
+    });
+  }
+
+  async convertToPaid(tableId: string, userId: string, input: CreateCreatorPaidChallengeDto) {
+    const { columns, clubPrizes } = await this.paidColumns(userId, input);
+    return this.dataSource.transaction(async (manager) => {
+      const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
+      if (!table || table.deletedAt) throw new NotFoundException('Competition not found');
+      if (table.creatorId !== userId) throw new ForbiddenException('Only the person who created this competition can make it paid');
+      if (table.type !== 'free') throw new ConflictException('Only free competitions can be made paid');
+      if (![...UNPUBLISHED, 'OPEN_FOR_ENTRY', 'LIVE'].includes(table.status) || (table.scoringClosesAt && table.scoringClosesAt <= new Date())) {
+        throw new ConflictException('This competition has finished, so it can’t be made paid');
+      }
+      if (table.seriesId) throw new ConflictException('Competitions in a series stay free. Create a separate paid one.');
+      if ((input.communityId ?? null) !== table.communityId) throw new BadRequestException('A paid version stays with the same club as the original');
+      if ((await this.repo.otherEntrants(manager, tableId, userId)).length) {
+        throw new ConflictException('People have already joined this for free, so it can’t become paid. Create a new paid competition instead.');
+      }
+      await this.repo.declinePendingInvitations(manager, tableId);
+      Object.assign(table, columns, { publishAt: null, autoEnrolClub: false, enrolAudience: 'all', eligibleCountries: [], visibility: 'public' });
+      const saved = await manager.save(table);
+      if (clubPrizes) await savePrizes(manager, saved.id, clubPrizes.prizes);
+      return saved;
+    });
+  }
+
+  private async paidColumns(creatorId: string, input: CreateCreatorPaidChallengeDto) {
+    const scoring = scoringColumns(input, true);
     const clubPrizes = input.clubPrizes ?? null;
     if (clubPrizes) {
       if (!input.communityId) throw new BadRequestException('Club prizes are for club competitions. Host it from your club’s page.');
@@ -256,32 +288,31 @@ export class TablesService {
     if (minimumEntrants > input.capacity || entryClosesAt > scoringClosesAt || startsAt > scoringClosesAt) {
       throw new ConflictException('Competition dates or entrant limits are invalid');
     }
-    return this.saveWithInvites(this.tables.create({
-      creatorId,
-      title: input.title.trim(),
-      description: input.description?.trim() || null,
-      code: randomBytes(4).toString('hex').toUpperCase(),
-      type: 'paid',
-      status: 'PENDING_APPROVAL',
-      entryFeeKobo: input.entryFeeKobo,
-      guaranteedPrizeKobo,
-      minimumEntrants,
-      capacity: input.capacity,
-      startsAt,
-      entryClosesAt,
-      scoringClosesAt,
-      distanceCapMetres: null,
-      ...scoring,
-      format: input.capacity === 2 ? 'head_to_head' : 'open',
-      ...reminderConfig(input.reminderTime, input.reminderTimeZone),
-      communityId: input.communityId ?? null,
-      platformFeeBps: 3500,
-      creatorCommissionBps: 500,
-      prizeSplitBps,
-      ...(clubPrizes ? prizeColumns(clubPrizes) : {}),
-    }), input, async (manager, created) => {
-      if (clubPrizes) await savePrizes(manager, created.id, clubPrizes.prizes);
-    });
+    return {
+      clubPrizes,
+      columns: {
+        title: input.title.trim(),
+        description: input.description?.trim() || null,
+        type: 'paid',
+        status: 'PENDING_APPROVAL',
+        entryFeeKobo: input.entryFeeKobo,
+        guaranteedPrizeKobo,
+        minimumEntrants,
+        capacity: input.capacity,
+        startsAt,
+        entryClosesAt,
+        scoringClosesAt,
+        distanceCapMetres: null,
+        ...scoring,
+        format: input.capacity === 2 ? 'head_to_head' as const : 'open' as const,
+        ...reminderConfig(input.reminderTime, input.reminderTimeZone),
+        communityId: input.communityId ?? null,
+        platformFeeBps: 3500,
+        creatorCommissionBps: 500,
+        prizeSplitBps,
+        ...(clubPrizes ? prizeColumns(clubPrizes) : {}),
+      },
+    };
   }
 
   async registerFree(tableId: string, userId: string) {

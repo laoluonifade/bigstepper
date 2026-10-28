@@ -35,6 +35,12 @@ export class TablesController {
     return this.tablesService.createPaidDraft(user.id, body);
   }
 
+  @Post(':id/convert-paid')
+  @UseGuards(JwtAuthGuard)
+  convertToPaid(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string, @Body() body: CreateCreatorPaidChallengeDto) {
+    return this.tablesService.convertToPaid(tableId, user.id, body);
+  }
+
   @Post(':id/leave')
   @UseGuards(JwtAuthGuard)
   leave(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) tableId: string) {

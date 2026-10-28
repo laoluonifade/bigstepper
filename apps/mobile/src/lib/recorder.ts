@@ -140,12 +140,15 @@ if (!FOREGROUND_ONLY && !TaskManager.isTaskDefined(TASK)) {
   });
 }
 
+async function watchInApp() {
+  foregroundWatch ??= await Location.watchPositionAsync({ accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 3, timeInterval: 1000 }, (fix) => onFixes([fix]));
+}
+
 async function startLocation() {
-  if (FOREGROUND_ONLY) {
-    foregroundWatch ??= await Location.watchPositionAsync({ accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 3, timeInterval: 1000 }, (fix) => onFixes([fix]));
-    return;
-  }
-  if (await Location.hasStartedLocationUpdatesAsync(TASK)) return;
+  if (FOREGROUND_ONLY) return watchInApp();
+  if (await Location.hasStartedLocationUpdatesAsync(TASK).catch(() => false)) return;
+  // Android refuses background updates without "Allow all the time": record while Jump is open instead.
+  if (Platform.OS === 'android' && (await Location.getBackgroundPermissionsAsync().catch(() => null))?.status !== 'granted') return watchInApp();
   await Location.startLocationUpdatesAsync(TASK, {
     accuracy: Location.Accuracy.BestForNavigation,
     distanceInterval: 3,
@@ -159,7 +162,7 @@ async function startLocation() {
       notificationColor: colors.track,
       killServiceOnDestroy: false,
     },
-  });
+  }).catch(() => watchInApp());
 }
 
 async function stopLocation() {

@@ -200,7 +200,7 @@ export function scoringProblem(settings: ScoringSettings): string | null {
   const option = scoringOption(settings.challengeType, settings.scoringMethod);
   if (!option) return `${settings.scoringMethod.toLowerCase().replace(/_/g, ' ')} isn't a way to win ${activity.label.toLowerCase()}`;
   const metric = METRICS[settings.scoringMethod];
-  if (settings.prizes && (!metric.prizes || settings.challengeType === 'CYCLING')) return `${option.label} competitions can't have cash prizes yet`;
+  if (settings.prizes && !metric.prizes) return `${option.label} competitions can't have cash prizes yet`;
   const between = (value: number | null | undefined, min: number, max: number) => typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
   if (metric.target === 'distance' && !between(settings.targetDistanceMetres, 100, 1_000_000)) return 'Set a distance between 0.1 and 1,000 km';
   if (metric.target === 'steps' && !between(settings.targetSteps, 1_000, 10_000_000)) return 'Set a step target between 1,000 and 10,000,000';

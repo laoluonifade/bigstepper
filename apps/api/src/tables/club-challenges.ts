@@ -80,32 +80,11 @@ export async function savePrizes(manager: EntityManager, tableId: string, prizes
   }
 }
 
-export async function announceToFollowers(manager: EntityManager, table: Pick<CompetitionTable, 'id' | 'communityId' | 'visibility' | 'creatorId' | 'title' | 'code'>) {
-  if (!table.communityId || table.visibility !== 'public') return;
-  await manager.query(
-    `INSERT INTO "notifications" ("userId","type","title","body","link")
-     SELECT f."userId", 'CLUB_CHALLENGE', c."name" || ' has a new competition', $2, '/competitions/' || $3
-     FROM "club_follows" f JOIN "clubs" c ON c."id" = f."clubId"
-     WHERE f."clubId" = $1 AND f."userId" <> $4
-       AND NOT EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = $5 AND r."userId" = f."userId")`,
-    [table.communityId, `${table.title}. Tap to see the rules and join.`, table.code, table.creatorId, table.id],
-  );
-}
-
-export async function announceCompetition(manager: EntityManager, table: Pick<CompetitionTable, 'id' | 'communityId' | 'visibility' | 'creatorId' | 'title' | 'code'>) {
+export async function announceCompetition(manager: EntityManager, table: Pick<CompetitionTable, 'id' | 'visibility'>) {
   if (table.visibility !== 'public') return;
-  await announceToFollowers(manager, table);
   await manager.query(
-    `INSERT INTO "notifications" ("userId","type","title","body","link")
-     SELECT u."id", 'NEW_COMPETITION', 'New competition: ' || $2,
-            COALESCE((SELECT p."displayName" FROM "profiles" p WHERE p."userId" = $4), 'A Jump runner') || ' just started it. Tap to see the rules and join.',
-            '/competitions/' || $3
-     FROM "users" u
-     WHERE u."deletedAt" IS NULL AND u."id" <> $4
-       AND NOT EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = $1 AND r."userId" = u."id")
-       AND ($5::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM "club_follows" f WHERE f."clubId" = $5 AND f."userId" = u."id"))
-       AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId" = u."id" AND n."type" = 'NEW_COMPETITION' AND n."link" = '/competitions/' || $3)`,
-    [table.id, table.title, table.code, table.creatorId, table.communityId ?? null],
+    `UPDATE "competition_tables" SET "announceAt" = now() + interval '5 hours' WHERE "id" = $1 AND "announcedAt" IS NULL AND "announceAt" IS NULL`,
+    [table.id],
   );
 }
 

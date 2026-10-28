@@ -25,17 +25,23 @@ export async function announceNewCompetitions(manager: EntityManager) {
   const rows = await manager.query(
     `WITH fresh AS (
        UPDATE "competition_tables" t SET "announcedAt" = now()
-       WHERE t."announcedAt" IS NULL AND t."visibility" = 'public' AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE')
+       WHERE t."announcedAt" IS NULL AND COALESCE(t."announceAt", t."createdAt" + interval '5 hours') <= now()
+         AND t."visibility" = 'public' AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE')
          AND t."deletedAt" IS NULL AND t."archivedAt" IS NULL AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now())
        RETURNING t."id", t."code", t."title", t."creatorId", t."communityId"
      ), sent AS (
        INSERT INTO "notifications" ("userId", "type", "title", "body", "link")
-       SELECT u."id", 'NEW_COMPETITION', 'New competition: ' || f."title",
-              'Hosted by ' || COALESCE(c."name", p."displayName", 'a Jump runner') || '. Tap to see the rules and join.', '/competitions/' || f."code"
+       SELECT u."id",
+              CASE WHEN fo."userId" IS NULL THEN 'NEW_COMPETITION' ELSE 'CLUB_CHALLENGE' END,
+              CASE WHEN fo."userId" IS NULL THEN 'New competition: ' || f."title" ELSE c."name" || ' has a new competition' END,
+              CASE WHEN fo."userId" IS NULL THEN 'Hosted by ' || COALESCE(c."name", p."displayName", 'a Jump runner') || '. Tap to see the rules and join.'
+                   ELSE f."title" || '. Tap to see the rules and join.' END,
+              '/competitions/' || f."code"
        FROM fresh f
        LEFT JOIN "clubs" c ON c."id" = f."communityId"
        LEFT JOIN "profiles" p ON p."userId" = f."creatorId"
        JOIN "users" u ON u."deletedAt" IS NULL AND u."id" <> f."creatorId"
+       LEFT JOIN "club_follows" fo ON fo."clubId" = f."communityId" AND fo."userId" = u."id"
        WHERE NOT EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = f."id" AND r."userId" = u."id")
          AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId" = u."id" AND n."link" = '/competitions/' || f."code")
        RETURNING 1

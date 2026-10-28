@@ -76,6 +76,12 @@ export class AdminController {
     return this.adminService.stats();
   }
 
+  @Get('analytics')
+  @UseGuards(AdminOnlyGuard)
+  analytics(@Query('days') days?: string) {
+    return this.adminService.analytics(days);
+  }
+
   @Patch('people/:person/verified')
   @UseGuards(AdminOnlyGuard)
   verifyPerson(@CurrentUser() user: AuthenticatedUser, @Param('person') person: string, @Body() body: VerifyDto) {

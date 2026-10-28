@@ -158,6 +158,65 @@ export class AdminService {
     return row;
   }
 
+  async analytics(input?: string) {
+    const days = [7, 30, 90].includes(Number(input)) ? Number(input) : 30;
+    const bounds = `WITH bounds AS (
+      SELECT (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') - ($1::integer - 1) * interval '1 day') AT TIME ZONE 'Africa/Lagos' AS "since",
+             (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') - (2 * $1::integer - 1) * interval '1 day') AT TIME ZONE 'Africa/Lagos' AS "before")`;
+    const local = (column: string) => `(${column} AT TIME ZONE 'Africa/Lagos')::date`;
+    const [series, [totals], verification, competitions, [activation]] = await Promise.all([
+      this.dataSource.query(
+        `${bounds},
+         days AS (SELECT generate_series(${local('bounds."since"')}, ${local('now()')}, interval '1 day')::date AS "day" FROM bounds),
+         signups AS (SELECT ${local('"createdAt"')} AS "day", count(*) AS n FROM "users", bounds WHERE "createdAt" >= bounds."since" GROUP BY 1),
+         moves AS (
+           SELECT ${local('"startedAt"')} AS "day", count(*) AS n, count(DISTINCT "userId") AS movers,
+                  COALESCE(sum("validatedDistanceMetres") FILTER (WHERE "verificationStatus" = 'VERIFIED' AND "activityType" = 'run'), 0) AS run,
+                  COALESCE(sum("validatedDistanceMetres") FILTER (WHERE "verificationStatus" = 'VERIFIED' AND "activityType" = 'walk'), 0) AS walk,
+                  COALESCE(sum("validatedDistanceMetres") FILTER (WHERE "verificationStatus" = 'VERIFIED' AND "activityType" = 'cycle'), 0) AS cycle
+           FROM "activities", bounds WHERE "startedAt" >= bounds."since" GROUP BY 1),
+         joins AS (SELECT ${local('"joinedAt"')} AS "day", count(*) AS n FROM "table_registrations", bounds WHERE "joinedAt" >= bounds."since" GROUP BY 1),
+         messages AS (SELECT ${local('"createdAt"')} AS "day", count(*) AS n FROM "direct_messages", bounds WHERE "createdAt" >= bounds."since" GROUP BY 1),
+         revenue AS (SELECT ${local('"createdAt"')} AS "day", sum("amountKobo") AS n FROM "payment_intents", bounds WHERE "status" = 'SUCCEEDED' AND "createdAt" >= bounds."since" GROUP BY 1)
+         SELECT to_char(d."day", 'YYYY-MM-DD') AS "day",
+                COALESCE(s.n, 0)::integer AS "signups", COALESCE(m.movers, 0)::integer AS "movers", COALESCE(m.n, 0)::integer AS "activities",
+                COALESCE(m.run, 0)::bigint::float8 AS "runMetres", COALESCE(m.walk, 0)::bigint::float8 AS "walkMetres", COALESCE(m.cycle, 0)::bigint::float8 AS "cycleMetres",
+                COALESCE(j.n, 0)::integer AS "joins", COALESCE(x.n, 0)::integer AS "messages", COALESCE(r.n, 0)::float8 AS "revenueKobo"
+         FROM days d
+         LEFT JOIN signups s ON s."day" = d."day" LEFT JOIN moves m ON m."day" = d."day" LEFT JOIN joins j ON j."day" = d."day"
+         LEFT JOIN messages x ON x."day" = d."day" LEFT JOIN revenue r ON r."day" = d."day"
+         ORDER BY d."day"`, [days]),
+      this.dataSource.query(
+        `${bounds}
+         SELECT
+           (SELECT count(*) FILTER (WHERE "createdAt" >= b."since") FROM "users", bounds b WHERE "createdAt" >= b."before")::integer AS "signups",
+           (SELECT count(*) FILTER (WHERE "createdAt" < b."since") FROM "users", bounds b WHERE "createdAt" >= b."before")::integer AS "signupsBefore",
+           (SELECT count(DISTINCT "userId") FROM "activities", bounds b WHERE "startedAt" >= b."since")::integer AS "movers",
+           (SELECT count(DISTINCT "userId") FROM "activities", bounds b WHERE "startedAt" >= b."before" AND "startedAt" < b."since")::integer AS "moversBefore",
+           (SELECT COALESCE(sum("validatedDistanceMetres") FILTER (WHERE "startedAt" >= b."since"), 0) FROM "activities", bounds b WHERE "verificationStatus" = 'VERIFIED' AND "startedAt" >= b."before")::float8 AS "verifiedMetres",
+           (SELECT COALESCE(sum("validatedDistanceMetres") FILTER (WHERE "startedAt" < b."since"), 0) FROM "activities", bounds b WHERE "verificationStatus" = 'VERIFIED' AND "startedAt" >= b."before")::float8 AS "verifiedMetresBefore",
+           (SELECT count(*) FILTER (WHERE "joinedAt" >= b."since") FROM "table_registrations", bounds b WHERE "joinedAt" >= b."before")::integer AS "joins",
+           (SELECT count(*) FILTER (WHERE "joinedAt" < b."since") FROM "table_registrations", bounds b WHERE "joinedAt" >= b."before")::integer AS "joinsBefore",
+           (SELECT COALESCE(sum("amountKobo") FILTER (WHERE "createdAt" >= b."since"), 0) FROM "payment_intents", bounds b WHERE "status" = 'SUCCEEDED' AND "createdAt" >= b."before")::float8 AS "revenueKobo",
+           (SELECT COALESCE(sum("amountKobo") FILTER (WHERE "createdAt" < b."since"), 0) FROM "payment_intents", bounds b WHERE "status" = 'SUCCEEDED' AND "createdAt" >= b."before")::float8 AS "revenueKoboBefore"`, [days]),
+      this.dataSource.query(
+        `${bounds}
+         SELECT "verificationStatus" AS "status", count(*)::integer AS "count"
+         FROM "activities", bounds WHERE "startedAt" >= bounds."since" GROUP BY 1 ORDER BY 2 DESC`, [days]),
+      this.dataSource.query(
+        `${bounds}
+         SELECT t."type", count(*)::integer AS "count"
+         FROM "competition_tables" t, bounds WHERE t."createdAt" >= bounds."since" AND t."deletedAt" IS NULL GROUP BY 1 ORDER BY 2 DESC`, [days]),
+      this.dataSource.query(
+        `${bounds}
+         SELECT count(*)::integer AS "eligible",
+                count(*) FILTER (WHERE EXISTS (
+                  SELECT 1 FROM "activities" a WHERE a."userId" = u."id" AND a."startedAt" < u."createdAt" + interval '7 days'))::integer AS "activated"
+         FROM "users" u, bounds WHERE u."createdAt" >= bounds."since" AND u."createdAt" < now() - interval '7 days'`, [days]),
+    ]) as [Array<Record<string, number | string>>, Array<Record<string, number>>, Array<{ status: string; count: number }>, Array<{ type: string; count: number }>, Array<{ eligible: number; activated: number }>];
+    return { days, series, totals, verification, competitions, activation };
+  }
+
   async people(input: { view?: string; q?: string; offset?: number }) {
     const view = ['active-today', 'moved-today', 'new-today'].includes(input.view ?? '') ? input.view : 'all';
     const term = input.q?.trim().toLowerCase().slice(0, 80) ?? '';
@@ -368,7 +427,6 @@ export class AdminService {
   }
 
   async createPaidDraft(actorUserId: string, input: CreatePaidTableDto) {
-    if (input.challengeType === 'CYCLING') throw new BadRequestException('Cycling competitions cannot have cash prizes yet');
     const scoring = scoringColumns(input, true);
     let guaranteedPrizeKobo: number;
     try { guaranteedPrizeKobo = paidPrizePot(input.capacity, input.entryFeeKobo); }

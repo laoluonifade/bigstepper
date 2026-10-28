@@ -223,7 +223,7 @@ export default function CompetitionDetailScreen() {
       {t.productPrizes && <PrizeTerms terms={t.productPrizes} clubName={t.club?.name} />}
       {!me && !isHost && <HowItWorks table={t} unit={unit} />}
       <KeyDates table={t} now={now} />
-      {manages && !CLOSED_STATUSES.includes(t.status) && <HostTools table={t} now={now} />}
+      {manages && !CLOSED_STATUSES.includes(t.status) && <HostTools table={t} now={now} creator={isHost} />}
       <View onLayout={(event) => setRulesY(event.nativeEvent.layout.y)}><Rules table={t} unit={unit} spotlight={spotlight} /></View>
       {isHost && t.status === 'OPEN_FOR_ENTRY' && <InvitationsPanel table={t} />}
     </View>
@@ -347,7 +347,7 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
   return <View>
     <SectionTitle>How it works</SectionTitle>
     <Txt size={15} color="ink2" leading={1.55} style={{ marginBottom: 20 }}>
-      {cycling ? 'Record rides with Jump. GPS-verified cycling distance updates the leaderboard; rides do not score in running leagues or foot-activity competitions. Cycling is free to enter and has no cash prize.' : distance ? 'Verified runs, walks and rides all add to your distance. Record them in Jump or sync from Strava, and the leaderboard updates when verification finishes.' : 'A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.'}
+      {cycling ? 'Record rides with Jump. GPS-verified cycling distance updates the leaderboard; rides do not score in running leagues or foot-activity competitions.' : distance ? 'Verified runs, walks and rides all add to your distance. Record them in Jump or sync from Strava, and the leaderboard updates when verification finishes.' : 'A Jump competition brings your people together. Everyone records their walks and runs with Jump, GPS and steps are checked, and the leaderboard updates live. It’s the easiest way to stay consistent with your people.'}
     </Txt>
     <View style={{ gap: 12 }}>
       {steps.map((step, index) => <View key={step.title} style={styles.step}>
@@ -360,7 +360,7 @@ function HowItWorks({ table, unit }: { table: CompetitionTable; unit: Unit }) {
 }
 
 /** For the host: edit, change dates (free competitions), end it now, and archive it once it's over. */
-function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
+function HostTools({ table, now, creator }: { table: CompetitionTable; now: number; creator: boolean }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const phase = competitionPhase(table, now);
@@ -412,6 +412,7 @@ function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
     !over && { label: 'Edit details', hint: free ? 'Name, description and dates' : 'Name and description. Prize competitions keep their dates.', run: () => setEditing(true) },
     !over && { label: banner.isPending ? 'Uploading banner…' : table.bannerUrl ? 'Change banner' : 'Add banner', hint: 'Replaces the coloured card at the top. Wide images (2:1) work best.', run: () => banner.mutate('set'), busy: banner.isPending },
     !over && table.bannerUrl && { label: 'Remove banner', hint: 'Back to the coloured card', run: () => banner.mutate('remove'), busy: banner.isPending },
+    !over && free && creator && others === 0 && !table.seriesId && { label: 'Make it paid', hint: 'Add an entry fee and a prize pot. Jump reviews it before entry opens.', run: () => router.push({ pathname: '/competitions/new', params: { convert: table.code, ...(table.communityId ? { club: table.communityId } : {}) } }) },
     !over && free && { label: 'End now', hint: 'Close scoring now. The board becomes final.', run: askEndNow, busy: endNow.isPending },
     table.archivedAt
       ? { label: 'Unarchive', hint: 'Put it back on your lists', run: () => archive.mutate(false), busy: archive.isPending }
@@ -514,7 +515,7 @@ function ShareBox({ table, rows, viewerId, unit }: { table: CompetitionTable; ro
 function Rules({ table, unit, spotlight }: { table: CompetitionTable; unit: Unit; spotlight?: boolean }) {
   const items = [
     ...rulesLines(table, unit),
-    ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance, and there are no cash prizes.'] : []),
+    ...(table.challengeType === 'CYCLING' ? ['Cycling uses GPS distance only. It does not add steps or running-league distance.'] : []),
     ...(table.eligibleCountries?.length ? [`Open to people whose Jump profile country is ${table.eligibleCountries.map(countryName).join(', ')}.`] : []),
     ...(table.reminderTime ? [`Joined runners may receive a daily email reminder at ${table.reminderTime.slice(0, 5)} (${table.reminderTimeZone}). No reminder is sent after they record an activity that day.`] : []),
     ...(table.type === 'paid' && table.minimumEntrants > 1 ? [`Needs at least ${table.minimumEntrants} entrants to go ahead.`] : []),

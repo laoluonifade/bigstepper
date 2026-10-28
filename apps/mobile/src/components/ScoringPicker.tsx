@@ -19,7 +19,7 @@ export function ScoringPicker({ draft, onChange, unit, prizes, error }: { draft:
   const activity = ACTIVITY_RULES[draft.challengeType];
   const metric = METRICS[draft.scoringMethod];
   const daily = dailyMeasure(draft.challengeType, draft.scoringMethod);
-  const allowed = (method: ScoringMethod) => !prizes || (METRICS[method].prizes && draft.challengeType !== 'CYCLING');
+  const allowed = (method: ScoringMethod) => !prizes || METRICS[method].prizes;
   const set = (patch: Partial<ScoringDraft>) => onChange({ ...draft, ...patch });
   const distanceUnit = unit === 'km' ? 'km' : 'mi';
   const [qualifying, setQualifying] = useState(Boolean(draft.minActivityDistance || draft.minActivityMinutes || (draft.minSessions && draft.scoringMethod !== 'PACE_CONSISTENCY')));
