@@ -16,8 +16,9 @@ import { Pedometer } from 'expo-sensors';
 import * as TaskManager from 'expo-task-manager';
 import { useSyncExternalStore } from 'react';
 import { router } from 'expo-router';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { api, isApiError, post } from './api';
+import { confirm } from './dialog';
 import { syncLiveActivity } from './liveActivity';
 import { keys } from './queries';
 import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, countRecorded, getActiveRun, pendingSamples, resendAll, setActiveRun } from './run-buffer';
@@ -486,6 +487,22 @@ export async function detachRecorder() {
 
 export type StartProblem = 'foreground-denied' | 'background-denied' | null;
 
+/**
+ * Google Play requires a clear explanation in the app before Android's "Allow all the time" prompt, so
+ * Android asks first in our own words. Saying no still records, just only while Jump is open.
+ */
+async function requestBackground() {
+  const current = await Location.getBackgroundPermissionsAsync();
+  if (current.status === 'granted' || Platform.OS !== 'android') return Location.requestBackgroundPermissionsAsync();
+  const ok = await confirm({
+    title: 'Keep recording with the screen off',
+    message: 'Jump collects your location to record your walk, run or ride (its route and distance) even when the app is closed or not in use, for example with your phone locked in your pocket. Location is only collected while an activity you started is recording, and stops when you finish.\n\nOn the next screen, choose “Allow all the time”.',
+    confirmLabel: 'Continue',
+    cancelLabel: 'Not now',
+  });
+  return ok ? Location.requestBackgroundPermissionsAsync() : current;
+}
+
 async function start(kind: ActivityKind = 'run'): Promise<StartProblem> {
   if (!userId) return null;
   set({ error: null, gpsError: null, phase: 'locating' });
@@ -496,7 +513,7 @@ async function start(kind: ActivityKind = 'run'): Promise<StartProblem> {
   }
   // Background permission can only be asked for after foreground is granted. Without it, recording still
   // works while Jump is open.
-  const background = FOREGROUND_ONLY ? null : await Location.requestBackgroundPermissionsAsync();
+  const background = FOREGROUND_ONLY ? null : await requestBackground();
   const motion = kind === 'cycle' ? false : await requestMotion();
   // Starting needs permission, not a precise fix: weak fixes are filtered out when measuring.
   const first = await Location.getLastKnownPositionAsync({ maxAge: 30_000 }).catch(() => null);
