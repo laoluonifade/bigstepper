@@ -4,13 +4,13 @@ import { FormEvent, useState } from 'react';
 import { PRIZE_KIND } from '../components/ClubPrizes';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { CheckIcon } from '../components/icons';
-import { cx, EmptyState, ErrorNotice, Field, Notice, PageHeader, Skeleton, SubNav } from '../components/ui';
+import { cx, EmptyState, ErrorNotice, Field, Notice, PageHeader, Skeleton } from '../components/ui';
 import { api, post } from '../lib/api';
 import { countryName } from '../lib/countries';
 import { formatDate } from '../lib/format';
 import { toast } from '../lib/toast';
 import type { AwardStatus, MyPrize } from '../lib/types';
-import { YOU_NAV } from './You';
+import { YouBack } from './You';
 
 const STATUS: Record<AwardStatus, { label: string; tone: string }> = {
   AWAITING_DETAILS: { label: 'Claim it', tone: 'bg-track text-white' },
@@ -27,7 +27,7 @@ export function PrizesPage() {
   const prizes = useQuery({ queryKey: ['prizes', 'mine'], queryFn: () => api<MyPrize[]>('/prizes/mine') });
   const list = prizes.data ?? [];
   return <div className="animate-rise">
-    <SubNav items={[...YOU_NAV]} />
+    <YouBack />
     <PageHeader eyebrow="You" title="Prizes" description="Products, discounts and experiences you’ve won in club competitions." />
     <ErrorNotice error={prizes.error} onRetry={() => void prizes.refetch()} />
     {prizes.isLoading ? <Skeleton className="h-40 rounded-2xl" />

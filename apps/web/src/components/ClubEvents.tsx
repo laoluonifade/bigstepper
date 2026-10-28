@@ -26,9 +26,10 @@ export function onAccent(hex = '#FF5A1F') {
 export function EventStamp({ event, size = 'md' }: { event: Pick<ClubEvent, 'weekday' | 'startTime' | 'club' | 'repeat' | 'startsOn'>; size?: 'md' | 'lg' }) {
   const accent = event.club.accentColor || '#FF5A1F';
   const big = size === 'lg';
-  return <span className={cx('flex shrink-0 -rotate-3 flex-col items-center justify-center rounded-lg border-2 border-ink px-1.5 shadow-hard-sm', big ? 'w-[92px] py-3' : 'w-16 py-2')} style={{ backgroundColor: accent, color: onAccent(accent) }}>
-    <span className={cx('wide font-extrabold uppercase tracking-[0.08em]', big ? 'text-[15px]' : 'text-[11px]')}>{event.repeat === 'once' ? dateLabel(event.startsOn).slice(4) : WEEKDAYS[event.weekday].slice(0, 3)}</span>
-    <span className={cx('wide mt-0.5 whitespace-nowrap font-black', big ? 'text-[20px]' : 'text-[14px]')}>{clockLabel(event.startTime).replace(' ', '')}</span>
+  // Grows to fit its text: a one-off shows its date ("29 Oct"), which is wider than a weekday.
+  return <span className={cx('flex shrink-0 -rotate-3 flex-col items-center justify-center rounded-lg border-2 border-ink shadow-hard-sm', big ? 'min-w-[92px] px-3 py-3' : 'min-w-16 px-2 py-2')} style={{ backgroundColor: accent, color: onAccent(accent) }}>
+    <span className={cx('wide whitespace-nowrap font-extrabold uppercase tracking-[0.08em]', big ? 'text-[14px]' : 'text-[10.5px]')}>{event.repeat === 'once' ? dateLabel(event.startsOn).slice(4) : WEEKDAYS[event.weekday].slice(0, 3)}</span>
+    <span className={cx('wide mt-0.5 whitespace-nowrap font-black', big ? 'text-[18px]' : 'text-[13px]')}>{clockLabel(event.startTime).replace(' ', '')}</span>
   </span>;
 }
 
@@ -51,7 +52,7 @@ export function EventCard({ event, showClub = true }: { event: ClubEvent; showCl
           {event.faces.slice(0, 4).map((face, index) => <span key={index} className={cx('rounded-full border-2 border-card', index > 0 && '-ml-2')}><Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={22} className="rounded-full" /></span>)}
         </span>}
         <span className="num flex-1 text-[12px] text-ink-2">{event.attendeeCount ? `${event.attendeeCount} going` : 'Be the first to join'}</span>
-        {event.going && <span className="wide inline-flex items-center gap-1 rounded-full bg-volt px-2 py-1 text-[10px] font-extrabold uppercase text-ink"><TicketIcon size={11} />Pass</span>}
+        {event.going && !event.isHost && <span className="wide inline-flex items-center gap-1 rounded-full bg-volt px-2 py-1 text-[10px] font-extrabold uppercase text-ink"><TicketIcon size={11} />Pass</span>}
       </span>
     </span>
   </Link>;
@@ -112,7 +113,9 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
       <p className="flex items-center gap-2 text-[14px] text-ink-2"><PinIcon size={15} className="shrink-0 text-ink-3" /><span className="truncate">{where}</span></p>
       <div className="flex items-center justify-between gap-3 pt-1">
         <span className="num flex items-center gap-2 text-[14px] text-ink-2"><UsersIcon size={15} className="text-ink-3" />{event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending</span>
-        {going
+        {event.isHost
+          ? <span className="inline-flex items-center rounded-full border-[1.5px] border-ink px-4 py-2 text-[14px] font-bold">Hosting</span>
+          : going
           ? <span className="inline-flex items-center gap-1.5 rounded-full bg-volt px-4 py-2 text-[14px] font-bold text-ink"><CheckIcon size={14} />Going</span>
           : <button type="button" className="relative z-[2] rounded-full bg-ink px-5 py-2 text-[14px] font-bold text-paper transition-transform active:scale-95 disabled:opacity-60" disabled={rsvp.isPending} onClick={() => rsvp.mutate()}>{rsvp.isPending ? 'Joining…' : 'RSVP'}</button>}
       </div>
@@ -164,7 +167,7 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
   const [minutes, setMinutes] = useState(String((event?.durationMinutes ?? 60) % 60));
   const [distance, setDistance] = useState(event?.distanceMetres ? String(+(event.distanceMetres / (unit === 'mi' ? MILE : 1000)).toFixed(1)) : '');
   const [notes, setNotes] = useState(event?.notes ?? '');
-  const [place, setPlace] = useState<Place | null>(event ? { name: event.venue, address: event.address ?? '', latitude: event.latitude, longitude: event.longitude } : null);
+  const [place, setPlace] = useState<Place | null>(event && event.latitude != null && event.longitude != null ? { name: event.venue ?? '', address: event.address ?? '', latitude: event.latitude, longitude: event.longitude } : null);
   const [venue, setVenue] = useState(event?.venue ?? '');
   const [search, setSearch] = useState('');
   // Once a place is picked, the search and "I'm there now" step aside until Change is clicked.

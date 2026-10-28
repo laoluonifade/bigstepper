@@ -11,13 +11,12 @@ import {
   PageHeader,
   SectionTitle,
   Skeleton,
-  SubNav,
   useNow,
 } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { formatCountdown, formatDate, formatDistance, ordinal } from '../lib/format';
 import { useLeagues, useLeagueStandings, useMyLeagues, useUnit } from '../lib/queries';
-import { YOU_NAV } from './You';
+import { YouBack } from './You';
 
 /* ───────────────────────── Leagues ───────────────────────── */
 
@@ -31,7 +30,7 @@ export function LeaguesPage() {
 
   return (
     <div className="animate-rise">
-      <SubNav items={[...YOU_NAV]} />
+      <YouBack />
       <PageHeader
         eyebrow="You"
         title="My league"

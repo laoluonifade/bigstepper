@@ -114,6 +114,14 @@ export class ClubEventsRepository {
       [viewerId, latitude, longitude, spread, km]);
   }
 
+  /** Published events from open, active clubs for the public Explore and landing pages. */
+  upcoming() {
+    return rows(this.dataSource, eventRow,
+      `SELECT * FROM (${select(`c."privacy" = 'open' AND c."suspendedAt" IS NULL`)}) found
+       WHERE "nextAt" IS NOT NULL ORDER BY "nextAt" LIMIT 12`,
+      [null, null, null]);
+  }
+
   going(viewerId: string) {
     return rows(this.dataSource, eventRow,
       `SELECT * FROM (${select(`EXISTS (SELECT 1 FROM "club_event_attendees" a WHERE a."eventId" = e."id" AND a."userId" = $1::uuid)`)}) found WHERE "nextAt" IS NOT NULL ORDER BY "nextAt"`,

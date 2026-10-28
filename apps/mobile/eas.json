@@ -8,6 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
+        "EXPO_USE_PRECOMPILED_MODULES": "0",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "88722373925-c74877bqp7qi88k8928ggd2274g98k3b.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "88722373925-o19f9jlktgpp7k2bmvb7ie3hdklgegmf.apps.googleusercontent.com"
       }
@@ -15,6 +16,7 @@
     "preview": {
       "distribution": "internal",
       "env": {
+        "EXPO_USE_PRECOMPILED_MODULES": "0",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "88722373925-c74877bqp7qi88k8928ggd2274g98k3b.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "88722373925-o19f9jlktgpp7k2bmvb7ie3hdklgegmf.apps.googleusercontent.com"
       }
@@ -22,6 +24,7 @@
     "production": {
       "autoIncrement": true,
       "env": {
+        "EXPO_USE_PRECOMPILED_MODULES": "0",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "88722373925-c74877bqp7qi88k8928ggd2274g98k3b.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "88722373925-o19f9jlktgpp7k2bmvb7ie3hdklgegmf.apps.googleusercontent.com"
       }

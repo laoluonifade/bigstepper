@@ -15,7 +15,7 @@ import { getCurrentPosition } from '../lib/geo';
 import { usePlaceName } from '../lib/place';
 import { useProfile, useUnit } from '../lib/queries';
 import { toast } from '../lib/toast';
-import { CompeteSubNav } from './Competitions';
+import { CompeteSubNav, ExploreBack } from './Competitions';
 
 type Area = { latitude: number; longitude: number; name?: string };
 const RADII = [5, 10, 25, 50];
@@ -69,7 +69,8 @@ export function EventsPage() {
   const where = area?.name ?? placeName;
 
   return <div>
-    <CompeteSubNav />
+    <ExploreBack />
+    <div className="hidden md:block"><CompeteSubNav /></div>
     <PageHeader eyebrow="Run together" title="Events near you" description="Runs, rides and race days that clubs host in person. Get a pass and Jump reminds you the day before and an hour before." />
 
     {going.length > 0 && <section className="mb-8">
@@ -77,7 +78,7 @@ export function EventsPage() {
       <div className="grid gap-3 sm:grid-cols-2">{going.map((event) => <EventCard key={event.id} event={event} />)}</div>
     </section>}
 
-    <SectionTitle aside={where ? <span className="inline-flex max-w-[220px] items-center gap-1 text-[13px] text-ink-2"><PinIcon size={13} /><span className="truncate">{where}</span></span> : undefined}>Near you</SectionTitle>
+    <SectionTitle aside={where ? <span className="inline-flex max-w-[220px] items-center gap-1 text-[13px] text-ink-2"><PinIcon size={13} /><span className="truncate">{where}</span></span> : undefined}>{area ? 'Near you' : 'Upcoming'}</SectionTitle>
     <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void findArea(); }}>
       <div className="relative flex-1">
         <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
@@ -95,7 +96,7 @@ export function EventsPage() {
 
     <ErrorNotice error={events.error} onRetry={() => void events.refetch()} />
     {locating || events.isLoading ? <div className="grid gap-3 sm:grid-cols-2"><Skeleton className="h-32 rounded-2xl" /><Skeleton className="h-32 rounded-2xl" /></div>
-      : !area ? <EmptyState title="Where are you running?" action={<button type="button" className="btn-primary btn-sm" onClick={() => void locate()}>Use my location</button>}>
+      : !area && !nearby.length ? <EmptyState title="Where are you running?" action={<button type="button" className="btn-primary btn-sm" onClick={() => void locate()}>Use my location</button>}>
         {denied ? 'Allow location to see events around you, or search a town above.' : 'Search a town above to see its events.'}
       </EmptyState>
         : !nearby.length ? <EmptyState title="No events here yet">
@@ -168,7 +169,9 @@ export function EventPage() {
     ? <button type="button" className="btn-secondary flex-1" disabled>This event has finished</button>
     : !user
       ? <Link to="/login" search={{ redirect: `/events/${e.id}` }} className="btn-primary flex-1"><TicketIcon size={16} />Get your pass</Link>
-      : e.pass
+      : e.isHost
+        ? <Link to="/events/$id/guests" params={{ id: e.id }} className="btn flex-1 border-2 border-ink bg-volt text-ink shadow-hard"><UsersIcon size={16} />Check in guests</Link>
+        : e.pass
         ? <button type="button" className="btn-dark flex-1" onClick={() => setPassOpen(true)}><TicketIcon size={16} />Show my pass</button>
         : <button type="button" className="btn-primary flex-1" disabled={join.isPending} onClick={() => join.mutate()}><TicketIcon size={16} />{join.isPending ? 'Getting your pass…' : 'Get your pass'}</button>;
 
@@ -191,7 +194,7 @@ export function EventPage() {
 
     <div className="mt-5 space-y-5">
       <ErrorNotice error={join.error ?? leave.error ?? remove.error} />
-      {e.pass && <button type="button" className="block w-full text-left" onClick={() => setPassOpen(true)} aria-label="Open your pass"><EventPass event={e} holder={holder} /></button>}
+      {e.pass && !e.isHost && <button type="button" className="block w-full text-left" onClick={() => setPassOpen(true)} aria-label="Open your pass"><EventPass event={e} holder={holder} /></button>}
       <div className="flex gap-2">
         {joinButton}
         <button type="button" className="btn-secondary" onClick={() => void share()}><ShareIcon size={16} />Share</button>
@@ -241,7 +244,7 @@ export function EventPage() {
         {e.faces.length ? <div className="flex items-center gap-2.5">
           <div className="flex">{e.faces.map((face, index) => <span key={index} className={cx('rounded-full border-2 border-paper', index > 0 && '-ml-2.5')}><Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={36} className="rounded-full" /></span>)}</div>
           {e.attendeeCount > e.faces.length && <span className="text-[13px] text-ink-2">+{e.attendeeCount - e.faces.length} more</span>}
-        </div> : <p className="text-[14px] text-ink-2">Nobody yet. Get a pass and be the first.</p>}
+        </div> : <p className="text-[14px] text-ink-2">{e.isHost ? 'Nobody yet. Share it to get people coming.' : 'Nobody yet. Get a pass and be the first.'}</p>}
       </section>
 
       {e.pass && !e.canManage && <p className="text-center">

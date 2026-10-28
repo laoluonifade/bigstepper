@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { SectionHead } from '../components/CompeteHome';
-import { CompeteSubNav } from './Competitions';
+import { CompeteSubNav, ExploreBack } from './Competitions';
 import { ChevronRightIcon, ShareIcon } from '../components/icons';
 import { Modal } from '../components/Modal';
 import { drawBoardImage, loadAvatars } from '../lib/boardImage';
@@ -122,7 +122,8 @@ export function LeaderboardPage() {
   const countries = global && data ? new Set(data.rows.map((row) => row.countryCode).filter(Boolean)).size : 0;
 
   return <div className="mx-auto max-w-2xl animate-rise">
-    <CompeteSubNav />
+    <ExploreBack />
+    <div className="hidden md:block"><CompeteSubNav /></div>
     <header className="mb-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[26px] font-extrabold tracking-tight">Leaderboard</h1>

@@ -16,7 +16,7 @@ import { templateById } from '../lib/templates';
 import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon, UsersIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -69,9 +69,14 @@ export const COMPETE_NAV = [
   { to: '/prizes', label: 'Prizes' },
 ] as const;
 
+/** On phones, the way back to Explore from Clubs, Events and the Leaderboard; larger screens keep the tabs. */
+export function ExploreBack() {
+  return <Link to="/competitions" className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink md:hidden"><ArrowLeftIcon size={16} />Explore</Link>;
+}
+
 export function CompeteSubNav() {
   const { user } = useAuth();
-  return <SubNav items={user ? [...COMPETE_NAV] : COMPETE_NAV.filter((item) => item.to === '/competitions')} />;
+  return <SubNav items={user ? [...COMPETE_NAV] : COMPETE_NAV.filter((item) => item.to === '/competitions' || item.to === '/events')} />;
 }
 
 type TypeFilter = 'all' | 'free' | 'sponsored' | 'paid';
@@ -226,17 +231,18 @@ export function CompetitionsPage() {
 
   return (
     <div className="animate-rise">
-      <CompeteSubNav />
+      <div className="hidden md:block"><CompeteSubNav /></div>
       <header className="mb-4 flex items-center justify-between gap-3">
         <h1 className="text-[24px] font-extrabold tracking-tight sm:text-[30px]">Explore</h1>
-        {user && <button type="button" onClick={() => setCreating(true)} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-transform active:scale-95"><PlusIcon size={15} /> Create</button>}
+        {user && <button type="button" onClick={() => setCreating(true)} className="hidden h-10 shrink-0 md:inline-flex items-center gap-1.5 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-transform active:scale-95"><PlusIcon size={15} /> Create</button>}
       </header>
 
+      {user && <ExplorePlaces />}
       {user && <LensSwitch value={kind} onChange={setLens} />}
       {creating && <CreateChooser onClose={() => setCreating(false)} />}
       <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
       {/* Drafts stay out of the way: one quiet row that opens a sheet to finish or discard them. */}
-      {drafts.length > 0 && <button type="button" onClick={() => setDraftsOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-xl border-[1.5px] border-dashed border-ink/40 px-3.5 py-2.5 text-left transition-colors hover:border-ink">
+      {drafts.length > 0 && <button type="button" onClick={() => setDraftsOpen(true)} className="mb-4 hidden w-full md:flex items-center gap-3 rounded-xl border-[1.5px] border-dashed border-ink/40 px-3.5 py-2.5 text-left transition-colors hover:border-ink">
         <span className="num flex h-7 min-w-7 items-center justify-center rounded-full bg-ink px-2 text-[12px] font-bold text-paper">{drafts.length}</span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14px] font-semibold">{drafts.length === 1 ? 'Draft' : 'Drafts'} not live yet</span>
@@ -245,6 +251,7 @@ export function CompetitionsPage() {
         <span className="inline-flex shrink-0 items-center gap-0.5 text-[13px] font-bold">Manage<ArrowRightIcon size={14} /></span>
       </button>}
       {draftsOpen && <DraftsSheet drafts={drafts} onClose={() => setDraftsOpen(false)} />}
+      {user && <CreateFab drafts={drafts.length} onCreate={() => setCreating(true)} onDrafts={() => setDraftsOpen(true)} />}
 
       <form onSubmit={submit} className="flex items-center gap-2">
         <label className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl border-[1.5px] border-ink bg-card px-3.5">
@@ -394,6 +401,53 @@ function LensSwitch({ value, onChange }: { value: Lens; onChange: (lens: Lens) =
       </button>;
     })}
   </div>;
+}
+
+/** The same two useful places at the top of mobile Explore: your crew and what you have won. */
+function ExplorePlaces() {
+  const clubs = useQuery({ queryKey: ['clubs', 'mine'], queryFn: () => api<Array<{ id: string; myRole: string | null }>>('/clubs?view=mine') });
+  const prizes = useQuery({ queryKey: ['prizes', 'mine'], queryFn: () => api<Array<{ status: string }>>('/prizes/mine') });
+  const clubCount = (clubs.data ?? []).filter((club) => club.myRole).length;
+  const toClaim = (prizes.data ?? []).filter((prize) => prize.status === 'AWAITING_DETAILS').length;
+  const cards = [
+    { to: '/clubs' as const, title: 'Clubs', detail: clubCount ? `Your ${clubCount} ${clubCount === 1 ? 'club' : 'clubs'}` : 'Find your crew', tint: 'bg-[#8B7CF6]', icon: <UsersIcon size={19} /> },
+    { to: '/prizes' as const, title: 'Prizes', detail: toClaim ? `${toClaim} to claim` : prizes.data?.length ? `${prizes.data.length} won` : 'What you can win', tint: 'bg-[#FFC53D]', icon: <CrownIcon size={19} />, alert: toClaim > 0 },
+  ];
+  return <div className="mb-5 grid grid-cols-2 gap-2.5 sm:max-w-[520px]">
+    {cards.map((card) => <Link key={card.to} to={card.to} className="group flex min-w-0 items-center gap-2.5 rounded-xl border-2 border-ink bg-card p-2.5 shadow-hard-sm transition-transform hover:-translate-y-0.5 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">
+      <span className={cx('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-ink text-ink', card.tint)}>{card.icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-extrabold">{card.title}</span>
+        <span className={cx('block truncate text-[12px]', card.alert ? 'font-bold text-track' : 'text-ink-2')}>{card.detail}</span>
+      </span>
+      <ChevronRightIcon size={15} className="shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5" />
+    </Link>)}
+  </div>;
+}
+
+/**
+ * On phones, Create is a square + over the bottom-right corner, as in the app: tap to create, press and hold
+ * to open your drafts, with their count on the corner. Larger screens keep the button in the header.
+ */
+function CreateFab({ drafts, onCreate, onDrafts }: { drafts: number; onCreate: () => void; onDrafts: () => void }) {
+  const hold = useRef<number | null>(null);
+  const held = useRef(false);
+  const start = () => {
+    held.current = false;
+    hold.current = window.setTimeout(() => {
+      held.current = true;
+      if (drafts) onDrafts(); else toast({ tone: 'ok', message: 'No drafts. Anything you save for later shows up here.' });
+    }, 450);
+  };
+  const stop = () => { if (hold.current !== null) window.clearTimeout(hold.current); hold.current = null; };
+  return <button type="button" aria-label={drafts ? `Create. Hold for your ${drafts} ${drafts === 1 ? 'draft' : 'drafts'}` : 'Create'}
+    className="fixed right-4 z-30 touch-none select-none md:hidden"
+    style={{ bottom: 'calc(env(safe-area-inset-bottom) + 84px)' }}
+    onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop} onContextMenu={(event) => event.preventDefault()}
+    onClick={() => { if (!held.current) onCreate(); held.current = false; }}>
+    <span className="flex h-[60px] w-[60px] items-center justify-center rounded-[18px] border-2 border-ink bg-track text-ink shadow-hard transition-transform active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"><PlusIcon size={26} strokeWidth={2.6} /></span>
+    {drafts > 0 && <span className="num absolute -right-1.5 -top-1.5 flex h-[22px] min-w-[22px] items-center justify-center rounded-full border-2 border-paper bg-ink px-1 text-[11px] font-bold text-paper">{drafts > 9 ? '9+' : drafts}</span>}
+  </button>;
 }
 
 const DRAFT_STATUSES = ['PENDING_FUNDING', 'PENDING_APPROVAL', 'DRAFT', 'SCHEDULED'];

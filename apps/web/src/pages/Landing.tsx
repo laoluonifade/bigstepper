@@ -1,8 +1,12 @@
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { EventCard } from '../components/ClubEvents';
 import { canEnter, CompetitionCard } from '../components/competition';
 import { ArrowRightIcon } from '../components/icons';
 import { Redirect, Skeleton } from '../components/ui';
+import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import type { ClubEvent } from '../lib/club-events';
 import { useTables } from '../lib/queries';
 
 export function LandingPage() {
@@ -52,7 +56,7 @@ export function LandingPage() {
       </section>
 
       <div className="text-left">
-        <OpenChallenges />
+        <ExploreNow />
       </div>
 
       {/* For brands: stacked and centred on phones; side by side from tablet up. */}
@@ -69,28 +73,48 @@ export function LandingPage() {
 
 const TESTFLIGHT = 'https://testflight.apple.com/join/FTERY15d';
 
-/** Real open challenges from the API; until there are any, an honest explainer instead of a mock-up. */
-function OpenChallenges() {
+/** Real public activity: competitions and club events use the same Explore rhythm as mobile. */
+function ExploreNow() {
   const tables = useTables();
+  const events = useQuery({
+    queryKey: ['club-events', 'public'],
+    queryFn: () => api<{ nearby: ClubEvent[] }>('/events'),
+  });
   const now = Date.now();
   const open = (tables.data ?? []).filter((table) => canEnter(table, now)).slice(0, 2);
+  const upcoming = (events.data?.nearby ?? []).slice(0, 3);
 
-  if (tables.isLoading) return <Skeleton className="h-72 animate-fade" />;
+  if (tables.isLoading || events.isLoading) return <Skeleton className="h-72 animate-fade" />;
 
-  if (open.length > 0) {
+  if (open.length > 0 || upcoming.length > 0) {
     return (
-      <div className="animate-slide-in [animation-delay:300ms]">
-        <p className="eyebrow mb-3 text-center">Open for entry now</p>
-        {/* Side by side from tablet up, stacked on phones. */}
-        <div className="grid gap-4 md:grid-cols-2">
-          {open.map((table) => (
-            <CompetitionCard key={table.id} table={table} unit="km" now={now} />
-          ))}
+      <section className="animate-slide-in rounded-[28px] border-2 border-ink bg-card p-4 shadow-hard sm:p-6 [animation-delay:300ms]">
+        <div className="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow">Explore Jump</p>
+            <h2 className="wide mt-1 text-[25px] font-black uppercase leading-none sm:text-[30px]">Move with people</h2>
+          </div>
+          <Link to="/competitions" className="link shrink-0 text-[13px]">See all</Link>
         </div>
-        <Link to="/competitions" className="link mx-auto mt-4 block w-fit text-[14px]">
-          See all competitions
-        </Link>
-      </div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]">
+          <div>
+            <div className="mb-3 flex items-center justify-between border-b-2 border-ink pb-2">
+              <p className="wide text-[13px] font-extrabold uppercase tracking-[0.08em]">Competitions</p>
+              <Link to="/competitions" className="text-[13px] font-bold text-ink-2 hover:text-ink">Explore</Link>
+            </div>
+            {open.length ? <div className="grid gap-3 sm:grid-cols-2">{open.map((table) => <CompetitionCard key={table.id} table={table} unit="km" now={now} />)}</div>
+              : <p className="rounded-xl bg-ink/[0.05] px-4 py-5 text-[14px] text-ink-2">No competitions are open right now. Start one for your people.</p>}
+          </div>
+          <div>
+            <div className="mb-3 flex items-center justify-between border-b-2 border-ink pb-2">
+              <p className="wide text-[13px] font-extrabold uppercase tracking-[0.08em]">Events</p>
+              <Link to="/events" className="text-[13px] font-bold text-ink-2 hover:text-ink">See events</Link>
+            </div>
+            {upcoming.length ? <div className="space-y-3">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div>
+              : <p className="rounded-xl bg-ink/[0.05] px-4 py-5 text-[14px] text-ink-2">No club events are listed yet.</p>}
+          </div>
+        </div>
+      </section>
     );
   }
 

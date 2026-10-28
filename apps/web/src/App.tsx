@@ -103,7 +103,7 @@ const club = createRoute({
   component: page(() => import('./pages/Clubs'), 'ClubDetailPage'),
 });
 const clubDashboard = createRoute({ getParentRoute: () => root, path: '/clubs/$id/dashboard', component: protectedPage(() => import('./pages/ClubDashboard'), 'ClubDashboardPage') });
-const events = createRoute({ getParentRoute: () => root, path: '/events', component: protectedPage(() => import('./pages/Events'), 'EventsPage') });
+const events = createRoute({ getParentRoute: () => root, path: '/events', component: page(() => import('./pages/Events'), 'EventsPage') });
 const clubEvent = createRoute({ getParentRoute: () => root, path: '/events/$id', component: page(() => import('./pages/Events'), 'EventPage') });
 const eventGuests = createRoute({ getParentRoute: () => root, path: '/events/$id/guests', component: protectedPage(() => import('./pages/Events'), 'EventGuestsPage') });
 const prizes = createRoute({ getParentRoute: () => root, path: '/prizes', component: protectedPage(() => import('./pages/Prizes'), 'PrizesPage') });

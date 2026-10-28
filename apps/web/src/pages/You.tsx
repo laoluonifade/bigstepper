@@ -4,7 +4,7 @@ import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
-import { BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, XLogoIcon } from '../components/icons';
+import { ArrowLeftIcon, BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, XLogoIcon } from '../components/icons';
 import { AvatarEditor, ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '../components/Profile';
 import { BankPicker } from '../components/BankPicker';
 import { KycPanel, useKyc } from '../components/KycPanel';
@@ -22,7 +22,6 @@ import {
   SectionTitle,
   Segmented,
   Skeleton,
-  SubNav,
 } from '../components/ui';
 import { api, isApiError, patch, post } from '../lib/api';
 import { useAuth, useUser } from '../lib/auth';
@@ -39,6 +38,20 @@ import { toast } from '../lib/toast';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { GenderSelect } from '../components/GenderSelect';
 import { PasswordInput } from '../components/PasswordInput';
+
+/** On phones, the way back to You from its pages (the You tab opens your profile, which lists them). */
+export function YouBack() {
+  return <Link to="/settings/profile" className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink md:hidden"><ArrowLeftIcon size={16} />You</Link>;
+}
+
+/** Everything under You, as a list of links on your profile, like the app's You tab. */
+function YouLinks() {
+  return <nav aria-label="You" className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-line bg-card md:hidden">
+    {YOU_NAV.filter((item) => item.to !== '/settings/profile').map((item) => <Link key={item.to} to={item.to} className="flex items-center justify-between px-4 py-3.5 text-[15px] font-semibold hover:bg-ink/[0.03]">
+      {item.label}<ChevronRightIcon size={16} className="text-ink-3" />
+    </Link>)}
+  </nav>;
+}
 
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
@@ -75,8 +88,6 @@ export function ProfileSettingsPage() {
 
   return (
     <div className="animate-rise">
-      <SubNav items={[...YOU_NAV]} />
-
       <ProfileHero
         avatar={<AvatarEditor profile={me} />}
         displayName={me.displayName}
@@ -95,6 +106,7 @@ export function ProfileSettingsPage() {
         {activities.isLoading ? <Skeleton className="mt-5 h-20" /> : <ProfileStats stats={stats} unit={unit} />}
         <StravaConnection />
       </ProfileHero>
+      <div className="mx-auto max-w-2xl"><YouLinks /></div>
 
       {/* Settings as short rows; anything with more than one field opens a sheet. */}
       <div className="mx-auto mt-8 max-w-2xl space-y-7">
@@ -402,7 +414,7 @@ export function RewardsPage() {
 
   return (
     <div className="animate-rise">
-      <SubNav items={[...YOU_NAV]} />
+      <YouBack />
       <PageHeader eyebrow="You" title="Rewards" description="Prize money you’ve won. Withdraw it to your bank." />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -505,7 +517,7 @@ export function RewardsPage() {
 export function IdentityPage() {
   return (
     <div className="mx-auto max-w-xl animate-rise">
-      <SubNav items={[...YOU_NAV]} />
+      <YouBack />
       <PageHeader eyebrow="You" title="Identity verification" description="Confirm who you are once, so prize money can be paid to a bank account in your name." />
       <KycPanel />
     </div>
@@ -645,7 +657,7 @@ export function CreatorPage() {
   if (creator.isLoading) return <Loading />;
   return (
     <div className="animate-rise">
-      <SubNav items={[...YOU_NAV]} />
+      <YouBack />
       {/* What creators earn is only shown once you're approved: before that, it's an application. */}
       <PageHeader eyebrow="You" title={approved ? 'Creator' : 'Become a creator'}
         description={approved ? 'Host paid competitions for your audience and earn 5% when they settle.'
@@ -746,7 +758,7 @@ export function NotificationsPage() {
 
   return (
     <div className="animate-rise">
-      <SubNav items={[...YOU_NAV]} />
+      <YouBack />
       <PageHeader
         eyebrow="You"
         title="Notifications"

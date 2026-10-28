@@ -116,7 +116,10 @@ export class ClubEventsService {
     return this.repo.forClub(club.id, viewerId);
   }
 
-  async discover(viewerId: string, latitude: number | null, longitude: number | null, km: number) {
+  async discover(viewerId: string | null, latitude: number | null, longitude: number | null, km: number) {
+    // Guests can browse published events from open clubs. Personal passes and club-followed events
+    // remain private to signed-in runners.
+    if (!viewerId) return { nearby: await this.repo.upcoming(), going: [], clubs: [] };
     const [nearby, going, clubs] = await Promise.all([
       latitude === null || longitude === null ? Promise.resolve([] as EventRow[]) : this.repo.nearby(viewerId, latitude, longitude, km),
       this.repo.going(viewerId),

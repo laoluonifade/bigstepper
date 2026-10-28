@@ -17,7 +17,7 @@ import { formatDate } from '../lib/format';
 import { keys, useUnit } from '../lib/queries';
 import { toast } from '../lib/toast';
 import type { Club, ClubMember, ClubRole, ClubStanding, CompetitionTable } from '../lib/types';
-import { CompeteSubNav } from './Competitions';
+import { CompeteSubNav, ExploreBack } from './Competitions';
 
 type ClubSummary = Pick<Club, 'id' | 'slug' | 'name' | 'description' | 'logoUrl' | 'accentColor' | 'location' | 'privacy' | 'memberCount' | 'followerCount' | 'following' | 'verified'> & { myRole: ClubRole | null };
 
@@ -56,7 +56,8 @@ export function ClubsPage() {
   }
 
   return <div className="animate-rise">
-    <CompeteSubNav />
+    <ExploreBack />
+    <div className="hidden md:block"><CompeteSubNav /></div>
     <PageHeader
       eyebrow="Compete"
       title="Clubs"

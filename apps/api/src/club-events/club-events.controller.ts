@@ -119,9 +119,9 @@ export class ClubEventsController {
   }
 
   @Get('events')
-  @UseGuards(JwtAuthGuard)
-  discover(@CurrentUser() user: AuthenticatedUser, @Query() query: NearQuery) {
-    return this.events.discover(user.id, query.lat ?? null, query.lon ?? null, query.km ?? 25);
+  @UseGuards(OptionalJwtAuthGuard)
+  discover(@CurrentUser() user: AuthenticatedUser | null, @Query() query: NearQuery) {
+    return this.events.discover(user?.id ?? null, query.lat ?? null, query.lon ?? null, query.km ?? 25);
   }
 
   @Get('events/:id')

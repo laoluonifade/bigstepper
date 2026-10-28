@@ -21,8 +21,8 @@ export function EventStamp({ event, size = 'md' }: { event: Pick<ClubEvent, 'wee
   const ink = onAccent(accent);
   const big = size === 'lg';
   return <HardShadow offset={big ? 3 : 2} radius={radius.lg} style={{ transform: [{ rotate: '-3deg' }] }}>
-    <View style={[styles.stamp, { backgroundColor: accent, width: big ? 92 : 64, paddingVertical: big ? 12 : 8 }]}>
-      <Text style={[wideLabel(big ? 15 : 11), { color: ink }]}>{event.repeat === 'once' ? dateLabel(event.startsOn).slice(4) : WEEKDAYS[event.weekday].slice(0, 3)}</Text>
+    <View style={[styles.stamp, { backgroundColor: accent, minWidth: big ? 92 : 64, paddingHorizontal: big ? 12 : 8, paddingVertical: big ? 12 : 8 }]}>
+      <Text numberOfLines={1} style={[wideLabel(big ? 14 : 10.5), { color: ink }]}>{event.repeat === 'once' ? dateLabel(event.startsOn).slice(4) : WEEKDAYS[event.weekday].slice(0, 3)}</Text>
       <Text style={[display(big ? 22 : 15), { color: ink, marginTop: 2 }]} numberOfLines={1} adjustsFontSizeToFit>{clockLabel(event.startTime).replace(' ', '')}</Text>
     </View>
   </HardShadow>;
