@@ -5,14 +5,14 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { DateTimePicker } from '@/components/DateTimePicker';
 import { PinIcon, SearchIcon } from '@/components/icons';
-import { Button, Chips, ErrorNotice, FieldLabel, Footer, haptic, Hint, Loading, Screen, Segmented, TextField, Txt } from '@/components/ui';
+import { SelectField } from '@/components/pickers';
+import { Button, ErrorNotice, FieldLabel, Footer, haptic, Hint, Loading, Screen, TextField, Txt } from '@/components/ui';
 import { api, patch, post } from '@/lib/api';
-import { deviceTimeZone, eventKey, WEEK_ORDER, WEEKDAYS, type ClubEvent, type EventActivity, type EventInput, type Place } from '@/lib/club-events';
+import { ACTIVITY_OPTIONS, DAY_OPTIONS, deviceTimeZone, durationLabel, eventKey, MAX_DURATION, MIN_DURATION, type ClubEvent, type EventActivity, type EventInput, type Place } from '@/lib/club-events';
 import { useUnit } from '@/lib/queries';
 import { colors, radius } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
-const DURATIONS = ['30', '45', '60', '90', '120', '180'] as const;
 const MILE = 1609.344;
 
 /** Add or edit a club's weekly event: what, which day and time, and where to meet. */
@@ -26,7 +26,8 @@ export default function EditEventScreen() {
   const [activity, setActivity] = useState<EventActivity>('run');
   const [weekday, setWeekday] = useState(6);
   const [time, setTime] = useState('07:00');
-  const [duration, setDuration] = useState<(typeof DURATIONS)[number]>('60');
+  const [hours, setHours] = useState('1');
+  const [minutes, setMinutes] = useState('0');
   const [distance, setDistance] = useState('');
   const [notes, setNotes] = useState('');
   const [timeZone, setTimeZone] = useState(deviceTimeZone());
@@ -42,7 +43,7 @@ export default function EditEventScreen() {
     const e = existing.data;
     if (!e || loaded) return;
     setTitle(e.title); setActivity(e.activity); setWeekday(e.weekday); setTime(e.startTime);
-    setDuration((DURATIONS as readonly string[]).includes(String(e.durationMinutes)) ? String(e.durationMinutes) as (typeof DURATIONS)[number] : '60');
+    setHours(String(Math.floor(e.durationMinutes / 60))); setMinutes(String(e.durationMinutes % 60));
     setDistance(e.distanceMetres ? String(+(e.distanceMetres / (unit === 'mi' ? MILE : 1000)).toFixed(1)) : '');
     setNotes(e.notes ?? ''); setTimeZone(e.timeZone); setVenue(e.venue);
     setPlace({ name: e.venue, address: e.address ?? '', latitude: e.latitude, longitude: e.longitude });
@@ -84,18 +85,20 @@ export default function EditEventScreen() {
     setSearch('');
   }
 
+  const durationMinutes = (Number(hours) || 0) * 60 + (Number(minutes) || 0);
   const km = Number(distance.replace(',', '.'));
   const distanceMetres = distance.trim() && Number.isFinite(km) && km > 0 ? Math.round(km * (unit === 'mi' ? MILE : 1000)) : null;
   const problem = title.trim().length < 2 ? 'Add a name'
     : !place ? 'Set the meeting point'
       : venue.trim().length < 2 ? 'Name the meeting point'
-        : distance.trim() && (!distanceMetres || distanceMetres < 500 || distanceMetres > 200_000) ? 'Fix the distance'
+        : durationMinutes < MIN_DURATION || durationMinutes > MAX_DURATION ? 'Set how long it lasts'
+          : distance.trim() && (!distanceMetres || distanceMetres < 500 || distanceMetres > 200_000) ? 'Fix the distance'
           : null;
 
   const save = useMutation({
     mutationFn: () => {
       const input: EventInput = {
-        title: title.trim(), activity, weekday, startTime: time, timeZone, durationMinutes: Number(duration), distanceMetres,
+        title: title.trim(), activity, weekday, startTime: time, timeZone, durationMinutes, distanceMetres,
         venue: venue.trim(), address: place?.address.trim() || null, latitude: place!.latitude, longitude: place!.longitude, notes: notes.trim() || null,
       };
       return id ? patch<ClubEvent>(`/events/${id}`, input) : post<ClubEvent>(`/clubs/${club}/events`, input);
@@ -127,30 +130,19 @@ export default function EditEventScreen() {
     <View style={{ gap: 20 }}>
       <TextField label="Name" placeholder="Saturday Social 5K" value={title} onChangeText={setTitle} maxLength={80} />
 
-      <View>
-        <FieldLabel label="What" />
-        <Segmented label="Activity" value={activity} onChange={setActivity} options={[{ value: 'run', label: 'Run' }, { value: 'walk', label: 'Walk' }, { value: 'cycle', label: 'Ride' }, { value: 'any', label: 'Any' }]} />
-      </View>
+      <SelectField label="What kind of session is it?" value={activity} onChange={setActivity} options={ACTIVITY_OPTIONS} />
+      <SelectField label="Which day does it happen each week?" value={String(weekday)} onChange={(day) => setWeekday(Number(day))} options={DAY_OPTIONS} />
 
-      <View>
-        <FieldLabel label="Every" />
-        <View style={styles.days} accessibilityRole="radiogroup" accessibilityLabel="Day of the week">
-          {WEEK_ORDER.map((day) => {
-            const active = day === weekday;
-            return <Pressable key={day} onPress={() => { haptic(); setWeekday(day); }} accessibilityRole="radio" accessibilityState={{ selected: active }} accessibilityLabel={WEEKDAYS[day]}
-              style={[styles.day, active && { backgroundColor: colors.ink, borderColor: colors.ink }]}>
-              <Txt size={13} weight="bold" color={active ? 'paper' : 'ink'}>{WEEKDAYS[day].slice(0, 3)}</Txt>
-            </Pressable>;
-          })}
-        </View>
-      </View>
-
-      <DateTimePicker label="Starts at" timeOnly value={`2000-01-01T${time}`} onChange={(value) => setTime(value.slice(11, 16))}
+      <DateTimePicker label="What time does it start?" timeOnly value={`2000-01-01T${time}`} onChange={(value) => setTime(value.slice(11, 16))}
         hint={timeZone === deviceTimeZone() ? undefined : `In the meeting point’s time zone (${timeZone}).`} />
 
       <View>
-        <FieldLabel label="Lasts about" />
-        <Chips label="Duration" value={duration} onChange={setDuration} options={DURATIONS.map((value) => ({ value, label: Number(value) < 60 ? `${value} min` : `${Number(value) / 60} h`.replace('.5 h', ' h 30') }))} />
+        <FieldLabel label="How long does it usually last?" />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TextField containerStyle={{ flex: 1 }} accessibilityLabel="Hours" keyboardType="number-pad" maxLength={2} value={hours} onChangeText={(value) => setHours(value.replace(/\D/g, ''))} right={<Txt size={14} color="ink2">h</Txt>} />
+          <TextField containerStyle={{ flex: 1 }} accessibilityLabel="Minutes" keyboardType="number-pad" maxLength={2} value={minutes} onChangeText={(value) => setMinutes(value.replace(/\D/g, ''))} right={<Txt size={14} color="ink2">min</Txt>} />
+        </View>
+        <Hint>{durationMinutes >= MIN_DURATION && durationMinutes <= MAX_DURATION ? `About ${durationLabel(durationMinutes)}, including any warm-up or social time after.` : 'Anything from 15 minutes to 24 hours.'}</Hint>
       </View>
 
       <TextField label="Distance" optional placeholder="5" keyboardType="decimal-pad" value={distance} onChangeText={setDistance} right={<Txt size={14} color="ink2">{unit}</Txt>} />
@@ -191,8 +183,6 @@ export default function EditEventScreen() {
 }
 
 const styles = StyleSheet.create({
-  days: { flexDirection: 'row', gap: 6 },
-  day: { flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.white },
   pinned: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', padding: 12, borderRadius: radius['2xl'], borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card },
   pin: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   results: { borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, overflow: 'hidden' },

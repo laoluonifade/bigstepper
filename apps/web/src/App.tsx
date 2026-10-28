@@ -101,6 +101,8 @@ const club = createRoute({
   component: page(() => import('./pages/Clubs'), 'ClubDetailPage'),
 });
 const clubDashboard = createRoute({ getParentRoute: () => root, path: '/clubs/$id/dashboard', component: protectedPage(() => import('./pages/ClubDashboard'), 'ClubDashboardPage') });
+const events = createRoute({ getParentRoute: () => root, path: '/events', component: protectedPage(() => import('./pages/Events'), 'EventsPage') });
+const clubEvent = createRoute({ getParentRoute: () => root, path: '/events/$id', component: page(() => import('./pages/Events'), 'EventPage') });
 const prizes = createRoute({ getParentRoute: () => root, path: '/prizes', component: protectedPage(() => import('./pages/Prizes'), 'PrizesPage') });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(() => import('./pages/You'), 'RewardsPage') });
 const identity = createRoute({ getParentRoute: () => root, path: '/identity', component: protectedPage(() => import('./pages/You'), 'IdentityPage') });
@@ -123,7 +125,7 @@ const routeTree = root.addChildren([
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, setup, welcome, leaderboard, feed, feedPost, messages, conversation, duel, newCompetition, run, runSession, activities, activity,
-  leagues, league, clubs, club, clubChat, clubDashboard, prizes, rewards, identity, wallet, creator, notifications, profile, paymentReturn,
+  leagues, league, clubs, club, clubChat, clubDashboard, events, clubEvent, prizes, rewards, identity, wallet, creator, notifications, profile, paymentReturn,
 ]);
 
 export const router = createRouter({

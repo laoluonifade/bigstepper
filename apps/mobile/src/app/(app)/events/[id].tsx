@@ -68,8 +68,8 @@ export default function EventScreen() {
   const next = nextLabel(e, now);
   const away = distanceAway(e.distanceKm);
   const share = () => void Share.share({
-    message: `${e.title} with ${e.club.name}: ${everyLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/clubs/${e.club.slug}`,
-    url: `${WEB_URL}/clubs/${e.club.slug}`,
+    message: `${e.title} with ${e.club.name}: ${everyLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/events/${e.id}`,
+    url: `${WEB_URL}/events/${e.id}`,
   });
 
   return <Screen refreshing={event.isRefetching} onRefresh={() => void event.refetch()} padded={false}

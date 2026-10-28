@@ -12,7 +12,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { onboardingSkipped } from '../lib/onboarding';
 import { movingSeconds, RecorderProvider, START_ACTIVITY_EVENT, useRecorder } from '../lib/recorder';
-import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, RunIcon, SearchIcon, SettingsIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon, InstagramIcon, XLogoIcon } from './icons';
+import { DuelLaunch } from './DuelLaunch';
+import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, PinIcon, RunIcon, SearchIcon, SettingsIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon, InstagramIcon, XLogoIcon } from './icons';
 import { cx, LiveDot, Redirect, useNow } from './ui';
 import { QuickPanelsProvider, useQuickPanels } from './QuickPanels';
 
@@ -155,6 +156,7 @@ function SignedInShell() {
       items: [
         { to: '/competitions', label: 'Competitions', icon: <TableIcon /> },
         { to: '/clubs', label: 'Clubs', icon: <UsersIcon /> },
+        { to: '/events', label: 'Club runs', icon: <PinIcon /> },
       ],
     },
     {
@@ -244,6 +246,7 @@ function SignedInShell() {
         </div>
         <SafetyHost />
       </div>
+      <DuelLaunch />
 
       {/* Mobile tabs */}
       <nav className={cx('safe-bottom fixed inset-x-0 bottom-0 z-30 border-t-[1.5px] border-ink bg-paper md:hidden', onConversation && 'hidden')} aria-label="Main">

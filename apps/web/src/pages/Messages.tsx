@@ -66,7 +66,7 @@ export function ConversationPage() {
     path={`/messages/${encodeURIComponent(username)}`}
     back={{ to: '/messages' }}
     senderOf={(data) => data.runner}
-    duelWith={(data) => ({ username, name: data.runner.displayName })}
+    duelWith={(data) => ({ username, name: data.runner.displayName, avatarUrl: data.runner.avatarUrl, avatarStyle: data.runner.avatarStyle })}
     header={(data) => <>
       <Avatar name={data.runner.displayName} src={data.runner.avatarUrl} avatarStyle={data.runner.avatarStyle} size={42} className="rounded-full" />
       <div className="min-w-0"><h1 className="wide truncate text-[16px] font-black uppercase md:text-[18px]">{data.runner.displayName}{data.runner.verified && <VerifiedTick size={16} className="ml-1.5" />}</h1><Link to="/runners/$username" params={{ username }} search={{}} className="block truncate text-[12px] text-ink-2 hover:underline md:text-[13px]">@{username}</Link></div>
@@ -128,7 +128,7 @@ function ChatThread<T extends Thread>({ queryKey, path, header, empty, back, sen
   senderOf: (data: T, senderId: string) => Person;
   group?: boolean;
   /** In a DM: who a duel from the composer goes to. */
-  duelWith?: (data: T) => { username: string; name: string };
+  duelWith?: (data: T) => { username: string; name: string; avatarUrl?: string | null; avatarStyle?: AvatarStyle };
 }) {
   const user = useUser();
   const queryClient = useQueryClient();

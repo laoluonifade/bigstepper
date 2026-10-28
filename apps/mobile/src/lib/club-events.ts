@@ -37,6 +37,15 @@ export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
 /** Monday first, the way a club thinks about its week. */
 export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 export const EVENT_NOUN: Record<EventActivity, string> = { run: 'Run', walk: 'Walk', cycle: 'Ride', any: 'Meet-up' };
+export const ACTIVITY_OPTIONS: Array<{ value: EventActivity; label: string; detail: string }> = [
+  { value: 'run', label: 'Group run', detail: 'Runners of every pace' },
+  { value: 'walk', label: 'Group walk', detail: 'A walking group or hike' },
+  { value: 'cycle', label: 'Group ride', detail: 'Cyclists riding together' },
+  { value: 'any', label: 'Open to everyone', detail: 'Runners, walkers and riders all welcome' },
+];
+export const DAY_OPTIONS = WEEK_ORDER.map((day) => ({ value: String(day), label: `Every ${WEEKDAYS[day]}` }));
+export const MIN_DURATION = 15;
+export const MAX_DURATION = 24 * 60;
 
 /** "7:00 am" from "07:00". */
 export function clockLabel(time: string) {

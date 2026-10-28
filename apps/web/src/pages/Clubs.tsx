@@ -4,6 +4,7 @@ import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { CompetitionRow } from '../components/competition';
 import { ArrowRightIcon, CameraIcon, CheckIcon, FeedIcon, LinkIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon } from '../components/icons';
 import { Leaderboard } from '../components/Leaderboard';
+import { ClubEventsSection, EventForm } from '../components/ClubEvents';
 import { ClubLogo } from '../components/ClubLogo';
 import { Modal } from '../components/Modal';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -170,6 +171,8 @@ export function ClubDetailPage() {
   });
   const [tab, setTab] = useState<ClubTab>('competitions');
   const [editing, setEditing] = useState(false);
+  const [addingEvent, setAddingEvent] = useState(false);
+  const unit = useUnit();
   const role = club.data?.myRole ?? null;
   const canJoin = Boolean(club.data && !role && (club.data.privacy !== 'invite' || club.data.inviteValid));
   const autoJoin = Boolean(user && canJoin && (search.join || (search.invite && club.data?.inviteValid)));
@@ -255,6 +258,7 @@ export function ClubDetailPage() {
               actions={[
                 { label: 'Dashboard', run: () => void navigate({ to: '/clubs/$id/dashboard', params: { id: c.slug } }) },
                 ...(c.suspended ? [] : [{ label: 'New competition', run: () => void navigate({ to: '/competitions/new', search: { club: c.slug } }) }]),
+                ...(c.suspended ? [] : [{ label: 'New weekly run', run: () => setAddingEvent(true) }]),
                 { label: 'Edit club', run: () => setEditing(true) },
               ]}
             />}
@@ -270,6 +274,9 @@ export function ClubDetailPage() {
       <span className="min-w-0 flex-1"><span className="block text-[14px] font-bold">Club dashboard</span><span className="block text-[12.5px] text-ink-2">Competitions, series, prizes and how your community is doing.</span></span>
       <ArrowRightIcon size={16} />
     </Link>}
+
+    {(c.privacy === 'open' || member) && <ClubEventsSection club={c} manager={isManager(role) && !c.suspended} unit={unit} />}
+    {addingEvent && <EventForm club={c.slug} unit={unit} onClose={() => setAddingEvent(false)} />}
 
     {!member && user && <p className="mt-4 text-[13px] text-ink-2">Follow to hear about every new competition. Join to be in the club, its chat and the competitions it enters members in.</p>}
 

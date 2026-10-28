@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import { DuelActions } from '../components/Duel';
-import { ArrowLeftIcon } from '../components/icons';
-import { Avatar, cx, ErrorNotice, LiveDot, Loading, Notice, useNow } from '../components/ui';
+import { DuelActions, DuelArena } from '../components/Duel';
+import { ArrowLeftIcon, FinishFlagIcon } from '../components/icons';
+import { Avatar, cx, ErrorNotice, Loading, Notice, useNow } from '../components/ui';
 import { api } from '../lib/api';
 import { useUser } from '../lib/auth';
 import { duelKey, duelLine, duelPhase, sides, standing, type DuelPerson, type DuelView } from '../lib/duels';
@@ -60,27 +60,31 @@ export function DuelPage() {
     const won = phase === 'finished' && data.winnerId === runner.userId;
     const ahead = (phase === 'live' || phase === 'settling') && leader === runner.userId;
     return <div className={cx('space-y-3 rounded-2xl bg-card p-3.5', won || ahead ? 'border-2 border-ink' : 'border-[1.5px] border-line')}>
-      <div className="flex items-center gap-2.5">
-        <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={40} className="rounded-full" />
+      <div className="flex items-end gap-2.5">
         <div className="min-w-0 flex-1 leading-tight">
           <Link to="/runners/$username" params={{ username: runner.username }} search={{}} className="block truncate text-[15px] font-bold hover:underline">{mine ? 'You' : runner.displayName}</Link>
-          <span className="block truncate text-[12px] text-ink-3">{won ? 'Winner' : reachedAt ? `Reached ${formatDistance(data.targetMetres, unit)}` : ahead ? 'In front' : `@${runner.username}`}</span>
+          <span className="block truncate text-[12px] text-ink-3">{won ? 'Winner' : reachedAt ? `Reached ${formatDistance(data.targetMetres, unit)}` : ahead ? 'In front' : `${Math.round(share * 100)}% of the way`}</span>
         </div>
-        <span className="score num text-[30px]">{formatDistance(metres, unit)}</span>
+        <span className="score num text-[34px] leading-none">{formatDistance(metres, unit)}</span>
       </div>
-      <div className="h-3 overflow-hidden rounded-md bg-ink/10" role="progressbar" aria-label={`${mine ? 'Your' : `${runner.displayName}’s`} distance`} aria-valuemin={0} aria-valuemax={data.targetMetres} aria-valuenow={Math.min(metres, data.targetMetres)}>
-        <div className={cx('h-full rounded-md transition-[width] duration-700 ease-out', who === 'challenger' ? 'bg-track' : 'bg-volt')} style={{ width: `${Math.max(share * 100, metres > 0 ? 2 : 0)}%` }} />
+      <div className="relative mr-[26px] flex h-10 items-center" role="progressbar" aria-label={`${mine ? 'Your' : `${runner.displayName}’s`} distance`} aria-valuemin={0} aria-valuemax={data.targetMetres} aria-valuenow={Math.min(metres, data.targetMetres)}>
+        <span className="absolute inset-x-0 h-2 rounded bg-ink/10" />
+        <span className={cx('absolute left-0 h-2 rounded transition-[width] duration-700 ease-out', who === 'challenger' ? 'bg-track' : 'bg-volt')} style={{ width: `${share * 100}%` }} />
+        {[0.25, 0.5, 0.75].map((mark) => <span key={mark} className="absolute h-3.5 w-0.5 bg-line" style={{ left: `${mark * 100}%` }} />)}
+        <span className="absolute -right-[26px]"><FinishFlagIcon size={22} /></span>
+        <span className="absolute -ml-[18px] transition-[left] duration-700 ease-out" style={{ left: `${share * 100}%` }}>
+          <span className={cx('block rounded-full border-[3px] bg-ink', who === 'challenger' ? 'border-track' : 'border-volt')}>
+            <Avatar name={runner.displayName} src={runner.avatarUrl} avatarStyle={runner.avatarStyle} size={30} className="rounded-full" />
+          </span>
+        </span>
       </div>
     </div>;
   };
 
   return <div className="mx-auto max-w-[600px] animate-rise">
     {back}
-    <header className="mb-5">
-      <p className="eyebrow mb-2 flex items-center gap-2">{phase === 'live' && <LiveDot live className="text-track" />}{data.challenger.displayName.split(' ')[0]} vs {data.opponent.displayName.split(' ')[0]}</p>
-      <h1 className="display text-[30px] sm:text-[40px]">{duelLine(data, unit)}</h1>
-      <p className="mt-3 text-[14px] leading-relaxed text-ink-2">First to the distance wins. If nobody gets there, the farthest when time’s up wins.</p>
-    </header>
+    <DuelArena duel={data} viewerId={user.id} unit={unit} big live={phase === 'live' || phase === 'settling' ? { challenger: standings.challenger.metres, opponent: standings.opponent.metres } : undefined} />
+    <p className="mb-4 mt-3 text-center text-[13px] text-ink-2">{duelLine(data, unit)}. First there wins — if nobody makes it, the farthest when time’s up wins.</p>
 
     <div className="space-y-4">
       {phase === 'countdown' && <div className={cx(box, 'bg-volt text-ink')} role="timer" aria-live="assertive">

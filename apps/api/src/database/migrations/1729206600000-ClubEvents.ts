@@ -15,7 +15,7 @@ export class ClubEvents1729206600000 implements MigrationInterface {
         "weekday" smallint NOT NULL CHECK ("weekday" BETWEEN 0 AND 6),
         "startTime" time NOT NULL,
         "timeZone" varchar(64) NOT NULL,
-        "durationMinutes" integer NOT NULL DEFAULT 60 CHECK ("durationMinutes" BETWEEN 15 AND 600),
+        "durationMinutes" integer NOT NULL DEFAULT 60 CHECK ("durationMinutes" BETWEEN 15 AND 1440),
         "distanceMetres" integer CHECK ("distanceMetres" BETWEEN 500 AND 200000),
         "venue" varchar(120) NOT NULL,
         "address" varchar(200),

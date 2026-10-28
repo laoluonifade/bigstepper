@@ -27,7 +27,7 @@ class EventDto {
   @IsString() @MaxLength(64)
   timeZone: string;
 
-  @IsInt() @Min(15) @Max(600)
+  @IsInt() @Min(15) @Max(1440)
   durationMinutes: number;
 
   @IsOptional() @IsInt() @Min(500) @Max(200_000)

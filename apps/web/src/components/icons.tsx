@@ -197,6 +197,22 @@ export const InfoIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const PinIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+    <circle cx="12" cy="9.5" r="2.5" />
+  </Icon>
+);
+
+export const RepeatIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M17 2l3 3-3 3" />
+    <path d="M4 11V9a4 4 0 0 1 4-4h12" />
+    <path d="M7 22l-3-3 3-3" />
+    <path d="M20 13v2a4 4 0 0 1-4 4H4" />
+  </Icon>
+);
+
 export const ClockIcon = (p: IconProps) => (
   <Icon {...p}>
     <circle cx="12" cy="12" r="9" />

@@ -60,6 +60,7 @@ export const COMPETE_NAV = [
   { to: '/competitions', label: 'Competitions' },
   { to: '/leaderboard', label: 'Leaderboard' },
   { to: '/clubs', label: 'Clubs' },
+  { to: '/events', label: 'Club runs' },
 ] as const;
 
 export function CompeteSubNav() {

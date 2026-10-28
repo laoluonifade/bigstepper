@@ -5,13 +5,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CompetitionPreviewCard, openCompetition } from '@/components/competition';
-import { ArrowRightIcon, CloseIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon } from '@/components/icons';
+import { ArrowRightIcon, CloseIcon, CrownIcon, LadderIcon, PinIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon, UsersIcon } from '@/components/icons';
 import { TabScreen } from '@/components/Shell';
 import { Sheet } from '@/components/Sheet';
-import { Button, EmptyState, ErrorNotice, haptic, Skeleton, Txt, useNow } from '@/components/ui';
+import { Button, EmptyState, ErrorNotice, haptic, HardShadow, Skeleton, Txt, useNow } from '@/components/ui';
 import { api, post } from '@/lib/api';
 import { useDiscover, useUnit, type DiscoverView } from '@/lib/queries';
-import { colors, fontFamily, GUTTER, radius } from '@/lib/theme';
+import { brand, colors, fontFamily, radius, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { confirm } from '@/lib/dialog';
 
@@ -66,11 +66,7 @@ export default function CompetitionsScreen() {
         <PlusIcon size={15} color={colors.paper} /><Txt size={14} weight="bold" color="paper">Create</Txt>
       </Pressable>
     </View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -GUTTER, marginBottom: 16, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: GUTTER }}>
-      {([['Club runs', '/events'], ['Leaderboard', '/leaderboard'], ['Clubs', '/clubs'], ['Prizes', '/prizes']] as const).map(([label, href]) => <Pressable key={href} onPress={() => router.push(href)} style={({ pressed }) => [styles.subNav, pressed && { borderColor: colors.edge }]} accessibilityRole="link">
-        <Txt size={13} weight="semibold">{label}</Txt><ArrowRightIcon size={13} />
-      </Pressable>)}
-    </ScrollView>
+    <CompeteShortcuts />
 
     <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
     {drafts.length > 0 && <Pressable onPress={() => setDraftsOpen(true)} style={({ pressed }) => [styles.drafts, pressed && { borderColor: colors.edge }]} accessibilityRole="button">
@@ -191,7 +187,10 @@ function DraftsSheet({ open, onOpenChange, drafts }: { open: boolean; onOpenChan
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   create: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 16 },
-  subNav: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 32, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 12 },
+  shortcuts: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  shortcut: { alignItems: 'center', gap: 8, paddingTop: 12, paddingBottom: 10, paddingHorizontal: 4, borderRadius: radius.xl, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card },
+  shortcutIcon: { width: 40, height: 40, borderRadius: 12, borderWidth: 2, borderColor: brand.ink, alignItems: 'center', justifyContent: 'center' },
+  newTag: { position: 'absolute', top: -7, right: -4, zIndex: 1, transform: [{ rotate: '6deg' }], borderRadius: radius.sm, borderWidth: 1.5, borderColor: brand.ink, backgroundColor: brand.track, paddingHorizontal: 5, paddingVertical: 1 },
   drafts: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.4)', paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
   draftCount: { minWidth: 28, height: 28, borderRadius: 14, backgroundColor: colors.ink, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
   search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 14 },
@@ -210,3 +209,27 @@ const styles = StyleSheet.create({
   trash: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   fund: { height: 36, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 16, justifyContent: 'center' },
 });
+
+const SHORTCUTS = [
+  { label: 'Club runs', href: '/events', icon: PinIcon, tint: brand.volt, fresh: true },
+  { label: 'Leaderboard', href: '/leaderboard', icon: LadderIcon, tint: brand.track, fresh: false },
+  { label: 'Clubs', href: '/clubs', icon: UsersIcon, tint: '#8B7CF6', fresh: false },
+  { label: 'Prizes', href: '/prizes', icon: CrownIcon, tint: '#FFC53D', fresh: false },
+] as const;
+
+/** Four sticker tiles under the title: the other ways to compete. */
+function CompeteShortcuts() {
+  return <View style={styles.shortcuts}>
+    {SHORTCUTS.map(({ label, href, icon: Icon, tint, fresh }) => <Pressable key={href} style={{ flex: 1 }} onPress={() => { haptic(); router.push(href); }} accessibilityRole="link" accessibilityLabel={label}>
+      {({ pressed }) => <View>
+        {fresh ? <View style={styles.newTag}><Text style={[wideLabel(8.5), { color: brand.ink }]}>New</Text></View> : null}
+        <HardShadow offset={3} radius={radius.xl} pressed={pressed}>
+          <View style={styles.shortcut}>
+            <View style={[styles.shortcutIcon, { backgroundColor: tint }]}><Icon size={20} color={brand.ink} /></View>
+            <Txt size={12} weight="bold" numberOfLines={1} adjustsFontSizeToFit>{label}</Txt>
+          </View>
+        </HardShadow>
+      </View>}
+    </Pressable>)}
+  </View>;
+}
