@@ -1,6 +1,6 @@
 import { flag } from '@jump/shared/countries';
 import { formatDate } from '@jump/shared/format';
-import type { Club, ClubMember, ClubRole, ClubStanding, CompetitionTable } from '@jump/shared/types';
+import type { Club, ClubMember, ClubRole, ClubStanding, CompetitionTable, RunnerSearchResult } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
@@ -332,8 +332,18 @@ function InvitePanel({ club }: { club: Club }) {
       toast({ tone: 'ok', message: `${result.invited} ${result.invited === 1 ? 'invite' : 'invites'} sent${result.alreadyMembers ? ` · ${result.alreadyMembers} already in the club` : ''}.` });
     },
   });
+  // Runners show up as you type, like the opponent picker; tap one to add them.
+  const [query, setQuery] = useState('');
+  useEffect(() => { const timer = setTimeout(() => setQuery(username.trim().replace(/^@/, '')), 250); return () => clearTimeout(timer); }, [username]);
+  const found = useQuery({
+    queryKey: ['users', 'search', query],
+    queryFn: () => api<RunnerSearchResult[]>(`/users/search?q=${encodeURIComponent(query)}`),
+    enabled: query.length >= 2,
+    staleTime: 30_000,
+  });
+  const people = (found.data ?? []).filter((person) => !person.isMe).slice(0, 6);
   const add = useMutation({
-    mutationFn: () => post(`/clubs/${club.slug}/members`, { username: username.trim().replace(/^@/, '') }),
+    mutationFn: (handle?: string) => post(`/clubs/${club.slug}/members`, { username: (handle ?? username).trim().replace(/^@/, '') }),
     async onSuccess() { setUsername(''); await queryClient.invalidateQueries({ queryKey: ['club'] }); toast({ tone: 'ok', message: 'Added. They’re in the club’s live competitions too.' }); },
   });
   const reset = useMutation({
@@ -368,8 +378,20 @@ function InvitePanel({ club }: { club: Club }) {
         <FieldLabel label="Add someone on Jump" />
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <TextField containerStyle={{ flex: 1 }} value={username} onChangeText={setUsername} placeholder="@username" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Username to add" />
-          <Button variant="secondary" loading={add.isPending} disabled={!username.trim().replace(/^@/, '')} title={add.isPending ? 'Adding…' : 'Add'} onPress={() => add.mutate()} />
+          <Button variant="secondary" loading={add.isPending} disabled={!username.trim().replace(/^@/, '')} title={add.isPending ? 'Adding…' : 'Add'} onPress={() => add.mutate(undefined)} />
         </View>
+        {query.length >= 2 && people.length ? <View style={styles.found}>
+          {people.map((person, index) => <Pressable key={person.username} onPress={() => { haptic(); add.mutate(person.username); }} disabled={add.isPending}
+            style={({ pressed }) => [styles.foundRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, pressed && { backgroundColor: colors.inkWash }]}
+            accessibilityRole="button" accessibilityLabel={`Add ${person.displayName}`}>
+            <Avatar name={person.displayName} src={person.avatarUrl} avatarStyle={person.avatarStyle} size={34} round />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Txt size={14} weight="semibold" numberOfLines={1}>{person.displayName}</Txt>
+              <Txt size={12} color="ink3" numberOfLines={1}>@{person.username}</Txt>
+            </View>
+            <PlusIcon size={16} />
+          </Pressable>)}
+        </View> : query.length >= 2 && found.isFetched && !found.isFetching ? <Txt size={12.5} color="ink3" style={{ marginTop: 8 }}>No runners match that.</Txt> : null}
         <Txt size={12} color="ink2" style={{ marginTop: 6 }}>By their @username. They’re added straight away.</Txt>
         <ErrorNotice error={add.error} />
       </View>
@@ -442,6 +464,8 @@ function EditClubSheet({ club, onClose }: { club: Club; onClose: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  found: { marginTop: 8, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, overflow: 'hidden' },
+  foundRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
   hero: { borderRadius: 24, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   heroLogo: { marginTop: -40, alignSelf: 'flex-start', borderRadius: radius.xl + 3, borderWidth: 3, borderColor: colors.card },
   invitePill: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 46, borderRadius: radius.full, backgroundColor: colors.inkWash },

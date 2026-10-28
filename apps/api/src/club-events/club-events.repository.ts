@@ -39,6 +39,7 @@ export const eventRow = z.object({
   attendeeCount: num, going: z.boolean(), canManage: z.boolean(), faces: z.array(face), distanceKm: num.nullable(),
   pass: z.object({ code: text, checkedIn: z.boolean() }).nullable(),
   draft: z.boolean(),
+  isHost: z.boolean(),
 });
 export type EventRow = z.output<typeof eventRow>;
 
@@ -75,7 +76,8 @@ const select = (where: string) => `
                     FROM "club_event_attendees" a JOIN "profiles" p ON p."userId" = a."userId"
                    WHERE a."eventId" = e."id" ORDER BY a."createdAt" LIMIT 5) f) AS "faces",
          CASE WHEN $2::float8 IS NULL OR $3::float8 IS NULL THEN NULL ELSE ${KM} END AS "distanceKm",
-         e."publishedAt" IS NULL AS "draft"
+         e."publishedAt" IS NULL AS "draft",
+         e."createdBy" IS NOT NULL AND e."createdBy" = $1::uuid AS "isHost"
     FROM "club_events" e
     JOIN "clubs" c ON c."id" = e."clubId"
     LEFT JOIN "club_memberships" m ON m."clubId" = c."id" AND m."userId" = $1::uuid

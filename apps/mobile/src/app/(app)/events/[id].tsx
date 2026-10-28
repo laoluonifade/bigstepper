@@ -88,6 +88,8 @@ export default function EventScreen() {
     footer={<Footer style={{ flexDirection: 'row', gap: 8 }}>
       {e.draft
         ? <Button style={{ flex: 1 }} full variant="primary" title="Publish now" loading={publish.isPending} onPress={() => publish.mutate()} />
+        : e.isHost
+        ? <Button style={{ flex: 1 }} full variant="volt" title={`You’re hosting · ${e.attendeeCount} going`} icon={<UsersIcon size={16} color={colors.onAccent} />} onPress={() => router.push({ pathname: '/events/guests', params: { id: e.id } })} />
         : e.pass
         ? <Button style={{ flex: 1 }} full variant="dark" icon={<TicketIcon size={16} color={colors.paper} />} title="Show my pass" onPress={() => setPassOpen(true)} />
         : e.nextAt ? <Button style={{ flex: 1 }} full variant="primary" icon={<TicketIcon size={16} color={colors.onAccent} />} title="Get your pass" loading={join.isPending} onPress={() => join.mutate()} />
@@ -115,7 +117,7 @@ export default function EventScreen() {
     <View style={{ padding: 16, gap: 16 }}>
       <ErrorNotice error={join.error ?? leave.error ?? remove.error ?? publish.error} />
       {e.draft ? <Notice tone="warn" title="Draft · not posted yet">Only {e.club.name}’s managers can see it, and nobody has been told. Publish it and members and followers get a push.</Notice> : null}
-      {e.pass ? <Pressable onPress={() => setPassOpen(true)} accessibilityRole="button" accessibilityLabel="Open your pass"><EventPass event={e} holder={profile?.displayName ?? 'You'} behind={colors.paper} /></Pressable> : null}
+      {e.pass && !e.isHost ? <Pressable onPress={() => setPassOpen(true)} accessibilityRole="button" accessibilityLabel="Open your pass"><EventPass event={e} holder={profile?.displayName ?? 'You'} behind={colors.paper} /></Pressable> : null}
       <Pressable onPress={() => router.push(`/clubs/${e.club.slug}`)} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="link">
         <ClubLogo club={e.club} size={40} />
         <View style={{ flex: 1, minWidth: 0 }}>

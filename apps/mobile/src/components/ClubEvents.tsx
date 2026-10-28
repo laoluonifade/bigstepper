@@ -5,6 +5,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { ClubLogo } from '@/components/ClubLogo';
 import { onAccent } from '@/components/clubs';
 import { CalendarIcon, CheckIcon, PinIcon, PlusIcon, RepeatIcon, UsersIcon } from '@/components/icons';
 import { Avatar, Button, haptic, HardShadow, SectionTitle, Txt, useNow } from '@/components/ui';
@@ -54,7 +55,7 @@ export function EventCard({ event, showClub = true }: { event: ClubEvent; showCl
               </View>)}
             </View> : null}
             <Txt size={12} color="ink2" num style={{ flex: 1 }}>{event.attendeeCount ? `${event.attendeeCount} going` : 'Be the first to join'}</Txt>
-            {event.going ? <View style={styles.going}><RepeatIcon size={11} color={colors.onAccent} /><Text style={[wideLabel(10), { color: colors.onAccent }]}>Going</Text></View> : null}
+            {event.going && !event.isHost ? <View style={styles.going}><RepeatIcon size={11} color={colors.onAccent} /><Text style={[wideLabel(10), { color: colors.onAccent }]}>Going</Text></View> : null}
           </View>
         </View>
       </View>
@@ -92,46 +93,47 @@ export function useEventRsvp(event: ClubEvent) {
   });
 }
 
-/** An event in Explore, like a poster: photo, what and when, where, who's coming, and RSVP. */
+/**
+ * An event in Explore, built on the same frame as a competition card so the two sit together: an optional
+ * cover strip, what it is, who's hosting, when and where, who's coming, and RSVP.
+ */
 export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit }) {
   const now = useNow(60_000);
   const next = nextLabel(event, now);
   const rsvp = useEventRsvp(event);
   const away = distanceAway(event.distanceKm);
+  const when = next.live ? `Happening now · ${posterTime(event, now)}` : posterTime(event, now);
   const where = [event.venue, event.distanceMetres ? `${formatDistance(event.distanceMetres, unit)} ${EVENT_NOUN[event.activity].toLowerCase()}` : away].filter(Boolean).join(' · ');
   const going = event.going || rsvp.isSuccess;
   return <Pressable onPress={() => router.push(`/events/${event.id}`)} accessibilityRole="button" accessibilityLabel={`Event: ${event.title}`}
-    style={({ pressed }) => [styles.poster, pressed && { opacity: 0.88 }]}>
-    <View>
-      <EventCover event={event} />
-      <View style={styles.clubChip}><Text style={styles.clubChipText} numberOfLines={1}>{event.club.name}</Text></View>
+    style={({ pressed }) => [styles.poster, pressed && { opacity: 0.85 }]}>
+    {event.coverUrl ? <Image source={{ uri: event.coverUrl }} style={styles.posterBanner} contentFit="cover" transition={150} accessible={false} /> : null}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      <View style={styles.eventTag}><Text style={[wideLabel(10.5), { color: '#4DA3FF' }]}>Event</Text></View>
+      <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{`${ACTIVITY_WORD[event.activity]} · In person`}</Txt>
     </View>
-    <View style={{ padding: 16, gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={styles.eventTag}><Text style={[wideLabel(10.5), { color: '#4DA3FF' }]}>Event</Text></View>
-        <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{`${ACTIVITY_WORD[event.activity]} · In person`}</Txt>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+      <ClubLogo club={event.club} size={40} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Txt size={16} weight="bold" numberOfLines={1}>{event.title}</Txt>
+        <Txt size={13} color={next.live ? 'track' : 'ink3'} weight={next.live ? 'semibold' : 'regular'} numberOfLines={1} style={{ marginTop: 2 }}>{when}</Txt>
       </View>
-      <Txt size={20} weight="bold" numberOfLines={2} style={{ letterSpacing: -0.2 }}>{event.title}</Txt>
-      <View style={styles.line}>
-        <CalendarIcon size={15} color={next.live ? colors.track : colors.ink3} />
-        <Txt size={14} color={next.live ? 'track' : 'ink2'} weight={next.live ? 'semibold' : 'regular'}>{next.live ? `Happening now · ${posterTime(event)}` : posterTime(event)}</Txt>
-      </View>
-      <View style={styles.line}>
-        <PinIcon size={15} color={colors.ink3} />
-        <Txt size={14} color="ink2" numberOfLines={1} style={{ flexShrink: 1 }}>{where}</Txt>
-      </View>
-      <View style={[styles.line, { marginTop: 4, justifyContent: 'space-between' }]}>
-        <View style={styles.line}>
-          <UsersIcon size={15} color={colors.ink3} />
-          <Txt size={14} color="ink2" num>{`${event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending`}</Txt>
+      <Txt size={13} weight="semibold" color="ink3">Free</Txt>
+    </View>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={styles.line}><PinIcon size={13} color={colors.ink3} /><Txt size={13} color="ink2" numberOfLines={1} style={{ flexShrink: 1 }}>{where}</Txt></View>
+        <View style={[styles.line, { marginTop: 2 }]}>
+          <UsersIcon size={12} color={colors.ink3} />
+          <Txt size={12} color="ink3" num>{`${event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending · ${event.club.name}`}</Txt>
         </View>
-        {going
-          ? <View style={styles.goingPill}><CheckIcon size={14} color={colors.onAccent} /><Txt size={14} weight="bold" style={{ color: colors.onAccent }}>Going</Txt></View>
+      </View>
+      {event.isHost ? <View style={styles.inPill}><Txt size={12} weight="bold">Hosting</Txt></View>
+        : going ? <View style={[styles.inPill, { backgroundColor: colors.volt, borderColor: colors.volt }]}><Txt size={12} weight="bold" style={{ color: colors.onAccent }}>Going</Txt></View>
           : <Pressable onPress={() => rsvp.mutate()} disabled={rsvp.isPending} hitSlop={6} accessibilityRole="button" accessibilityLabel={`RSVP to ${event.title}`}
             style={({ pressed }) => [styles.rsvp, (pressed || rsvp.isPending) && { opacity: 0.7, transform: [{ scale: 0.96 }] }]}>
-            <Txt size={14} weight="bold" color="paper">{rsvp.isPending ? 'Joining…' : 'RSVP'}</Txt>
+            <Txt size={13} weight="bold" color="paper">{rsvp.isPending ? 'Joining…' : 'RSVP'}</Txt>
           </Pressable>}
-      </View>
     </View>
   </Pressable>;
 }
@@ -164,12 +166,14 @@ export function ClubEventsSection({ club, manager }: { club: { slug: string; nam
 
 const styles = StyleSheet.create({
   cover: { width: '100%', aspectRatio: 16 / 9, backgroundColor: colors.inkWash, overflow: 'hidden' },
-  poster: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
+  poster: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14, overflow: 'hidden' },
+  posterBanner: { marginHorizontal: -16, marginTop: -16, marginBottom: 14, aspectRatio: 3, backgroundColor: colors.inkWash },
+  inPill: { borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 12, paddingVertical: 4 },
   clubChip: { position: 'absolute', left: 12, bottom: 12, maxWidth: '70%', borderRadius: radius.full, backgroundColor: 'rgba(18,18,18,0.72)', paddingHorizontal: 12, paddingVertical: 6 },
   clubChipText: { fontFamily: fontFamily('semibold'), fontSize: 13, color: '#F2EFE8' },
   eventTag: { borderRadius: radius.base, backgroundColor: 'rgba(77,163,255,0.16)', paddingHorizontal: 8, paddingVertical: 3 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  rsvp: { borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 20, paddingVertical: 10 },
+  rsvp: { height: 36, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 20, justifyContent: 'center' },
   goingPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full, backgroundColor: colors.volt, paddingHorizontal: 16, paddingVertical: 10 },
   stamp: { alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg, borderWidth: 2, borderColor: colors.edge, paddingHorizontal: 6 },
   card: { flexDirection: 'row', gap: 14, alignItems: 'flex-start', borderRadius: radius['2xl'], borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, padding: 14 },

@@ -141,7 +141,6 @@ export class ClubEventsService {
       if (!draft) await this.announce(db, club, actorId, event, created);
       return created;
     });
-    if (!draft) await this.attend(eventId, club.id, actorId);
     return this.event(eventId, actorId);
   }
 
@@ -163,7 +162,6 @@ export class ClubEventsService {
     if (club.suspended) throw new ForbiddenException('This club can’t post events right now');
     if (!(await this.repo.publish(event.id))) throw new ConflictException('It’s already published');
     await this.announce(this.repo.dataSource, club, actorId, event, event.id);
-    await this.attend(event.id, club.id, actorId);
     return this.event(eventId, actorId);
   }
 
@@ -211,6 +209,7 @@ export class ClubEventsService {
   async join(userId: string, eventId: string) {
     const event = await this.event(eventId, userId);
     if (event.draft) throw new ConflictException('This event isn’t published yet');
+    if (event.isHost) throw new ConflictException('You’re hosting this one, so you don’t need a pass');
     if (!event.nextAt) throw new ConflictException('This event has finished');
     await this.attend(event.id, event.clubId, userId);
     return this.event(eventId, userId);

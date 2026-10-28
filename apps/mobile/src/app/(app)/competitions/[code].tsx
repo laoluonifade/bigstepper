@@ -169,7 +169,7 @@ export default function CompetitionDetailScreen() {
   // While you're in and it's live, where you stand stays pinned at the bottom, however long the board.
   const racing = Boolean(registration.data?.joined) && ['open', 'entry-closed'].includes(competitionPhase(t, now));
   return <Screen ref={scroller} refreshing={table.isRefetching} onRefresh={refresh}
-    footer={racing ? <Footer style={{ borderTopWidth: 0, paddingTop: 8 }}><YourRace table={t} rows={standings.data ?? []} viewerId={user?.id} unit={unit} now={now} /></Footer> : undefined}>
+    footer={racing ? <Footer style={{ borderTopWidth: 0, paddingTop: 8 }}><YourRace table={t} rows={standings.data ?? []} viewerId={user?.id} unit={unit} now={now} locked={!['OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED'].includes(t.status)} /></Footer> : undefined}>
     {/* The page has its own big title; the header stays clear (the code lives on the share card). */}
     <Stack.Screen options={{ title: '' }} />
     {created === '1' && <Notice tone="ok" title="Competition created" style={{ marginBottom: 24 }}>
@@ -234,7 +234,7 @@ export default function CompetitionDetailScreen() {
  * Under the board, for runners in it while it's live: where you stand against the person just ahead
  * (or how far you lead), how long is left, and Go to record straight away.
  */
-function YourRace({ table, rows, viewerId, unit, now }: { table: CompetitionTable; rows: StandingRow[]; viewerId?: string; unit: Unit; now: number }) {
+function YourRace({ table, rows, viewerId, unit, now, locked = false }: { table: CompetitionTable; rows: StandingRow[]; viewerId?: string; unit: Unit; now: number; locked?: boolean }) {
   const method = table.scoringMethod;
   const valueOf = (row?: StandingRow) => (row && hasScored(method, row.score) ? Number(row.score) : null);
   const me = rows.find((row) => row.userId === viewerId);
@@ -260,9 +260,9 @@ function YourRace({ table, rows, viewerId, unit, now }: { table: CompetitionTabl
       <Text style={[score(30), { color: brand.paper, lineHeight: 32 }]}>{me && mine !== null ? ordinal(me.rank) : '–'}</Text>
       <Txt size={11} style={{ color: brand.onInkMuted }}>{`of ${rows.length}`}</Txt>
     </View>
-    <Txt size={14} leading={1.4} style={{ flex: 1, color: brand.onInkMuted }}>{line}</Txt>
-    <Pressable onPress={() => { haptic('medium'); router.navigate('/run'); }} accessibilityRole="button" accessibilityLabel={`Record a ${noun}`} hitSlop={6}
-      style={({ pressed }) => [styles.raceGo, pressed && { transform: [{ scale: 0.94 }], opacity: 0.9 }]}>
+    <Txt size={14} leading={1.4} style={{ flex: 1, color: brand.onInkMuted }}>{locked ? (table.status === 'DRAFT' ? 'It’s a draft. Go opens when you publish it.' : 'Go opens once it’s live.') : line}</Txt>
+    <Pressable onPress={() => { haptic('medium'); router.navigate('/run'); }} disabled={locked} accessibilityRole="button" accessibilityLabel={`Record a ${noun}`} accessibilityState={{ disabled: locked }} hitSlop={6}
+      style={({ pressed }) => [styles.raceGo, locked && { opacity: 0.35 }, pressed && { transform: [{ scale: 0.94 }], opacity: 0.9 }]}>
       <Text style={[wideLabel(13, 0.06), { color: brand.ink, fontFamily: fontFamily('extrabold', 'wide') }]}>Go</Text>
     </Pressable>
   </View>;

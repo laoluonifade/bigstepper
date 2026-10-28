@@ -7,7 +7,7 @@ import { PUSH_NOTIFICATIONS_QUEUE } from '../jobs/jobs.module';
 import { RANK_ORDER } from '../tables/scoring-engine';
 import { boostMessage, pickBoosts, StandingRow } from './standing-boost';
 import { claimPodiumsToAnnounce } from '../tables/trophies';
-import { announceNewCompetitions, joinCommunityClub } from './community';
+import { announceNewCompetitions, joinCommunityClub, syncHostsGroup } from './community';
 
 type Pending = { id: string; userId: string; type: string; title: string; body: string; link: string | null; createdAt: Date; readAt?: Date | null };
 type ExpoMessage = { to: string; title: string; body: string; sound: 'default'; badge: number; channelId: string; data: { id: string; link: string | null; type: string } };
@@ -16,7 +16,7 @@ type ExpoTicket = { status: 'ok' | 'error'; id?: string; message?: string; detai
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_PROJECT = '@startajump/jump';
 const STALE_MINUTES = 30;
-const CHANNEL_FOR: Record<string, string> = { DIRECT_MESSAGE: 'messages', MESSAGE_REACTION: 'messages' };
+const CHANNEL_FOR: Record<string, string> = { DIRECT_MESSAGE: 'messages', MESSAGE_REACTION: 'messages', CLUB_MESSAGE: 'messages' };
 const BOOST_FROM = 17;
 const BOOST_UNTIL = 21;
 
@@ -37,6 +37,7 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     await this.queue.upsertJobScheduler('podium-announce', { every: 10 * 60_000 }, { name: 'podium-announce' });
     await this.queue.upsertJobScheduler('competition-announce', { every: 60_000 }, { name: 'competition-announce' });
     await this.queue.upsertJobScheduler('community-club', { every: 2 * 60_000 }, { name: 'community-club' });
+    await this.queue.upsertJobScheduler('hosts-group', { every: 10 * 60_000 }, { name: 'hosts-group' });
   }
 
   async process(job: Job): Promise<void> {
@@ -45,6 +46,7 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     if (job.name === 'podium-announce') await this.announcePodiums();
     if (job.name === 'competition-announce') await this.announceCompetitions();
     if (job.name === 'community-club') await this.joinCommunityClub();
+    if (job.name === 'hosts-group') await this.syncHostsGroup();
   }
 
   async announcePodiums() {
@@ -75,6 +77,12 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     const slug = this.config.get<string>('COMMUNITY_CLUB_SLUG') ?? 'jump-community-club';
     const joined = await this.dataSource.transaction((manager) => joinCommunityClub(manager, slug));
     if (joined) this.logger.log(`Added ${joined} runners to the community club`);
+  }
+
+  async syncHostsGroup() {
+    const slug = this.config.get<string>('HOSTS_GROUP_SLUG') ?? 'jump-hosts';
+    const { added, removed } = await this.dataSource.transaction((manager) => syncHostsGroup(manager, slug));
+    if (added || removed) this.logger.log(`Hosts group: ${added} added, ${removed} removed`);
   }
 
   async queueStandingBoosts(now = new Date()) {

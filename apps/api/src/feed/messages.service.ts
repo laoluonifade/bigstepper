@@ -13,7 +13,7 @@ export interface SendExtras {
 
 function preview(text: string, voiceNote: boolean, activity: boolean) {
   if (text) return text.length > 140 ? `${text.slice(0, 139).trimEnd()}…` : text;
-  if (voiceNote) return '🎤 Voice note';
+  if (voiceNote) return 'Voice note';
   return activity ? 'Shared an activity' : 'Sent you a message';
 }
 
@@ -219,6 +219,10 @@ export class MessagesService {
        ON CONFLICT ("clubId","userId") DO UPDATE SET "readAt"=now()`,
       [club.id, userId],
     );
+    await this.dataSource.query(
+      `UPDATE "notifications" SET "readAt"=now() WHERE "userId"=$1 AND "type"='CLUB_MESSAGE' AND "link"=$2 AND "readAt" IS NULL`,
+      [userId, `/clubs/${club.slug}/chat`],
+    );
     return { read: true };
   }
 
@@ -240,6 +244,17 @@ export class MessagesService {
     await this.dataSource.query(
       `INSERT INTO "club_chat_reads" ("clubId","userId","readAt") VALUES ($1,$2,now()) ON CONFLICT ("clubId","userId") DO UPDATE SET "readAt"=now()`,
       [club.id, userId],
+    );
+    await this.notify(
+      `INSERT INTO "notifications" ("userId","type","title","body","link","emailProcessedAt")
+       SELECT m."userId",'CLUB_MESSAGE',$3,COALESCE(p."displayName",'Someone') || ': ' || $4,$5,now()
+         FROM "club_memberships" m
+         LEFT JOIN "profiles" p ON p."userId"=$2
+        WHERE m."clubId"=$1 AND m."userId"<>$2
+          AND NOT ${blockedBetween('m."userId"', '$2')}
+          AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId"=m."userId" AND n."type"='CLUB_MESSAGE' AND n."link"=$5
+                            AND n."readAt" IS NULL AND n."createdAt" > now() - interval '5 minutes')`,
+      [club.id, userId, club.name, preview(trimmed, Boolean(audioUrl), Boolean(activityId)), `/clubs/${club.slug}/chat`],
     );
     return message;
   }

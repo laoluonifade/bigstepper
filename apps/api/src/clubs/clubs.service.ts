@@ -309,6 +309,7 @@ export class ClubsService {
     const role = await this.roleOf(club.id, userId);
     if (!role) return { left: true };
     if (role === 'owner') throw new ConflictException('The owner can’t leave their own club');
+    if (club.slug === (this.config.get<string>('HOSTS_GROUP_SLUG') ?? 'jump-hosts')) throw new ConflictException('You’re in Jump Hosts while you run a club or create on Jump');
     await this.memberships.delete({ clubId: club.id, userId });
     return { left: true };
   }

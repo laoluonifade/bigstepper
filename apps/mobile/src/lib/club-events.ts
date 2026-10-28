@@ -46,6 +46,8 @@ export type ClubEvent = {
   pass: { code: string; checkedIn: boolean } | null;
   /** Saved but not posted: only the club's managers can see it, and nobody's been told. */
   draft: boolean;
+  /** The viewer created it: hosts don't need a pass to their own event. */
+  isHost: boolean;
 };
 export type Guest = { userId: string; username: string | null; displayName: string | null; avatarUrl: string | null; avatarStyle: 'masculine' | 'feminine' | 'neutral'; passCode: string; checkedIn: boolean; joinedAt: string };
 export const ACTIVITY_WORD: Record<EventActivity, string> = { run: 'Running', walk: 'Walking', cycle: 'Cycling', any: 'Run, walk or ride' };
