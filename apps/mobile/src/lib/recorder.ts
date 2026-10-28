@@ -17,7 +17,7 @@ import * as TaskManager from 'expo-task-manager';
 import { useSyncExternalStore } from 'react';
 import { router } from 'expo-router';
 import { AppState, Platform } from 'react-native';
-import { api, isApiError, post } from './api';
+import { api, ApiError, isApiError, post } from './api';
 import { confirm } from './dialog';
 import { syncLiveActivity } from './liveActivity';
 import { keys } from './queries';
@@ -634,6 +634,7 @@ async function finish(): Promise<Activity | null> {
 /**
  * Finish, telling the server how many points this phone recorded. If it has fewer (an upload went
  * missing), everything is sent again and finishing retried, so the saved distance is the recorded one.
+ * Still short after a full resend, it finishes with what the server has: End must always end the run.
  * Null when GPS measured nothing at all: there's no activity, and the run is simply gone.
  */
 async function submitFinish(id: string, at: string): Promise<Activity | null> {
@@ -643,8 +644,11 @@ async function submitFinish(id: string, at: string): Promise<Activity | null> {
   } catch (error) {
     if (isApiError(error, 409)) {
       resendAll(id);
-      if (!(await flush())) throw error;
-      return post<Activity>(`/runs/${id}/finish`, body);
+      if (!(await flush())) throw state.connection === 'offline' ? new ApiError(0, error.message) : error;
+      return post<Activity>(`/runs/${id}/finish`, body).catch((again: unknown) => {
+        if (isApiError(again, 409)) return post<Activity>(`/runs/${id}/finish`, { at });
+        throw again;
+      });
     }
     if (isApiError(error, 422)) {
       toast({ tone: 'info', title: 'Nothing to save', message: 'GPS didn’t measure any distance, so there’s no activity to keep.' });

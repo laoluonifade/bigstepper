@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AddSamplesDto } from './dto/add-samples.dto';
@@ -8,6 +9,7 @@ import { StartRunDto } from './dto/start-run.dto';
 
 @Controller('runs')
 @UseGuards(JwtAuthGuard)
+@SkipThrottle()
 export class RunningController {
   constructor(private readonly runningService: RunningService) {}
 

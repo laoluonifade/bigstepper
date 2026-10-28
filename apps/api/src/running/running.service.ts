@@ -68,7 +68,10 @@ export class RunningService {
         `SELECT "sequence", "recordedAt" FROM "gps_samples" WHERE "sessionId"=$1 AND "sequence"=ANY($2::integer[])`,
         [sessionId, input.map((sample) => sample.sequence)],
       ) as Array<{ sequence: number; recordedAt: Date }>).map((row) => [row.sequence, new Date(row.recordedAt).getTime()]));
-      let next = taken.size ? (await manager.query(`SELECT COALESCE(MAX("sequence"),0)::integer AS "max" FROM "gps_samples" WHERE "sessionId"=$1`, [sessionId]) as Array<{ max: number }>)[0].max : 0;
+      let next = taken.size ? Math.max(
+        (await manager.query(`SELECT COALESCE(MAX("sequence"),0)::integer AS "max" FROM "gps_samples" WHERE "sessionId"=$1`, [sessionId]) as Array<{ max: number }>)[0].max,
+        ...input.map((sample) => sample.sequence),
+      ) : 0;
       const sequenceOf = (sample: GpsSampleDto) => {
         const at = taken.get(sample.sequence);
         return at === undefined || at === new Date(sample.recordedAt).getTime() ? sample.sequence : (next += 1);
