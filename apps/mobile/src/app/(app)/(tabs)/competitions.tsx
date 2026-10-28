@@ -274,8 +274,16 @@ function DraftsSheet({ open, onOpenChange, drafts, events }: { open: boolean; on
       if (total <= 1) onOpenChange(false);
     },
   });
-  const confirmDiscard = (draft: DraftTable) => void confirm({ title: `Discard ${draft.title}?`, message: 'This can’t be undone.', cancelLabel: 'Keep', confirmLabel: 'Discard', destructive: true })
-    .then((ok) => { if (ok) discard.mutate(draft.id); });
+  // Asked inside the row: a confirm dialog would be a second pop-up over this sheet, which iOS can't show,
+  // leaving the screen frozen behind it.
+  const [asking, setAsking] = useState<string | null>(null);
+  const confirmRow = (id: string, onDiscard: () => void) => <View style={styles.askRow}>
+    <Txt size={14} weight="semibold" style={{ flex: 1 }}>Discard this draft?</Txt>
+    <Pressable onPress={() => setAsking(null)} hitSlop={6} style={styles.keep} accessibilityRole="button"><Txt size={13} weight="bold">Keep</Txt></Pressable>
+    <Pressable onPress={() => { haptic('warning'); setAsking(null); onDiscard(); }} style={styles.discard} accessibilityRole="button" accessibilityLabel="Discard">
+      <Txt size={13} weight="bold" style={{ color: '#FFFFFF' }}>Discard</Txt>
+    </Pressable>
+  </View>;
 
   return <Sheet open={open} onOpenChange={onOpenChange} title="Drafts" description="Nobody can join these until they’re live.">
     <ErrorNotice error={discard.error ?? discardEvent.error} />
@@ -284,9 +292,11 @@ function DraftsSheet({ open, onOpenChange, drafts, events }: { open: boolean; on
         <Txt size={15} weight="semibold" numberOfLines={1}>{event.title}</Txt>
         <Txt size={12} color="ink3" numberOfLines={2} style={{ marginTop: 2 }}>{`Event draft · ${event.club.name}`}</Txt>
       </View>
-      <Pressable onPress={() => void confirm({ title: `Discard ${event.title}?`, message: 'This can’t be undone.', cancelLabel: 'Keep', confirmLabel: 'Discard', destructive: true }).then((ok) => { if (ok) discardEvent.mutate(event.id); })}
+      {asking === event.id ? confirmRow(event.id, () => discardEvent.mutate(event.id)) : <>
+      <Pressable onPress={() => { haptic(); setAsking(event.id); }}
         hitSlop={6} style={({ pressed }) => [styles.trash, pressed && { backgroundColor: colors.badWash }]} accessibilityLabel={`Discard ${event.title}`}><TrashIcon size={16} color={colors.ink3} /></Pressable>
       <Pressable onPress={() => { onOpenChange(false); router.push(`/events/${event.id}`); }} style={styles.fund} accessibilityRole="button"><Txt size={13} weight="bold" color="paper">View</Txt></Pressable>
+      </>}
     </View>)}
     {drafts.map((draft, index) => {
       const review = draft.status === 'PENDING_APPROVAL';
@@ -298,8 +308,10 @@ function DraftsSheet({ open, onOpenChange, drafts, events }: { open: boolean; on
             {`${club ? (draft.status === 'DRAFT' ? 'Competition draft · publish it when it’s ready' : 'Scheduled to open') : review ? 'Waiting for Jump to review' : draft.guaranteedPrizeKobo ? `Fund the ${formatMoney(draft.guaranteedPrizeKobo).replace(/\.00$/, '')} prize to open entry` : 'Fund the prize to open entry'} · started ${formatDate(draft.createdAt)}`}
           </Txt>
         </View>
-        <Pressable onPress={() => confirmDiscard(draft)} hitSlop={6} style={({ pressed }) => [styles.trash, pressed && { backgroundColor: colors.badWash }]} accessibilityLabel={`Discard ${draft.title}`}><TrashIcon size={16} color={colors.ink3} /></Pressable>
+        {asking === draft.id ? confirmRow(draft.id, () => discard.mutate(draft.id)) : <>
+        <Pressable onPress={() => { haptic(); setAsking(draft.id); }} hitSlop={6} style={({ pressed }) => [styles.trash, pressed && { backgroundColor: colors.badWash }]} accessibilityLabel={`Discard ${draft.title}`}><TrashIcon size={16} color={colors.ink3} /></Pressable>
         <Pressable onPress={() => { onOpenChange(false); openCompetition(draft.code); }} style={styles.fund} accessibilityRole="button"><Txt size={13} weight="bold" color="paper">{review || club ? 'View' : 'Fund'}</Txt></Pressable>
+        </>}
       </View>;
     })}
   </Sheet>;
@@ -310,6 +322,9 @@ const styles = StyleSheet.create({
   lenses: { flexDirection: 'row', alignItems: 'flex-end', gap: 22, marginBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   lens: { fontFamily: fontFamily('black', 'wide'), fontSize: 15, letterSpacing: 0.3, textTransform: 'uppercase' },
   fab: { position: 'absolute', right: 16 },
+  askRow: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.card },
+  keep: { height: 36, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 14, justifyContent: 'center' },
+  discard: { height: 36, borderRadius: radius.full, backgroundColor: colors.bad, paddingHorizontal: 14, justifyContent: 'center' },
   fabFace: { width: 60, height: 60, borderRadius: 18, borderWidth: 2, borderColor: brand.ink, backgroundColor: brand.track, alignItems: 'center', justifyContent: 'center' },
   fabBadge: { position: 'absolute', top: -7, right: -7, minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, borderWidth: 2, borderColor: colors.paper, backgroundColor: brand.ink, alignItems: 'center', justifyContent: 'center' },
   places: { flexDirection: 'row', gap: 10, marginBottom: 20 },
