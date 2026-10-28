@@ -13,6 +13,6 @@ export class LeaderboardController {
     @CurrentUser() user: AuthenticatedUser | null,
     @Query('activity') activity?: string, @Query('period') period?: string, @Query('scope') scope?: string, @Query('limit') limit?: string,
   ) {
-    return this.leaderboard.board(user?.id ?? null, activity, period, scope, limit);
+    return this.leaderboard.board(user?.id ?? null, activity, period, user ? scope : 'global', user ? limit : '3');
   }
 }

@@ -36,7 +36,7 @@ export class GeoController {
   }
 
   @Get('search')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   search(@Query() query: SearchQuery) {
     return this.geo.search(query.q.trim(), query.lat !== undefined && query.lon !== undefined ? { latitude: query.lat, longitude: query.lon } : undefined);
   }

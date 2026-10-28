@@ -23,6 +23,7 @@ import { colors, radius, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { pickPhoto, uploadPhoto, type PickedPhoto } from '@/lib/upload';
 import { Image } from 'expo-image';
+import { PriceTags } from '@/components/PriceTags';
 
 /** "2 prizes · 4 winners · top finishers" for the prizes row. */
 function prizeSummary(draft: PrizeDraft) {
@@ -46,6 +47,15 @@ const DURATIONS = [
   { label: '2 weeks', days: 14 },
   { label: '30 days', days: 30 },
 ];
+
+/** On Jump's own club, which members a competition enters: everyone, or just the runners, walkers or riders. */
+const AUDIENCES: Array<{ value: 'all' | 'run' | 'walk' | 'cycle'; label: string; detail: string }> = [
+  { value: 'all', label: 'Everyone in the club', detail: 'Every member, whatever they do' },
+  { value: 'run', label: 'Runners', detail: 'Picked running at sign-up, or ran in the last 90 days' },
+  { value: 'walk', label: 'Walkers', detail: 'Picked walking at sign-up, or walked in the last 90 days' },
+  { value: 'cycle', label: 'Cyclists', detail: 'Picked cycling at sign-up, or rode in the last 90 days' },
+];
+const AUDIENCE_VERB = { all: '', run: 'run', walk: 'walk', cycle: 'ride' } as const;
 
 export default function NewCompetitionScreen() {
   const { club: clubId, template: templateId } = useLocalSearchParams<{ club?: string; template?: string }>();
@@ -92,6 +102,7 @@ export default function NewCompetitionScreen() {
   const [winnerCount, setWinnerCount] = useState('1');
   const [shares, setShares] = useState(['100']);
   const [inviteClubMembers, setInviteClubMembers] = useState(Boolean(clubId));
+  const [enrolAudience, setEnrolAudience] = useState<'all' | 'run' | 'walk' | 'cycle'>('all');
   const [format, setFormat] = useState<CompetitionFormat>(preset ? (preset.capacity === 2 ? 'head_to_head' : 'invite') : 'open');
   const [emailText, setEmailText] = useState('');
   const [phoneText, setPhoneText] = useState('');
@@ -170,7 +181,7 @@ export default function NewCompetitionScreen() {
       ...(hasPrize ? { prizeSplitBps } : {}),
       ...(mode === 'sponsored' ? { fundedFree: true, ...(fundingStyle === 'FIXED' ? { guaranteedPrizeKobo } : {}), fundingDestination, ...(fundingDestination === 'CHARITY' ? { charityName: charityName.trim() } : {}) } : {}),
       ...(mode === 'paid' ? { entryFeeKobo } : {}),
-      ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true } : {}) } : {}),
+      ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true, ...(club.data.official ? { enrolAudience } : {}) } : {}) } : {}),
       ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
       ...(clubPrizesOn && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
       ...(later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
@@ -239,22 +250,10 @@ export default function NewCompetitionScreen() {
       <View style={{ gap: 24 }}>
         {challengeType === 'CYCLING'
           ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice>
-          : <View style={{ flexDirection: 'row', gap: 8 }} accessibilityRole="radiogroup" accessibilityLabel="Competition type">
-            {([['free', 'Free', 'No entry fee, no prize'], ['sponsored', 'Funded', 'Free entry, cash prize'], ['paid', 'Paid', 'Entry fee, creators only']] as const).map(([value, label, body]) => {
-              const active = mode === value;
-              return <Pressable key={value} onPress={() => changeMode(value)} style={{ flex: 1 }} accessibilityRole="radio" accessibilityState={{ checked: active }}>
-                {({ pressed }) => <HardShadow offset={2} radius={radius.md} pressed={active || pressed}>
-                  <View style={[styles.mode, active && { backgroundColor: colors.ink }]}>
-                    <Text style={[wideLabel(13, 0), active && { color: colors.paper }]}>{label}</Text>
-                    <Txt size={11.5} leading={1.3} style={{ marginTop: 4, color: active ? colors.onInkMuted : colors.ink2 }}>{body}</Txt>
-                  </View>
-                </HardShadow>}
-              </Pressable>;
-            })}
-          </View>}
+          : <PriceTags value={mode} onChange={changeMode} />}
         {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>
           {mode === 'paid' ? `All ${club.data.memberCount} members are invited once Jump approves it; they choose whether to pay to enter.`
-            : inviteClubMembers ? `All ${club.data.memberCount} members are entered automatically, and anyone who joins the club later is added while it’s open.`
+            : inviteClubMembers ? `${club.data.official && enrolAudience !== 'all' ? `Members who ${AUDIENCE_VERB[enrolAudience]}` : `All ${club.data.memberCount} members`} are entered automatically, and anyone who joins the club later is added while it’s open.`
               : 'Linked to your club. Members aren’t entered automatically.'}
         </Notice>}
         {mode === 'paid' && !creator.data && <Notice tone="warn" title="Creator account required" action={<Button size="sm" variant="quiet" title="Become a creator" onPress={() => router.push('/creator')} />}>Paid competitions are hosted by approved creators. Apply first; Jump reviews every application.</Notice>}
@@ -363,7 +362,7 @@ export default function NewCompetitionScreen() {
         {headToHead && !draftOnCreate
           ? <SheetRow title="Your opponent" tone={opponent ? 'on' : 'default'} onOpen={() => setSheet('opponent')} summary={opponent ? opponentLabel(opponent) : 'Pick who you’re racing: a runner on Jump, an email or a phone number.'} />
           : !draftOnCreate ? <SheetRow title="Invite runners" error={errors.invites} onOpen={() => setSheet('invites')} summary={inviteSummary || 'Optional. Invite by email, phone or club.'} />
-            : later ? (club.data && <Card style={{ padding: 16 }}><View style={styles.switchRow}><Txt size={14} weight="semibold" style={{ flex: 1 }}>Enter everyone in {club.data.name} when it opens</Txt><Switch value={inviteClubMembers} onValueChange={setInviteClubMembers} trackColor={{ true: colors.ink, false: colors.line }} thumbColor={colors.white} /></View></Card>)
+            : later ? (club.data && <Card style={{ padding: 16 }}><View style={styles.switchRow}><Txt size={14} weight="semibold" style={{ flex: 1 }}>Enter everyone in {club.data.name} when it opens</Txt><Switch value={inviteClubMembers} onValueChange={setInviteClubMembers} trackColor={{ true: colors.ink, false: colors.line }} thumbColor={colors.white} /></View>{club.data.official && inviteClubMembers ? <View style={{ marginTop: 12 }}><SelectField label="Who gets entered?" value={enrolAudience} onChange={setEnrolAudience} options={AUDIENCES} /></View> : null}</Card>)
               : <Notice tone="neutral" title="Invite after launch">Save this draft first. You can invite runners after funding or approval opens entry.</Notice>}
 
         <ErrorNotice error={create.error} />
@@ -429,6 +428,7 @@ export default function NewCompetitionScreen() {
         footer={<Button full title="Done" onPress={() => (errors.invites ? toast({ tone: 'warn', message: errors.invites }) : setSheet(null))} />}>
         <View style={{ gap: 16 }}>
           {club.data && <View style={styles.switchRow}><Txt size={14} weight="semibold" style={{ flex: 1 }}>Enter everyone in {club.data.name}</Txt><Switch value={inviteClubMembers} onValueChange={setInviteClubMembers} trackColor={{ true: colors.ink, false: colors.line }} thumbColor={colors.white} /></View>}
+          {club.data?.official && inviteClubMembers ? <SelectField label="Who gets entered?" value={enrolAudience} onChange={setEnrolAudience} options={AUDIENCES} /> : null}
           <TextField label="Email addresses" optional hint="Separate with commas or new lines." multiline autoCapitalize="none" keyboardType="email-address" value={emailText} onChangeText={setEmailText} placeholder="runner@example.com" style={{ minHeight: 80 }} />
           <TextField label="Phone numbers" optional hint="With country code, e.g. +2348012345678. Text links are ready after you create it." multiline keyboardType="phone-pad" value={phoneText} onChangeText={setPhoneText} placeholder="+2348012345678" style={{ minHeight: 80 }} />
         </View>
@@ -485,7 +485,6 @@ function FundingTotal({ prizeKobo, charity }: { prizeKobo: number; charity: bool
 const styles = StyleSheet.create({
   bannerPreview: { width: '100%', aspectRatio: 2, borderRadius: radius.lg, backgroundColor: colors.inkWash },
   bannerPick: { borderRadius: radius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, padding: 18, alignItems: 'center', gap: 4 },
-  mode: { minHeight: 92, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, padding: 12 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   toggle: { height: 36, justifyContent: 'center', borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12 },
   format: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 14 },

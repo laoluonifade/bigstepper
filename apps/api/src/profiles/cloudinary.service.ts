@@ -40,6 +40,15 @@ export class CloudinaryService implements OnModuleInit {
     await this.call('destroy', { public_id: `jump/competitions/${tableId}/banner`, invalidate: 'true' });
   }
 
+  async uploadEventCover(eventId: string, file: { buffer: Buffer; mimetype: string }): Promise<string> {
+    const result = await this.call<{ secure_url: string }>('upload', { public_id: `jump/events/${eventId}/cover`, overwrite: 'true', invalidate: 'true' }, file);
+    return result.secure_url.replace('/image/upload/', '/image/upload/c_fill,g_auto,w_1600,h_900,q_auto,f_auto/');
+  }
+
+  async removeEventCover(eventId: string) {
+    await this.call('destroy', { public_id: `jump/events/${eventId}/cover`, invalidate: 'true' });
+  }
+
   async removeClubLogo(clubId: string) {
     await this.call('destroy', { public_id: `jump/clubs/${clubId}/logo`, invalidate: 'true' });
   }

@@ -196,6 +196,7 @@ export class TablesService {
       ...(prizes ? prizeColumns(prizes) : {}),
       eligibleCountries: [...new Set(input.eligibleCountries ?? [])],
       autoEnrolClub: Boolean(input.inviteClubMembers && input.communityId),
+      enrolAudience: input.inviteClubMembers && input.communityId && (await this.isOfficialClub(input.communityId)) ? input.enrolAudience ?? 'all' : 'all',
       startsAt,
       entryClosesAt,
       scoringClosesAt,
@@ -647,6 +648,11 @@ export class TablesService {
   private async assertClubFits(clubId: string, capacity: number) {
     const members = await this.repo.clubMemberCount(clubId);
     if (members > capacity) throw new BadRequestException(`The club has ${members} members. Set the maximum to at least ${members} so everyone gets a place.`);
+  }
+
+  private async isOfficialClub(clubId: string) {
+    const slug = this.config.get<string>('COMMUNITY_CLUB_SLUG') ?? 'jump-community-club';
+    return ((await this.dataSource.query(`SELECT 1 FROM "clubs" WHERE "id" = $1 AND "slug" = $2`, [clubId, slug])) as unknown[]).length > 0;
   }
 
   private async assertCommunityManager(userId: string, communityId?: string) {

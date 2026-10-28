@@ -15,7 +15,7 @@ type Spot = { latitude: number; longitude: number };
 type Area = Spot & { name?: string };
 const RADII = ['5', '10', '25', '50'] as const;
 
-/** Weekly club runs near you (or anywhere you search), and the ones you've joined. */
+/** Club events near you (or anywhere you search), and the ones you've got passes for. */
 export default function EventsScreen() {
   const [area, setArea] = useState<Area | null>(null);
   const [locating, setLocating] = useState(true);
@@ -70,11 +70,11 @@ export default function EventsScreen() {
   const where = area?.name ?? placeName;
 
   return <Screen refreshing={events.isRefetching} onRefresh={() => void events.refetch()}>
-    <Stack.Screen options={{ title: 'Club runs' }} />
-    <PageHeader eyebrow="Run together" title="Club runs" description="Weekly runs that clubs host in person. Join one and Jump reminds you the day before and an hour before, every week." />
+    <Stack.Screen options={{ title: 'Events' }} />
+    <PageHeader eyebrow="Run together" title="Events near you" description="Runs, rides and race days that clubs host in person. Get a pass and Jump reminds you the day before and an hour before." />
 
     {going.length > 0 && <View style={{ marginBottom: 28 }}>
-      <SectionTitle aside={`${going.length}`}>Your weekly runs</SectionTitle>
+      <SectionTitle aside={`${going.length}`}>Your passes</SectionTitle>
       <View style={{ gap: 12 }}>{going.map((event) => <EventCard key={event.id} event={event} />)}</View>
     </View>}
 
@@ -89,10 +89,10 @@ export default function EventsScreen() {
     <ErrorNotice error={events.error} onRetry={() => void events.refetch()} />
     {locating || events.isLoading ? <View style={{ gap: 12 }}><Skeleton style={{ height: 132, borderRadius: radius['2xl'] }} /><Skeleton style={{ height: 132, borderRadius: radius['2xl'] }} /></View>
       : !area ? <EmptyState title={denied ? 'Where are you running?' : 'Finding you…'} action={denied ? <Button size="sm" title="Use my location" onPress={() => void locate()} /> : undefined}>
-        {denied ? 'Allow location to see club runs around you, or search a town above.' : 'Getting your location to show club runs nearby.'}
+        {denied ? 'Allow location to see events around you, or search a town above.' : 'Getting your location to show events nearby.'}
       </EmptyState>
-        : !nearby.length ? <EmptyState title="No club runs here yet">
-          {`Nothing within ${km} km yet. Try a wider area, or if you run a club, add your weekly run from your club’s page so people nearby can find it.`}
+        : !nearby.length ? <EmptyState title="No events here yet">
+          {`Nothing within ${km} km yet. Try a wider area, or if you run a club, add an event from your club’s page so people nearby can find it.`}
         </EmptyState>
           : <View style={{ gap: 12 }}>{nearby.map((event) => <EventCard key={event.id} event={event} />)}</View>}
   </Screen>;

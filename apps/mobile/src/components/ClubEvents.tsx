@@ -1,21 +1,27 @@
-import { useQuery } from '@tanstack/react-query';
+import { formatDistance } from '@jump/shared/format';
+import type { Unit } from '@jump/shared/types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { onAccent } from '@/components/clubs';
-import { PinIcon, PlusIcon, RepeatIcon } from '@/components/icons';
-import { Avatar, Button, HardShadow, SectionTitle, Txt, useNow } from '@/components/ui';
-import { api } from '@/lib/api';
-import { clockLabel, clubEventsKey, distanceAway, EVENT_NOUN, nextLabel, WEEKDAYS, type ClubEvent } from '@/lib/club-events';
-import { colors, display, radius, wideLabel } from '@/lib/theme';
+import { CalendarIcon, CheckIcon, PinIcon, PlusIcon, RepeatIcon, UsersIcon } from '@/components/icons';
+import { Avatar, Button, haptic, HardShadow, SectionTitle, Txt, useNow } from '@/components/ui';
+import { api, post } from '@/lib/api';
+import { ACTIVITY_WORD, clockLabel, dateLabel, repeatRule, scheduleLabel, type Schedule, clubEventsKey, distanceAway, EVENT_NOUN, eventKey, nextLabel, posterTime, WEEKDAYS, type ClubEvent } from '@/lib/club-events';
+import { registerForPush } from '@/lib/push';
+import { colors, display, fontFamily, radius, wideLabel } from '@/lib/theme';
+import { toast } from '@/lib/toast';
 
 /** The day-and-time block in the club's colour: "SAT / 7:00 am", like a sticker on a noticeboard. */
-export function EventStamp({ event, size = 'md' }: { event: Pick<ClubEvent, 'weekday' | 'startTime' | 'club'>; size?: 'md' | 'lg' }) {
+export function EventStamp({ event, size = 'md' }: { event: Pick<ClubEvent, 'weekday' | 'startTime' | 'club' | 'repeat' | 'startsOn'>; size?: 'md' | 'lg' }) {
   const accent = event.club.accentColor || '#FF5A1F';
   const ink = onAccent(accent);
   const big = size === 'lg';
   return <HardShadow offset={big ? 3 : 2} radius={radius.lg} style={{ transform: [{ rotate: '-3deg' }] }}>
     <View style={[styles.stamp, { backgroundColor: accent, width: big ? 92 : 64, paddingVertical: big ? 12 : 8 }]}>
-      <Text style={[wideLabel(big ? 15 : 11), { color: ink }]}>{WEEKDAYS[event.weekday].slice(0, 3)}</Text>
+      <Text style={[wideLabel(big ? 15 : 11), { color: ink }]}>{event.repeat === 'once' ? dateLabel(event.startsOn).slice(4) : WEEKDAYS[event.weekday].slice(0, 3)}</Text>
       <Text style={[display(big ? 22 : 15), { color: ink, marginTop: 2 }]} numberOfLines={1} adjustsFontSizeToFit>{clockLabel(event.startTime).replace(' ', '')}</Text>
     </View>
   </HardShadow>;
@@ -26,7 +32,7 @@ export function EventCard({ event, showClub = true }: { event: ClubEvent; showCl
   const now = useNow(60_000);
   const next = nextLabel(event, now);
   const away = distanceAway(event.distanceKm);
-  return <Pressable onPress={() => router.push(`/events/${event.id}`)} accessibilityRole="link" accessibilityLabel={`${event.title}, ${WEEKDAYS[event.weekday]} ${clockLabel(event.startTime)} at ${event.venue}`}>
+  return <Pressable onPress={() => router.push(`/events/${event.id}`)} accessibilityRole="link" accessibilityLabel={`${event.title}, ${scheduleLabel(event)} at ${event.venue}`}>
     {({ pressed }) => <HardShadow offset={3} radius={radius['2xl']} pressed={pressed}>
       <View style={styles.card}>
         <EventStamp event={event} />
@@ -56,7 +62,81 @@ export function EventCard({ event, showClub = true }: { event: ClubEvent; showCl
   </Pressable>;
 }
 
-/** On a club's page: its weekly runs, and for managers a way to add one. */
+/** The event's photo, or the club's colour with running lanes and the day when there isn't one. */
+export function EventCover({ event, style }: { event: Pick<ClubEvent, 'coverUrl' | 'club' | 'startTime' | 'startsOn'> & Schedule; style?: object }) {
+  const accent = event.club.accentColor || '#FF5A1F';
+  const ink = onAccent(accent);
+  if (event.coverUrl) return <Image source={{ uri: event.coverUrl }} style={[styles.cover, style]} contentFit="cover" transition={150} accessible={false} />;
+  return <View style={[styles.cover, { backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }, style]}>
+    <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 400 220" opacity={0.18}>
+      {[0, 1, 2, 3, 4, 5].map((lane) => <Path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
+    </Svg>
+    <Text style={[wideLabel(13), { color: ink, opacity: 0.8 }]}>{repeatRule(event)}</Text>
+    <Text style={[display(40), { color: ink, marginTop: 2 }]}>{clockLabel(event.startTime).replace(' ', '').toUpperCase()}</Text>
+  </View>;
+}
+
+/** Getting a pass to an event from wherever it's listed: one tap in, with reminders before each session. */
+export function useEventRsvp(event: ClubEvent) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => post<ClubEvent>(`/events/${event.id}/join`),
+    async onSuccess(next) {
+      haptic('success');
+      queryClient.setQueryData(eventKey(next.id), next);
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['club-events'] }), queryClient.invalidateQueries({ queryKey: clubEventsKey(next.club.slug) })]);
+      void registerForPush();
+      toast({ tone: 'ok', title: 'You’ve got a pass', message: 'It’s on the event page. Jump reminds you the day before and an hour before.' });
+    },
+    onError: (error) => toast({ tone: 'bad', message: error.message }),
+  });
+}
+
+/** An event in Explore, like a poster: photo, what and when, where, who's coming, and RSVP. */
+export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit }) {
+  const now = useNow(60_000);
+  const next = nextLabel(event, now);
+  const rsvp = useEventRsvp(event);
+  const away = distanceAway(event.distanceKm);
+  const where = [event.venue, event.distanceMetres ? `${formatDistance(event.distanceMetres, unit)} ${EVENT_NOUN[event.activity].toLowerCase()}` : away].filter(Boolean).join(' · ');
+  const going = event.going || rsvp.isSuccess;
+  return <Pressable onPress={() => router.push(`/events/${event.id}`)} accessibilityRole="button" accessibilityLabel={`Event: ${event.title}`}
+    style={({ pressed }) => [styles.poster, pressed && { opacity: 0.88 }]}>
+    <View>
+      <EventCover event={event} />
+      <View style={styles.clubChip}><Text style={styles.clubChipText} numberOfLines={1}>{event.club.name}</Text></View>
+    </View>
+    <View style={{ padding: 16, gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={styles.eventTag}><Text style={[wideLabel(10.5), { color: '#4DA3FF' }]}>Event</Text></View>
+        <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{`${ACTIVITY_WORD[event.activity]} · In person`}</Txt>
+      </View>
+      <Txt size={20} weight="bold" numberOfLines={2} style={{ letterSpacing: -0.2 }}>{event.title}</Txt>
+      <View style={styles.line}>
+        <CalendarIcon size={15} color={next.live ? colors.track : colors.ink3} />
+        <Txt size={14} color={next.live ? 'track' : 'ink2'} weight={next.live ? 'semibold' : 'regular'}>{next.live ? `Happening now · ${posterTime(event)}` : posterTime(event)}</Txt>
+      </View>
+      <View style={styles.line}>
+        <PinIcon size={15} color={colors.ink3} />
+        <Txt size={14} color="ink2" numberOfLines={1} style={{ flexShrink: 1 }}>{where}</Txt>
+      </View>
+      <View style={[styles.line, { marginTop: 4, justifyContent: 'space-between' }]}>
+        <View style={styles.line}>
+          <UsersIcon size={15} color={colors.ink3} />
+          <Txt size={14} color="ink2" num>{`${event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending`}</Txt>
+        </View>
+        {going
+          ? <View style={styles.goingPill}><CheckIcon size={14} color={colors.onAccent} /><Txt size={14} weight="bold" style={{ color: colors.onAccent }}>Going</Txt></View>
+          : <Pressable onPress={() => rsvp.mutate()} disabled={rsvp.isPending} hitSlop={6} accessibilityRole="button" accessibilityLabel={`RSVP to ${event.title}`}
+            style={({ pressed }) => [styles.rsvp, (pressed || rsvp.isPending) && { opacity: 0.7, transform: [{ scale: 0.96 }] }]}>
+            <Txt size={14} weight="bold" color="paper">{rsvp.isPending ? 'Joining…' : 'RSVP'}</Txt>
+          </Pressable>}
+      </View>
+    </View>
+  </Pressable>;
+}
+
+/** On a club's page: its upcoming events, and for managers a way to add one. */
 export function ClubEventsSection({ club, manager }: { club: { slug: string; name: string; myRole?: string | null; privacy?: string }; manager: boolean }) {
   const events = useQuery({ queryKey: clubEventsKey(club.slug), queryFn: () => api<ClubEvent[]>(`/clubs/${club.slug}/events`) });
   const list = events.data ?? [];
@@ -66,14 +146,14 @@ export function ClubEventsSection({ club, manager }: { club: { slug: string; nam
     return <Pressable onPress={add} style={({ pressed }) => [styles.prompt, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="button">
       <View style={styles.promptIcon}><RepeatIcon size={18} color={colors.onAccent} /></View>
       <View style={{ flex: 1 }}>
-        <Txt size={14} weight="bold">Add your weekly run</Txt>
-        <Txt size={12.5} color="ink2">Put your regular meet-ups on the map. Runners nearby can find them and get a reminder every week.</Txt>
+        <Txt size={14} weight="bold">Add an event</Txt>
+        <Txt size={12.5} color="ink2">Your weekly run, a monthly long run or a one-off race day. Runners nearby find it, get a pass and a reminder.</Txt>
       </View>
       <PlusIcon size={16} />
     </Pressable>;
   }
   return <View style={{ marginTop: 24 }}>
-    <SectionTitle aside={manager ? <Button size="sm" variant="quiet" title="Add" icon={<PlusIcon size={14} />} onPress={add} /> : `${list.length}`}>Weekly runs</SectionTitle>
+    <SectionTitle aside={manager ? <Button size="sm" variant="quiet" title="Add" icon={<PlusIcon size={14} />} onPress={add} /> : `${list.length}`}>Events</SectionTitle>
     {list.length === 1
       ? <EventCard event={list[0]} showClub={false} />
       : <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ gap: 12, paddingHorizontal: 16 }}>
@@ -83,6 +163,14 @@ export function ClubEventsSection({ club, manager }: { club: { slug: string; nam
 }
 
 const styles = StyleSheet.create({
+  cover: { width: '100%', aspectRatio: 16 / 9, backgroundColor: colors.inkWash, overflow: 'hidden' },
+  poster: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
+  clubChip: { position: 'absolute', left: 12, bottom: 12, maxWidth: '70%', borderRadius: radius.full, backgroundColor: 'rgba(18,18,18,0.72)', paddingHorizontal: 12, paddingVertical: 6 },
+  clubChipText: { fontFamily: fontFamily('semibold'), fontSize: 13, color: '#F2EFE8' },
+  eventTag: { borderRadius: radius.base, backgroundColor: 'rgba(77,163,255,0.16)', paddingHorizontal: 8, paddingVertical: 3 },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rsvp: { borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 20, paddingVertical: 10 },
+  goingPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full, backgroundColor: colors.volt, paddingHorizontal: 16, paddingVertical: 10 },
   stamp: { alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg, borderWidth: 2, borderColor: colors.edge, paddingHorizontal: 6 },
   card: { flexDirection: 'row', gap: 14, alignItems: 'flex-start', borderRadius: radius['2xl'], borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, padding: 14 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.track },

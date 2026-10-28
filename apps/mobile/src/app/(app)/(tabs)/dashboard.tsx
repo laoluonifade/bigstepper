@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActivityRow } from '@/components/ActivityRow';
-import { ChallengeSomeone, GoBar, MiniRing, MyCompetitions, RaceHero, SUMMARY } from '@/components/CompeteHome';
+import { ChallengeSomeone, LeaderboardPeek, MiniRing, MyCompetitions, RaceHero, SUMMARY } from '@/components/CompeteHome';
 import { ArrowRightIcon, ChevronDownIcon, RunIcon } from '@/components/icons';
 import { DivisionBadge, ZoneTag } from '@/components/league';
 import { MilestoneBadge } from '@/components/Milestones';
@@ -62,7 +62,7 @@ export default function DashboardScreen() {
     <View style={{ gap: 12 }}>
       <RaceHero unit={unit} now={now} />
       <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
-      <GoBar unit={unit} now={now} />
+      <LeaderboardPeek unit={unit} />
     </View>
     <View style={{ gap: 32, marginTop: 32 }}>
       <MyCompetitions unit={unit} now={now} />

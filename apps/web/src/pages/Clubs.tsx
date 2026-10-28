@@ -6,7 +6,7 @@ import { ArrowRightIcon, CameraIcon, CheckIcon, FeedIcon, LinkIcon, LockIcon, Pl
 import { Leaderboard } from '../components/Leaderboard';
 import { ClubEventsSection, EventForm } from '../components/ClubEvents';
 import { ClubLogo } from '../components/ClubLogo';
-import { Modal } from '../components/Modal';
+import { Sheet } from '../components/Sheet';
 import { useConfirm } from '../components/ConfirmDialog';
 import { prepare } from '../components/Profile';
 import { Avatar, CopyButton, cx, EmptyState, ErrorNotice, Field, Loading, Notice, PageHeader, SectionTitle, Segmented, Skeleton, useNow, VerifiedTick } from '../components/ui';
@@ -121,8 +121,9 @@ function CreateClubSheet({ onClose }: { onClose: () => void }) {
       void navigate({ to: '/clubs/$id', params: { id: club.slug }, search: {} });
     },
   });
-  return <Modal title="Start a club" onClose={onClose}>
-    <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
+  return <Sheet open onOpenChange={(open) => !open && onClose()} title="Start a club" description="You can add a logo, colour and links next."
+    footer={<button form="new-club" className="btn-primary w-full" disabled={create.isPending || name.trim().length < 3}>{create.isPending ? 'Creating…' : 'Create club'}</button>}>
+    <form id="new-club" className="space-y-4" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
       <Field label="Club name">
         {(props) => <input {...props} autoFocus className="field" minLength={3} maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Lagos Road Runners" required />}
       </Field>
@@ -131,12 +132,8 @@ function CreateClubSheet({ onClose }: { onClose: () => void }) {
       </Field>
       <PrivacyChoice value={privacy} onChange={setPrivacy} />
       <ErrorNotice error={create.error} />
-      <button className="btn-primary w-full" disabled={create.isPending || name.trim().length < 3}>
-        {create.isPending ? 'Creating…' : 'Create club'}
-      </button>
-      <p className="text-center text-[12px] text-ink-3">You can add a logo, colour and links next.</p>
     </form>
-  </Modal>;
+  </Sheet>;
 }
 
 function PrivacyChoice({ value, onChange }: { value: 'open' | 'invite'; onChange: (value: 'open' | 'invite') => void }) {
@@ -171,7 +168,7 @@ export function ClubDetailPage() {
   });
   const [tab, setTab] = useState<ClubTab>('competitions');
   const [editing, setEditing] = useState(false);
-  const [addingEvent, setAddingEvent] = useState(false);
+  const [addingEvent, setAddingEvent] = useState(() => window.location.hash === '#new-event');
   const unit = useUnit();
   const role = club.data?.myRole ?? null;
   const canJoin = Boolean(club.data && !role && (club.data.privacy !== 'invite' || club.data.inviteValid));
@@ -258,7 +255,7 @@ export function ClubDetailPage() {
               actions={[
                 { label: 'Dashboard', run: () => void navigate({ to: '/clubs/$id/dashboard', params: { id: c.slug } }) },
                 ...(c.suspended ? [] : [{ label: 'New competition', run: () => void navigate({ to: '/competitions/new', search: { club: c.slug } }) }]),
-                ...(c.suspended ? [] : [{ label: 'New weekly run', run: () => setAddingEvent(true) }]),
+                ...(c.suspended ? [] : [{ label: 'New event', run: () => setAddingEvent(true) }]),
                 { label: 'Edit club', run: () => setEditing(true) },
               ]}
             />}
@@ -629,8 +626,9 @@ function EditClubSheet({ club, onClose }: { club: Club; onClose: () => void }) {
   const removeLogo = useMutation({ mutationFn: () => api<Club>(`/clubs/${club.slug}/logo`, { method: 'DELETE' }), onSuccess: refresh });
   const current = queryClient.getQueriesData<Club>({ queryKey: ['club'] }).map(([, data]) => data).find((data) => data?.id === club.id) ?? club;
 
-  return <Modal title="Edit club" onClose={onClose}>
-    <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+  return <Sheet open onOpenChange={(open) => !open && onClose()} title="Edit club"
+    footer={<button form="edit-club" className="btn-primary w-full" disabled={save.isPending || name.trim().length < 3}>{save.isPending ? 'Saving…' : 'Save changes'}</button>}>
+    <form id="edit-club" className="space-y-5" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
       <div className="flex items-center gap-4">
         <ClubLogo club={{ name, logoUrl: current.logoUrl }} size={72} />
         <div className="space-y-1.5">
@@ -676,7 +674,6 @@ function EditClubSheet({ club, onClose }: { club: Club; onClose: () => void }) {
         </span>
       </label>
       <ErrorNotice error={save.error} />
-      <button className="btn-primary w-full" disabled={save.isPending || name.trim().length < 3}>{save.isPending ? 'Saving…' : 'Save changes'}</button>
     </form>
-  </Modal>;
+  </Sheet>;
 }

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
-import { ChallengeSomeone, GoBar, MiniRing, MyCompetitions, RaceHero, SUMMARY_CARD } from '../components/CompeteHome';
+import { ChallengeSomeone, LeaderboardPeek, MiniRing, MyCompetitions, RaceHero, SUMMARY_CARD } from '../components/CompeteHome';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { RunIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon } from '../components/icons';
 import { EmojiPopover } from '../components/EmojiPopover';
@@ -70,7 +70,7 @@ export function DashboardPage() {
         <div className="space-y-3">
           <RaceHero unit={unit} now={now} />
           <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
-          <GoBar unit={unit} now={now} />
+          <LeaderboardPeek unit={unit} />
         </div>
         <div className="mt-8 space-y-8">
           <MyCompetitions unit={unit} now={now} />

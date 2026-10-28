@@ -1,11 +1,25 @@
 export type EventActivity = 'run' | 'walk' | 'cycle' | 'any';
+export type EventRepeat = 'once' | 'daily' | 'weekly' | 'monthly';
 export type ClubEvent = {
   id: string;
   clubId: string;
   title: string;
   activity: EventActivity;
   notes: string | null;
-  /** 0 is Sunday, as in JavaScript's getDay. */
+  repeat: EventRepeat;
+  /** Every how many days, weeks or months it repeats. */
+  repeatEvery: number;
+  /** Weekly events: the days it's on, 0 being Sunday. */
+  weekdays: number[];
+  /** Monthly events: on the same date each month, or the same weekday of the same week ("second Saturday"). */
+  monthMode: 'date' | 'weekday' | null;
+  /** Monthly by weekday: which week of the month, 1 to 4, or 5 for the last. */
+  monthWeek: number | null;
+  /** `YYYY-MM-DD`: the date of the first (or only) session. */
+  startsOn: string;
+  /** `YYYY-MM-DD`: no sessions after this, or null to repeat forever. */
+  endsOn: string | null;
+  /** The day of the week it falls on, 0 being Sunday. */
   weekday: number;
   /** `HH:mm`, in the venue's time zone. */
   startTime: string;
@@ -14,18 +28,90 @@ export type ClubEvent = {
   distanceMetres: number | null;
   venue: string;
   address: string | null;
+  coverUrl: string | null;
   latitude: number;
   longitude: number;
-  /** The next time it starts, or this week's while it's still going. */
-  nextAt: string;
+  /** The next time it starts, or the current one's while it's still going; null once a one-off is over. */
+  nextAt: string | null;
   club: { id: string; slug: string; name: string; logoUrl: string | null; accentColor: string; verified: boolean; privacy: 'open' | 'invite' };
   attendeeCount: number;
   going: boolean;
   canManage: boolean;
   faces: Array<{ displayName: string | null; avatarUrl: string | null; avatarStyle: 'masculine' | 'feminine' | 'neutral' }>;
   distanceKm: number | null;
+  /** The viewer's pass, once they've joined. */
+  pass: { code: string; checkedIn: boolean } | null;
 };
-export type EventInput = Pick<ClubEvent, 'title' | 'activity' | 'notes' | 'weekday' | 'startTime' | 'timeZone' | 'durationMinutes' | 'distanceMetres' | 'venue' | 'address' | 'latitude' | 'longitude'>;
+export type Guest = { userId: string; username: string | null; displayName: string | null; avatarUrl: string | null; avatarStyle: 'masculine' | 'feminine' | 'neutral'; passCode: string; checkedIn: boolean; joinedAt: string };
+export const ACTIVITY_WORD: Record<EventActivity, string> = { run: 'Running', walk: 'Walking', cycle: 'Cycling', any: 'Run, walk or ride' };
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const ORDINAL = ['', 'First', 'Second', 'Third', 'Fourth', 'Last'];
+
+/** "Sat 14 Nov" from "2026-11-14". */
+export function dateLabel(isoDate: string) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return `${WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()].slice(0, 3)} ${day} ${MONTHS[month - 1]}`;
+}
+
+/** "Sat, 7:00 AM", or "Sat 14 Nov, 7:00 AM" when it's a one-off or more than a week away: the next session, as on a poster. */
+export function posterTime(event: Pick<ClubEvent, 'nextAt' | 'timeZone' | 'startTime' | 'repeat' | 'weekday'>, now = Date.now()) {
+  if (!event.nextAt) return 'Finished';
+  const at = new Date(event.nextAt);
+  const day = at.getTime() - now > 6 * 86_400_000 || event.repeat === 'once' ? dateLabel(dayStamp(at, event.timeZone)) : WEEKDAYS[event.weekday].slice(0, 3);
+  return `${day}, ${clockLabel(event.startTime).toUpperCase()}`;
+}
+
+export type Schedule = Pick<ClubEvent, 'repeat' | 'repeatEvery' | 'weekdays' | 'monthMode' | 'monthWeek' | 'endsOn'>;
+
+const weekdayOf = (isoDate: string) => {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+};
+
+/** "22nd" from 22. */
+export function nth(day: number) {
+  const tens = day % 100;
+  return `${day}${tens >= 11 && tens <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][day % 10] ?? 'th'}`;
+}
+
+/** Which week of its month a date falls in, as monthWeek counts it: 1 to 4, or 5 when it's the last one. */
+export function weekOfMonth(isoDate: string) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const inMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day + 7 > inMonth ? 5 : Math.ceil(day / 7);
+}
+
+/** "second Saturday" for a monthly-by-weekday event starting on `isoDate`. */
+export const weekdayInMonth = (isoDate: string, week = weekOfMonth(isoDate)) => `${ORDINAL[week].toLowerCase()} ${WEEKDAYS[weekdayOf(isoDate)]}`;
+
+const listed = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : items[0] ?? '');
+
+/** The rule on its own: "Every Tue and Thu", "Every other week on Sat", "Monthly on the 22nd", "Every 3 days", or the one date. */
+export function repeatRule(event: Schedule & Pick<ClubEvent, 'startsOn'>) {
+  const every = event.repeatEvery || 1;
+  const until = event.endsOn && event.repeat !== 'once' ? `, until ${dateLabel(event.endsOn).slice(4)}` : '';
+  if (event.repeat === 'once') return dateLabel(event.startsOn);
+  if (event.repeat === 'daily') return `${every === 1 ? 'Every day' : `Every ${every} days`}${until}`;
+  if (event.repeat === 'weekly') {
+    const picked = [...(event.weekdays.length ? event.weekdays : [weekdayOf(event.startsOn)])].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+    const days = listed(picked.map((day) => (picked.length > 1 ? WEEKDAYS[day].slice(0, 3) : WEEKDAYS[day])));
+    return `${every === 1 ? `Every ${days}` : `${every === 2 ? 'Every other week' : `Every ${every} weeks`} on ${days}`}${until}`;
+  }
+  const on = event.monthMode === 'weekday' ? `the ${weekdayInMonth(event.startsOn, event.monthWeek ?? weekOfMonth(event.startsOn))}` : `the ${nth(Number(event.startsOn.split('-')[2]))}`;
+  return `${every === 1 ? 'Monthly' : `Every ${every} months`} on ${on}${until}`;
+}
+
+/** "Every Tue and Thu · 6:30 am": when it happens, for cards and pages. */
+export const scheduleLabel = (event: Schedule & Pick<ClubEvent, 'startsOn' | 'startTime'>) => `${repeatRule(event)} · ${clockLabel(event.startTime)}`;
+
+/** Today's date where you are, as `YYYY-MM-DD`. */
+export const todayIso = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
+export type EventInput = Pick<ClubEvent, 'title' | 'activity' | 'notes' | 'repeat' | 'repeatEvery' | 'weekdays' | 'monthMode' | 'monthWeek' | 'startsOn' | 'endsOn' | 'startTime' | 'timeZone' | 'durationMinutes' | 'distanceMetres' | 'venue' | 'address' | 'latitude' | 'longitude'>;
 export type Place = { name: string; address: string; latitude: number; longitude: number };
 
 export const eventKey = (id: string) => ['club-event', id] as const;
@@ -41,7 +127,6 @@ export const ACTIVITY_OPTIONS: Array<{ value: EventActivity; label: string; deta
   { value: 'cycle', label: 'Group ride', detail: 'Cyclists riding together' },
   { value: 'any', label: 'Open to everyone', detail: 'Runners, walkers and riders all welcome' },
 ];
-export const DAY_OPTIONS = WEEK_ORDER.map((day) => ({ value: String(day), label: `Every ${WEEKDAYS[day]}` }));
 export const MIN_DURATION = 15;
 export const MAX_DURATION = 24 * 60;
 
@@ -51,8 +136,6 @@ export function clockLabel(time: string) {
   return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${hours < 12 ? 'am' : 'pm'}`;
 }
 
-/** "Every Saturday · 7:00 am" */
-export const everyLabel = (event: Pick<ClubEvent, 'weekday' | 'startTime'>) => `Every ${WEEKDAYS[event.weekday]} · ${clockLabel(event.startTime)}`;
 
 export function durationLabel(minutes: number) {
   if (minutes < 60) return `${minutes} min`;
@@ -65,8 +148,9 @@ const dayStamp = (at: Date, timeZone: string) => {
   catch { return at.toDateString(); }
 };
 
-/** Where this week's session stands: on now, today, tomorrow, or a date. */
+/** Where the next session stands: on now, today, tomorrow, a date, or finished. */
 export function nextLabel(event: Pick<ClubEvent, 'nextAt' | 'timeZone' | 'durationMinutes'>, now = Date.now()) {
+  if (!event.nextAt) return { live: false, label: 'Finished' };
   const at = new Date(event.nextAt);
   if (now >= at.getTime() && now < at.getTime() + event.durationMinutes * 60_000) return { live: true, label: 'Happening now' };
   const today = dayStamp(new Date(now), event.timeZone);

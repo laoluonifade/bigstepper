@@ -1,28 +1,32 @@
 import { formatDistance } from '@jump/shared/format';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { EventStamp } from '@/components/ClubEvents';
+import { EventCover, EventStamp } from '@/components/ClubEvents';
+import { EventPass, PassSheet } from '@/components/EventPass';
 import { ClubLogo } from '@/components/ClubLogo';
 import { onAccent } from '@/components/clubs';
-import { ArrowRightIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon } from '@/components/icons';
+import { ArrowRightIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, TicketIcon, UsersIcon } from '@/components/icons';
 import { Avatar, Button, EmptyState, ErrorNotice, Footer, haptic, HardShadow, Loading, Screen, Txt, useNow, VerifiedTick } from '@/components/ui';
 import { api, isApiError, post, WEB_URL } from '@/lib/api';
-import { clockLabel, distanceAway, durationLabel, EVENT_NOUN, eventKey, everyLabel, nextLabel, openDirections, WEEKDAYS, type ClubEvent } from '@/lib/club-events';
+import { clockLabel, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, openDirections, scheduleLabel, type ClubEvent } from '@/lib/club-events';
 import { confirm } from '@/lib/dialog';
 import { registerForPush } from '@/lib/push';
-import { useUnit } from '@/lib/queries';
+import { useProfile, useUnit } from '@/lib/queries';
 import { colors, display, radius, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
-/** One weekly club event: when and where it meets, who's coming, and a button to join in every week. */
+/** One club event: when and where, who's coming, and your pass once you've got one. */
 export default function EventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
   const unit = useUnit();
   const now = useNow(60_000);
   const event = useQuery({ queryKey: eventKey(id), queryFn: () => api<ClubEvent>(`/events/${id}`) });
+  const profile = useProfile().data;
+  const [passOpen, setPassOpen] = useState(false);
 
   const settle = async (next: ClubEvent) => {
     queryClient.setQueryData(eventKey(id), next);
@@ -37,12 +41,12 @@ export default function EventScreen() {
       haptic('success');
       await settle(next);
       void registerForPush();
-      toast({ tone: 'ok', title: 'You’re in', message: `Jump will remind you the day before and an hour before, every ${WEEKDAYS[next.weekday]}.` });
+      setPassOpen(true);
     },
   });
   const leave = useMutation({
     mutationFn: () => api<ClubEvent>(`/events/${id}/join`, { method: 'DELETE' }),
-    async onSuccess(next) { haptic(); await settle(next); toast({ tone: 'ok', message: 'You won’t get reminders for this one any more.' }); },
+    async onSuccess(next) { haptic(); await settle(next); toast({ tone: 'ok', message: 'Pass given up. You won’t get reminders for this one.' }); },
   });
   const remove = useMutation({
     mutationFn: () => api(`/events/${id}`, { method: 'DELETE' }),
@@ -57,8 +61,8 @@ export default function EventScreen() {
   if (event.isLoading) return <Screen><Stack.Screen options={{ title: '' }} /><Loading /></Screen>;
   if (!event.data) {
     return <Screen>
-      <Stack.Screen options={{ title: 'Club run' }} />
-      {isApiError(event.error, 404) ? <EmptyState title="This run isn’t on any more">The club may have changed its schedule.</EmptyState> : <ErrorNotice error={event.error} onRetry={() => void event.refetch()} />}
+      <Stack.Screen options={{ title: 'Event' }} />
+      {isApiError(event.error, 404) ? <EmptyState title="This event isn’t on any more">The club may have changed its schedule.</EmptyState> : <ErrorNotice error={event.error} onRetry={() => void event.refetch()} />}
     </Screen>;
   }
 
@@ -68,19 +72,20 @@ export default function EventScreen() {
   const next = nextLabel(e, now);
   const away = distanceAway(e.distanceKm);
   const share = () => void Share.share({
-    message: `${e.title} with ${e.club.name}: ${everyLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/events/${e.id}`,
+    message: `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/events/${e.id}`,
     url: `${WEB_URL}/events/${e.id}`,
   });
 
   return <Screen refreshing={event.isRefetching} onRefresh={() => void event.refetch()} padded={false}
     footer={<Footer style={{ flexDirection: 'row', gap: 8 }}>
-      {e.going
-        ? <Button style={{ flex: 1 }} full variant="secondary" icon={<CheckIcon size={16} />} title="Going every week" loading={leave.isPending}
-          onPress={() => void confirm({ title: 'Stop going?', message: 'You’ll stop getting reminders for this run. You can join again any time.', cancelLabel: 'Keep it', confirmLabel: 'Stop going' }).then((ok) => { if (ok) leave.mutate(); })} />
-        : <Button style={{ flex: 1 }} full variant="primary" icon={<RepeatIcon size={16} color={colors.onAccent} />} title="Join weekly" loading={join.isPending} onPress={() => join.mutate()} />}
-      <Button variant="secondary" title="Share" accessibilityLabel="Share this run" icon={<ShareIcon size={16} />} onPress={share} />
+      {e.pass
+        ? <Button style={{ flex: 1 }} full variant="dark" icon={<TicketIcon size={16} color={colors.paper} />} title="Show my pass" onPress={() => setPassOpen(true)} />
+        : e.nextAt ? <Button style={{ flex: 1 }} full variant="primary" icon={<TicketIcon size={16} color={colors.onAccent} />} title="Get your pass" loading={join.isPending} onPress={() => join.mutate()} />
+          : <Button style={{ flex: 1 }} full variant="secondary" title="This event has finished" disabled />}
+      <Button variant="secondary" title="Share" accessibilityLabel="Share this event" icon={<ShareIcon size={16} />} onPress={share} />
     </Footer>}>
     <Stack.Screen options={{ title: e.club.name }} />
+    {e.coverUrl ? <EventCover event={e} /> : null}
     <View style={[styles.hero, { backgroundColor: accent }]}>
       <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 400 220" opacity={0.18}>
         {[0, 1, 2, 3, 4, 5].map((lane) => <Path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
@@ -99,6 +104,7 @@ export default function EventScreen() {
 
     <View style={{ padding: 16, gap: 16 }}>
       <ErrorNotice error={join.error ?? leave.error ?? remove.error} />
+      {e.pass ? <Pressable onPress={() => setPassOpen(true)} accessibilityRole="button" accessibilityLabel="Open your pass"><EventPass event={e} holder={profile?.displayName ?? 'You'} behind={colors.paper} /></Pressable> : null}
       <Pressable onPress={() => router.push(`/clubs/${e.club.slug}`)} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="link">
         <ClubLogo club={e.club} size={40} />
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -116,14 +122,14 @@ export default function EventScreen() {
           <View style={styles.fact}>
             <RepeatIcon size={18} />
             <View style={{ flex: 1 }}>
-              <Txt size={15} weight="bold">{everyLabel(e)}</Txt>
+              <Txt size={15} weight="bold">{scheduleLabel(e)}</Txt>
               <Txt size={13} color="ink2">{`${EVENT_NOUN[e.activity]} · about ${durationLabel(e.durationMinutes)}${e.distanceMetres ? ` · ${formatDistance(e.distanceMetres, unit)}` : ''}`}</Txt>
             </View>
           </View>
           <View style={styles.fact}>
             <ClockIcon size={18} />
             <View style={{ flex: 1 }}>
-              <Txt size={15} weight="bold">{next.live ? 'On right now' : `Next: ${next.label}, ${clockLabel(e.startTime)}`}</Txt>
+              <Txt size={15} weight="bold">{next.live ? 'On right now' : e.nextAt ? `Next: ${next.label}, ${clockLabel(e.startTime)}` : 'This event has finished'}</Txt>
               <Txt size={13} color="ink2">Times are local to the meeting point.</Txt>
             </View>
           </View>
@@ -152,15 +158,22 @@ export default function EventScreen() {
             </View>)}
           </View>
           {e.attendeeCount > e.faces.length ? <Txt size={13} color="ink2">{`+${e.attendeeCount - e.faces.length} more`}</Txt> : null}
-        </View> : <Txt size={14} color="ink2">Nobody yet. Join and be the first.</Txt>}
+        </View> : <Txt size={14} color="ink2">Nobody yet. Get a pass and be the first.</Txt>}
       </View>
 
-      {e.canManage && <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+      {e.pass && !e.canManage ? <Pressable hitSlop={8} style={{ alignSelf: 'center' }} disabled={leave.isPending}
+        onPress={() => void confirm({ title: 'Give up your pass?', message: 'You’ll stop getting reminders for this event. You can get a new pass any time.', cancelLabel: 'Keep it', confirmLabel: 'Give it up' }).then((ok) => { if (ok) leave.mutate(); })}>
+        <Txt size={13} weight="semibold" color="ink3">Can’t make it? Give up your pass</Txt>
+      </Pressable> : null}
+
+      {e.canManage && <Button full variant="volt" title={`Guest list · ${e.attendeeCount}`} icon={<UsersIcon size={16} color={colors.onAccent} />} onPress={() => router.push({ pathname: '/events/guests', params: { id: e.id } })} />}
+      {e.canManage && <View style={{ flexDirection: 'row', gap: 8 }}>
         <Button style={{ flex: 1 }} full variant="secondary" title="Edit" onPress={() => router.push({ pathname: '/events/edit', params: { id: e.id } })} />
         <Button style={{ flex: 1 }} full variant="danger" title="Remove" loading={remove.isPending}
-          onPress={() => void confirm({ title: 'Remove this weekly run?', message: 'It comes off the map and everyone going stops getting reminders.', cancelLabel: 'Keep it', confirmLabel: 'Remove', destructive: true }).then((ok) => { if (ok) remove.mutate(); })} />
+          onPress={() => void confirm({ title: 'Remove this event?', message: 'It comes off the map and everyone going stops getting reminders.', cancelLabel: 'Keep it', confirmLabel: 'Remove', destructive: true }).then((ok) => { if (ok) remove.mutate(); })} />
       </View>}
     </View>
+    <PassSheet open={passOpen && Boolean(e.pass)} onOpenChange={setPassOpen} event={e} holder={profile?.displayName ?? 'You'} />
   </Screen>;
 }
 

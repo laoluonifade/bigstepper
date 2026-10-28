@@ -1,4 +1,6 @@
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+
+export const INTERESTS = ['run', 'walk', 'cycle', 'compete', 'events', 'fitness', 'steps', 'friends'];
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -16,6 +18,16 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsIn(['km', 'mi'])
   preferredUnit?: 'km' | 'mi';
+
+  @IsOptional()
+  @IsIn(['all', 'events', 'competitions'])
+  exploreLens?: 'all' | 'events' | 'competitions';
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @IsIn(INTERESTS, { each: true })
+  interests?: string[];
 
   @IsOptional()
   @Matches(/^[A-Z]{2}$/)

@@ -112,7 +112,7 @@ export default function ClubScreen() {
           {isManager(role) && <ActionMenu label="Club options" trigger={<HardShadow offset={2} radius={radius.base}><View style={styles.square}><Text style={{ fontFamily: fontFamily('bold'), fontSize: 20, color: colors.ink }}>⋯</Text></View></HardShadow>} actions={[
             { label: 'Dashboard', run: () => router.push(`/clubs/${c.slug}/dashboard`) },
             ...(c.suspended ? [] : [{ label: 'New competition', run: () => router.push({ pathname: '/competitions/new', params: { club: c.slug } }) }]),
-            ...(c.suspended ? [] : [{ label: 'New weekly run', run: () => router.push({ pathname: '/events/edit', params: { club: c.slug } }) }]),
+            ...(c.suspended ? [] : [{ label: 'New event', run: () => router.push({ pathname: '/events/edit', params: { club: c.slug } }) }]),
             { label: 'Edit club', run: () => setEditing(true) },
           ]} />}
         </View>}
@@ -171,10 +171,10 @@ function ClubHero({ club, children }: { club: Club; children: ReactNode }) {
     </View>
     <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
       <View style={styles.heroLogo}><ClubLogo club={club} size={84} /></View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
-        <Txt size={28} weight="extrabold" leading={1.15} style={{ flexShrink: 1, letterSpacing: -0.4 }}>{club.name}</Txt>
-        {club.verified ? <VerifiedTick size={24} /> : null}
-      </View>
+      <Txt size={club.name.length > 22 ? 24 : 28} weight="extrabold" leading={1.15} style={{ marginTop: 12, letterSpacing: -0.4 }}>
+        {club.name}
+        {club.verified ? <>{' '}<View style={{ transform: [{ translateY: 3 }] }}><VerifiedTick size={22} /></View></> : null}
+      </Txt>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 }}>
         {club.location ? <Txt size={13} color="ink2">{club.location} ·</Txt> : null}
         {club.privacy === 'invite' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><LockIcon size={12} color={colors.ink2} /><Txt size={13} color="ink2">Invite-only</Txt></View> : <Txt size={13} color="ink2">Open club</Txt>}

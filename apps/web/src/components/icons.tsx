@@ -197,6 +197,13 @@ export const InfoIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const TicketIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-3a2 2 0 0 0 0-4z" />
+    <path d="M14 5v2M14 11v2M14 17v2" />
+  </Icon>
+);
+
 export const PinIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />

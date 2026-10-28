@@ -83,10 +83,11 @@ export function ProfileHero({ avatar, displayName, verified, username, meta, bio
         {cell(counts.following, 'Following', 'following')}
       </View>
     </View>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
-      <Text style={[display(26), { flexShrink: 1 }]}>{displayName}</Text>
-      {verified ? <VerifiedTick size={22} /> : null}
-    </View>
+    {/* The tick sits inline after the last word, so a long name that wraps keeps it beside the name. */}
+    <Text style={[display(displayName.length > 18 ? 22 : 26), { marginTop: 12 }]}>
+      {displayName}
+      {verified ? <>{' '}<View style={{ transform: [{ translateY: 3 }] }}><VerifiedTick size={displayName.length > 18 ? 19 : 22} /></View></> : null}
+    </Text>
     <Txt size={13} color="ink2" style={{ marginTop: 6 }}><Txt size={13} weight="semibold">@{username}</Txt>{` · ${meta}`}</Txt>
     {bio ? typeof bio === 'string' ? <Txt size={14} leading={1.5} style={{ marginTop: 12 }}>{bio}</Txt> : <View style={{ marginTop: 12 }}>{bio}</View> : null}
     {actions ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>{actions}</View> : null}

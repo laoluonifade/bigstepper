@@ -39,7 +39,7 @@ function SetupForm({ profile }: { profile: Profile }) {
     onSuccess(updated) {
       queryClient.setQueryData(keys.profile, updated);
       haptic('success');
-      router.replace('/welcome');
+      router.replace('/interests');
     },
   });
   return <AuthScreen>

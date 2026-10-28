@@ -10,7 +10,7 @@ import { OPEN_PAYMENT_STATUSES, useSavedPayments } from '../lib/payments';
 import { useNotifications, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { onboardingSkipped } from '../lib/onboarding';
+import { INTERESTS_REQUIRED_SINCE, interestsWereSkipped, onboardingSkipped } from '../lib/onboarding';
 import { movingSeconds, RecorderProvider, START_ACTIVITY_EVENT, useRecorder } from '../lib/recorder';
 import { DuelLaunch } from './DuelLaunch';
 import { ActivityIcon, ArrowRightIcon, BellIcon, FeedIcon, HomeIcon, LadderIcon, LogoutIcon, PinIcon, RunIcon, SearchIcon, SettingsIcon, JumpLogo, TableIcon, UserIcon, UsersIcon, WalletIcon, PlayIcon, InstagramIcon, XLogoIcon } from './icons';
@@ -104,7 +104,7 @@ function PublicShell() {
 }
 
 /** Pages a runner can use before joining their first competition: the ways into one, and account basics. */
-const ONBOARDING_PATHS = ['/welcome', '/competitions', '/clubs', '/settings', '/verify-email', '/strava'];
+const ONBOARDING_PATHS = ['/interests', '/welcome', '/competitions', '/clubs', '/settings', '/verify-email', '/strava'];
 
 /**
  * New runners finish their profile first (Google sign-ups arrive without a username), then go to the
@@ -117,6 +117,8 @@ function OnboardingGate() {
   const fresh = profile.data && new Date(profile.data.createdAt).getTime() >= ONBOARDING_REQUIRED_SINCE;
   if (location.pathname === '/setup') return null;
   if (fresh && profile.data?.usernameChosen === false) return <Redirect to="/setup" />;
+  const asked = profile.data && new Date(profile.data.createdAt).getTime() >= INTERESTS_REQUIRED_SINCE;
+  if (asked && location.pathname !== '/interests' && !(profile.data?.interests ?? []).length && !interestsWereSkipped()) return <Redirect to="/interests" />;
   if (!fresh || !mine.data || mine.data.some((row) => row.joined) || onboardingSkipped()) return null;
   if (ONBOARDING_PATHS.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))) return null;
   return <Redirect to="/welcome" />;
@@ -156,7 +158,7 @@ function SignedInShell() {
       items: [
         { to: '/competitions', label: 'Competitions', icon: <TableIcon /> },
         { to: '/clubs', label: 'Clubs', icon: <UsersIcon /> },
-        { to: '/events', label: 'Club runs', icon: <PinIcon /> },
+        { to: '/events', label: 'Events', icon: <PinIcon /> },
       ],
     },
     {

@@ -7,7 +7,7 @@ export async function enrolClubMembers(manager: EntityManager, scope: { tableId:
     : ['t."communityId" = $1 AND m."userId" = $2', [scope.clubId, scope.userId]];
   const enrolled = await manager.query(
     `WITH open AS (
-       SELECT t."id", t."code", t."title", t."communityId", t."eligibleCountries",
+       SELECT t."id", t."code", t."title", t."communityId", t."eligibleCountries", t."enrolAudience",
               COALESCE(t."capacity", 2147483647) - (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id") AS "room"
        FROM "competition_tables" t
        JOIN "club_memberships" m ON m."clubId" = t."communityId"
@@ -25,6 +25,8 @@ export async function enrolClubMembers(manager: EntityManager, scope: { tableId:
        LEFT JOIN "profiles" p ON p."userId" = m."userId"
        WHERE ${'userId' in scope ? 'm."userId" = $2' : 'true'}
          AND (jsonb_array_length(o."eligibleCountries") = 0 OR COALESCE(o."eligibleCountries" ? p."countryCode", false))
+         AND (o."enrolAudience" = 'all' OR COALESCE(p."interests" ? o."enrolAudience", false)
+           OR EXISTS (SELECT 1 FROM "activities" a WHERE a."userId" = m."userId" AND a."activityType" = o."enrolAudience" AND a."startedAt" > now() - interval '90 days'))
          AND NOT EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = o."id" AND r."userId" = m."userId")
      )
      INSERT INTO "table_registrations" ("tableId", "userId")

@@ -63,7 +63,7 @@ function CreateClubSheet({ open, onOpenChange }: { open: boolean; onOpenChange: 
     <Txt size={12} color="ink3" align="center" style={{ marginTop: 8 }}>You can add a logo, colour and links next.</Txt>
   </View>}>
     <View style={{ gap: 16 }}>
-      <TextField label="Club name" autoFocus maxLength={100} value={name} onChangeText={setName} placeholder="Lagos Road Runners" />
+      <TextField label="Club name" maxLength={100} value={name} onChangeText={setName} placeholder="Lagos Road Runners" />
       <TextField label="About" optional hint={`${600 - description.length} characters left`} multiline maxLength={600} value={description} onChangeText={setDescription} placeholder="Who you are, when you run, where you meet." style={{ minHeight: 76 }} />
       <PrivacyChoice value={privacy} onChange={setPrivacy} />
       <ErrorNotice error={create.error} />

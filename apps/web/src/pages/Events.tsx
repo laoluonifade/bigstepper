@@ -2,24 +2,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { ClubLogo } from '../components/ClubLogo';
-import { EventCard, EventForm, EventStamp, onAccent } from '../components/ClubEvents';
+import { EventCard, EventCover, EventForm, EventStamp, onAccent } from '../components/ClubEvents';
 import { useConfirm } from '../components/ConfirmDialog';
-import { ArrowRightIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, SearchIcon, ShareIcon } from '../components/icons';
+import { EventPass, PassModal } from '../components/EventPass';
+import { ArrowRightIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, SearchIcon, ShareIcon, TicketIcon, UsersIcon } from '../components/icons';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, PageHeader, SectionTitle, Skeleton, useNow, VerifiedTick } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { clockLabel, directionsUrl, distanceAway, durationLabel, EVENT_NOUN, eventKey, everyLabel, nextLabel, WEEKDAYS, type ClubEvent, type Place } from '../lib/club-events';
+import { clockLabel, directionsUrl, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, posterTime, scheduleLabel, type ClubEvent, type Guest, type Place } from '../lib/club-events';
 import { formatDistance } from '../lib/format';
 import { getCurrentPosition } from '../lib/geo';
 import { usePlaceName } from '../lib/place';
-import { useUnit } from '../lib/queries';
+import { useProfile, useUnit } from '../lib/queries';
 import { toast } from '../lib/toast';
 import { CompeteSubNav } from './Competitions';
 
 type Area = { latitude: number; longitude: number; name?: string };
 const RADII = [5, 10, 25, 50];
 
-/** Weekly club runs near you (or anywhere you search), and the ones you've joined. */
+/** Club events near you (or anywhere you search), and the ones you've got passes for. */
 export function EventsPage() {
   const [area, setArea] = useState<Area | null>(null);
   const [locating, setLocating] = useState(true);
@@ -69,10 +70,10 @@ export function EventsPage() {
 
   return <div>
     <CompeteSubNav />
-    <PageHeader eyebrow="Run together" title="Club runs" description="Weekly runs that clubs host in person. Join one and Jump reminds you the day before and an hour before, every week." />
+    <PageHeader eyebrow="Run together" title="Events near you" description="Runs, rides and race days that clubs host in person. Get a pass and Jump reminds you the day before and an hour before." />
 
     {going.length > 0 && <section className="mb-8">
-      <SectionTitle aside={`${going.length}`}>Your weekly runs</SectionTitle>
+      <SectionTitle aside={`${going.length}`}>Your passes</SectionTitle>
       <div className="grid gap-3 sm:grid-cols-2">{going.map((event) => <EventCard key={event.id} event={event} />)}</div>
     </section>}
 
@@ -95,16 +96,16 @@ export function EventsPage() {
     <ErrorNotice error={events.error} onRetry={() => void events.refetch()} />
     {locating || events.isLoading ? <div className="grid gap-3 sm:grid-cols-2"><Skeleton className="h-32 rounded-2xl" /><Skeleton className="h-32 rounded-2xl" /></div>
       : !area ? <EmptyState title="Where are you running?" action={<button type="button" className="btn-primary btn-sm" onClick={() => void locate()}>Use my location</button>}>
-        {denied ? 'Allow location to see club runs around you, or search a town above.' : 'Search a town above to see its club runs.'}
+        {denied ? 'Allow location to see events around you, or search a town above.' : 'Search a town above to see its events.'}
       </EmptyState>
-        : !nearby.length ? <EmptyState title="No club runs here yet">
-          Nothing within {km} km yet. Try a wider area, or if you run a club, add your weekly run from your club’s page so people nearby can find it.
+        : !nearby.length ? <EmptyState title="No events here yet">
+          Nothing within {km} km yet. Try a wider area, or if you run a club, add an event from your club’s page so people nearby can find it.
         </EmptyState>
           : <div className="grid gap-3 sm:grid-cols-2">{nearby.map((event) => <EventCard key={event.id} event={event} />)}</div>}
   </div>;
 }
 
-/** One weekly club event: when and where it meets, who's coming, and a button to join in every week. */
+/** One club event: when and where, who's coming, and your pass once you've got one. */
 export function EventPage() {
   const { id } = useParams({ strict: false }) as { id: string };
   const { user } = useAuth();
@@ -114,6 +115,8 @@ export function EventPage() {
   const now = useNow(60_000);
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
+  const [passOpen, setPassOpen] = useState(false);
+  const profile = useProfile().data;
   const event = useQuery({ queryKey: [...eventKey(id), user?.id ?? 'guest'], queryFn: () => api<ClubEvent>(`/events/${id}`) });
 
   const settle = async (next: ClubEvent) => {
@@ -125,11 +128,11 @@ export function EventPage() {
   };
   const join = useMutation({
     mutationFn: () => post<ClubEvent>(`/events/${id}/join`),
-    async onSuccess(next) { await settle(next); toast({ tone: 'ok', title: 'You’re in', message: `Jump will remind you the day before and an hour before, every ${WEEKDAYS[next.weekday]}.` }); },
+    async onSuccess(next) { await settle(next); setPassOpen(true); },
   });
   const leave = useMutation({
     mutationFn: () => api<ClubEvent>(`/events/${id}/join`, { method: 'DELETE' }),
-    async onSuccess(next) { await settle(next); toast({ tone: 'ok', message: 'You won’t get reminders for this one any more.' }); },
+    async onSuccess(next) { await settle(next); toast({ tone: 'ok', message: 'Pass given up. You won’t get reminders for this one.' }); },
   });
   const remove = useMutation({
     mutationFn: () => api(`/events/${id}`, { method: 'DELETE' }),
@@ -144,7 +147,7 @@ export function EventPage() {
   if (event.isLoading) return <Loading />;
   if (!event.data) {
     return isApiError(event.error, 404)
-      ? <EmptyState title="This run isn’t on any more">The club may have changed its schedule.</EmptyState>
+      ? <EmptyState title="This event isn’t on any more">The club may have changed its schedule.</EmptyState>
       : <ErrorNotice error={event.error} onRetry={() => void event.refetch()} />;
   }
 
@@ -155,18 +158,22 @@ export function EventPage() {
   const away = distanceAway(e.distanceKm);
   const link = `${window.location.origin}/events/${e.id}`;
   const share = async () => {
-    const text = `${e.title} with ${e.club.name}: ${everyLabel(e)} at ${e.venue}.`;
+    const text = `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}.`;
     if (navigator.share) { await navigator.share({ title: e.title, text, url: link }).catch(() => undefined); return; }
     await navigator.clipboard.writeText(`${text} ${link}`).catch(() => undefined);
     toast({ tone: 'ok', message: 'Link copied.' });
   };
-  const joinButton = !user
-    ? <Link to="/login" search={{ redirect: `/events/${e.id}` }} className="btn-primary flex-1"><RepeatIcon size={16} />Join weekly</Link>
-    : e.going
-      ? <button type="button" className="btn-secondary flex-1" disabled={leave.isPending} onClick={() => confirm.ask({ title: 'Stop going?', body: 'You’ll stop getting reminders for this run. You can join again any time.', confirmLabel: 'Stop going', onConfirm: () => leave.mutate() })}><CheckIcon size={16} />Going every week</button>
-      : <button type="button" className="btn-primary flex-1" disabled={join.isPending} onClick={() => join.mutate()}><RepeatIcon size={16} />{join.isPending ? 'Joining…' : 'Join weekly'}</button>;
+  const holder = profile?.displayName ?? user?.displayName ?? 'You';
+  const joinButton = !e.nextAt
+    ? <button type="button" className="btn-secondary flex-1" disabled>This event has finished</button>
+    : !user
+      ? <Link to="/login" search={{ redirect: `/events/${e.id}` }} className="btn-primary flex-1"><TicketIcon size={16} />Get your pass</Link>
+      : e.pass
+        ? <button type="button" className="btn-dark flex-1" onClick={() => setPassOpen(true)}><TicketIcon size={16} />Show my pass</button>
+        : <button type="button" className="btn-primary flex-1" disabled={join.isPending} onClick={() => join.mutate()}><TicketIcon size={16} />{join.isPending ? 'Getting your pass…' : 'Get your pass'}</button>;
 
   return <div className="mx-auto max-w-2xl">
+    {e.coverUrl && <EventCover event={e} className="mb-4 rounded-2xl border-2 border-ink" />}
     <div className="relative overflow-hidden rounded-2xl border-2 border-ink px-5 pb-6 pt-7 shadow-hard" style={{ backgroundColor: accent, color: ink }}>
       <svg className="absolute inset-0 h-full w-full opacity-[0.18]" viewBox="0 0 400 220" preserveAspectRatio="none" aria-hidden="true">
         {[0, 1, 2, 3, 4, 5].map((lane) => <path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
@@ -184,6 +191,7 @@ export function EventPage() {
 
     <div className="mt-5 space-y-5">
       <ErrorNotice error={join.error ?? leave.error ?? remove.error} />
+      {e.pass && <button type="button" className="block w-full text-left" onClick={() => setPassOpen(true)} aria-label="Open your pass"><EventPass event={e} holder={holder} /></button>}
       <div className="flex gap-2">
         {joinButton}
         <button type="button" className="btn-secondary" onClick={() => void share()}><ShareIcon size={16} />Share</button>
@@ -202,14 +210,14 @@ export function EventPage() {
         <div className="flex items-start gap-3 border-b border-line pb-3.5">
           <RepeatIcon size={18} className="mt-0.5 shrink-0" />
           <div>
-            <p className="text-[15px] font-bold">{everyLabel(e)}</p>
+            <p className="text-[15px] font-bold">{scheduleLabel(e)}</p>
             <p className="text-[13px] text-ink-2">{EVENT_NOUN[e.activity]} · about {durationLabel(e.durationMinutes)}{e.distanceMetres ? ` · ${formatDistance(e.distanceMetres, unit)}` : ''}</p>
           </div>
         </div>
         <div className="flex items-start gap-3 border-b border-line pb-3.5">
           <ClockIcon size={18} className="mt-0.5 shrink-0" />
           <div>
-            <p className="text-[15px] font-bold">{next.live ? 'On right now' : `Next: ${next.label}, ${clockLabel(e.startTime)}`}</p>
+            <p className="text-[15px] font-bold">{next.live ? 'On right now' : e.nextAt ? `Next: ${next.label}, ${clockLabel(e.startTime)}` : 'This event has finished'}</p>
             <p className="text-[13px] text-ink-2">Times are local to the meeting point.</p>
           </div>
         </div>
@@ -233,15 +241,107 @@ export function EventPage() {
         {e.faces.length ? <div className="flex items-center gap-2.5">
           <div className="flex">{e.faces.map((face, index) => <span key={index} className={cx('rounded-full border-2 border-paper', index > 0 && '-ml-2.5')}><Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={36} className="rounded-full" /></span>)}</div>
           {e.attendeeCount > e.faces.length && <span className="text-[13px] text-ink-2">+{e.attendeeCount - e.faces.length} more</span>}
-        </div> : <p className="text-[14px] text-ink-2">Nobody yet. Join and be the first.</p>}
+        </div> : <p className="text-[14px] text-ink-2">Nobody yet. Get a pass and be the first.</p>}
       </section>
+
+      {e.pass && !e.canManage && <p className="text-center">
+        <button type="button" className="text-[13px] font-semibold text-ink-3 hover:text-ink" disabled={leave.isPending}
+          onClick={() => confirm.ask({ title: 'Give up your pass?', body: 'You’ll stop getting reminders for this event. You can get a new pass any time.', confirmLabel: 'Give it up', onConfirm: () => leave.mutate() })}>Can’t make it? Give up your pass</button>
+      </p>}
+
+      {e.canManage && <Link to="/events/$id/guests" params={{ id: e.id }} className="btn w-full border-2 border-ink bg-volt text-ink shadow-hard active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"><UsersIcon size={16} />Guest list · {e.attendeeCount}</Link>}
 
       {e.canManage && <div className="flex gap-2 pt-2">
         <button type="button" className="btn-secondary flex-1" onClick={() => setEditing(true)}>Edit</button>
-        <button type="button" className="btn-danger flex-1" disabled={remove.isPending} onClick={() => confirm.ask({ title: 'Remove this weekly run?', body: 'It comes off the map and everyone going stops getting reminders.', confirmLabel: 'Remove', danger: true, onConfirm: () => remove.mutate() })}>Remove</button>
+        <button type="button" className="btn-danger flex-1" disabled={remove.isPending} onClick={() => confirm.ask({ title: 'Remove this event?', body: 'It comes off the map and everyone going stops getting reminders.', confirmLabel: 'Remove', danger: true, onConfirm: () => remove.mutate() })}>Remove</button>
       </div>}
     </div>
     {editing && <EventForm event={e} unit={unit} onClose={() => setEditing(false)} />}
+    {passOpen && e.pass && <PassModal event={e} holder={holder} onClose={() => setPassOpen(false)} />}
     {confirm.dialog}
+  </div>;
+}
+
+/**
+ * The host's door list for the next session: everyone holding a pass, checked in by clicking their name
+ * or typing the code off their pass. Check-ins count for that session only, so a weekly run starts fresh.
+ */
+export function EventGuestsPage() {
+  const { id } = useParams({ strict: false }) as { id: string };
+  const queryClient = useQueryClient();
+  const event = useQuery({ queryKey: [...eventKey(id), 'host'], queryFn: () => api<ClubEvent>(`/events/${id}`) });
+  const listKey = ['club-event', id, 'guests'];
+  const list = useQuery({ queryKey: listKey, queryFn: () => api<{ nextAt: string | null; guests: Guest[] }>(`/events/${id}/guests`), refetchInterval: 15_000 });
+  const [code, setCode] = useState('');
+  const [search, setSearch] = useState('');
+
+  const set = (userId: string, checkedIn: boolean) => queryClient.setQueryData<{ nextAt: string | null; guests: Guest[] }>(listKey,
+    (data) => data && { ...data, guests: data.guests.map((guest) => (guest.userId === userId ? { ...guest, checkedIn } : guest)) });
+  const checkIn = useMutation({
+    mutationFn: (match: { code?: string; userId?: string }) => post<{ userId: string; checkedIn: boolean }>(`/events/${id}/check-in`, match),
+    onSuccess(result) {
+      set(result.userId, true);
+      const guest = list.data?.guests.find((row) => row.userId === result.userId);
+      toast({ tone: 'ok', message: `${guest?.displayName ?? 'Runner'} is checked in.` });
+      setCode('');
+    },
+    onError: (error) => toast({ tone: 'bad', message: error.message }),
+  });
+  const undo = useMutation({
+    mutationFn: (userId: string) => api<{ userId: string }>(`/events/${id}/check-in/${userId}`, { method: 'DELETE' }),
+    onSuccess(result) { set(result.userId, false); },
+    onError: (error) => toast({ tone: 'bad', message: error.message }),
+  });
+
+  const back = <Link to="/events/$id" params={{ id }} className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink">Back to the event</Link>;
+  if (list.isLoading || event.isLoading) return <div className="mx-auto max-w-2xl">{back}<Loading /></div>;
+  if (!list.data || !event.data) return <div className="mx-auto max-w-2xl">{back}<ErrorNotice error={list.error ?? event.error} onRetry={() => void list.refetch()} /></div>;
+
+  const guests = list.data.guests;
+  const inCount = guests.filter((guest) => guest.checkedIn).length;
+  const query = search.trim().toLowerCase();
+  const shown = guests.filter((guest) => !query || `${guest.displayName ?? ''} ${guest.username ?? ''} ${guest.passCode}`.toLowerCase().includes(query));
+  const typed = code.trim().toUpperCase();
+  const submitCode = () => { if (typed.length >= 4) checkIn.mutate({ code: typed.startsWith('JMP-') ? typed : `JMP-${typed}` }); };
+
+  return <div className="mx-auto max-w-2xl">
+    {back}
+    <PageHeader eyebrow="Guest list" title={event.data.title} />
+    <div className="flex items-end gap-3">
+      <p className="wide min-w-0 flex-1 truncate text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-2">{list.data.nextAt ? posterTime(event.data) : 'Finished'}</p>
+      <div className="text-right">
+        <p className="score num text-[36px] leading-none">{inCount}/{guests.length}</p>
+        <p className="wide text-[10px] font-extrabold uppercase tracking-[0.08em] text-ink-2">Checked in</p>
+      </div>
+    </div>
+    <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-ink/[0.07]"><div className="h-full rounded-full bg-volt transition-[width] duration-500" style={{ width: `${guests.length ? (inCount / guests.length) * 100 : 0}%` }} /></div>
+
+    <form className="mt-5 flex gap-2" onSubmit={(formEvent) => { formEvent.preventDefault(); submitCode(); }}>
+      <div className="relative flex-1">
+        <TicketIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+        <input className="field pl-9 font-mono uppercase" aria-label="Pass code" autoCapitalize="characters" autoCorrect="off" value={code} onChange={(changeEvent) => setCode(changeEvent.target.value)} placeholder="Pass code, e.g. JMP-7K2Q9X" />
+      </div>
+      <button type="submit" className="btn-dark" disabled={typed.length < 4 || checkIn.isPending}>Check in</button>
+    </form>
+    <p className="hint">Opens 12 hours before it starts at {clockLabel(event.data.startTime)}. Each session starts a fresh list.</p>
+
+    {guests.length > 6 && <div className="relative mt-4">
+      <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+      <input className="field pl-9" aria-label="Find a name" value={search} onChange={(changeEvent) => setSearch(changeEvent.target.value)} placeholder="Find a name" />
+    </div>}
+
+    <div className="mt-4">
+      {!guests.length ? <EmptyState title="No passes yet">Share the event so people can get a pass. They’ll show up here.</EmptyState>
+        : <ul className="divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-line bg-card">{shown.map((guest) => <li key={guest.userId} className="flex items-center gap-3 px-3.5 py-3">
+          <Avatar name={guest.displayName} src={guest.avatarUrl} avatarStyle={guest.avatarStyle} size={40} className="rounded-full" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-bold">{guest.displayName ?? 'Runner'}</p>
+            <p className="font-mono text-[12.5px] text-ink-3">{guest.passCode}</p>
+          </div>
+          {guest.checkedIn
+            ? <button type="button" className="inline-flex items-center gap-1.5 rounded-full border-[1.5px] border-volt bg-volt px-3.5 py-2 text-[13px] font-bold text-ink" onClick={() => undo.mutate(guest.userId)} aria-label={`Undo check-in for ${guest.displayName ?? 'runner'}`}><CheckIcon size={14} />In</button>
+            : <button type="button" className="rounded-full border-[1.5px] border-ink px-3.5 py-2 text-[13px] font-bold hover:bg-ink/[0.04]" onClick={() => checkIn.mutate({ userId: guest.userId })} aria-label={`Check in ${guest.displayName ?? 'runner'}`}>Check in</button>}
+        </li>)}</ul>}
+    </div>
   </div>;
 }

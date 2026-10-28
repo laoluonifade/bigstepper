@@ -85,6 +85,9 @@ export class CreateTableDto extends ScoringFieldsDto {
   @IsOptional() @IsIn([true])
   inviteClubMembers?: true;
 
+  @IsOptional() @IsIn(['all', 'run', 'walk', 'cycle'])
+  enrolAudience?: 'all' | 'run' | 'walk' | 'cycle';
+
   @IsOptional()
   @IsDateString()
   scoringClosesAt?: string;

@@ -31,7 +31,7 @@ function dayLabel(date: Date) {
 
 const timeLabel = (date: Date) => `${date.getHours() % 12 || 12}:${pad(date.getMinutes())} ${date.getHours() < 12 ? 'am' : 'pm'}`;
 
-export function DateTimePicker({ label, hint, value, min, onChange, timeOnly }: { label?: string; hint?: string; value: string; min?: string; onChange: (value: string) => void; timeOnly?: boolean }) {
+export function DateTimePicker({ label, hint, value, min, onChange, timeOnly, dateOnly }: { label?: string; hint?: string; value: string; min?: string; onChange: (value: string) => void; timeOnly?: boolean; dateOnly?: boolean }) {
   const current = value ? parse(value) : new Date();
   const minimum = min ? parse(min) : undefined;
   const [editing, setEditing] = useState<'date' | 'time' | null>(null);
@@ -69,11 +69,11 @@ export function DateTimePicker({ label, hint, value, min, onChange, timeOnly }: 
         <CalendarIcon size={16} color={colors.ink3} />
         <Text style={styles.value} numberOfLines={1}>{value ? dayLabel(current) : 'Pick a day'}</Text>
       </Pressable>
-      <View style={styles.divider} /></>}
-      <Pressable onPress={() => open('time')} style={({ pressed }) => [styles.half, { flex: timeOnly ? 1 : 0.8 }, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="button" accessibilityLabel={`Time: ${timeLabel(current)}`}>
+      {!dateOnly && <View style={styles.divider} />}</>}
+      {!dateOnly && <Pressable onPress={() => open('time')} style={({ pressed }) => [styles.half, { flex: timeOnly ? 1 : 0.8 }, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="button" accessibilityLabel={`Time: ${timeLabel(current)}`}>
         <ClockIcon size={16} color={colors.ink3} />
         <Text style={styles.value} numberOfLines={1}>{value ? timeLabel(current) : 'Time'}</Text>
-      </Pressable>
+      </Pressable>}
     </View>
     {hint ? <Hint>{hint}</Hint> : null}
     {Platform.OS === 'ios' && <Sheet open={editing !== null} onOpenChange={(next) => !next && setEditing(null)} title={editing === 'time' ? 'Time' : 'Day'}

@@ -168,6 +168,9 @@ export class CompetitionTable {
   @Column({ default: false })
   autoEnrolClub: boolean;
 
+  @Column({ type: 'varchar', length: 8, default: 'all' })
+  enrolAudience: 'all' | 'run' | 'walk' | 'cycle';
+
   @Column({ type: 'uuid', nullable: true })
   seriesId: string | null;
 

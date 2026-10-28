@@ -12,6 +12,7 @@ const CACHE_LIMIT = 5_000;
 export class GeoService {
   private readonly logger = new Logger(GeoService.name);
   private readonly cache = new Map<string, { name: string | null; at: number }>();
+  private readonly searches = new Map<string, { places: Place[]; at: number }>();
   private queue: Promise<unknown> = Promise.resolve();
   private lastCall = 0;
 
@@ -32,10 +33,13 @@ export class GeoService {
       const { latitude: lat, longitude: lon } = near;
       params.set('viewbox', [lon - 0.6, lat + 0.6, lon + 0.6, lat - 0.6].map((value) => value.toFixed(4)).join(','));
     }
-    return this.throttled(async () => {
+    const key = `${query.toLowerCase()}|${near ? `${near.latitude.toFixed(1)},${near.longitude.toFixed(1)}` : ''}`;
+    const hit = this.searches.get(key);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.places;
+    const places = await this.throttled(async () => {
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'User-Agent': 'Jump/1.0 (+https://startajump.com)' }, signal: AbortSignal.timeout(6_000) });
-        if (!response.ok) return [];
+        if (!response.ok) return null;
         const found = (await response.json()) as Found[];
         return found.filter((place) => place.lat && place.lon && place.display_name).map((place) => {
           const parts = place.display_name!.split(', ');
@@ -43,9 +47,13 @@ export class GeoService {
         });
       } catch (error) {
         this.logger.warn(`Place search failed: ${String(error)}`);
-        return [];
+        return null;
       }
     });
+    if (!places) return [];
+    if (this.searches.size >= CACHE_LIMIT) this.searches.delete(this.searches.keys().next().value as string);
+    this.searches.set(key, { places, at: Date.now() });
+    return places;
   }
 
   private throttled<T>(task: () => Promise<T>): Promise<T> {

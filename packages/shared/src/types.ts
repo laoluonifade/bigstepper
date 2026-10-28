@@ -26,6 +26,10 @@ export interface Profile {
   usernameChosen?: boolean;
   displayName: string;
   preferredUnit: Unit;
+  /** What Explore shows: everything, or just events or competitions. */
+  exploreLens?: 'all' | 'events' | 'competitions';
+  /** What they said brought them to Jump at sign-up: run, walk, cycle, compete, events, fitness, steps, friends. */
+  interests?: string[];
   countryCode: string;
   /** Private; only returned for your own profile. */
   gender: Gender | null;
@@ -485,6 +489,8 @@ export interface Club {
   chatLocked?: boolean;
   /** Your role here, or null when you're not a member (or not signed in). */
   myRole?: ClubRole | null;
+  /** Jump's own community club, which Jump staff manage. */
+  official?: boolean;
   /** Whether the ?invite= code in the link is this club's. */
   inviteValid?: boolean;
   /** Members only (to share the club); managers can reset it. */

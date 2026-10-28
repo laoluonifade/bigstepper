@@ -43,7 +43,7 @@ export default function YouScreen() {
   const stats = useMemo(() => profileStats(activities.data ?? []), [activities.data]);
   // Follower counts come from the public profile.
   const social = useQuery({ queryKey: ['runner', profile.data?.username ?? ''], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(profile.data!.username)}`), enabled: Boolean(profile.data?.username) });
-  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | 'delete' | 'invite' | null>(null);
+  const [sheet, setSheet] = useState<'profile' | 'personal' | 'email' | 'appearance' | 'messages' | 'delete' | 'invite' | null>(null);
   const soundsOn = useSoundsEnabled();
   const [nudgeOn, setNudgeOn] = useState(moveNudgeEnabled);
   // What's picked shows straight away, even before the restart that applies it.
@@ -101,13 +101,10 @@ export default function YouScreen() {
       </Group>
 
       <Group title="Privacy">
-        <Row>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Txt size={14} weight="semibold">Who can message me</Txt>
-            <Txt size={13} color="ink3">{me.messagesFrom === 'following' ? 'Only runners you follow' : 'Any runner'}</Txt>
-          </View>
-          <Segmented<'everyone' | 'following'> size="sm" label="Who can message me" value={me.messagesFrom ?? 'everyone'} onChange={(value) => save.mutate({ messagesFrom: value })}
-            options={[{ value: 'everyone', label: 'Everyone' }, { value: 'following', label: 'I follow' }]} />
+        <Row onPress={() => setSheet('messages')}>
+          <Txt size={14} weight="semibold" numberOfLines={1} style={{ flex: 1 }}>Who can message me</Txt>
+          <Txt size={13} color="ink3">{me.messagesFrom === 'following' ? 'People I follow' : 'Everyone'}</Txt>
+          <ChevronRightIcon size={16} color={colors.ink3} />
         </Row>
         <Row onPress={() => router.push('/blocked' as Href)}>
           <Txt size={14} weight="semibold" style={{ flex: 1 }}>Blocked runners</Txt>
@@ -206,6 +203,9 @@ export default function YouScreen() {
     {sheet === 'email' && <EmailSheet profile={me} onClose={() => setSheet(null)} />}
     {sheet === 'delete' && <DeleteAccountSheet onClose={() => setSheet(null)} />}
     {sheet === 'invite' && <InviteSheet username={me.username} onClose={() => setSheet(null)} />}
+    <OptionSheet<'everyone' | 'following'> open={sheet === 'messages'} onOpenChange={(open) => { if (!open) setSheet(null); }} title="Who can message me" value={me.messagesFrom ?? 'everyone'}
+      options={[{ value: 'everyone', label: 'Everyone', detail: 'Any runner on Jump can start a chat with you.' }, { value: 'following', label: 'People I follow', detail: 'Only runners you follow can message you.' }]}
+      onChange={(value) => { save.mutate({ messagesFrom: value }); setSheet(null); }} />
     <OptionSheet<ThemePreference> open={sheet === 'appearance'} onOpenChange={(open) => { if (!open) setSheet(null); }} title="Appearance" value={chosenTheme}
       description="Jump restarts for a second to switch."
       options={[

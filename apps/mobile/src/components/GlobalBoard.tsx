@@ -1,15 +1,15 @@
 import { countryName, flag } from '@jump/shared/countries';
-import { formatDistance } from '@jump/shared/format';
+import { formatDistance, ordinal } from '@jump/shared/format';
 import type { AvatarStyle, Unit } from '@jump/shared/types';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { createContext, ReactNode, useContext, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Avatar, Button, Centered, ErrorNotice, haptic, HardShadow, Screen, Skeleton, Txt, VerifiedTick } from '@/components/ui';
+import { Avatar, Button, Centered, ErrorNotice, Footer, haptic, HardShadow, Screen, Skeleton, Txt, VerifiedTick } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useProfile, useUnit } from '@/lib/queries';
-import { brand, colors, GUTTER, radius, scheme, score, voltWash } from '@/lib/theme';
-import { ShareIcon } from './icons';
+import { brand, colors, fontFamily, GUTTER, radius, scheme, score, voltWash, wideLabel } from '@/lib/theme';
+import { FinishFlagIcon, ShareIcon } from './icons';
 import { ShareBoardSheet } from './ShareBoard';
 
 type BoardActivity = 'foot' | 'run' | 'walk' | 'cycle';
@@ -89,7 +89,28 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
   const meOutside = data?.me && !data.rows.some((row) => row.isMe);
   const leader = data?.rows[0]?.metres ?? 0;
 
-  return <Linkable.Provider value={!guest}><Screen refreshing={board.isRefetching} onRefresh={() => void board.refetch()}>
+  // Pinned under the board, like a competition's: where you stand, who's next to catch, and Go.
+  const bold = (text: string) => <Txt size={14} weight="bold" style={{ color: brand.paper }}>{text}</Txt>;
+  const standing = !guest && me ? <Footer style={{ borderTopWidth: 0, paddingTop: 8 }}>
+    <View style={[styles.race, scheme === 'dark' && { borderWidth: 1, borderColor: colors.line }]}>
+      <View style={{ alignItems: 'center', minWidth: 52 }}>
+        <Text style={[score(30), { color: brand.paper, lineHeight: 32 }]} numberOfLines={1} adjustsFontSizeToFit>{me.metres ? ordinal(me.rank) : '–'}</Text>
+        <Txt size={11} style={{ color: brand.onInkMuted }}>{global ? 'in the world' : country ? `in ${countryName(country)}` : 'here'}</Txt>
+      </View>
+      <Txt size={14} leading={1.4} style={{ flex: 1, color: brand.onInkMuted }}>
+        {!me.metres ? <>Your next {activity === 'cycle' ? 'ride' : 'walk or run'} puts you on the board.</>
+          : me.rank === 1 ? <>You’re on top{global ? ' of the world' : country ? ` of ${countryName(country)}` : ''}. Hold it.</>
+            : above ? <>{bold(formatDistance(Math.max(0, above.metres - me.metres), unit))} to pass {above.isMe ? 'the next runner' : above.displayName.split(' ')[0]}{data?.rows.some((row) => row.isMe) ? '.' : ' and reach the top 50.'}</>
+              : <>Keep moving to climb.</>}
+      </Txt>
+      <Pressable onPress={() => { haptic('medium'); router.navigate('/run'); }} accessibilityRole="button" accessibilityLabel="Go: record now" hitSlop={6}
+        style={({ pressed }) => [styles.raceGo, pressed && { transform: [{ scale: 0.94 }], opacity: 0.9 }]}>
+        <Text style={[wideLabel(13, 0.06), { color: brand.ink, fontFamily: fontFamily('extrabold', 'wide') }]}>Go</Text>
+      </Pressable>
+    </View>
+  </Footer> : undefined;
+
+  return <Linkable.Provider value={!guest}><Screen refreshing={board.isRefetching} onRefresh={() => void board.refetch()} footer={standing}>
     <Txt size={26} weight="extrabold">{guest ? 'Who’s moving' : 'Leaderboard'}</Txt>
     <Txt size={13} color="ink3" style={{ marginTop: 2, marginBottom: 16 }}>{`Verified distance${activity === 'foot' ? ' from runs and walks' : ''}${global && countries > 1 ? ` · runners from ${countries} countries` : ''}`}</Txt>
 
@@ -127,7 +148,7 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
     <ErrorNotice error={board.error} onRetry={() => void board.refetch()} />
     {board.isLoading ? <View style={{ gap: 12, marginTop: 16 }}><Skeleton style={{ height: 224, borderRadius: 24 }} /><Skeleton style={{ height: 288, borderRadius: radius['2xl'] }} /></View>
       : !data?.rows.length ? <View style={styles.empty}>
-        <Text style={{ fontSize: 36, textAlign: 'center' }}>{global ? '🌍' : country ? flag(country) : '🏁'}</Text>
+        {!global && country ? <Text style={{ fontSize: 36, textAlign: 'center' }}>{flag(country)}</Text> : <Centered><FinishFlagIcon size={36} color={colors.ink3} /></Centered>}
         <Txt size={15} weight="bold" align="center" style={{ marginTop: 12 }}>The top spot is open</Txt>
         <Txt size={13} color="ink3" align="center" style={{ marginTop: 4 }}>{`A verified ${activity === 'cycle' ? 'ride' : 'run or walk'} puts you on this board.`}</Txt>
         <Centered style={{ marginTop: 16 }}>
@@ -136,15 +157,11 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
       </View>
         : <View style={{ gap: 12, marginTop: 16 }}>
           <Podium rows={data.rows.slice(0, 3)} unit={unit} showFlag={global} />
-          {/* Where you stand and who's next to catch. */}
-          {me && <View style={styles.me}>
-            <Text style={score(28)}>#{me.rank}</Text>
-            <Txt size={13} leading={1.35} style={{ flex: 1 }}>
-              {me.rank === 1 ? `You’re on top${global ? ' of the world' : country ? ` of ${countryName(country)}` : ''}. Hold it.`
-                : above ? <><Txt size={13} weight="bold" num>{formatDistance(Math.max(0, above.metres - me.metres), unit)}</Txt>{` to pass ${above.isMe ? 'the next runner' : above.displayName.split(' ')[0]}${data.rows.some((row) => row.isMe) ? '' : ' and reach the top 50'}.`}</>
-                  : 'Keep moving to climb.'}
-            </Txt>
-            <Pressable onPress={() => router.navigate('/run')} style={styles.go} accessibilityRole="button"><Txt size={12} weight="bold" color="paper">Go</Txt></Pressable>
+          {/* Signed out, the board stops at the podium. */}
+          {guest && <View style={styles.guestMore}>
+            <Txt size={15} weight="bold" align="center">See the whole board</Txt>
+            <Txt size={13} color="ink2" align="center" style={{ marginTop: 4 }}>Join free to see everyone below the top three, and where you’d rank.</Txt>
+            <Centered style={{ marginTop: 12 }}><Button variant="dark" title="Join free" onPress={() => router.push('/register')} /></Centered>
           </View>}
           {(data.rows.length > 3 || meOutside) && <View style={styles.list}>
             {data.rows.slice(3).map((row, index) => <View key={row.userId} style={index > 0 ? styles.line : undefined}><BoardRowView row={row} unit={unit} leader={leader} showFlag={global} /></View>)}
@@ -158,6 +175,7 @@ export function GlobalBoard({ guest = false }: { guest?: boolean }) {
 const ME_WASH = voltWash(0.4);
 
 const styles = StyleSheet.create({
+  guestMore: { borderRadius: radius['2xl'], borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.ink3, padding: 20 },
   flag: { position: 'absolute', right: -4, bottom: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
   gap: { height: 4, borderRadius: 2, backgroundColor: 'rgba(18,18,18,0.07)', marginTop: 6, overflow: 'hidden' },
@@ -170,8 +188,8 @@ const styles = StyleSheet.create({
   period: { height: 32, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 14, justifyContent: 'center' },
   share: { marginLeft: 'auto', width: 32, paddingHorizontal: 0, alignItems: 'center' },
   empty: { marginTop: 16, borderRadius: radius['2xl'], borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.3)', paddingHorizontal: 16, paddingVertical: 48 },
-  me: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: scheme === 'dark' ? brand.volt : colors.edge, backgroundColor: ME_WASH, paddingHorizontal: 16, paddingVertical: 12 },
-  go: { borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 14, paddingVertical: 8 },
+  race: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 20, backgroundColor: brand.ink, paddingVertical: 14, paddingLeft: 16, paddingRight: 12 },
+  raceGo: { width: 56, height: 56, borderRadius: 28, backgroundColor: brand.volt, alignItems: 'center', justifyContent: 'center' },
   list: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
 });

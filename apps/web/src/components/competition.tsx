@@ -145,7 +145,7 @@ function DrawnBanner({ table, headline }: { table: CompetitionTable; headline: {
  * A competition card built to make you want in: what's at stake, the race itself (runners placed along a
  * track by score), who's in, how long is left, and one tap to join a free one.
  */
-export function CompetitionPreviewCard({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+export function CompetitionPreviewCard({ table, unit, now, tagged = false }: { table: CompetitionTable; unit: Unit; now: number; tagged?: boolean }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [joined, setJoined] = useState(false);
@@ -178,6 +178,11 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
     {table.bannerUrl ? <img src={table.bannerUrl} alt="" loading="lazy" className="-mx-4 -mt-4 mb-3.5 block aspect-[3/1] w-[calc(100%+2rem)] max-w-none bg-ink/5 object-cover" />
       : <DrawnBanner table={table} headline={hero} />}
     <Link to="/competitions/$code" params={{ code: table.code }} className="absolute inset-0 rounded-2xl" aria-label={`Open ${table.title}`} />
+    {/* In Explore, where events sit alongside: which kind this is. */}
+    {tagged && <p className="mb-2.5 flex items-center gap-2 text-[13px] text-ink-3">
+      <span className="wide rounded bg-ok-wash px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-ok">Competition</span>
+      <span className="truncate">{activityLabel(table)} · Virtual</span>
+    </p>}
 
     <div className="flex items-start gap-3">
       <ChallengeMark type={table.challengeType} code={table.code} size={40} />

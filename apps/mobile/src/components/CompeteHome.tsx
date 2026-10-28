@@ -1,8 +1,8 @@
 import { phaseLine, prizeLabel } from '@jump/shared/competition';
-import { formatCountdown, ordinal } from '@jump/shared/format';
+import { formatCountdown, formatDistance, ordinal } from '@jump/shared/format';
 import { formatGap, hasScored, towardLeader } from '@jump/shared/scoring';
 import { TEMPLATES } from '@jump/shared/templates';
-import type { ChallengeType, CompetitionTable, ScoringMethod, StandingRow, Unit } from '@jump/shared/types';
+import type { AvatarStyle, ChallengeType, CompetitionTable, ScoringMethod, StandingRow, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { ReactNode, useEffect, useState } from 'react';
@@ -15,7 +15,7 @@ import { keys, useDiscover, useStandings } from '@/lib/queries';
 import { brand, colors, fontFamily, radius, scheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { ChallengeMark, CompetitionPreviewCard, openCompetition } from './competition';
-import { ChevronRightIcon, PlusIcon, SearchIcon, UsersIcon } from './icons';
+import { ChevronRightIcon, LadderIcon, PlusIcon, SearchIcon, UsersIcon } from './icons';
 import { Avatar, ErrorNotice, haptic, HardShadow, Skeleton, Txt } from './ui';
 
 export type MyCompetition = {
@@ -365,31 +365,38 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   </Pressable>;
 }
 
+type BoardRow = { rank: number; userId: string; metres: number; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; isMe: boolean };
+
 /**
- * Under the summary, like the competition page's bar: one line on what a run would do in your featured
- * race, and a round Go to record. Volt Go on a dark page; ink with volt lettering on a light one.
+ * Under Go on Home: where you stand on this week's global board, the top three's faces, and the gap to
+ * the runner just above you. Tapping opens the full leaderboard.
  */
-export function GoBar({ unit, now }: { unit: Unit; now: number }) {
-  const mine = useMyCompetitions();
-  const live = (mine.data ?? []).filter((table) => LIVE_STATUSES.includes(table.status) && (!table.scoringClosesAt || new Date(table.scoringClosesAt).getTime() > now));
-  const race = heroRace(live);
-  const my = race ? scoreOf(race.myScore) : null;
-  const ahead = race ? scoreOf(race.aheadScore) : null;
-  const behind = race ? scoreOf(race.behindScore) : null;
-  const bold = (text: string | null) => <Txt size={14} weight="bold" style={{ color: SUMMARY.text }}>{text}</Txt>;
-  const line = !race ? <>Every walk and run counts toward your league.</>
-    : !hasScored(race.scoringMethod, my) ? <>Your first run puts you on the board in {bold(race.title)}.</>
-      : race.myRank === 1
-        ? behind !== null && behind !== my && race.behindName ? <>{bold(formatGap(race, behind, my!, unit))} ahead of {firstName(race.behindName)}. Keep the gap.</> : <>Out in front. Keep it that way.</>
-        : ahead !== null && race.aheadName ? (ahead === my ? <>Level with {firstName(race.aheadName)}. One run breaks the tie.</> : <>{bold(formatGap(race, my!, ahead, unit))} to pass {firstName(race.aheadName)}.</>)
-          : <>Every run counts.</>;
-  return <View style={styles.goBar}>
-    <Txt size={14} leading={1.4} style={{ flex: 1, color: SUMMARY.muted }}>{line}</Txt>
-    <Pressable onPress={() => { haptic('medium'); router.navigate('/run'); }} accessibilityRole="button" accessibilityLabel="Go: record now" hitSlop={6}
-      style={({ pressed }) => [styles.go, pressed && { transform: [{ scale: 0.94 }], opacity: 0.9 }]}>
-      <Text style={styles.goText}>Go</Text>
-    </Pressable>
-  </View>;
+export function LeaderboardPeek({ unit }: { unit: Unit }) {
+  const board = useQuery({ queryKey: ['leaderboard', 'foot', 'week', 'global', 50], queryFn: () => api<{ rows: BoardRow[]; me: BoardRow | null }>('/leaderboard?activity=foot&period=week&scope=global&limit=50'), staleTime: 60_000 });
+  const rows = board.data?.rows ?? [];
+  const me = board.data?.me ?? null;
+  const above = me ? rows.find((row) => row.rank === me.rank - 1) ?? null : null;
+  const line = !board.data ? ' '
+    : !me || !me.metres ? 'Walk or run this week to get on the board.'
+      : me.rank === 1 ? 'You’re top of the world this week.'
+        : above ? `${formatDistance(Math.max(0, above.metres - me.metres) + 10, unit)} to pass ${above.displayName.split(' ')[0]}`
+          : 'Keep moving to climb.';
+  return <Pressable onPress={() => { haptic(); router.push('/leaderboard'); }} accessibilityRole="link" accessibilityLabel="Open the leaderboard"
+    style={({ pressed }) => [styles.peek, pressed && { opacity: 0.85 }]}>
+    <View style={styles.peekRank}>
+      {me && me.metres ? <Text style={styles.peekNumber} numberOfLines={1} adjustsFontSizeToFit>{`#${me.rank}`}</Text> : <LadderIcon size={22} color={brand.ink} />}
+    </View>
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Txt size={11} weight="bold" upper tracking={0.08} color="ink3">Leaderboard · this week</Txt>
+      <Txt size={14} weight="semibold" numberOfLines={1} style={{ marginTop: 2 }}>{line}</Txt>
+    </View>
+    <View style={{ flexDirection: 'row' }}>
+      {rows.slice(0, 3).map((row, index) => <View key={row.userId} style={{ marginLeft: index ? -10 : 0, borderRadius: 16, borderWidth: 2, borderColor: colors.card }}>
+        <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={28} round />
+      </View>)}
+    </View>
+    <ChevronRightIcon size={16} color={colors.ink3} />
+  </Pressable>;
 }
 
 const WHO_ICONS: Record<string, ReactNode> = {
@@ -442,8 +449,8 @@ const styles = StyleSheet.create({
   lineFill: { height: 6, borderRadius: 3, backgroundColor: SUMMARY.accent },
   mark: { borderRadius: 15, borderWidth: 2, borderColor: SUMMARY.card },
   heroButton: { marginTop: 20, height: 48, borderRadius: radius.full, backgroundColor: dark ? brand.volt : brand.ink, alignItems: 'center', justifyContent: 'center' },
-  goBar: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 20, borderWidth: 1, borderColor: SUMMARY.edge, backgroundColor: SUMMARY.card, paddingVertical: 12, paddingLeft: 16, paddingRight: 12 },
-  go: { width: 56, height: 56, borderRadius: 28, backgroundColor: dark ? brand.volt : brand.ink, alignItems: 'center', justifyContent: 'center' },
-  goText: { fontFamily: fontFamily('extrabold', 'wide'), fontSize: 13, letterSpacing: 0.8, textTransform: 'uppercase', color: dark ? brand.ink : brand.volt },
+  peek: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingVertical: 12, paddingLeft: 12, paddingRight: 12 },
+  peekRank: { width: 48, height: 48, borderRadius: 14, backgroundColor: brand.volt, borderWidth: 2, borderColor: brand.ink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  peekNumber: { fontFamily: fontFamily('black', 'narrow'), fontSize: 22, color: brand.ink },
   who: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
 });

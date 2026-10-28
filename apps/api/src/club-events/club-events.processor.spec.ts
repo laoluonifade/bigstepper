@@ -1,5 +1,5 @@
 import { dayReminder, hourReminder } from './club-events.processor';
-import { clockLabel, whenLabel } from './club-events.service';
+import { clockLabel, passCode, whenLabel } from './club-events.service';
 
 describe('club event reminders', () => {
   const event = { id: 'e1', title: 'Saturday Social 5K', venue: 'Muri Okunola Park', timeZone: 'Africa/Lagos', clubName: 'Lagos Run Club', nextAt: '2026-10-31T06:00:00Z' };
@@ -22,6 +22,17 @@ describe('club event reminders', () => {
   it('describes the schedule', () => {
     expect(clockLabel('18:30')).toBe('6:30 pm');
     expect(clockLabel('00:05')).toBe('12:05 am');
-    expect(whenLabel({ weekday: 6, startTime: '07:00' })).toBe('Saturdays at 7:00 am');
+    expect(whenLabel({ repeat: 'weekly', weekdays: [6], startsOn: '2026-10-31', startTime: '07:00' })).toBe('Saturdays at 7:00 am');
+    expect(whenLabel({ repeat: 'weekly', repeatEvery: 2, weekdays: [4, 2], startsOn: '2026-10-27', startTime: '06:30', endsOn: '2026-12-20' }))
+      .toBe('every other week on Tuesday and Thursday at 6:30 am, until 20 Dec');
+    expect(whenLabel({ repeat: 'daily', repeatEvery: 3, startsOn: '2026-10-31', startTime: '07:00' })).toBe('every 3 days at 7:00 am');
+    expect(whenLabel({ repeat: 'monthly', monthMode: 'date', startsOn: '2026-10-22', startTime: '07:00' })).toBe('the 22nd of every month at 7:00 am');
+    expect(whenLabel({ repeat: 'monthly', repeatEvery: 2, monthMode: 'weekday', monthWeek: 5, startsOn: '2026-10-31', startTime: '07:00' })).toBe('the last Saturday of every 2 months at 7:00 am');
+    expect(whenLabel({ repeat: 'once', startsOn: '2026-11-14', startTime: '06:30' })).toBe('Saturday 14 Nov at 6:30 am');
+  });
+
+  it('issues pass codes from letters that can’t be misread', () => {
+    expect(passCode(() => 0)).toBe('JMP-AAAAAA');
+    expect(passCode()).toMatch(/^JMP-[A-HJ-NP-Z2-9]{6}$/);
   });
 });

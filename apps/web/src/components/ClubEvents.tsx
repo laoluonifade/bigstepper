@@ -1,13 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, patch, post } from '../lib/api';
-import { ACTIVITY_OPTIONS, clockLabel, clubEventsKey, DAY_OPTIONS, deviceTimeZone, distanceAway, durationLabel, EVENT_NOUN, eventKey, MAX_DURATION, MIN_DURATION, nextLabel, WEEKDAYS, type ClubEvent, type EventActivity, type EventInput, type Place } from '../lib/club-events';
+import { formatDistance } from '../lib/format';
+import { ACTIVITY_OPTIONS, ACTIVITY_WORD, clockLabel, clubEventsKey, dateLabel, deviceTimeZone, distanceAway, durationLabel, EVENT_NOUN, eventKey, MAX_DURATION, MIN_DURATION, nextLabel, posterTime, repeatRule, todayIso, WEEKDAYS, type ClubEvent, type EventActivity, type EventInput, type Place, type Schedule } from '../lib/club-events';
 import { getCurrentPosition } from '../lib/geo';
 import { toast } from '../lib/toast';
 import type { Unit } from '../lib/types';
-import { PinIcon, PlusIcon, RepeatIcon, SearchIcon } from './icons';
+import { CalendarIcon, CameraIcon, CheckIcon, CloseIcon, PinIcon, PlusIcon, RepeatIcon, SearchIcon, TicketIcon, UsersIcon } from './icons';
+import { DateTimePicker } from './DateTimePicker';
+import { prepare } from './Profile';
 import { Dropdown } from './Dropdown';
+import { RepeatEditor, scheduleFor } from './RepeatEditor';
 import { Modal } from './Modal';
 import { Avatar, cx, ErrorNotice, Field, SectionTitle, useNow } from './ui';
 
@@ -18,16 +22,16 @@ export function onAccent(hex = '#FF5A1F') {
 }
 
 /** The day-and-time block in the club's colour: "SAT / 7:00am", like a sticker on a noticeboard. */
-export function EventStamp({ event, size = 'md' }: { event: Pick<ClubEvent, 'weekday' | 'startTime' | 'club'>; size?: 'md' | 'lg' }) {
+export function EventStamp({ event, size = 'md' }: { event: Pick<ClubEvent, 'weekday' | 'startTime' | 'club' | 'repeat' | 'startsOn'>; size?: 'md' | 'lg' }) {
   const accent = event.club.accentColor || '#FF5A1F';
   const big = size === 'lg';
   return <span className={cx('flex shrink-0 -rotate-3 flex-col items-center justify-center rounded-lg border-2 border-ink px-1.5 shadow-hard-sm', big ? 'w-[92px] py-3' : 'w-16 py-2')} style={{ backgroundColor: accent, color: onAccent(accent) }}>
-    <span className={cx('wide font-extrabold uppercase tracking-[0.08em]', big ? 'text-[15px]' : 'text-[11px]')}>{WEEKDAYS[event.weekday].slice(0, 3)}</span>
+    <span className={cx('wide font-extrabold uppercase tracking-[0.08em]', big ? 'text-[15px]' : 'text-[11px]')}>{event.repeat === 'once' ? dateLabel(event.startsOn).slice(4) : WEEKDAYS[event.weekday].slice(0, 3)}</span>
     <span className={cx('wide mt-0.5 whitespace-nowrap font-black', big ? 'text-[20px]' : 'text-[14px]')}>{clockLabel(event.startTime).replace(' ', '')}</span>
   </span>;
 }
 
-/** One weekly club event in a list: when, what, where, who's coming. */
+/** One club event in a list: when, what, where, who's coming. */
 export function EventCard({ event, showClub = true }: { event: ClubEvent; showClub?: boolean }) {
   const now = useNow(60_000);
   const next = nextLabel(event, now);
@@ -46,13 +50,76 @@ export function EventCard({ event, showClub = true }: { event: ClubEvent; showCl
           {event.faces.slice(0, 4).map((face, index) => <span key={index} className={cx('rounded-full border-2 border-card', index > 0 && '-ml-2')}><Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={22} className="rounded-full" /></span>)}
         </span>}
         <span className="num flex-1 text-[12px] text-ink-2">{event.attendeeCount ? `${event.attendeeCount} going` : 'Be the first to join'}</span>
-        {event.going && <span className="wide inline-flex items-center gap-1 rounded-full bg-volt px-2 py-1 text-[10px] font-extrabold uppercase text-ink"><RepeatIcon size={11} />Going</span>}
+        {event.going && <span className="wide inline-flex items-center gap-1 rounded-full bg-volt px-2 py-1 text-[10px] font-extrabold uppercase text-ink"><TicketIcon size={11} />Pass</span>}
       </span>
     </span>
   </Link>;
 }
 
-/** On a club's page: its weekly runs, and for managers a way to add one. */
+/** The event's photo, or the club's colour with running lanes and the day when there isn't one. */
+export function EventCover({ event, className }: { event: Pick<ClubEvent, 'coverUrl' | 'club' | 'startTime' | 'startsOn'> & Schedule; className?: string }) {
+  const accent = event.club.accentColor || '#FF5A1F';
+  const ink = onAccent(accent);
+  if (event.coverUrl) return <img src={event.coverUrl} alt="" loading="lazy" className={cx('block aspect-video w-full bg-ink/5 object-cover', className)} />;
+  return <div className={cx('relative flex aspect-video w-full flex-col items-center justify-center overflow-hidden', className)} style={{ backgroundColor: accent, color: ink }}>
+    <svg className="absolute inset-0 h-full w-full opacity-[0.18]" viewBox="0 0 400 220" preserveAspectRatio="none" aria-hidden="true">
+      {[0, 1, 2, 3, 4, 5].map((lane) => <path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
+    </svg>
+    <span className="wide relative text-[13px] font-extrabold uppercase tracking-[0.08em] opacity-80">{repeatRule(event)}</span>
+    <span className="wide relative mt-0.5 text-[40px] font-black leading-none">{clockLabel(event.startTime).replace(' ', '').toUpperCase()}</span>
+  </div>;
+}
+
+/** Getting a pass to an event from wherever it's listed: one click in, with reminders before each session. */
+export function useEventRsvp(event: ClubEvent) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => post<ClubEvent>(`/events/${event.id}/join`),
+    async onSuccess(next) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['club-events'] }),
+        queryClient.invalidateQueries({ queryKey: eventKey(next.id) }),
+        queryClient.invalidateQueries({ queryKey: clubEventsKey(next.club.slug) }),
+      ]);
+      toast({ tone: 'ok', title: 'You’ve got a pass', message: 'It’s on the event page. Jump reminds you the day before and an hour before.' });
+    },
+    onError: (error) => toast({ tone: 'bad', message: error.message }),
+  });
+}
+
+/** An event in Explore, like a poster: photo, what and when, where, who's coming, and RSVP. */
+export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit }) {
+  const now = useNow(60_000);
+  const next = nextLabel(event, now);
+  const rsvp = useEventRsvp(event);
+  const away = distanceAway(event.distanceKm);
+  const where = [event.venue, event.distanceMetres ? `${formatDistance(event.distanceMetres, unit)} ${EVENT_NOUN[event.activity].toLowerCase()}` : away].filter(Boolean).join(' · ');
+  const going = event.going || rsvp.isSuccess;
+  return <article className="relative overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card transition-shadow hover:shadow-hard-sm">
+    <Link to="/events/$id" params={{ id: event.id }} className="absolute inset-0 z-[1] rounded-2xl" aria-label={`Open event: ${event.title}`} />
+    <div className="relative">
+      <EventCover event={event} />
+      <span className="absolute bottom-3 left-3 max-w-[70%] truncate rounded-full bg-ink/70 px-3 py-1.5 text-[13px] font-semibold text-paper">{event.club.name}</span>
+    </div>
+    <div className="space-y-2 p-4">
+      <p className="flex items-center gap-2 text-[13px] text-ink-3">
+        <span className="wide rounded bg-[#4DA3FF]/15 px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#1F6FD1]">Event</span>
+        <span className="truncate">{ACTIVITY_WORD[event.activity]} · In person</span>
+      </p>
+      <h3 className="line-clamp-2 text-[20px] font-bold leading-tight">{event.title}</h3>
+      <p className={cx('flex items-center gap-2 text-[14px]', next.live ? 'font-semibold text-track' : 'text-ink-2')}><CalendarIcon size={15} className="shrink-0" />{next.live ? `Happening now · ${posterTime(event)}` : posterTime(event)}</p>
+      <p className="flex items-center gap-2 text-[14px] text-ink-2"><PinIcon size={15} className="shrink-0 text-ink-3" /><span className="truncate">{where}</span></p>
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <span className="num flex items-center gap-2 text-[14px] text-ink-2"><UsersIcon size={15} className="text-ink-3" />{event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending</span>
+        {going
+          ? <span className="inline-flex items-center gap-1.5 rounded-full bg-volt px-4 py-2 text-[14px] font-bold text-ink"><CheckIcon size={14} />Going</span>
+          : <button type="button" className="relative z-[2] rounded-full bg-ink px-5 py-2 text-[14px] font-bold text-paper transition-transform active:scale-95 disabled:opacity-60" disabled={rsvp.isPending} onClick={() => rsvp.mutate()}>{rsvp.isPending ? 'Joining…' : 'RSVP'}</button>}
+      </div>
+    </div>
+  </article>;
+}
+
+/** On a club's page: its upcoming events, and for managers a way to add one. */
 export function ClubEventsSection({ club, manager, unit }: { club: { slug: string }; manager: boolean; unit: Unit }) {
   const events = useQuery({ queryKey: clubEventsKey(club.slug), queryFn: () => api<ClubEvent[]>(`/clubs/${club.slug}/events`) });
   const [adding, setAdding] = useState(false);
@@ -60,13 +127,13 @@ export function ClubEventsSection({ club, manager, unit }: { club: { slug: strin
   if (!list.length && !manager) return null;
   return <section className="mt-6">
     {list.length ? <>
-      <SectionTitle aside={manager ? <button type="button" className="inline-flex items-center gap-1 text-[13px] font-bold hover:text-track" onClick={() => setAdding(true)}><PlusIcon size={14} />Add</button> : `${list.length}`}>Weekly runs</SectionTitle>
+      <SectionTitle aside={manager ? <button type="button" className="inline-flex items-center gap-1 text-[13px] font-bold hover:text-track" onClick={() => setAdding(true)}><PlusIcon size={14} />Add</button> : `${list.length}`}>Events</SectionTitle>
       <div className="grid gap-3 sm:grid-cols-2">{list.map((event) => <EventCard key={event.id} event={event} showClub={false} />)}</div>
     </> : <button type="button" onClick={() => setAdding(true)} className="flex w-full items-center gap-3 rounded-2xl border-[1.5px] border-dashed border-ink-3 p-3.5 text-left hover:bg-ink/[0.03]">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-volt text-ink"><RepeatIcon size={18} /></span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[14px] font-bold">Add your weekly run</span>
-        <span className="block text-[12.5px] text-ink-2">Put your regular meet-ups on the map. Runners nearby can find them and get a reminder every week.</span>
+        <span className="block text-[14px] font-bold">Add an event</span>
+        <span className="block text-[12.5px] text-ink-2">Your weekly run, a monthly long run or a one-off race day. Runners nearby find it, get a pass and a reminder.</span>
       </span>
       <PlusIcon size={16} />
     </button>}
@@ -76,13 +143,16 @@ export function ClubEventsSection({ club, manager, unit }: { club: { slug: strin
 
 const MILE = 1609.344;
 
-/** Add a weekly run to a club (`club`), or edit one (`event`). */
+/** Add an event to a club (`club`), or edit one (`event`): what, when (once or on repeat), and where to meet. */
 export function EventForm({ club, event, unit, onClose }: { club?: string; event?: ClubEvent; unit: Unit; onClose: () => void }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [title, setTitle] = useState(event?.title ?? '');
   const [activity, setActivity] = useState<EventActivity>(event?.activity ?? 'run');
-  const [weekday, setWeekday] = useState(event?.weekday ?? 6);
+  const [startsOn, setStartsOn] = useState(event?.startsOn ?? todayIso());
+  const [schedule, setSchedule] = useState<Schedule>(() => event
+    ? { repeat: event.repeat, repeatEvery: event.repeatEvery, weekdays: event.weekdays, monthMode: event.monthMode, monthWeek: event.monthWeek, endsOn: event.endsOn }
+    : scheduleFor('once', todayIso()));
   const [time, setTime] = useState(event?.startTime ?? '07:00');
   const [hours, setHours] = useState(String(Math.floor((event?.durationMinutes ?? 60) / 60)));
   const [minutes, setMinutes] = useState(String((event?.durationMinutes ?? 60) % 60));
@@ -91,23 +161,36 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
   const [place, setPlace] = useState<Place | null>(event ? { name: event.venue, address: event.address ?? '', latitude: event.latitude, longitude: event.longitude } : null);
   const [venue, setVenue] = useState(event?.venue ?? '');
   const [search, setSearch] = useState('');
+  // Once a place is picked, the search and "I'm there now" step aside until Change is clicked.
+  const [changing, setChanging] = useState(false);
   const [results, setResults] = useState<Place[] | null>(null);
   const [finding, setFinding] = useState<'search' | 'here' | null>(null);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  const [cover, setCover] = useState<File | null>(null);
+  const coverPreview = useMemo(() => (cover ? URL.createObjectURL(cover) : null), [cover]);
+  useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
   const timeZone = event?.timeZone ?? deviceTimeZone();
 
-  async function findPlaces() {
+  // Places load as you type: a short pause after the last key, and only the newest search counts.
+  useEffect(() => {
     const query = search.trim();
-    if (query.length < 2) return;
-    setFinding('search'); setPlaceError(null);
-    try {
-      const found = await api<Place[]>(`/geo/search?q=${encodeURIComponent(query)}${place ? `&lat=${place.latitude}&lon=${place.longitude}` : ''}`);
-      setResults(found);
-      if (!found.length) setPlaceError('Nothing found. Try the park, street or landmark name with the town.');
-    } catch { setPlaceError('Couldn’t search right now. Try again.'); }
-    finally { setFinding(null); }
-  }
+    if (query.length < 3) { setResults(null); return; }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setFinding('search'); setPlaceError(null);
+      api<Place[]>(`/geo/search?q=${encodeURIComponent(query)}${place ? `&lat=${place.latitude}&lon=${place.longitude}` : ''}`, { signal: controller.signal })
+        .then((found) => {
+          setResults(found);
+          if (!found.length) setPlaceError('Nothing found yet. Try the park, street or landmark name with the town.');
+        })
+        .catch(() => { if (!controller.signal.aborted) setPlaceError('Couldn’t search right now. Keep typing, or use where you are.'); })
+        .finally(() => { if (!controller.signal.aborted) setFinding(null); });
+    }, 450);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+    // The pin only biases results; moving it shouldn't search again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   async function pinHere() {
     setFinding('here'); setPlaceError(null);
@@ -121,6 +204,7 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
   }
 
   function choose(next: Place) {
+    setChanging(false);
     setPlace(next);
     if (next.name) setVenue(next.name);
     setResults(null);
@@ -138,12 +222,23 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
           : null;
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const input: EventInput = {
-        title: title.trim(), activity, weekday, startTime: time, timeZone, durationMinutes: duration, distanceMetres,
+        title: title.trim(), activity, ...schedule, startsOn, startTime: time, timeZone, durationMinutes: duration, distanceMetres,
         venue: venue.trim(), address: place?.address.trim() || null, latitude: place!.latitude, longitude: place!.longitude, notes: notes.trim() || null,
       };
-      return event ? patch<ClubEvent>(`/events/${event.id}`, input) : post<ClubEvent>(`/clubs/${club}/events`, input);
+      const saved = await (event ? patch<ClubEvent>(`/events/${event.id}`, input) : post<ClubEvent>(`/clubs/${club}/events`, input));
+      if (!cover) return saved;
+      // The event is saved either way; a photo that fails to upload can be added again from Edit.
+      try {
+        const form = new FormData();
+        const blob = await prepare(cover, 2000);
+        form.append('file', blob, blob === cover ? cover.name : 'cover.jpg');
+        return await api<ClubEvent>(`/events/${saved.id}/cover`, { method: 'POST', body: form });
+      } catch {
+        toast({ tone: 'warn', message: 'Saved, but the cover photo didn’t upload. Try it again from Edit.' });
+        return saved;
+      }
     },
     async onSuccess(saved) {
       queryClient.setQueryData(eventKey(saved.id), saved);
@@ -152,7 +247,7 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
         queryClient.invalidateQueries({ queryKey: eventKey(saved.id) }),
         queryClient.invalidateQueries({ queryKey: ['club-events'] }),
       ]);
-      toast({ tone: 'ok', title: event ? 'Saved' : 'Your weekly run is live', message: event ? 'Everyone going sees the update.' : 'Members and followers just heard about it. Share it to bring more people.' });
+      toast({ tone: 'ok', title: event ? 'Saved' : 'Your event is live', message: event ? 'Everyone going sees the update.' : 'Members and followers just heard about it. Share it to bring more people.' });
       onClose();
       if (!event) void navigate({ to: '/events/$id', params: { id: saved.id } });
     },
@@ -164,25 +259,37 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
     if (!problem) save.mutate();
   }
 
-  return <Modal title={event ? 'Edit weekly run' : 'New weekly run'} onClose={onClose}>
+  return <Modal title={event ? 'Edit event' : 'New event'} onClose={onClose}>
     <form className="space-y-5" onSubmit={submit}>
-      <Field label="Name" error={tried && title.trim().length < 2 ? 'Add a name for the run' : undefined}>
+      <label className="relative block cursor-pointer overflow-hidden rounded-2xl border-[1.5px] border-line hover:border-ink">
+        <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) setCover(file); }} />
+        {coverPreview ? <img src={coverPreview} alt="Cover preview" className="block aspect-video w-full object-cover" />
+          : event ? <EventCover event={event} />
+            : <span className="flex aspect-video flex-col items-center justify-center gap-1.5 bg-ink/[0.04] text-center"><CameraIcon size={26} className="text-ink-2" /><span className="text-[14px] font-bold">Add a cover photo</span><span className="text-[12.5px] text-ink-3">A crowd shot from your last run works best.</span></span>}
+        {(coverPreview || event) && <span className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-1.5 rounded-full bg-ink/70 px-3 py-1.5 text-[12.5px] font-bold text-paper"><CameraIcon size={14} />{coverPreview || event?.coverUrl ? 'Change photo' : 'Add a photo'}</span>}
+      </label>
+      <Field label="Name" error={tried && title.trim().length < 2 ? 'Add a name for the event' : undefined}>
         {(props) => <input {...props} autoFocus className="field" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Saturday Social 5K" />}
       </Field>
       <Field label="What kind of session is it?">
         {(props) => <Dropdown id={props.id} value={activity} onChange={setActivity} options={ACTIVITY_OPTIONS.map((option) => ({ value: option.value, label: option.label, hint: option.detail }))} />}
       </Field>
-      <Field label="Which day does it happen each week?">
-        {(props) => <Dropdown id={props.id} value={String(weekday)} onChange={(day) => setWeekday(Number(day))} options={DAY_OPTIONS} />}
+      <Field label={schedule.repeat === 'once' ? 'When is it?' : 'When is the first one?'} hint={timeZone === deviceTimeZone() ? undefined : `In the meeting point’s time zone (${timeZone}).`}>
+        {(props) => <DateTimePicker {...props} value={`${startsOn}T${time}`} min={event ? undefined : `${todayIso()}T00:00`}
+          onChange={(value) => {
+            if (!value) return;
+            const day = value.slice(0, 10);
+            setTime(value.slice(11, 16));
+            if (day === startsOn) return;
+            setStartsOn(day);
+            // A new first date carries the schedule with it: its weekday, its week of the month.
+            setSchedule((now) => scheduleFor(now.repeat, day, { ...now, weekdays: now.weekdays.length > 1 ? now.weekdays : [] }));
+          }} />}
       </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="What time does it start?" hint={timeZone === deviceTimeZone() ? undefined : `Meeting point’s time (${timeZone})`}>
-          {(props) => <input {...props} type="time" step={300} className="field" value={time} onChange={(e) => e.target.value && setTime(e.target.value.slice(0, 5))} />}
-        </Field>
-        <Field label={`Distance (${unit})`} optional>
-          {(props) => <input {...props} inputMode="decimal" className="field" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="5" />}
-        </Field>
-      </div>
+      <RepeatEditor value={schedule} startsOn={startsOn} startTime={time} onChange={setSchedule} />
+      <Field label={`Distance (${unit})`} optional>
+        {(props) => <input {...props} inputMode="decimal" className="field" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="5" />}
+      </Field>
       <div>
         <p className="label">How long does it usually last?</p>
         <div className="grid grid-cols-2 gap-3">
@@ -204,16 +311,17 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
           <div className="min-w-0 flex-1 space-y-1.5">
             <input className="field" aria-label="Meeting point name" maxLength={120} value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. Main gate, Muri Okunola Park" />
             {place.address && <p className="text-[12.5px] text-ink-2">{place.address}</p>}
-            <p className="num text-[12px] text-ink-3">{place.latitude.toFixed(5)}, {place.longitude.toFixed(5)}</p>
+            {!changing && <button type="button" className="text-[13px] font-bold underline underline-offset-2" onClick={() => setChanging(true)}>Change</button>}
           </div>
         </div>}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
-            <input className="field pl-9" aria-label="Search for the meeting point" value={search} onChange={(e) => { setSearch(e.target.value); setPlaceError(null); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void findPlaces(); } }} placeholder={place ? 'Search to move the pin' : 'Search a park, street or landmark'} />
-          </div>
-          <button type="button" className="btn-dark" disabled={search.trim().length < 2 || finding === 'search'} onClick={() => void findPlaces()}>{finding === 'search' ? 'Finding…' : 'Find'}</button>
+        {(!place || changing) && <>
+        <div className="relative">
+          <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+          <input className="field pl-9 pr-10" aria-label="Search for the meeting point" autoComplete="off" value={search} onChange={(e) => { setSearch(e.target.value); setPlaceError(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} autoFocus={changing} placeholder={place ? 'Search a different place' : 'Search a park, street or landmark'} />
+          {finding === 'search'
+            ? <span className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-ink-3 border-t-transparent" aria-label="Searching" />
+            : search && <button type="button" className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-ink-3 hover:text-ink" aria-label="Clear search" onClick={() => setSearch('')}><CloseIcon size={14} /></button>}
         </div>
         {placeError && <p className="hint font-semibold text-bad">{placeError}</p>}
         {results && results.length > 0 && <ul className="mt-2 divide-y divide-line overflow-hidden rounded-lg border-[1.5px] border-line bg-card">
@@ -225,7 +333,10 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
           </li>)}
         </ul>}
         <button type="button" className="btn-secondary btn-sm mt-3" disabled={finding === 'here'} onClick={() => void pinHere()}><PinIcon size={14} />{finding === 'here' ? 'Locating…' : 'I’m there now: use my location'}</button>
-        <p className="hint">Runners nearby find your run by this pin, and Directions takes them straight to it.</p>
+        {changing
+          ? <button type="button" className="mt-2 block text-[13px] font-semibold text-ink-3 hover:text-ink" onClick={() => { setChanging(false); setSearch(''); }}>Keep {venue || 'this place'}</button>
+          : <p className="hint">Runners nearby find your event by this spot, and Directions takes them straight to it.</p>}
+        </>}
       </div>
       <Field label="Notes" optional>
         {(props) => <textarea {...props} className="field" maxLength={600} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Pace groups, where to leave bags, what happens after…" />}
@@ -233,7 +344,7 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
       <ErrorNotice error={save.error} />
       <div className="sticky bottom-0 -mx-5 border-t border-line bg-card px-5 pb-1 pt-3">
         {tried && problem && <p className="mb-2 text-center text-[12.5px] font-semibold text-bad">{problem} to post it.</p>}
-        <button type="submit" className="btn-primary w-full" disabled={save.isPending}>{save.isPending ? 'Saving…' : event ? 'Save changes' : 'Post weekly run'}</button>
+        <button type="submit" className="btn-primary w-full" disabled={save.isPending}>{save.isPending ? 'Saving…' : event ? 'Save changes' : 'Post event'}</button>
       </div>
     </form>
   </Modal>;

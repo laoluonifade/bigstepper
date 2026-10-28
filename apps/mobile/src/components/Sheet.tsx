@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Keyboard, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,7 +12,8 @@ const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
 /**
  * A bottom sheet you can drag down to close: the phone version of the web's vaul Sheet. For settings that
  * would otherwise make a form scroll on and on: the form keeps a one-line summary, the detail lives here.
- * The footer stays pinned above the keyboard and the home indicator.
+ * The footer stays pinned above the keyboard and the home indicator. With the keyboard up, the sheet
+ * shrinks to the space above it (its content scrolls) rather than sliding its top off the screen.
  */
 export function Sheet({ open, onOpenChange, title, description, children, footer, scroll = true }: {
   open: boolean;
@@ -28,6 +29,15 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(open);
   const offset = useSharedValue(height);
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    if (!mounted) return;
+    const ios = Platform.OS === 'ios';
+    const ease = (duration?: number) => { if (ios) LayoutAnimation.configureNext({ duration: duration || 250, update: { type: LayoutAnimation.Types.keyboard } }); };
+    const shown = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', (event) => { ease(event.duration); setKeyboard(event.endCoordinates.height); });
+    const hidden = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', (event) => { ease(event?.duration); setKeyboard(0); });
+    return () => { shown.remove(); hidden.remove(); };
+  }, [mounted]);
 
   useEffect(() => {
     if (open) {
@@ -63,8 +73,8 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }, scrimStyle]}>
         <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Close" />
       </Animated.View>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.anchor} pointerEvents="box-none">
-        <Animated.View style={[styles.sheet, { maxHeight: height * 0.92 - insets.top }, sheetStyle]} accessibilityViewIsModal>
+      <View style={[styles.anchor, { paddingBottom: keyboard }]} pointerEvents="box-none">
+        <Animated.View style={[styles.sheet, { maxHeight: keyboard ? height - keyboard - insets.top - 12 : height * 0.92 - insets.top }, sheetStyle]} accessibilityViewIsModal>
           <GestureDetector gesture={drag}>
             <View>
               <View style={styles.handle} />
@@ -80,11 +90,11 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
             </View>
           </GestureDetector>
           {scroll
-            ? <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingHorizontal: GUTTER + 4, paddingBottom: footer ? 20 : Math.max(insets.bottom, 20) }} keyboardShouldPersistTaps="handled" bounces={false}>{children}</ScrollView>
+            ? <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingHorizontal: GUTTER + 4, paddingBottom: footer || keyboard ? 20 : Math.max(insets.bottom, 20) }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" bounces={false}>{children}</ScrollView>
             : <View style={{ flexShrink: 1, paddingBottom: footer ? 0 : insets.bottom }}>{children}</View>}
-          {footer ? <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>{footer}</View> : null}
+          {footer ? <View style={[styles.footer, { paddingBottom: keyboard ? 12 : Math.max(insets.bottom, 12) }]}>{footer}</View> : null}
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
     </GestureHandlerRootView>
   </Modal>;
 }

@@ -38,7 +38,7 @@ function SetupForm({ profile }: { profile: Profile }) {
     }),
     onSuccess(updated) {
       queryClient.setQueryData(keys.profile, updated);
-      void navigate({ to: '/welcome' });
+      void navigate({ to: '/interests' });
     },
   });
   function submit(event: FormEvent) {

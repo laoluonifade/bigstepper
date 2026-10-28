@@ -46,6 +46,8 @@ export class ProfilesService {
       changes.displayName = name;
     }
     if (input.preferredUnit !== undefined) changes.preferredUnit = input.preferredUnit;
+    if (input.exploreLens !== undefined) changes.exploreLens = input.exploreLens;
+    if (input.interests !== undefined) changes.interests = [...new Set(input.interests)];
     if (input.countryCode !== undefined) changes.countryCode = input.countryCode;
     if (input.gender !== undefined) changes.gender = input.gender;
     if (input.whatsappNumber !== undefined) changes.whatsappNumber = input.whatsappNumber || null;

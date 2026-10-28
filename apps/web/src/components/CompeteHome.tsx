@@ -2,15 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { api, post } from '../lib/api';
-import { formatCountdown, ordinal } from '../lib/format';
+import { formatCountdown, formatDistance, ordinal } from '../lib/format';
 import { useUser } from '../lib/auth';
 import { keys, useDiscover, useStandings } from '../lib/queries';
 import { formatGap, hasScored, towardLeader } from '../lib/scoring';
 import { TEMPLATES } from '../lib/templates';
 import { toast } from '../lib/toast';
-import type { ChallengeType, CompetitionTable, ScoringMethod, StandingRow, Unit } from '../lib/types';
+import type { AvatarStyle, ChallengeType, CompetitionTable, ScoringMethod, StandingRow, Unit } from '../lib/types';
 import { ChallengeMark, CompetitionPreviewCard, phaseLine, prizeLabel } from './competition';
-import { ChevronRightIcon, PlusIcon, SearchIcon, UsersIcon } from './icons';
+import { ChevronRightIcon, LadderIcon, PlusIcon, SearchIcon, UsersIcon } from './icons';
 import { Avatar, cx, ErrorNotice, Skeleton } from './ui';
 
 export type MyCompetition = {
@@ -347,29 +347,6 @@ export function RaceHero({ unit, now }: { unit: Unit; now: number }) {
   </section>;
 }
 
-/**
- * Under the summary, like the competition page's bar: one line on what a run would do in your featured
- * race, and a round Go to record.
- */
-export function GoBar({ unit, now }: { unit: Unit; now: number }) {
-  const mine = useMyCompetitions();
-  const race = heroRace(liveNow(mine.data, now));
-  const my = race ? scoreOf(race.myScore) : null;
-  const ahead = race ? scoreOf(race.aheadScore) : null;
-  const behind = race ? scoreOf(race.behindScore) : null;
-  const bold = (text: string | null) => <b className="font-bold text-ink">{text}</b>;
-  const line = !race ? <>Every walk and run counts toward your league.</>
-    : !hasScored(race.scoringMethod, my) ? <>Your first run puts you on the board in {bold(race.title)}.</>
-      : race.myRank === 1
-        ? behind !== null && behind !== my && race.behindName ? <>{bold(formatGap(race, behind, my!, unit))} ahead of {firstName(race.behindName)}. Keep the gap.</> : <>Out in front. Keep it that way.</>
-        : ahead !== null && race.aheadName ? (ahead === my ? <>Level with {firstName(race.aheadName)}. One run breaks the tie.</> : <>{bold(formatGap(race, my!, ahead, unit))} to pass {firstName(race.aheadName)}.</>)
-          : <>Every run counts.</>;
-  return <div className={cx(SUMMARY_CARD, 'flex items-center gap-3.5 rounded-[20px] py-3 pl-4 pr-3')}>
-    <p className="min-w-0 flex-1 text-[14px] leading-snug text-ink-3">{line}</p>
-    <Link to="/run" aria-label="Go: record now" className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-ink text-[13px] font-extrabold uppercase tracking-[0.06em] text-volt transition-transform hover:scale-105 active:scale-95">Go</Link>
-  </div>;
-}
-
 const WHO_ICONS: Record<string, ReactNode> = {
   coworkers: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18" /></>,
   partner: <path d="M12 20s-7-4.4-8.6-8.8C2.3 8 4.2 5 7.4 5c1.9 0 3.3 1.1 4.6 2.8C13.3 6.1 14.7 5 16.6 5c3.2 0 5.1 3 4 6.2C19 15.6 12 20 12 20Z" />,
@@ -400,4 +377,35 @@ export function ChallengeSomeone() {
       </Link>
     </div>
   </section>;
+}
+
+type BoardRow = { rank: number; userId: string; metres: number; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; isMe: boolean };
+
+/**
+ * Under Go on Home: where you stand on this week's global board, the top three's faces, and the gap to
+ * the runner just above you. Clicking opens the full leaderboard.
+ */
+export function LeaderboardPeek({ unit }: { unit: Unit }) {
+  const board = useQuery({ queryKey: ['leaderboard', 'foot', 'week', 'global', 50], queryFn: () => api<{ rows: BoardRow[]; me: BoardRow | null }>('/leaderboard?activity=foot&period=week&scope=global&limit=50'), staleTime: 60_000 });
+  const rows = board.data?.rows ?? [];
+  const me = board.data?.me ?? null;
+  const above = me ? rows.find((row) => row.rank === me.rank - 1) ?? null : null;
+  const line = !board.data ? '\u00a0'
+    : !me || !me.metres ? 'Walk or run this week to get on the board.'
+      : me.rank === 1 ? 'You’re top of the world this week.'
+        : above ? `${formatDistance(Math.max(0, above.metres - me.metres) + 10, unit)} to pass ${above.displayName.split(' ')[0]}`
+          : 'Keep moving to climb.';
+  return <Link to="/leaderboard" className="flex items-center gap-3 rounded-[20px] border-[1.5px] border-line bg-card p-3 transition-colors hover:border-ink" aria-label="Open the leaderboard">
+    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border-2 border-ink bg-volt px-1 text-ink">
+      {me && me.metres ? <span className="score num truncate text-[22px]">#{me.rank}</span> : <LadderIcon size={22} />}
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="wide block text-[11px] font-bold uppercase tracking-[0.08em] text-ink-3">Leaderboard · this week</span>
+      <span className="mt-0.5 block truncate text-[14px] font-semibold">{line}</span>
+    </span>
+    <span className="flex">
+      {rows.slice(0, 3).map((row, index) => <span key={row.userId} className={cx('rounded-full border-2 border-card', index > 0 && '-ml-2.5')}><Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={28} className="rounded-full" /></span>)}
+    </span>
+    <ChevronRightIcon size={16} className="text-ink-3" />
+  </Link>;
 }

@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ExploreEventCard } from '../components/ClubEvents';
+import { ClubLogo } from '../components/ClubLogo';
+import { Dropdown } from '../components/Dropdown';
 import { Modal } from '../components/Modal';
+import { PriceTags } from '../components/PriceTags';
+import type { ClubEvent } from '../lib/club-events';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ShareCompetitionSheet } from '../components/ShareCompetition';
 import { CountriesField, EMPTY_PRIZES, PRIZE_KIND, PrizeEditor, prizeProblem, prizesPayload, PrizeTerms, type PrizeDraft } from '../components/ClubPrizes';
@@ -11,7 +16,7 @@ import { templateById } from '../lib/templates';
 import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, EditIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -53,14 +58,15 @@ import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/
 import { fundingForPrize } from '@jump/shared/prizes';
 import { activityLabel, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '../lib/scoring';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
-import { keys, useCreator, useDiscover, useFinalResult, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
-import type { ChallengeType, CheckoutResponse, Club, CompetitionTable, StandingRow, Unit } from '../lib/types';
+import { keys, useCreator, useDiscover, useFinalResult, useProfile, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
+import type { ChallengeType, CheckoutResponse, Club, CompetitionTable, Profile, StandingRow, Unit } from '../lib/types';
 
 export const COMPETE_NAV = [
   { to: '/competitions', label: 'Competitions' },
   { to: '/leaderboard', label: 'Leaderboard' },
   { to: '/clubs', label: 'Clubs' },
-  { to: '/events', label: 'Club runs' },
+  { to: '/events', label: 'Events' },
+  { to: '/prizes', label: 'Prizes' },
 ] as const;
 
 export function CompeteSubNav() {
@@ -69,6 +75,46 @@ export function CompeteSubNav() {
 }
 
 type TypeFilter = 'all' | 'free' | 'sponsored' | 'paid';
+type Lens = 'all' | 'events' | 'competitions';
+const LENSES: Array<{ value: Lens; label: string }> = [{ value: 'all', label: 'All' }, { value: 'events', label: 'Events' }, { value: 'competitions', label: 'Competitions' }];
+/** Which event activities fit the activity filter: events marked "any" fit them all. */
+const EVENT_FITS: Partial<Record<ChallengeType, Array<ClubEvent['activity']>>> = { RUN: ['run', 'any'], WALK: ['walk', 'any'], CYCLING: ['cycle', 'any'], DISTANCE: ['run', 'walk', 'any'], STEP: ['run', 'walk', 'any'], TIMED: ['run', 'walk', 'cycle', 'any'] };
+
+/** Where you are, only if the browser already allows it: Explore never asks, it just shows what's near when it can. */
+function useQuietSpot() {
+  const [spot, setSpot] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [denied, setDenied] = useState(false);
+  const read = () => navigator.geolocation.getCurrentPosition((position) => setSpot({ latitude: position.coords.latitude, longitude: position.coords.longitude }), () => setDenied(true), { enableHighAccuracy: false, maximumAge: 30 * 60_000, timeout: 10_000 });
+  useEffect(() => {
+    if (!navigator.permissions || !('geolocation' in navigator)) return;
+    void navigator.permissions.query({ name: 'geolocation' }).then((status) => { if (status.state === 'granted') read(); }).catch(() => undefined);
+  }, []);
+  return { spot, denied, ask: () => { if ('geolocation' in navigator) read(); else setDenied(true); } };
+}
+
+/** Weekly club events for Explore: near you, from your clubs, and the ones you're going to, soonest first. */
+function useExploreEvents(enabled: boolean) {
+  const { spot, denied, ask } = useQuietSpot();
+  const events = useQuery({
+    queryKey: ['club-events', 'explore', spot?.latitude.toFixed(2) ?? 'none', spot?.longitude.toFixed(2) ?? 'none'],
+    queryFn: () => api<{ nearby: ClubEvent[]; going: ClubEvent[]; clubs: ClubEvent[] }>(spot ? `/events?lat=${spot.latitude.toFixed(4)}&lon=${spot.longitude.toFixed(4)}&km=50` : '/events'),
+    enabled,
+  });
+  const seen = new Set<string>();
+  const all = [...(events.data?.nearby ?? []), ...(events.data?.clubs ?? []), ...(events.data?.going ?? [])].filter((event) => !seen.has(event.id) && seen.add(event.id));
+  const upcoming = (rows: ClubEvent[] | undefined) => (rows ?? []).filter((event) => event.nextAt).sort((a, b) => new Date(a.nextAt!).getTime() - new Date(b.nextAt!).getTime());
+  return { list: upcoming(all), nearby: upcoming(events.data?.nearby), going: upcoming(events.data?.going), clubs: upcoming(events.data?.clubs), located: Boolean(spot), denied, ask };
+}
+
+/** How to browse events: the same control as competitions' tabs, with event-shaped choices. */
+type EventTab = 'upcoming' | 'week' | 'near' | 'passes' | 'clubs';
+const EVENT_TABS: Array<{ value: EventTab; label: string }> = [
+  { value: 'upcoming', label: 'Upcoming' }, { value: 'week', label: 'This week' }, { value: 'near', label: 'Near me' },
+  { value: 'passes', label: 'My passes' }, { value: 'clubs', label: 'My clubs' },
+];
+const EVENT_ACTIVITY: Array<{ value: 'all' | ClubEvent['activity']; label: string }> = [
+  { value: 'all', label: 'All' }, { value: 'run', label: 'Run' }, { value: 'walk', label: 'Walk' }, { value: 'cycle', label: 'Ride' },
+];
 
 /** Whatever the board isn't ranked on: km for a steps race, steps for a distance one, both otherwise. */
 function otherMetrics(row: { creditedDistanceMetres: number; creditedSteps: number }, table: Pick<CompetitionTable, 'challengeType' | 'scoringMethod'>, unit: Unit) {
@@ -103,6 +149,15 @@ const TYPE_CHIPS: Array<{ value: TypeFilter; label: string }> = [
   { value: 'all', label: 'Any entry' }, { value: 'free', label: 'Free' }, { value: 'sponsored', label: 'Cash prize' }, { value: 'paid', label: 'Paid' },
 ];
 
+/** On Jump's own club, which members a competition enters: everyone, or just the runners, walkers or riders. */
+const AUDIENCES: Array<{ value: 'all' | 'run' | 'walk' | 'cycle'; label: string; detail: string }> = [
+  { value: 'all', label: 'Everyone in the club', detail: 'Every member, whatever they do' },
+  { value: 'run', label: 'Runners', detail: 'Picked running at sign-up, or ran in the last 90 days' },
+  { value: 'walk', label: 'Walkers', detail: 'Picked walking at sign-up, or walked in the last 90 days' },
+  { value: 'cycle', label: 'Cyclists', detail: 'Picked cycling at sign-up, or rode in the last 90 days' },
+];
+const AUDIENCE_VERB = { all: '', run: 'run', walk: 'walk', cycle: 'ride' } as const;
+
 export function CompetitionsPage() {
   const { user } = useAuth();
   const unit = useUnit();
@@ -110,6 +165,17 @@ export function CompetitionsPage() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { q?: string; activity?: string };
   const [filter, setFilter] = useState<TypeFilter>('all');
+  const queryClient = useQueryClient();
+  const profile = useProfile();
+  const [lensChoice, setLensChoice] = useState<Lens | null>(null);
+  const kind: Lens = user ? lensChoice ?? profile.data?.exploreLens ?? 'all' : 'competitions';
+  // Your lens is kept on your account, so Explore opens the way you left it on every device.
+  const saveLens = useMutation({
+    mutationFn: (exploreLens: Lens) => patch<Profile>('/me', { exploreLens }),
+    onSuccess(saved) { queryClient.setQueryData(keys.profile, saved); },
+  });
+  const setLens = (next: Lens) => { setLensChoice(next); saveLens.mutate(next); };
+  const [creating, setCreating] = useState(false);
   const [activity, setActivity] = useState<'all' | ChallengeType>((ACTIVITY_CHIPS.some((chip) => chip.value === search.activity) ? search.activity : 'all') as 'all' | ChallengeType);
   const [view, setView] = useState<DiscoverView>(user ? 'for-you' : 'trending');
   const [term, setTerm] = useState(search.q ?? '');
@@ -127,7 +193,29 @@ export function CompetitionsPage() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const looksLikeCode = /^[0-9A-F]{8}$/i.test(term.trim());
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilters = (activity !== 'all' ? 1 : 0) + (filter !== 'all' ? 1 : 0);
+  const [eventTab, setEventTab] = useState<EventTab>('upcoming');
+  const [eventActivity, setEventActivity] = useState<'all' | ClubEvent['activity']>('all');
+  const activeFilters = kind === 'events' ? (eventActivity !== 'all' ? 1 : 0) : (activity !== 'all' ? 1 : 0) + (filter !== 'all' ? 1 : 0);
+  const explore = useExploreEvents(Boolean(user));
+  const weekAway = Date.now() + 7 * 86_400_000;
+  const eventSource = kind !== 'events' ? explore.list
+    : eventTab === 'near' ? explore.nearby : eventTab === 'passes' ? explore.going : eventTab === 'clubs' ? explore.clubs
+      : eventTab === 'week' ? explore.list.filter((event) => new Date(event.nextAt!).getTime() < weekAway) : explore.list;
+  const fits = (event: ClubEvent) => kind === 'events'
+    ? eventActivity === 'all' || event.activity === eventActivity || event.activity === 'any'
+    : activity === 'all' || (EVENT_FITS[activity] ?? []).includes(event.activity);
+  const showEvents = Boolean(user) && (kind === 'events' || (kind === 'all' && (view === 'for-you' || view === 'starting') && (filter === 'all' || filter === 'free')));
+  const events = showEvents ? eventSource.filter((event) => fits(event)
+    && (!query || `${event.title} ${event.club.name} ${event.venue}`.toLowerCase().includes(query))) : [];
+  const competitions = kind === 'events' ? [] : list;
+  // Competitions with an event after every two, then any events left over.
+  const feed: Array<{ kind: 'competition'; table: (typeof list)[number] } | { kind: 'event'; event: ClubEvent }> = [];
+  let nextEvent = 0;
+  competitions.forEach((table, index) => {
+    feed.push({ kind: 'competition', table });
+    if (index % 2 === 1 && nextEvent < events.length) feed.push({ kind: 'event', event: events[nextEvent++] });
+  });
+  if (!tables.hasNextPage || kind === 'events') events.slice(nextEvent).forEach((event) => feed.push({ kind: 'event', event }));
   const tabs = BROWSE.filter((option) => (user ? !option.guestOnly : !option.signedIn));
   const tab: BrowseTab = view === 'created' || view === 'archived' ? 'mine' : view;
 
@@ -140,10 +228,12 @@ export function CompetitionsPage() {
     <div className="animate-rise">
       <CompeteSubNav />
       <header className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-[24px] font-extrabold tracking-tight sm:text-[30px]">Competitions</h1>
-        {user && <Link to="/competitions/new" className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-transform active:scale-95"><PlusIcon size={15} /> Create</Link>}
+        <h1 className="text-[24px] font-extrabold tracking-tight sm:text-[30px]">Explore</h1>
+        {user && <button type="button" onClick={() => setCreating(true)} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-[14px] font-bold text-paper transition-transform active:scale-95"><PlusIcon size={15} /> Create</button>}
       </header>
 
+      {user && <LensSwitch value={kind} onChange={setLens} />}
+      {creating && <CreateChooser onClose={() => setCreating(false)} />}
       <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
       {/* Drafts stay out of the way: one quiet row that opens a sheet to finish or discard them. */}
       {drafts.length > 0 && <button type="button" onClick={() => setDraftsOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-xl border-[1.5px] border-dashed border-ink/40 px-3.5 py-2.5 text-left transition-colors hover:border-ink">
@@ -159,7 +249,7 @@ export function CompetitionsPage() {
       <form onSubmit={submit} className="flex items-center gap-2">
         <label className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl border-[1.5px] border-ink bg-card px-3.5">
           <SearchIcon size={17} className="shrink-0 text-ink-3" />
-          <input className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-ink-3" placeholder="Search or enter a code" value={term} onChange={(event) => setTerm(event.target.value)} aria-label="Search competitions or enter an invite code" />
+          <input className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-ink-3" placeholder={kind === 'events' ? 'Search events, clubs or places' : 'Search or enter a code'} value={term} onChange={(event) => setTerm(event.target.value)} aria-label="Search competitions or enter an invite code" />
           {looksLikeCode && <button className="shrink-0 text-[13px] font-bold">Open</button>}
         </label>
         <button type="button" onClick={() => setFiltersOpen(true)} className={cx('relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-[1.5px] border-ink transition-colors', activeFilters ? 'bg-ink text-paper' : 'bg-card')} aria-label={`Filters${activeFilters ? `, ${activeFilters} on` : ''}`}>
@@ -169,24 +259,41 @@ export function CompetitionsPage() {
       </form>
 
       {/* How to browse: one segmented control that always fits a phone; filters live in the sheet. */}
-      <div className="mt-4 grid rounded-xl bg-ink/[0.06] p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} role="tablist" aria-label="Browse">
+      {kind !== 'events' && <div className="mt-4 grid rounded-xl bg-ink/[0.06] p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} role="tablist" aria-label="Browse">
         {tabs.map((option) => <button key={option.value} type="button" role="tab" aria-selected={tab === option.value}
           onClick={() => setView(option.value === 'mine' ? 'created' : option.value)}
           className={cx('h-9 truncate rounded-lg px-1 text-[13px] font-semibold transition-colors sm:text-[14px]', tab === option.value ? 'bg-card text-ink shadow-[0_0_0_1.5px_#121212]' : 'text-ink-2 hover:text-ink')}>
           {option.label}
         </button>)}
-      </div>
-      {tab === 'mine' && <div className="mt-2.5 flex gap-1.5" role="tablist" aria-label="Your competitions">
+      </div>}
+      {kind === 'events' && <div className="mt-4 grid grid-cols-5 rounded-xl bg-ink/[0.06] p-1" role="tablist" aria-label="Browse events">
+        {EVENT_TABS.map((option) => <button key={option.value} type="button" role="tab" aria-selected={eventTab === option.value}
+          onClick={() => { setEventTab(option.value); if (option.value === 'near' && !explore.located) explore.ask(); }}
+          className={cx('h-9 truncate rounded-lg px-1 text-[12.5px] font-semibold transition-colors sm:text-[14px]', eventTab === option.value ? 'bg-card text-ink shadow-[0_0_0_1.5px_#121212]' : 'text-ink-2 hover:text-ink')}>
+          {option.label}
+        </button>)}
+      </div>}
+      {kind === 'events' && eventActivity !== 'all' && <div className="mt-2.5 flex text-[12px]">
+        <button type="button" onClick={() => setEventActivity('all')} className="inline-flex h-7 items-center gap-1 rounded-full bg-ink/[0.07] px-2.5 font-semibold">{EVENT_ACTIVITY.find((chip) => chip.value === eventActivity)?.label}<CloseIcon size={12} /></button>
+      </div>}
+      {kind !== 'events' && tab === 'mine' && <div className="mt-2.5 flex gap-1.5" role="tablist" aria-label="Your competitions">
         {([['created', 'Hosting'], ['archived', 'Archived']] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={view === value} onClick={() => setView(value)}
           className={cx('h-8 rounded-full px-3.5 text-[13px] font-semibold transition-colors', view === value ? 'bg-ink text-paper' : 'bg-ink/[0.06] text-ink-2 hover:text-ink')}>{label}</button>)}
       </div>}
 
-      {activeFilters > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[12px]">
+      {kind !== 'events' && activeFilters > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[12px]">
         {activity !== 'all' && <button type="button" onClick={() => setActivity('all')} className="inline-flex h-7 items-center gap-1 rounded-full bg-ink/[0.07] px-2.5 font-semibold">{ACTIVITY_CHIPS.find((chip) => chip.value === activity)?.label}<CloseIcon size={12} /></button>}
         {filter !== 'all' && <button type="button" onClick={() => setFilter('all')} className="inline-flex h-7 items-center gap-1 rounded-full bg-ink/[0.07] px-2.5 font-semibold">{TYPE_CHIPS.find((chip) => chip.value === filter)?.label}<CloseIcon size={12} /></button>}
       </div>}
 
       {filtersOpen && <Modal title="Filters" onClose={() => setFiltersOpen(false)}>
+        {kind === 'events' ? <>
+          <p className="mb-2 text-[13px] font-semibold text-ink-3">Activity</p>
+          <div className="grid grid-cols-2 gap-2">
+            {EVENT_ACTIVITY.map((option) => <button key={option.value} type="button" onClick={() => setEventActivity(option.value)} className={cx('h-10 rounded-lg border-[1.5px] text-[14px] font-semibold transition-colors', eventActivity === option.value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink')}>{option.label}</button>)}
+          </div>
+          <p className="mt-3 text-[12.5px] text-ink-3">Events open to everyone show under every activity.</p>
+        </> : <>
         <p className="mb-2 text-[13px] font-semibold text-ink-3">Activity</p>
         <div className="grid grid-cols-3 gap-2">
           {ACTIVITY_CHIPS.map((option) => <button key={option.value} type="button" onClick={() => setActivity(option.value)} className={cx('h-10 rounded-lg border-[1.5px] text-[14px] font-semibold transition-colors', activity === option.value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink')}>{option.label}</button>)}
@@ -195,34 +302,95 @@ export function CompetitionsPage() {
         <div className="grid grid-cols-2 gap-2">
           {TYPE_CHIPS.map((option) => <button key={option.value} type="button" onClick={() => setFilter(option.value)} className={cx('h-10 rounded-lg border-[1.5px] text-[14px] font-semibold transition-colors', filter === option.value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink')}>{option.label}</button>)}
         </div>
+        </>}
         <div className="mt-6 grid grid-cols-2 gap-2">
-          <button type="button" className="btn-secondary" onClick={() => { setActivity('all'); setFilter('all'); }}>Reset</button>
+          <button type="button" className="btn-secondary" onClick={() => { setActivity('all'); setFilter('all'); setEventActivity('all'); }}>Reset</button>
           <button type="button" className="btn-dark" onClick={() => setFiltersOpen(false)}>Done</button>
         </div>
       </Modal>}
 
-      <p className="num mb-2.5 mt-4 text-[12px] font-medium text-ink-3">{tables.data ? `${list.length}${tables.hasNextPage ? '+' : ''} ${view === 'starting' ? 'starting soon' : view === 'created' ? 'you’re hosting' : view === 'archived' ? 'archived' : 'open'}${query ? ` matching “${term.trim()}”` : ''}` : ' '}</p>
+      <p className="num mb-2.5 mt-4 text-[12px] font-medium text-ink-3">{tables.data ? `${kind === 'events' ? `${events.length} ${events.length === 1 ? 'event' : 'events'}` : `${competitions.length}${tables.hasNextPage ? '+' : ''} ${view === 'starting' ? 'starting soon' : view === 'created' ? 'you’re hosting' : view === 'archived' ? 'archived' : 'open'}${events.length ? ` · ${events.length} ${events.length === 1 ? 'event' : 'events'}` : ''}`}${query ? ` matching “${term.trim()}”` : ''}` : ' '}</p>
       <ErrorNotice error={tables.error} onRetry={() => void tables.refetch()} />
-      {tables.isLoading ? (
+      {kind === 'events' && eventTab === 'near' && !explore.located ? (
+        <EmptyState title="Where are you running?" action={<button type="button" className="btn-primary btn-sm" onClick={explore.ask}>Use my location</button>}>
+          {explore.denied ? 'Your browser isn’t sharing your location. Allow it, or open Events near you to search a town.' : 'Allow location to see events within 50 km of you.'}
+        </EmptyState>
+      ) : tables.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-44 rounded-2xl" />)}</div>
-      ) : list.length === 0 ? (
+      ) : feed.length === 0 ? (
         <EmptyState
           mark="00"
-          title={query ? 'Nothing matches that' : view === 'archived' ? 'Nothing archived' : view === 'created' ? 'You haven’t created one yet' : view === 'friends' ? 'Nothing from your people yet' : view === 'for-you' ? 'You’re in everything that fits' : 'No open competitions'}
-          action={user ? <Link to="/competitions/new" className="btn-primary"><PlusIcon size={16} /> {query ? 'Create it yourself' : 'Start the first one'}</Link> : undefined}
+          title={kind === 'events' ? (query ? 'No events match that' : 'No events yet') : query ? 'Nothing matches that' : view === 'archived' ? 'Nothing archived' : view === 'created' ? 'You haven’t created one yet' : view === 'friends' ? 'Nothing from your people yet' : view === 'for-you' ? 'You’re in everything that fits' : 'No open competitions'}
+          action={user ? <button type="button" className="btn-primary" onClick={() => setCreating(true)}><PlusIcon size={16} /> {query ? 'Create it yourself' : 'Start the first one'}</button> : undefined}
         >
-          {query ? 'Try another name, or start a competition and send the code to your crew.' : view === 'archived' ? 'When one of yours is over, archive it from its page to tidy it off your lists.' : 'Create a competition and send the invite code to your crew.'}
+          {kind === 'events' ? (eventTab === 'passes' ? 'Get a pass to an event and it shows up here.' : eventTab === 'clubs' ? 'Nothing coming up from clubs you’re in or follow.' : 'Nothing here yet. Follow a few clubs, or host an event yourself.') : query ? 'Try another name, or start a competition and send the code to your crew.' : view === 'archived' ? 'When one of yours is over, archive it from its page to tidy it off your lists.' : 'Create a competition and send the invite code to your crew.'}
         </EmptyState>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
-            {list.map((table) => <CompetitionPreviewCard key={table.id} table={table} unit={unit} now={now} />)}
+            {feed.map((item) => item.kind === 'event'
+              ? <ExploreEventCard key={`event-${item.event.id}`} event={item.event} unit={unit} />
+              : <CompetitionPreviewCard key={item.table.id} table={item.table} unit={unit} now={now} tagged={events.length > 0} />)}
           </div>
-          {tables.hasNextPage && <button type="button" className="btn-secondary mt-5 w-full" onClick={() => void tables.fetchNextPage()} disabled={tables.isFetchingNextPage}>{tables.isFetchingNextPage ? 'Loading…' : 'Load more'}</button>}
+          {tables.hasNextPage && kind !== 'events' && <button type="button" className="btn-secondary mt-5 w-full" onClick={() => void tables.fetchNextPage()} disabled={tables.isFetchingNextPage}>{tables.isFetchingNextPage ? 'Loading…' : 'Load more'}</button>}
         </>
       )}
     </div>
   );
+}
+
+type ManagedClub = { id: string; slug: string; name: string; logoUrl: string | null; myRole: 'owner' | 'admin' | 'member' | null };
+
+/** Create: a competition anyone can take part in from anywhere, or an in-person event for a club you run. */
+function CreateChooser({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
+  const [step, setStep] = useState<'choose' | 'club'>('choose');
+  const clubs = useQuery({ queryKey: ['clubs', 'mine'], queryFn: () => api<ManagedClub[]>('/clubs?view=mine') });
+  const managed = (clubs.data ?? []).filter((club) => club.myRole === 'owner' || club.myRole === 'admin');
+  const newEvent = (slug: string) => { onClose(); void navigate({ to: '/clubs/$id', params: { id: slug }, search: {}, hash: 'new-event' }); };
+  const option = (icon: React.ReactNode, title: string, body: string, onClick: () => void) => <button type="button" onClick={onClick}
+    className="flex w-full items-center gap-4 rounded-2xl border-[1.5px] border-line bg-card p-4 text-left transition-colors hover:border-ink">
+    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-ink/[0.06]">{icon}</span>
+    <span className="min-w-0 flex-1"><span className="block text-[18px] font-bold">{title}</span><span className="mt-1 block text-[14px] leading-snug text-ink-2">{body}</span></span>
+    <ChevronRightIcon size={18} className="shrink-0 text-ink-2" />
+  </button>;
+
+  if (step === 'club') {
+    return <Modal title={managed.length ? 'Which club is hosting?' : 'Events are hosted by clubs'} onClose={onClose}>
+      <p className="-mt-2 mb-4 text-[14px] leading-snug text-ink-2">{managed.length ? 'Your event goes on the club’s page, and its members and followers hear about it.' : 'Start a club for your crew, then add your first event. It takes a minute.'}</p>
+      {clubs.isLoading ? <Skeleton className="h-28 rounded-2xl" />
+        : managed.length ? <div className="space-y-2.5">{managed.map((club) => <button key={club.id} type="button" onClick={() => newEvent(club.slug)} className="flex w-full items-center gap-3 rounded-2xl border-[1.5px] border-line bg-card p-3 text-left hover:border-ink">
+          <ClubLogo club={club} size={44} /><span className="min-w-0 flex-1 truncate text-[16px] font-bold">{club.name}</span><ChevronRightIcon size={18} className="text-ink-2" />
+        </button>)}</div>
+          : <div className="space-y-2"><Link to="/clubs" className="btn-primary w-full" onClick={onClose}><PlusIcon size={16} />Start a club</Link><button type="button" className="btn-quiet w-full" onClick={() => setStep('choose')}>Back</button></div>}
+    </Modal>;
+  }
+
+  return <Modal title="What would you like to create?" onClose={onClose}>
+    <p className="-mt-2 mb-4 text-[14px] text-ink-2">Choose what you want people to do.</p>
+    <div className="space-y-3">
+      {option(<CrownIcon size={22} />, 'Competition', 'Set a goal, rules and duration. People take part from anywhere and track their results.', () => { onClose(); void navigate({ to: '/competitions/new', search: {} }); })}
+      {option(<CalendarIcon size={22} />, 'Event', 'Set a day, time, place and activity. People RSVP, get reminded and show up in person.', () => { if (managed.length === 1) newEvent(managed[0].slug); else setStep('club'); })}
+      <p className="pt-1 text-[13px] leading-snug text-ink-3">Events are hosted by a club you run: one-off, weekly, every two weeks or monthly. Everyone who joins gets a pass.</p>
+    </div>
+  </Modal>;
+}
+
+/**
+ * What Explore shows, as three big words: everything, just events, or just competitions. The chosen one
+ * is ink with an orange bar under it; the others sit back in grey.
+ */
+function LensSwitch({ value, onChange }: { value: Lens; onChange: (lens: Lens) => void }) {
+  return <div className="mb-3 flex items-end gap-6 border-b border-line" role="tablist" aria-label="Show in Explore">
+    {LENSES.map((lens) => {
+      const on = lens.value === value;
+      return <button key={lens.value} type="button" role="tab" aria-selected={on} onClick={() => onChange(lens.value)}
+        className={cx('wide relative -mb-px pb-2 text-[15px] font-black uppercase tracking-[0.02em] transition-colors sm:text-[17px]', on ? 'text-ink' : 'text-ink-3 hover:text-ink-2')}>
+        {lens.label}
+        <span className={cx('absolute inset-x-0 bottom-0 h-[3px] rounded-full transition-colors', on ? 'bg-track' : 'bg-transparent')} aria-hidden="true" />
+      </button>;
+    })}
+  </div>;
 }
 
 const DRAFT_STATUSES = ['PENDING_FUNDING', 'PENDING_APPROVAL', 'DRAFT', 'SCHEDULED'];
@@ -347,6 +515,7 @@ export function NewCompetitionPage() {
   const [winnerCount, setWinnerCount] = useState('1');
   const [shares, setShares] = useState(['100']);
   const [inviteClubMembers, setInviteClubMembers] = useState(Boolean(clubId));
+  const [enrolAudience, setEnrolAudience] = useState<'all' | 'run' | 'walk' | 'cycle'>('all');
   const [format, setFormat] = useState<CompetitionFormat>(preset ? (preset.capacity === 2 ? 'head_to_head' : 'invite') : 'open');
   const [invitesOpen, setInvitesOpen] = useState(false);
   const [emailText, setEmailText] = useState('');
@@ -427,7 +596,7 @@ export function NewCompetitionPage() {
         ...(hasPrize ? { prizeSplitBps } : {}),
         ...(mode === 'sponsored' ? { fundedFree: true, ...(fundingStyle === 'FIXED' ? { guaranteedPrizeKobo } : {}), fundingDestination, ...(fundingDestination === 'CHARITY' ? { charityName: charityName.trim() } : {}) } : {}),
         ...(mode === 'paid' ? { entryFeeKobo } : {}),
-        ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true } : {}) } : {}),
+        ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true, ...(club.data.official ? { enrolAudience } : {}) } : {}) } : {}),
         ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
         ...(clubPrizesOn && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
         ...(later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
@@ -509,33 +678,20 @@ export function NewCompetitionPage() {
             else create.mutate();
           }}
         >
-          {challengeType === 'CYCLING' ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice> : <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Competition type">
-            {([
-              ['free', 'Free', 'No entry fee, no prize'],
-              ['sponsored', 'Funded', 'Free entry, cash prize'],
-              ['paid', 'Paid', 'Entry fee, creators only'],
-            ] as const).map(([value, title, body]) => <label key={value} className={cx(
-              'flex cursor-pointer flex-col rounded-md border-[1.5px] border-ink p-3 transition-all',
-              mode === value ? 'bg-ink text-paper shadow-none' : 'bg-card shadow-hard-sm hover:bg-track-wash',
-            )}>
-              <input type="radio" name="competition-mode" className="sr-only" checked={mode === value} onChange={() => {
-                setMode(value);
-                if (value !== 'free') setPrizesOn(false);
-                // Cash needs a way of winning that's hard to game; fall back to the activity's first one that is.
-                if (value !== 'free' && !METRICS[scoring.scoringMethod].prizes) {
-                  const safe = ACTIVITY_RULES[challengeType].options.find((option) => METRICS[option.method].prizes);
-                  if (safe) setScoring(draftFor(challengeType, safe.method, scoring));
-                }
-              }} />
-              <span className="wide text-[13px] font-extrabold uppercase">{title}</span>
-              <span className={cx('mt-1 text-[11.5px] leading-snug', mode === value ? 'text-paper/70' : 'text-ink-2')}>{body}</span>
-            </label>)}
-          </div>}
+          {challengeType === 'CYCLING' ? <Notice tone="neutral" title="Cycling is free to compete">Cycling distance uses GPS verification. Cash prizes are paused until bicycle rides can be distinguished from vehicle trips more reliably.</Notice> : <PriceTags value={mode} onChange={(value) => {
+            setMode(value);
+            if (value !== 'free') setPrizesOn(false);
+            // Cash needs a way of winning that's hard to game; fall back to the activity's first one that is.
+            if (value !== 'free' && !METRICS[scoring.scoringMethod].prizes) {
+              const safe = ACTIVITY_RULES[challengeType].options.find((option) => METRICS[option.method].prizes);
+              if (safe) setScoring(draftFor(challengeType, safe.method, scoring));
+            }
+          }} />}
           {club.data && <Notice tone="neutral" title={`Hosting for ${club.data.name}`}>
             {mode === 'paid'
               ? `All ${club.data.memberCount} members are invited once Jump approves it; they choose whether to pay to enter.`
               : inviteClubMembers
-                ? `All ${club.data.memberCount} members are entered automatically, and anyone who joins the club later is added while it’s open.`
+                ? `${club.data.official && enrolAudience !== 'all' ? `Members who ${AUDIENCE_VERB[enrolAudience]}` : `All ${club.data.memberCount} members`} are entered automatically, and anyone who joins the club later is added while it’s open.`
                 : 'Linked to your club. Members aren’t entered automatically.'}
           </Notice>}
           {mode === 'paid' && !creator.data && (
@@ -798,12 +954,13 @@ export function NewCompetitionPage() {
               <p className="truncate text-[12px] text-ink-2">{inviteSummary || 'Optional. Invite by email, phone or club.'}</p>
             </div>
             <button type="button" className="btn-secondary btn-sm shrink-0" onClick={() => setInvitesOpen(true)}>{inviteSummary ? 'Edit' : 'Add'}</button>
-          </section> : later ? (club.data && <label className="panel flex items-center gap-2 p-4 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Enter everyone in {club.data.name} when it opens</label>)
+          </section> : later ? (club.data && <div className="panel space-y-3 p-4"><label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Enter everyone in {club.data.name} when it opens</label>{club.data?.official && inviteClubMembers && <Field label="Who gets entered?">{(props) => <Dropdown id={props.id} value={enrolAudience} onChange={setEnrolAudience} options={AUDIENCES.map((option) => ({ value: option.value, label: option.label, hint: option.detail }))} />}</Field>}</div>)
             : <Notice tone="neutral" title="Invite after launch">Save this draft first. You can invite runners after funding or approval opens entry.</Notice>}
           <OpponentPicker open={sheet === 'opponent'} onOpenChange={(open) => setSheet(open ? 'opponent' : null)} value={opponent} onChange={setOpponent} />
           {invitesOpen && <Modal title="Invite runners" onClose={() => setInvitesOpen(false)}>
             <div className="space-y-4">
               {club.data && <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={inviteClubMembers} onChange={(event) => setInviteClubMembers(event.target.checked)} /> Enter everyone in {club.data.name}</label>}
+              {club.data?.official && inviteClubMembers && <Field label="Who gets entered?">{(props) => <Dropdown id={props.id} value={enrolAudience} onChange={setEnrolAudience} options={AUDIENCES.map((option) => ({ value: option.value, label: option.label, hint: option.detail }))} />}</Field>}
               <Field label="Email addresses" optional hint="Separate with commas or new lines.">
                 {(props) => <textarea {...props} autoFocus className="field min-h-20" value={emailText} onChange={(event) => setEmailText(event.target.value)} placeholder="runner@example.com" />}
               </Field>

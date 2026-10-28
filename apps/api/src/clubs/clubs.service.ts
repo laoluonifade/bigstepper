@@ -93,7 +93,28 @@ export class ClubsService {
   private async roleOf(clubId: string, userId: string | null | undefined): Promise<Role | null> {
     if (!userId) return null;
     const membership = await this.memberships.findOne({ where: { clubId, userId } });
+    if (membership?.role !== 'owner' && (await this.isOfficialStaff(clubId, userId))) {
+      if (membership?.role !== 'admin') {
+        await this.dataSource.query(
+          `INSERT INTO "club_memberships" ("clubId","userId","role") VALUES ($1,$2,'admin') ON CONFLICT ("clubId","userId") DO UPDATE SET "role"='admin'`,
+          [clubId, userId],
+        );
+      }
+      return 'owner';
+    }
     return membership?.role ?? null;
+  }
+
+  private officialSlug() {
+    return this.config.get<string>('COMMUNITY_CLUB_SLUG') ?? 'jump-community-club';
+  }
+
+  private async isOfficialStaff(clubId: string, userId: string) {
+    const rows = await this.dataSource.query(
+      `SELECT 1 FROM "clubs" c JOIN "users" u ON u."id" = $2 WHERE c."id" = $1 AND c."slug" = $3 AND u."role" = 'admin'`,
+      [clubId, userId, this.officialSlug()],
+    ) as unknown[];
+    return rows.length > 0;
   }
 
   private async assertManager(clubId: string, userId: string) {
@@ -139,6 +160,7 @@ export class ClubsService {
       faces,
       owner: owner ?? null,
       myRole: role,
+      official: club.slug === this.officialSlug(),
       inviteValid: Boolean(invite && invite.toUpperCase() === code),
       ...(role ? { inviteCode: code } : {}),
     };

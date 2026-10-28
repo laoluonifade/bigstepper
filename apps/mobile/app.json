@@ -105,7 +105,15 @@
         }
       ],
       "expo-widgets",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Jump uses the camera so event hosts can scan pass QR codes to check people in.",
+          "microphonePermission": "Jump uses the microphone to record voice notes you send in messages.",
+          "barcodeScannerEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

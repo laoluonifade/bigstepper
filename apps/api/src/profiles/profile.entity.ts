@@ -25,6 +25,12 @@ export class Profile {
   @Column({ default: 'km' })
   preferredUnit: 'km' | 'mi';
 
+  @Column({ type: 'varchar', length: 12, default: 'all' })
+  exploreLens: 'all' | 'events' | 'competitions';
+
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  interests: string[];
+
   @Column({ length: 2, default: 'NG' })
   countryCode: string;
 

@@ -134,7 +134,7 @@ function Face({ face, size = 28, ring = colors.card }: { face: { displayName: st
  * A competition card built to make you want in: what's at stake, the race itself (runners placed along a
  * track by score), who's in, how long is left, and one tap to join a free one.
  */
-export function CompetitionPreviewCard({ table, unit, now }: { table: CompetitionTable; unit: Unit; now: number }) {
+export function CompetitionPreviewCard({ table, unit, now, tagged = false }: { table: CompetitionTable; unit: Unit; now: number; tagged?: boolean }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [joined, setJoined] = useState(false);
@@ -168,6 +168,11 @@ export function CompetitionPreviewCard({ table, unit, now }: { table: Competitio
     style={({ pressed }) => [styles.preview, pressed && { opacity: 0.85 }]}>
     {/* The host's banner, when there is one: a slim strip across the top; the card below is unchanged. */}
     {table.bannerUrl ? <Image source={{ uri: table.bannerUrl }} style={styles.previewBanner} contentFit="cover" transition={150} accessible={false} /> : null}
+    {/* In Explore, where events sit alongside: which kind this is. */}
+    {tagged ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      <View style={styles.kindTag}><Text style={[wideLabel(10.5), { color: colors.ok }]}>Competition</Text></View>
+      <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{`${activityLabel(table)} · Virtual`}</Txt>
+    </View> : null}
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
       <ChallengeMark type={table.challengeType} code={table.code} size={40} />
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -336,6 +341,7 @@ const styles = StyleSheet.create({
   meta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   prize: { borderRadius: radius.md, paddingHorizontal: 8, paddingVertical: 2 },
   preview: { borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14, overflow: 'hidden' },
+  kindTag: { borderRadius: radius.base, backgroundColor: colors.okWash, paddingHorizontal: 8, paddingVertical: 3 },
   previewBanner: { marginHorizontal: -16, marginTop: -16, marginBottom: 14, aspectRatio: 3, backgroundColor: colors.inkWash },
   track: { height: 32, marginTop: 12, justifyContent: 'center' },
   trackLine: { height: 2, borderRadius: 1, backgroundColor: 'rgba(18,18,18,0.07)' },

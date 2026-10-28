@@ -69,6 +69,7 @@ const brands = createRoute({ getParentRoute: () => root, path: '/brands', compon
 const support = createRoute({ getParentRoute: () => root, path: '/support', component: page(() => import('./pages/Support'), 'SupportPage') });
 const leaderboard = createRoute({ getParentRoute: () => root, path: '/leaderboard', component: protectedPage(() => import('./pages/LeaderboardPage'), 'LeaderboardPage') });
 const setup = createRoute({ getParentRoute: () => root, path: '/setup', component: protectedPage(() => import('./pages/Setup'), 'SetupPage') });
+const interests = createRoute({ getParentRoute: () => root, path: '/interests', component: protectedPage(() => import('./pages/Interests'), 'InterestsPage') });
 const welcome = createRoute({ getParentRoute: () => root, path: '/welcome', component: protectedPage(() => import('./pages/Welcome'), 'WelcomePage') });
 const dashboard = createRoute({ getParentRoute: () => root, path: '/dashboard', component: guarded(DashboardPage) });
 const feed = createRoute({ getParentRoute: () => root, path: '/feed', validateSearch: (search: Record<string, unknown>): { activity?: string } => typeof search.activity === 'string' ? { activity: search.activity } : {}, component: protectedPage(() => import('./pages/Feed'), 'FeedPage') });
@@ -103,6 +104,7 @@ const club = createRoute({
 const clubDashboard = createRoute({ getParentRoute: () => root, path: '/clubs/$id/dashboard', component: protectedPage(() => import('./pages/ClubDashboard'), 'ClubDashboardPage') });
 const events = createRoute({ getParentRoute: () => root, path: '/events', component: protectedPage(() => import('./pages/Events'), 'EventsPage') });
 const clubEvent = createRoute({ getParentRoute: () => root, path: '/events/$id', component: page(() => import('./pages/Events'), 'EventPage') });
+const eventGuests = createRoute({ getParentRoute: () => root, path: '/events/$id/guests', component: protectedPage(() => import('./pages/Events'), 'EventGuestsPage') });
 const prizes = createRoute({ getParentRoute: () => root, path: '/prizes', component: protectedPage(() => import('./pages/Prizes'), 'PrizesPage') });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(() => import('./pages/You'), 'RewardsPage') });
 const identity = createRoute({ getParentRoute: () => root, path: '/identity', component: protectedPage(() => import('./pages/You'), 'IdentityPage') });
@@ -124,8 +126,8 @@ const routeTree = root.addChildren([
   home, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
-  dashboard, setup, welcome, leaderboard, feed, feedPost, messages, conversation, duel, newCompetition, run, runSession, activities, activity,
-  leagues, league, clubs, club, clubChat, clubDashboard, events, clubEvent, prizes, rewards, identity, wallet, creator, notifications, profile, paymentReturn,
+  dashboard, setup, interests, welcome, leaderboard, feed, feedPost, messages, conversation, duel, newCompetition, run, runSession, activities, activity,
+  leagues, league, clubs, club, clubChat, clubDashboard, events, clubEvent, eventGuests, prizes, rewards, identity, wallet, creator, notifications, profile, paymentReturn,
 ]);
 
 export const router = createRouter({
