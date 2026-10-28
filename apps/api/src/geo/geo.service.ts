@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 type Address = Record<string, string | undefined>;
+type Found = { name?: string; display_name?: string; lat?: string; lon?: string };
+export type Place = { name: string; address: string; latitude: number; longitude: number };
 
 const PRECISION = 3;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -22,6 +24,28 @@ export class GeoService {
     if (this.cache.size >= CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value as string);
     this.cache.set(key, { name, at: Date.now() });
     return { name };
+  }
+
+  async search(query: string, near?: { latitude: number; longitude: number }): Promise<Place[]> {
+    const params = new URLSearchParams({ format: 'jsonv2', limit: '6', 'accept-language': 'en', q: query });
+    if (near) {
+      const { latitude: lat, longitude: lon } = near;
+      params.set('viewbox', [lon - 0.6, lat + 0.6, lon + 0.6, lat - 0.6].map((value) => value.toFixed(4)).join(','));
+    }
+    return this.throttled(async () => {
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'User-Agent': 'Jump/1.0 (+https://startajump.com)' }, signal: AbortSignal.timeout(6_000) });
+        if (!response.ok) return [];
+        const found = (await response.json()) as Found[];
+        return found.filter((place) => place.lat && place.lon && place.display_name).map((place) => {
+          const parts = place.display_name!.split(', ');
+          return { name: place.name || parts[0], address: parts.slice(1, 4).join(', '), latitude: Number(place.lat), longitude: Number(place.lon) };
+        });
+      } catch (error) {
+        this.logger.warn(`Place search failed: ${String(error)}`);
+        return [];
+      }
+    });
   }
 
   private throttled<T>(task: () => Promise<T>): Promise<T> {

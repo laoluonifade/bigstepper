@@ -87,7 +87,7 @@ const PHASE_LABEL = { pending: 'Challenge', accepted: 'Accepted', countdown: 'St
 const RING = { challenger: brand.track, opponent: brand.volt } as const;
 
 /** The jagged burst behind "VS". */
-function VsBurst({ size }: { size: number }) {
+export function VsBurst({ size }: { size: number }) {
   const points = Array.from({ length: 24 }, (_, index) => {
     const r = index % 2 ? size * 0.36 : size * 0.5;
     const angle = (Math.PI * 2 * index) / 24 - Math.PI / 2;
@@ -102,7 +102,7 @@ function VsBurst({ size }: { size: number }) {
 }
 
 /** Speed lanes and two glows, orange from one corner and volt from the other: the arena's floor. */
-function ArenaBackdrop() {
+export function ArenaBackdrop() {
   return <Svg style={StyleSheet.absoluteFill} viewBox="0 0 300 300" preserveAspectRatio="none">
     <Defs>
       <RadialGradient id="duelLeft" cx="0" cy="0" r="220" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={brand.track} stopOpacity="0.45" /><Stop offset="1" stopColor={brand.track} stopOpacity="0" /></RadialGradient>

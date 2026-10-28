@@ -7,6 +7,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { ActionMenu } from '@/components/ActionMenu';
+import { ClubEventsSection } from '@/components/ClubEvents';
 import { ClubLogo } from '@/components/ClubLogo';
 import { ACCENTS, isManager, onAccent, PrivacyChoice, ROLE_LABEL } from '@/components/clubs';
 import { CompetitionRow } from '@/components/competition';
@@ -111,6 +112,7 @@ export default function ClubScreen() {
           {isManager(role) && <ActionMenu label="Club options" trigger={<HardShadow offset={2} radius={radius.base}><View style={styles.square}><Text style={{ fontFamily: fontFamily('bold'), fontSize: 20, color: colors.ink }}>⋯</Text></View></HardShadow>} actions={[
             { label: 'Dashboard', run: () => router.push(`/clubs/${c.slug}/dashboard`) },
             ...(c.suspended ? [] : [{ label: 'New competition', run: () => router.push({ pathname: '/competitions/new', params: { club: c.slug } }) }]),
+            ...(c.suspended ? [] : [{ label: 'New weekly run', run: () => router.push({ pathname: '/events/edit', params: { club: c.slug } }) }]),
             { label: 'Edit club', run: () => setEditing(true) },
           ]} />}
         </View>}
@@ -127,6 +129,7 @@ export default function ClubScreen() {
       </View>
       <ArrowRightIcon size={16} />
     </Pressable>}
+    {(c.privacy === 'open' || member) && <ClubEventsSection club={c} manager={isManager(role) && !c.suspended} />}
     {!member && <Txt size={13} color="ink2" style={{ marginTop: 16 }}>Follow to hear about every new competition. Join to be in the club, its chat and the competitions it enters members in.</Txt>}
 
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={{ gap: 20 }} accessibilityRole="tablist">

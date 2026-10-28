@@ -3,7 +3,7 @@ import type { ChallengeType } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CompetitionPreviewCard, openCompetition } from '@/components/competition';
 import { ArrowRightIcon, CloseIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon } from '@/components/icons';
 import { TabScreen } from '@/components/Shell';
@@ -11,7 +11,7 @@ import { Sheet } from '@/components/Sheet';
 import { Button, EmptyState, ErrorNotice, haptic, Skeleton, Txt, useNow } from '@/components/ui';
 import { api, post } from '@/lib/api';
 import { useDiscover, useUnit, type DiscoverView } from '@/lib/queries';
-import { colors, fontFamily, radius } from '@/lib/theme';
+import { colors, fontFamily, GUTTER, radius } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { confirm } from '@/lib/dialog';
 
@@ -66,11 +66,11 @@ export default function CompetitionsScreen() {
         <PlusIcon size={15} color={colors.paper} /><Txt size={14} weight="bold" color="paper">Create</Txt>
       </Pressable>
     </View>
-    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-      {([['Leaderboard', '/leaderboard'], ['Clubs', '/clubs'], ['Prizes', '/prizes']] as const).map(([label, href]) => <Pressable key={href} onPress={() => router.push(href)} style={({ pressed }) => [styles.subNav, pressed && { borderColor: colors.edge }]} accessibilityRole="link">
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -GUTTER, marginBottom: 16, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: GUTTER }}>
+      {([['Club runs', '/events'], ['Leaderboard', '/leaderboard'], ['Clubs', '/clubs'], ['Prizes', '/prizes']] as const).map(([label, href]) => <Pressable key={href} onPress={() => router.push(href)} style={({ pressed }) => [styles.subNav, pressed && { borderColor: colors.edge }]} accessibilityRole="link">
         <Txt size={13} weight="semibold">{label}</Txt><ArrowRightIcon size={13} />
       </Pressable>)}
-    </View>
+    </ScrollView>
 
     <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
     {drafts.length > 0 && <Pressable onPress={() => setDraftsOpen(true)} style={({ pressed }) => [styles.drafts, pressed && { borderColor: colors.edge }]} accessibilityRole="button">

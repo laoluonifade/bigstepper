@@ -1,0 +1,174 @@
+import { formatDistance } from '@jump/shared/format';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { EventStamp } from '@/components/ClubEvents';
+import { ClubLogo } from '@/components/ClubLogo';
+import { onAccent } from '@/components/clubs';
+import { ArrowRightIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon } from '@/components/icons';
+import { Avatar, Button, EmptyState, ErrorNotice, Footer, haptic, HardShadow, Loading, Screen, Txt, useNow, VerifiedTick } from '@/components/ui';
+import { api, isApiError, post, WEB_URL } from '@/lib/api';
+import { clockLabel, distanceAway, durationLabel, EVENT_NOUN, eventKey, everyLabel, nextLabel, openDirections, WEEKDAYS, type ClubEvent } from '@/lib/club-events';
+import { confirm } from '@/lib/dialog';
+import { registerForPush } from '@/lib/push';
+import { useUnit } from '@/lib/queries';
+import { colors, display, radius, wideLabel } from '@/lib/theme';
+import { toast } from '@/lib/toast';
+
+/** One weekly club event: when and where it meets, who's coming, and a button to join in every week. */
+export default function EventScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const queryClient = useQueryClient();
+  const unit = useUnit();
+  const now = useNow(60_000);
+  const event = useQuery({ queryKey: eventKey(id), queryFn: () => api<ClubEvent>(`/events/${id}`) });
+
+  const settle = async (next: ClubEvent) => {
+    queryClient.setQueryData(eventKey(id), next);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['club-events'] }),
+      queryClient.invalidateQueries({ queryKey: ['club', next.club.slug, 'events'] }),
+    ]);
+  };
+  const join = useMutation({
+    mutationFn: () => post<ClubEvent>(`/events/${id}/join`),
+    async onSuccess(next) {
+      haptic('success');
+      await settle(next);
+      void registerForPush();
+      toast({ tone: 'ok', title: 'You’re in', message: `Jump will remind you the day before and an hour before, every ${WEEKDAYS[next.weekday]}.` });
+    },
+  });
+  const leave = useMutation({
+    mutationFn: () => api<ClubEvent>(`/events/${id}/join`, { method: 'DELETE' }),
+    async onSuccess(next) { haptic(); await settle(next); toast({ tone: 'ok', message: 'You won’t get reminders for this one any more.' }); },
+  });
+  const remove = useMutation({
+    mutationFn: () => api(`/events/${id}`, { method: 'DELETE' }),
+    async onSuccess() {
+      await queryClient.invalidateQueries({ queryKey: ['club-events'] });
+      if (event.data) await queryClient.invalidateQueries({ queryKey: ['club', event.data.club.slug, 'events'] });
+      toast({ tone: 'ok', message: 'Event removed.' });
+      router.back();
+    },
+  });
+
+  if (event.isLoading) return <Screen><Stack.Screen options={{ title: '' }} /><Loading /></Screen>;
+  if (!event.data) {
+    return <Screen>
+      <Stack.Screen options={{ title: 'Club run' }} />
+      {isApiError(event.error, 404) ? <EmptyState title="This run isn’t on any more">The club may have changed its schedule.</EmptyState> : <ErrorNotice error={event.error} onRetry={() => void event.refetch()} />}
+    </Screen>;
+  }
+
+  const e = event.data;
+  const accent = e.club.accentColor || '#FF5A1F';
+  const ink = onAccent(accent);
+  const next = nextLabel(e, now);
+  const away = distanceAway(e.distanceKm);
+  const share = () => void Share.share({
+    message: `${e.title} with ${e.club.name}: ${everyLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/clubs/${e.club.slug}`,
+    url: `${WEB_URL}/clubs/${e.club.slug}`,
+  });
+
+  return <Screen refreshing={event.isRefetching} onRefresh={() => void event.refetch()} padded={false}
+    footer={<Footer style={{ flexDirection: 'row', gap: 8 }}>
+      {e.going
+        ? <Button style={{ flex: 1 }} full variant="secondary" icon={<CheckIcon size={16} />} title="Going every week" loading={leave.isPending}
+          onPress={() => void confirm({ title: 'Stop going?', message: 'You’ll stop getting reminders for this run. You can join again any time.', cancelLabel: 'Keep it', confirmLabel: 'Stop going' }).then((ok) => { if (ok) leave.mutate(); })} />
+        : <Button style={{ flex: 1 }} full variant="primary" icon={<RepeatIcon size={16} color={colors.onAccent} />} title="Join weekly" loading={join.isPending} onPress={() => join.mutate()} />}
+      <Button variant="secondary" title="Share" accessibilityLabel="Share this run" icon={<ShareIcon size={16} />} onPress={share} />
+    </Footer>}>
+    <Stack.Screen options={{ title: e.club.name }} />
+    <View style={[styles.hero, { backgroundColor: accent }]}>
+      <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 400 220" opacity={0.18}>
+        {[0, 1, 2, 3, 4, 5].map((lane) => <Path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
+      </Svg>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}>
+        <EventStamp event={e} size="lg" />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={[styles.when, { borderColor: ink }]}>
+            {next.live ? <View style={[styles.dot, { backgroundColor: ink }]} /> : null}
+            <Text style={[wideLabel(11), { color: ink }]}>{next.label}</Text>
+          </View>
+          <Text style={[display(28), { color: ink, marginTop: 8 }]} numberOfLines={3}>{e.title}</Text>
+        </View>
+      </View>
+    </View>
+
+    <View style={{ padding: 16, gap: 16 }}>
+      <ErrorNotice error={join.error ?? leave.error ?? remove.error} />
+      <Pressable onPress={() => router.push(`/clubs/${e.club.slug}`)} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="link">
+        <ClubLogo club={e.club} size={40} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt size={12} color="ink3">Hosted by</Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Txt size={15} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{e.club.name}</Txt>
+            {e.club.verified ? <VerifiedTick size={16} /> : null}
+          </View>
+        </View>
+        <ArrowRightIcon size={16} />
+      </Pressable>
+
+      <HardShadow offset={3} radius={radius['2xl']}>
+        <View style={styles.panel}>
+          <View style={styles.fact}>
+            <RepeatIcon size={18} />
+            <View style={{ flex: 1 }}>
+              <Txt size={15} weight="bold">{everyLabel(e)}</Txt>
+              <Txt size={13} color="ink2">{`${EVENT_NOUN[e.activity]} · about ${durationLabel(e.durationMinutes)}${e.distanceMetres ? ` · ${formatDistance(e.distanceMetres, unit)}` : ''}`}</Txt>
+            </View>
+          </View>
+          <View style={styles.fact}>
+            <ClockIcon size={18} />
+            <View style={{ flex: 1 }}>
+              <Txt size={15} weight="bold">{next.live ? 'On right now' : `Next: ${next.label}, ${clockLabel(e.startTime)}`}</Txt>
+              <Txt size={13} color="ink2">Times are local to the meeting point.</Txt>
+            </View>
+          </View>
+          <View style={[styles.fact, { borderBottomWidth: 0 }]}>
+            <PinIcon size={18} />
+            <View style={{ flex: 1 }}>
+              <Txt size={15} weight="bold">{e.venue}</Txt>
+              {e.address || away ? <Txt size={13} color="ink2">{[e.address, away].filter(Boolean).join(' · ')}</Txt> : null}
+            </View>
+          </View>
+          <Button full variant="dark" title="Get directions" icon={<PinIcon size={16} color={colors.paper} />} onPress={() => openDirections(e)} />
+        </View>
+      </HardShadow>
+
+      {e.notes ? <View>
+        <Text style={[wideLabel(12), { marginBottom: 6 }]}>From the club</Text>
+        <Txt size={15} leading={1.55}>{e.notes}</Txt>
+      </View> : null}
+
+      <View>
+        <Text style={[wideLabel(12), { marginBottom: 8 }]}>{e.attendeeCount ? `${e.attendeeCount} going` : 'Who’s going'}</Text>
+        {e.faces.length ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row' }}>
+            {e.faces.map((face, index) => <View key={index} style={{ marginLeft: index ? -10 : 0, borderRadius: 20, borderWidth: 2, borderColor: colors.paper }}>
+              <Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={36} round />
+            </View>)}
+          </View>
+          {e.attendeeCount > e.faces.length ? <Txt size={13} color="ink2">{`+${e.attendeeCount - e.faces.length} more`}</Txt> : null}
+        </View> : <Txt size={14} color="ink2">Nobody yet. Join and be the first.</Txt>}
+      </View>
+
+      {e.canManage && <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        <Button style={{ flex: 1 }} full variant="secondary" title="Edit" onPress={() => router.push({ pathname: '/events/edit', params: { id: e.id } })} />
+        <Button style={{ flex: 1 }} full variant="danger" title="Remove" loading={remove.isPending}
+          onPress={() => void confirm({ title: 'Remove this weekly run?', message: 'It comes off the map and everyone going stops getting reminders.', cancelLabel: 'Keep it', confirmLabel: 'Remove', destructive: true }).then((ok) => { if (ok) remove.mutate(); })} />
+      </View>}
+    </View>
+  </Screen>;
+}
+
+const styles = StyleSheet.create({
+  hero: { paddingHorizontal: 16, paddingTop: 28, paddingBottom: 24, overflow: 'hidden' },
+  when: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderWidth: 1.5, borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card },
+  panel: { gap: 14, borderRadius: radius['2xl'], borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, padding: 16 },
+  fact: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+});

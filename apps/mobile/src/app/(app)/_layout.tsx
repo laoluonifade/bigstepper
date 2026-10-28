@@ -57,6 +57,7 @@ export default function AppLayout() {
     <Stack.Screen name="messages/[username]" options={{ title: '' }} />
     <Stack.Screen name="clubs/[id]/chat" options={{ title: 'Club chat' }} />
     <Stack.Screen name="competitions/new" options={{ title: 'New competition', presentation: 'modal' }} />
+    <Stack.Screen name="events/edit" options={{ title: 'Weekly run', presentation: 'modal' }} />
     <Stack.Screen name="payments/return" options={{ title: 'Payment', presentation: 'modal' }} />
   </Stack>
   {/* A few seconds after opening the app: where you stand in one of your races. */}
