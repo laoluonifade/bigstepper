@@ -30,7 +30,7 @@ export function TopBar({ right }: { right?: ReactNode }) {
 }
 
 /** A tab's page: the top bar, the shell's status banners, then the content scrolling under them. */
-export function TabScreen({ children, refreshing, onRefresh, banners = true }: { children: ReactNode; refreshing?: boolean; onRefresh?: () => void; banners?: boolean }) {
+export function TabScreen({ children, refreshing, onRefresh, banners = true, overlay }: { children: ReactNode; refreshing?: boolean; onRefresh?: () => void; banners?: boolean; /** Floats over the scrolling content, e.g. a create button. */ overlay?: ReactNode }) {
   return <View style={{ flex: 1, backgroundColor: colors.paper }}>
     <TopBar />
     <Screen refreshing={refreshing} onRefresh={onRefresh} contentStyle={{ paddingTop: 20, paddingBottom: 40 }}>
@@ -41,6 +41,7 @@ export function TabScreen({ children, refreshing, onRefresh, banners = true }: {
       </>}
       {children}
     </Screen>
+    {overlay}
   </View>;
 }
 

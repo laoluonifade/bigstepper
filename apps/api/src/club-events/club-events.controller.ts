@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
@@ -11,7 +11,7 @@ import type { EventActivity, EventRepeat } from './club-events.repository';
 import { ClubEventsService } from './club-events.service';
 
 class EventDto {
-  @IsString() @Length(2, 80)
+  @IsString() @Length(1, 80)
   title: string;
 
   @IsIn(['run', 'walk', 'cycle', 'any'])
@@ -53,17 +53,20 @@ class EventDto {
   @IsOptional() @IsInt() @Min(500) @Max(200_000)
   distanceMetres?: number | null;
 
-  @IsString() @Length(2, 120)
-  venue: string;
+  @IsOptional() @IsString() @MaxLength(120)
+  venue?: string | null;
 
   @IsOptional() @IsString() @MaxLength(200)
   address?: string | null;
 
-  @IsNumber() @IsLatitude()
-  latitude: number;
+  @IsOptional() @IsNumber() @IsLatitude()
+  latitude?: number | null;
 
-  @IsNumber() @IsLongitude()
-  longitude: number;
+  @IsOptional() @IsNumber() @IsLongitude()
+  longitude?: number | null;
+
+  @IsOptional() @IsBoolean()
+  draft?: boolean;
 }
 
 class NearQuery {
@@ -99,7 +102,20 @@ export class ClubEventsController {
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   create(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() input: EventDto) {
-    return this.events.create(user.id, id, input);
+    const { draft, ...event } = input;
+    return this.events.create(user.id, id, event, Boolean(draft));
+  }
+
+  @Get('events/drafts')
+  @UseGuards(JwtAuthGuard)
+  drafts(@CurrentUser() user: AuthenticatedUser) {
+    return this.events.drafts(user.id);
+  }
+
+  @Post('events/:id/publish')
+  @UseGuards(JwtAuthGuard)
+  publish(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.events.publish(user.id, id);
   }
 
   @Get('events')

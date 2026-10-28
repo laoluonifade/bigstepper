@@ -9,7 +9,7 @@ import { EventPass, PassSheet } from '@/components/EventPass';
 import { ClubLogo } from '@/components/ClubLogo';
 import { onAccent } from '@/components/clubs';
 import { ArrowRightIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, TicketIcon, UsersIcon } from '@/components/icons';
-import { Avatar, Button, EmptyState, ErrorNotice, Footer, haptic, HardShadow, Loading, Screen, Txt, useNow, VerifiedTick } from '@/components/ui';
+import { Avatar, Button, EmptyState, ErrorNotice, Footer, haptic, HardShadow, Loading, Notice, Screen, Txt, useNow, VerifiedTick } from '@/components/ui';
 import { api, isApiError, post, WEB_URL } from '@/lib/api';
 import { clockLabel, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, openDirections, scheduleLabel, type ClubEvent } from '@/lib/club-events';
 import { confirm } from '@/lib/dialog';
@@ -48,6 +48,14 @@ export default function EventScreen() {
     mutationFn: () => api<ClubEvent>(`/events/${id}/join`, { method: 'DELETE' }),
     async onSuccess(next) { haptic(); await settle(next); toast({ tone: 'ok', message: 'Pass given up. You won’t get reminders for this one.' }); },
   });
+  const publish = useMutation({
+    mutationFn: () => post<ClubEvent>(`/events/${id}/publish`),
+    async onSuccess(next) {
+      haptic('success');
+      await settle(next);
+      toast({ tone: 'ok', title: 'Your event is live', message: 'Members and followers just heard about it.' });
+    },
+  });
   const remove = useMutation({
     mutationFn: () => api(`/events/${id}`, { method: 'DELETE' }),
     async onSuccess() {
@@ -78,7 +86,9 @@ export default function EventScreen() {
 
   return <Screen refreshing={event.isRefetching} onRefresh={() => void event.refetch()} padded={false}
     footer={<Footer style={{ flexDirection: 'row', gap: 8 }}>
-      {e.pass
+      {e.draft
+        ? <Button style={{ flex: 1 }} full variant="primary" title="Publish now" loading={publish.isPending} onPress={() => publish.mutate()} />
+        : e.pass
         ? <Button style={{ flex: 1 }} full variant="dark" icon={<TicketIcon size={16} color={colors.paper} />} title="Show my pass" onPress={() => setPassOpen(true)} />
         : e.nextAt ? <Button style={{ flex: 1 }} full variant="primary" icon={<TicketIcon size={16} color={colors.onAccent} />} title="Get your pass" loading={join.isPending} onPress={() => join.mutate()} />
           : <Button style={{ flex: 1 }} full variant="secondary" title="This event has finished" disabled />}
@@ -103,7 +113,8 @@ export default function EventScreen() {
     </View>
 
     <View style={{ padding: 16, gap: 16 }}>
-      <ErrorNotice error={join.error ?? leave.error ?? remove.error} />
+      <ErrorNotice error={join.error ?? leave.error ?? remove.error ?? publish.error} />
+      {e.draft ? <Notice tone="warn" title="Draft · not posted yet">Only {e.club.name}’s managers can see it, and nobody has been told. Publish it and members and followers get a push.</Notice> : null}
       {e.pass ? <Pressable onPress={() => setPassOpen(true)} accessibilityRole="button" accessibilityLabel="Open your pass"><EventPass event={e} holder={profile?.displayName ?? 'You'} behind={colors.paper} /></Pressable> : null}
       <Pressable onPress={() => router.push(`/clubs/${e.club.slug}`)} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="link">
         <ClubLogo club={e.club} size={40} />
@@ -136,11 +147,12 @@ export default function EventScreen() {
           <View style={[styles.fact, { borderBottomWidth: 0 }]}>
             <PinIcon size={18} />
             <View style={{ flex: 1 }}>
-              <Txt size={15} weight="bold">{e.venue}</Txt>
+              <Txt size={15} weight="bold">{e.venue ?? 'No meeting point yet'}</Txt>
               {e.address || away ? <Txt size={13} color="ink2">{[e.address, away].filter(Boolean).join(' · ')}</Txt> : null}
             </View>
           </View>
-          <Button full variant="dark" title="Get directions" icon={<PinIcon size={16} color={colors.paper} />} onPress={() => openDirections(e)} />
+          {e.latitude != null ? <Button full variant="dark" title="Get directions" icon={<PinIcon size={16} color={colors.paper} />} onPress={() => openDirections(e)} />
+            : <Button full variant="dark" title="Add the meeting point" onPress={() => router.push({ pathname: '/events/edit', params: { id: e.id } })} />}
         </View>
       </HardShadow>
 
@@ -166,7 +178,7 @@ export default function EventScreen() {
         <Txt size={13} weight="semibold" color="ink3">Can’t make it? Give up your pass</Txt>
       </Pressable> : null}
 
-      {e.canManage && <Button full variant="volt" title={`Guest list · ${e.attendeeCount}`} icon={<UsersIcon size={16} color={colors.onAccent} />} onPress={() => router.push({ pathname: '/events/guests', params: { id: e.id } })} />}
+      {e.canManage && !e.draft && <Button full variant="volt" title={`Guest list · ${e.attendeeCount}`} icon={<UsersIcon size={16} color={colors.onAccent} />} onPress={() => router.push({ pathname: '/events/guests', params: { id: e.id } })} />}
       {e.canManage && <View style={{ flexDirection: 'row', gap: 8 }}>
         <Button style={{ flex: 1 }} full variant="secondary" title="Edit" onPress={() => router.push({ pathname: '/events/edit', params: { id: e.id } })} />
         <Button style={{ flex: 1 }} full variant="danger" title="Remove" loading={remove.isPending}

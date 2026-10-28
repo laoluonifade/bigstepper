@@ -21,10 +21,10 @@ export interface EventInput {
   timeZone: string;
   durationMinutes: number;
   distanceMetres?: number | null;
-  venue: string;
+  venue?: string | null;
   address?: string | null;
-  latitude: number;
-  longitude: number;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 const face = z.object({ displayName: text.nullable(), avatarUrl: text.nullable(), avatarStyle: text });
@@ -34,10 +34,11 @@ export const eventRow = z.object({
   repeat: z.enum(['once', 'daily', 'weekly', 'monthly']), repeatEvery: num, weekdays: z.array(num), monthMode: z.enum(['date', 'weekday']).nullable(),
   monthWeek: num.nullable(), startsOn: text, endsOn: text.nullable(), weekday: num,
   startTime: text, timeZone: text, durationMinutes: num, distanceMetres: num.nullable(),
-  venue: text, address: text.nullable(), coverUrl: text.nullable(), latitude: num, longitude: num, nextAt: when.nullable(),
+  venue: text.nullable(), address: text.nullable(), coverUrl: text.nullable(), latitude: num.nullable(), longitude: num.nullable(), nextAt: when.nullable(),
   club: z.object({ id, slug: text, name: text, logoUrl: text.nullable(), accentColor: text, verified: z.boolean(), privacy: text }),
   attendeeCount: num, going: z.boolean(), canManage: z.boolean(), faces: z.array(face), distanceKm: num.nullable(),
   pass: z.object({ code: text, checkedIn: z.boolean() }).nullable(),
+  draft: z.boolean(),
 });
 export type EventRow = z.output<typeof eventRow>;
 
@@ -73,11 +74,14 @@ const select = (where: string) => `
                          CASE WHEN p."gender" = 'male' THEN 'masculine' WHEN p."gender" = 'female' THEN 'feminine' ELSE 'neutral' END AS "avatarStyle"
                     FROM "club_event_attendees" a JOIN "profiles" p ON p."userId" = a."userId"
                    WHERE a."eventId" = e."id" ORDER BY a."createdAt" LIMIT 5) f) AS "faces",
-         CASE WHEN $2::float8 IS NULL OR $3::float8 IS NULL THEN NULL ELSE ${KM} END AS "distanceKm"
+         CASE WHEN $2::float8 IS NULL OR $3::float8 IS NULL THEN NULL ELSE ${KM} END AS "distanceKm",
+         e."publishedAt" IS NULL AS "draft"
     FROM "club_events" e
     JOIN "clubs" c ON c."id" = e."clubId"
     LEFT JOIN "club_memberships" m ON m."clubId" = c."id" AND m."userId" = $1::uuid
-   WHERE (c."privacy" = 'open' OR m."userId" IS NOT NULL) AND ${where}`;
+   WHERE (c."privacy" = 'open' OR m."userId" IS NOT NULL)
+     AND (e."publishedAt" IS NOT NULL OR COALESCE(m."role" IN ('owner', 'admin'), false))
+     AND ${where}`;
 
 @Injectable()
 export class ClubEventsRepository {
@@ -121,6 +125,16 @@ export class ClubEventsRepository {
       [viewerId, null, null]);
   }
 
+  drafts(viewerId: string) {
+    return rows(this.dataSource, eventRow,
+      `${select(`e."publishedAt" IS NULL AND m."role" IN ('owner', 'admin')`)} ORDER BY e."updatedAt" DESC`, [viewerId, null, null]);
+  }
+
+  publish(eventId: string) {
+    return row(this.dataSource, z.object({ id }),
+      `WITH done AS (UPDATE "club_events" SET "publishedAt" = now(), "updatedAt" = now() WHERE "id" = $1 AND "publishedAt" IS NULL RETURNING "id") SELECT * FROM done`, [eventId]);
+  }
+
   setCover(eventId: string, coverUrl: string | null) {
     return run(this.dataSource, `UPDATE "club_events" SET "coverUrl"=$2,"updatedAt"=now() WHERE "id"=$1`, [eventId, coverUrl]);
   }
@@ -129,14 +143,14 @@ export class ClubEventsRepository {
     return (await row(this.dataSource, z.object({ n: num }), `SELECT count(*)::integer AS "n" FROM "club_events" WHERE "clubId" = $1`, [clubId]))?.n ?? 0;
   }
 
-  async insert(db: Db, clubId: string, createdBy: string, input: EventInput) {
+  async insert(db: Db, clubId: string, createdBy: string, input: EventInput, draft = false) {
     return (await row(db, z.object({ id }),
       `INSERT INTO "club_events" ("clubId","createdBy","title","activity","notes","repeat","repeatEvery","weekdays","monthMode","monthWeek","startsOn","endsOn",
-         "startTime","timeZone","durationMinutes","distanceMetres","venue","address","latitude","longitude")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING "id"`,
+         "startTime","timeZone","durationMinutes","distanceMetres","venue","address","latitude","longitude","publishedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,CASE WHEN $21 THEN NULL ELSE now() END) RETURNING "id"`,
       [clubId, createdBy, input.title, input.activity, input.notes ?? null, input.repeat, input.repeatEvery ?? 1, input.weekdays ?? [], input.monthMode ?? null,
         input.monthWeek ?? null, input.startsOn, input.endsOn ?? null, input.startTime, input.timeZone,
-        input.durationMinutes, input.distanceMetres ?? null, input.venue, input.address ?? null, input.latitude, input.longitude]))!.id;
+        input.durationMinutes, input.distanceMetres ?? null, input.venue ?? null, input.address ?? null, input.latitude ?? null, input.longitude ?? null, draft]))!.id;
   }
 
   update(eventId: string, input: EventInput) {
@@ -147,7 +161,7 @@ export class ClubEventsRepository {
        WHERE "id"=$1`,
       [eventId, input.title, input.activity, input.notes ?? null, input.repeat, input.repeatEvery ?? 1, input.weekdays ?? [], input.monthMode ?? null,
         input.monthWeek ?? null, input.startsOn, input.endsOn ?? null, input.startTime, input.timeZone,
-        input.durationMinutes, input.distanceMetres ?? null, input.venue, input.address ?? null, input.latitude, input.longitude]);
+        input.durationMinutes, input.distanceMetres ?? null, input.venue ?? null, input.address ?? null, input.latitude ?? null, input.longitude ?? null]);
   }
 
   remove(eventId: string) {
@@ -202,7 +216,7 @@ export class ClubEventsRepository {
       `WITH due AS (
          SELECT e."id", ${NEXT} AS "nextAt"
            FROM "club_events" e JOIN "clubs" c ON c."id" = e."clubId"
-          WHERE c."suspendedAt" IS NULL AND EXISTS (SELECT 1 FROM "club_event_attendees" a WHERE a."eventId" = e."id")
+          WHERE c."suspendedAt" IS NULL AND e."publishedAt" IS NOT NULL AND e."venue" IS NOT NULL AND EXISTS (SELECT 1 FROM "club_event_attendees" a WHERE a."eventId" = e."id")
        ), claimed AS (
          UPDATE "club_events" e SET "${column}" = due."nextAt"
            FROM due

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { ExploreEventCard } from '../components/ClubEvents';
+import { EventForm, ExploreEventCard } from '../components/ClubEvents';
 import { ClubLogo } from '../components/ClubLogo';
 import { Dropdown } from '../components/Dropdown';
 import { Modal } from '../components/Modal';
@@ -344,7 +344,8 @@ type ManagedClub = { id: string; slug: string; name: string; logoUrl: string | n
 /** Create: a competition anyone can take part in from anywhere, or an in-person event for a club you run. */
 function CreateChooser({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
-  const [step, setStep] = useState<'choose' | 'club'>('choose');
+  const [step, setStep] = useState<'choose' | 'club' | 'event'>('choose');
+  const unit = useUnit();
   const clubs = useQuery({ queryKey: ['clubs', 'mine'], queryFn: () => api<ManagedClub[]>('/clubs?view=mine') });
   const managed = (clubs.data ?? []).filter((club) => club.myRole === 'owner' || club.myRole === 'admin');
   const newEvent = (slug: string) => { onClose(); void navigate({ to: '/clubs/$id', params: { id: slug }, search: {}, hash: 'new-event' }); };
@@ -355,6 +356,8 @@ function CreateChooser({ onClose }: { onClose: () => void }) {
     <ChevronRightIcon size={18} className="shrink-0 text-ink-2" />
   </button>;
 
+  // The event form asks which club is hosting first; only someone with no club to host from stops at the club step.
+  if (step === 'event') return <EventForm unit={unit} onClose={onClose} />;
   if (step === 'club') {
     return <Modal title={managed.length ? 'Which club is hosting?' : 'Events are hosted by clubs'} onClose={onClose}>
       <p className="-mt-2 mb-4 text-[14px] leading-snug text-ink-2">{managed.length ? 'Your event goes on the club’s page, and its members and followers hear about it.' : 'Start a club for your crew, then add your first event. It takes a minute.'}</p>
@@ -370,7 +373,7 @@ function CreateChooser({ onClose }: { onClose: () => void }) {
     <p className="-mt-2 mb-4 text-[14px] text-ink-2">Choose what you want people to do.</p>
     <div className="space-y-3">
       {option(<CrownIcon size={22} />, 'Competition', 'Set a goal, rules and duration. People take part from anywhere and track their results.', () => { onClose(); void navigate({ to: '/competitions/new', search: {} }); })}
-      {option(<CalendarIcon size={22} />, 'Event', 'Set a day, time, place and activity. People RSVP, get reminded and show up in person.', () => { if (managed.length === 1) newEvent(managed[0].slug); else setStep('club'); })}
+      {option(<CalendarIcon size={22} />, 'Event', 'Set a day, time, place and activity. People RSVP, get reminded and show up in person.', () => setStep(managed.length ? 'event' : 'club'))}
       <p className="pt-1 text-[13px] leading-snug text-ink-3">Events are hosted by a club you run: one-off, weekly, every two weeks or monthly. Everyone who joins gets a pass.</p>
     </div>
   </Modal>;

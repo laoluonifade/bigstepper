@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Db } from '../database/sql';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
 import { ClubEventsRepository, EventActivity, EventClub, EventInput, EventRow } from './club-events.repository';
@@ -84,6 +85,10 @@ export class ClubEventsService {
     return event;
   }
 
+  private assertPlace(input: Pick<EventInput, 'venue' | 'latitude' | 'longitude'>) {
+    if (!input.venue?.trim() || input.latitude == null || input.longitude == null) throw new BadRequestException('Set the meeting point first');
+  }
+
   private clean(input: EventInput): EventInput {
     if (!validZone(input.timeZone)) throw new BadRequestException('Invalid time zone');
     if (Number.isNaN(Date.parse(`${input.startsOn}T00:00:00Z`))) throw new BadRequestException('Pick a valid date');
@@ -93,7 +98,7 @@ export class ClubEventsService {
     return {
       ...input,
       title: input.title.trim(),
-      venue: input.venue.trim(),
+      venue: input.venue?.trim() || null,
       notes: input.notes?.trim() || null,
       address: input.address?.trim() || null,
       distanceMetres: input.distanceMetres ?? null,
@@ -124,26 +129,50 @@ export class ClubEventsService {
     return this.event(eventId, viewerId, latitude, longitude);
   }
 
-  async create(actorId: string, ref: string, input: EventInput) {
+  async create(actorId: string, ref: string, input: EventInput, draft = false) {
     const club = await this.club(ref, actorId);
     this.assertManager(club);
     if (club.suspended) throw new ForbiddenException('This club can’t post events right now');
-    if (await this.repo.count(club.id) >= MAX_PER_CLUB) throw new ConflictException(`A club can have up to ${MAX_PER_CLUB} weekly events`);
+    if (await this.repo.count(club.id) >= MAX_PER_CLUB) throw new ConflictException(`A club can have up to ${MAX_PER_CLUB} events`);
     const event = this.clean(input);
+    if (!draft) this.assertPlace(event);
     const eventId = await this.repo.dataSource.transaction(async (db) => {
-      const created = await this.repo.insert(db, club.id, actorId, event);
-      await this.repo.announce(db, club.id, actorId, `New ${NOUN[event.activity]} from ${club.name}`,
-        `${event.title}: ${whenLabel(event)} at ${event.venue}. Tap to get your pass and a reminder before it starts.`, `/events/${created}`);
+      const created = await this.repo.insert(db, club.id, actorId, event, draft);
+      if (!draft) await this.announce(db, club, actorId, event, created);
       return created;
     });
-    await this.attend(eventId, club.id, actorId);
+    if (!draft) await this.attend(eventId, club.id, actorId);
+    return this.event(eventId, actorId);
+  }
+
+  private announce(db: Db, club: EventClub, actorId: string, event: Pick<EventInput, 'activity' | 'title' | 'venue'> & Parameters<typeof whenLabel>[0], eventId: string) {
+    return this.repo.announce(db, club.id, actorId, `New ${NOUN[event.activity]} from ${club.name}`,
+      `${event.title}: ${whenLabel(event)} at ${event.venue}. Tap to get your pass and a reminder before it starts.`, `/events/${eventId}`);
+  }
+
+  drafts(actorId: string) {
+    return this.repo.drafts(actorId);
+  }
+
+  async publish(actorId: string, eventId: string) {
+    const event = await this.event(eventId, actorId);
+    if (!event.canManage) throw new ForbiddenException('Only the club owner or a manager can do that');
+    if (!event.draft) throw new ConflictException('It’s already published');
+    this.assertPlace(event);
+    const club = await this.club(event.clubId, actorId);
+    if (club.suspended) throw new ForbiddenException('This club can’t post events right now');
+    if (!(await this.repo.publish(event.id))) throw new ConflictException('It’s already published');
+    await this.announce(this.repo.dataSource, club, actorId, event, event.id);
+    await this.attend(event.id, club.id, actorId);
     return this.event(eventId, actorId);
   }
 
   async update(actorId: string, eventId: string, input: EventInput) {
     const event = await this.event(eventId, actorId);
     if (!event.canManage) throw new ForbiddenException('Only the club owner or a manager can do that');
-    await this.repo.update(event.id, this.clean(input));
+    const next = this.clean(input);
+    if (!event.draft) this.assertPlace(next);
+    await this.repo.update(event.id, next);
     return this.event(eventId, actorId);
   }
 
@@ -181,6 +210,7 @@ export class ClubEventsService {
 
   async join(userId: string, eventId: string) {
     const event = await this.event(eventId, userId);
+    if (event.draft) throw new ConflictException('This event isn’t published yet');
     if (!event.nextAt) throw new ConflictException('This event has finished');
     await this.attend(event.id, event.clubId, userId);
     return this.event(eventId, userId);

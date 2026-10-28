@@ -173,7 +173,7 @@ export default function CompetitionDetailScreen() {
     {/* The page has its own big title; the header stays clear (the code lives on the share card). */}
     <Stack.Screen options={{ title: '' }} />
     {created === '1' && <Notice tone="ok" title="Competition created" style={{ marginBottom: 24 }}>
-      {`${t.status === 'PENDING_APPROVAL' ? 'Your draft is waiting for Jump approval. ' : t.status === 'PENDING_FUNDING' ? 'Fund the prize to open entry. ' : t.status === 'DRAFT' ? 'Saved as a draft. Only your club’s managers can see it. ' : t.status === 'SCHEDULED' ? `It opens ${t.publishAt ? formatDateTime(t.publishAt) : 'soon'}. ` : 'Your competition is open. '}${t.status === 'PENDING_FUNDING' ? 'This draft is saved to your account. You can leave and return to fund it.' : 'Share the link so friends can join.'}`}
+      {`${t.status === 'PENDING_APPROVAL' ? 'Your draft is waiting for Jump approval. ' : t.status === 'PENDING_FUNDING' ? 'Fund the prize to open entry. ' : t.status === 'DRAFT' ? `Saved as a draft. Only ${t.communityId ? 'your club’s managers' : 'you'} can see it. ` : t.status === 'SCHEDULED' ? `It opens ${t.publishAt ? formatDateTime(t.publishAt) : 'soon'}. ` : 'Your competition is open. '}${t.status === 'PENDING_FUNDING' ? 'This draft is saved to your account. You can leave and return to fund it.' : 'Share the link so friends can join.'}`}
     </Notice>}
     {t.archivedAt && <Notice tone="neutral" title="Archived" style={{ marginBottom: 24 }}>
       {isHost ? 'Off every list, including yours. Anyone with the link can still see it. Unarchive it below to bring it back.' : 'The host archived this competition. Its final board stays here.'}
@@ -284,7 +284,7 @@ function DraftPanel({ table }: { table: CompetitionTable }) {
       <Button size="sm" title={publish.isPending ? 'Publishing…' : 'Publish now'} loading={publish.isPending} onPress={() => publish.mutate()} />
       {table.club && <Button size="sm" variant="secondary" title="Edit in dashboard" onPress={() => router.push(`/clubs/${table.club!.slug}/dashboard`)} />}
     </View>}>
-    <Txt size={14} color="ink2" leading={1.5}>{`Only your club’s managers can see it. ${table.status === 'SCHEDULED' ? 'It opens on its own at that time, and your followers are told.' : 'Change its theme, dates and prizes from the club dashboard, then publish it.'}`}</Txt>
+    <Txt size={14} color="ink2" leading={1.5}>{table.club ? `Only your club’s managers can see it. ${table.status === 'SCHEDULED' ? 'It opens on its own at that time, and your followers are told.' : 'Change its theme, dates and prizes from the club dashboard, then publish it.'}` : 'Only you can see it. Publish it when it’s ready and people can join.'}</Txt>
     <ErrorNotice error={publish.error} />
   </Notice>;
 }

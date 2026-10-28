@@ -146,8 +146,8 @@ export class TablesService {
       throw new BadRequestException('Head-to-head is you and one opponent. Invite one person.');
     }
     const publish = input.publish ?? 'now';
-    if ((input.clubPrizes || publish !== 'now' || input.series) && !input.communityId) {
-      throw new BadRequestException('Prizes, scheduling, drafts and series are for club competitions. Host it from your club’s page.');
+    if ((input.clubPrizes || publish === 'schedule' || input.series) && !input.communityId) {
+      throw new BadRequestException('Prizes, scheduling and series are for club competitions. Host it from your club’s page.');
     }
     if ((publish !== 'now' || input.series) && sponsored) throw new BadRequestException('Cash-prize competitions open once they’re funded, so they can’t be drafted, scheduled or repeated');
     if (input.communityId) await assertClubCanHost(this.dataSource.manager, input.communityId, creatorId, { adding: publish !== 'draft' });

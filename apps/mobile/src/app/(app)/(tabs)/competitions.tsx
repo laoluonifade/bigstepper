@@ -3,16 +3,16 @@ import type { ChallengeType, Profile } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ExploreEventCard } from '@/components/ClubEvents';
 import { ClubLogo } from '@/components/ClubLogo';
 import { isManager, type ClubSummary } from '@/components/clubs';
 import { CompetitionPreviewCard, openCompetition } from '@/components/competition';
-import { ArrowRightIcon, CalendarIcon, ChevronRightIcon, CloseIcon, CrownIcon, UsersIcon, PinIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon } from '@/components/icons';
+import { CalendarIcon, ChevronRightIcon, CloseIcon, CrownIcon, UsersIcon, PinIcon, PlusIcon, SearchIcon, SlidersIcon, TrashIcon } from '@/components/icons';
 import { TabScreen } from '@/components/Shell';
 import { Sheet } from '@/components/Sheet';
-import { Button, EmptyState, ErrorNotice, haptic, HardShadow, Skeleton, Txt, useNow } from '@/components/ui';
+import { BottomBarInset, Button, EmptyState, ErrorNotice, haptic, HardShadow, Skeleton, Txt, useNow } from '@/components/ui';
 import { api, patch, post } from '@/lib/api';
 import type { ClubEvent } from '@/lib/club-events';
 import { keys, useDiscover, useProfile, useUnit, type DiscoverView } from '@/lib/queries';
@@ -138,27 +138,19 @@ export default function CompetitionsScreen() {
   if (!tables.hasNextPage || kind === 'events') events.slice(nextEvent).forEach((event) => feed.push({ kind: 'event', event }));
   const tab: BrowseTab = view === 'created' || view === 'archived' ? 'mine' : (view as BrowseTab);
 
-  return <TabScreen refreshing={tables.isRefetching} onRefresh={() => { void tables.refetch(); void mine.refetch(); void explore.refetch(); }}>
+  const eventDrafts = useQuery({ queryKey: ['club-events', 'drafts'], queryFn: () => api<ClubEvent[]>('/events/drafts') });
+  const draftCount = drafts.length + (eventDrafts.data?.length ?? 0);
+  const fab = <CreateButton drafts={draftCount} onCreate={() => setCreating(true)} onDrafts={() => setDraftsOpen(true)} />;
+  return <TabScreen refreshing={tables.isRefetching} onRefresh={() => { void tables.refetch(); void mine.refetch(); void explore.refetch(); }} overlay={fab}>
     <View style={styles.header}>
       <Txt size={26} weight="extrabold" style={{ letterSpacing: -0.4 }} accessibilityRole="header">Explore</Txt>
-      <Pressable onPress={() => { haptic(); setCreating(true); }} style={({ pressed }) => [styles.create, pressed && { transform: [{ scale: 0.95 }] }]} accessibilityRole="button">
-        <PlusIcon size={15} color={colors.paper} /><Txt size={14} weight="bold" color="paper">Create</Txt>
-      </Pressable>
     </View>
     <PlaceCards />
     <LensSwitch value={kind} onChange={setLens} />
     <CreateSheet open={creating} onOpenChange={setCreating} />
 
     <ErrorNotice error={mine.error} onRetry={() => void mine.refetch()} />
-    {drafts.length > 0 && <Pressable onPress={() => setDraftsOpen(true)} style={({ pressed }) => [styles.drafts, pressed && { borderColor: colors.edge }]} accessibilityRole="button">
-      <View style={styles.draftCount}><Txt size={12} weight="bold" color="paper" num>{drafts.length}</Txt></View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Txt size={14} weight="semibold">{drafts.length === 1 ? 'Draft' : 'Drafts'} not live yet</Txt>
-        <Txt size={12} color="ink3" numberOfLines={1}>{drafts.map((draft) => draft.title).join(' · ')}</Txt>
-      </View>
-      <Txt size={13} weight="bold">Manage</Txt><ArrowRightIcon size={14} />
-    </Pressable>}
-    <DraftsSheet open={draftsOpen} onOpenChange={setDraftsOpen} drafts={drafts} />
+    <DraftsSheet open={draftsOpen} onOpenChange={setDraftsOpen} drafts={drafts} events={eventDrafts.data ?? []} />
 
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <View style={styles.search}>
@@ -245,6 +237,8 @@ export default function CompetitionsScreen() {
             : <CompetitionPreviewCard key={item.table.id} table={item.table} unit={unit} now={now} tagged={events.length > 0} />)}</View>
           {tables.hasNextPage && kind !== 'events' && <Button full variant="secondary" style={{ marginTop: 20 }} loading={tables.isFetchingNextPage} title={tables.isFetchingNextPage ? 'Loading…' : 'Load more'} onPress={() => void tables.fetchNextPage()} />}
         </>}
+    {/* Room under the last card so the create button never covers it. */}
+    <View style={{ height: 72 }} />
   </TabScreen>;
 }
 
@@ -256,30 +250,48 @@ function FilterOption({ label, active, onPress, width }: { label: string; active
 }
 
 /** Everything the host started but hasn't opened: finish it (fund it, or wait on review) or throw it away. */
-function DraftsSheet({ open, onOpenChange, drafts }: { open: boolean; onOpenChange: (open: boolean) => void; drafts: DraftTable[] }) {
+function DraftsSheet({ open, onOpenChange, drafts, events }: { open: boolean; onOpenChange: (open: boolean) => void; drafts: DraftTable[]; events: ClubEvent[] }) {
   const queryClient = useQueryClient();
+  const total = drafts.length + events.length;
+  const discardEvent = useMutation({
+    mutationFn: (id: string) => api(`/events/${id}`, { method: 'DELETE' }),
+    onSuccess(_, id) {
+      toast({ tone: 'ok', message: 'Draft discarded.' });
+      queryClient.setQueryData<ClubEvent[]>(['club-events', 'drafts'], (rows) => rows?.filter((row) => row.id !== id));
+      if (total <= 1) onOpenChange(false);
+    },
+  });
   const discard = useMutation({
     mutationFn: (id: string) => post(`/tables/${id}/discard`),
     onSuccess(_, id) {
       toast({ tone: 'ok', message: 'Draft discarded.' });
       queryClient.setQueryData<DraftTable[]>(['tables', 'mine'], (rows) => rows?.filter((row) => row.id !== id));
       void queryClient.invalidateQueries({ queryKey: ['tables'] });
-      if (drafts.length <= 1) onOpenChange(false);
+      if (total <= 1) onOpenChange(false);
     },
   });
   const confirmDiscard = (draft: DraftTable) => void confirm({ title: `Discard ${draft.title}?`, message: 'This can’t be undone.', cancelLabel: 'Keep', confirmLabel: 'Discard', destructive: true })
     .then((ok) => { if (ok) discard.mutate(draft.id); });
 
   return <Sheet open={open} onOpenChange={onOpenChange} title="Drafts" description="Nobody can join these until they’re live.">
-    <ErrorNotice error={discard.error} />
+    <ErrorNotice error={discard.error ?? discardEvent.error} />
+    {events.map((event, index) => <View key={event.id} style={[styles.draftRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Txt size={15} weight="semibold" numberOfLines={1}>{event.title}</Txt>
+        <Txt size={12} color="ink3" numberOfLines={2} style={{ marginTop: 2 }}>{`Event draft · ${event.club.name}`}</Txt>
+      </View>
+      <Pressable onPress={() => void confirm({ title: `Discard ${event.title}?`, message: 'This can’t be undone.', cancelLabel: 'Keep', confirmLabel: 'Discard', destructive: true }).then((ok) => { if (ok) discardEvent.mutate(event.id); })}
+        hitSlop={6} style={({ pressed }) => [styles.trash, pressed && { backgroundColor: colors.badWash }]} accessibilityLabel={`Discard ${event.title}`}><TrashIcon size={16} color={colors.ink3} /></Pressable>
+      <Pressable onPress={() => { onOpenChange(false); router.push(`/events/${event.id}`); }} style={styles.fund} accessibilityRole="button"><Txt size={13} weight="bold" color="paper">View</Txt></Pressable>
+    </View>)}
     {drafts.map((draft, index) => {
       const review = draft.status === 'PENDING_APPROVAL';
       const club = draft.status === 'DRAFT' || draft.status === 'SCHEDULED';
-      return <View key={draft.id} style={[styles.draftRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
+      return <View key={draft.id} style={[styles.draftRow, (index > 0 || events.length > 0) && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Txt size={15} weight="semibold" numberOfLines={1}>{draft.title}</Txt>
           <Txt size={12} color="ink3" numberOfLines={2} style={{ marginTop: 2 }}>
-            {`${club ? (draft.status === 'DRAFT' ? 'Club draft · publish it when it’s ready' : 'Scheduled to open') : review ? 'Waiting for Jump to review' : draft.guaranteedPrizeKobo ? `Fund the ${formatMoney(draft.guaranteedPrizeKobo).replace(/\.00$/, '')} prize to open entry` : 'Fund the prize to open entry'} · started ${formatDate(draft.createdAt)}`}
+            {`${club ? (draft.status === 'DRAFT' ? 'Competition draft · publish it when it’s ready' : 'Scheduled to open') : review ? 'Waiting for Jump to review' : draft.guaranteedPrizeKobo ? `Fund the ${formatMoney(draft.guaranteedPrizeKobo).replace(/\.00$/, '')} prize to open entry` : 'Fund the prize to open entry'} · started ${formatDate(draft.createdAt)}`}
           </Txt>
         </View>
         <Pressable onPress={() => confirmDiscard(draft)} hitSlop={6} style={({ pressed }) => [styles.trash, pressed && { backgroundColor: colors.badWash }]} accessibilityLabel={`Discard ${draft.title}`}><TrashIcon size={16} color={colors.ink3} /></Pressable>
@@ -291,17 +303,17 @@ function DraftsSheet({ open, onOpenChange, drafts }: { open: boolean; onOpenChan
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
-  create: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 16 },
   lenses: { flexDirection: 'row', alignItems: 'flex-end', gap: 22, marginBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   lens: { fontFamily: fontFamily('black', 'wide'), fontSize: 15, letterSpacing: 0.3, textTransform: 'uppercase' },
+  fab: { position: 'absolute', right: 16 },
+  fabFace: { width: 60, height: 60, borderRadius: 18, borderWidth: 2, borderColor: brand.ink, backgroundColor: brand.track, alignItems: 'center', justifyContent: 'center' },
+  fabBadge: { position: 'absolute', top: -7, right: -7, minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, borderWidth: 2, borderColor: colors.paper, backgroundColor: brand.ink, alignItems: 'center', justifyContent: 'center' },
   places: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   place: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.xl, borderWidth: 2, borderColor: colors.edge, backgroundColor: colors.card, paddingVertical: 10, paddingLeft: 10, paddingRight: 8 },
   placeIcon: { width: 38, height: 38, borderRadius: 12, borderWidth: 2, borderColor: brand.ink, alignItems: 'center', justifyContent: 'center' },
   lensBar: { position: 'absolute', left: 0, right: 0, bottom: -1, height: 3, borderRadius: 2 },
   createOption: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card },
   createIcon: { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.inkWash, alignItems: 'center', justifyContent: 'center' },
-  drafts: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.xl, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(18,18,18,0.4)', paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
-  draftCount: { minWidth: 28, height: 28, borderRadius: 14, backgroundColor: colors.ink, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
   search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 14 },
   searchInput: { flex: 1, fontFamily: fontFamily('regular'), fontSize: 16, color: colors.ink },
   filterButton: { width: 46, height: 46, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
@@ -366,6 +378,23 @@ function PlaceCards() {
   </View>;
 }
 
+/**
+ * Create, where a thumb reaches it: a square plus over the bottom-right of Explore. Tap to create; hold to
+ * open your drafts, with a count on the corner while you have any.
+ */
+function CreateButton({ drafts, onCreate, onDrafts }: { drafts: number; onCreate: () => void; onDrafts: () => void }) {
+  const barInset = useContext(BottomBarInset);
+  return <Pressable onPress={() => { haptic('medium'); onCreate(); }}
+    onLongPress={() => { haptic('heavy'); if (drafts) onDrafts(); else toast({ tone: 'ok', message: 'No drafts. Anything you save for later shows up here.' }); }} delayLongPress={380}
+    accessibilityRole="button" accessibilityLabel="Create" accessibilityHint={drafts ? `Hold to see your ${drafts} ${drafts === 1 ? 'draft' : 'drafts'}` : 'Create a competition or an event'}
+    style={[styles.fab, { bottom: barInset + 14 }]}>
+    {({ pressed }) => <HardShadow offset={4} radius={18} pressed={pressed}>
+      <View style={styles.fabFace}><PlusIcon size={26} color={brand.ink} strokeWidth={2.6} /></View>
+      {drafts ? <View style={styles.fabBadge}><Txt size={11} weight="bold" num style={{ color: brand.paper }}>{drafts > 9 ? '9+' : drafts}</Txt></View> : null}
+    </HardShadow>}
+  </Pressable>;
+}
+
 /** Create: a competition anyone can take part in from anywhere, or an in-person event for a club you run. */
 function CreateSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [step, setStep] = useState<'choose' | 'club'>('choose');
@@ -374,9 +403,10 @@ function CreateSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
   useEffect(() => { if (!open) setStep('choose'); }, [open]);
   const go = (href: Parameters<typeof router.push>[0]) => { onOpenChange(false); router.push(href); };
   const newEvent = (slug: string) => go({ pathname: '/events/edit', params: { club: slug } });
+  // The event form asks which club is hosting first; only someone with no club to host from stops here.
   const pickEvent = () => {
     haptic();
-    if (managed.length === 1) newEvent(managed[0].slug);
+    if (managed.length) go('/events/edit');
     else setStep('club');
   };
 

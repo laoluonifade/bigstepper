@@ -12,8 +12,9 @@ import { DateTimePicker } from './DateTimePicker';
 import { prepare } from './Profile';
 import { Dropdown } from './Dropdown';
 import { RepeatEditor, scheduleFor } from './RepeatEditor';
+import { ClubLogo } from './ClubLogo';
 import { Modal } from './Modal';
-import { Avatar, cx, ErrorNotice, Field, SectionTitle, useNow } from './ui';
+import { Avatar, cx, ErrorNotice, Field, Notice, SectionTitle, Skeleton, useNow } from './ui';
 
 /** Dark text on light colours, light text on dark ones. */
 export function onAccent(hex = '#FF5A1F') {
@@ -147,6 +148,11 @@ const MILE = 1609.344;
 export function EventForm({ club, event, unit, onClose }: { club?: string; event?: ClubEvent; unit: Unit; onClose: () => void }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  // Events live under a club: the host comes first, from the club page you came from, or picked here.
+  const clubs = useQuery({ queryKey: ['clubs', 'mine'], queryFn: () => api<Array<{ id: string; slug: string; name: string; logoUrl: string | null; myRole: string | null; memberCount?: number; followerCount?: number }>>('/clubs?view=mine'), enabled: !event });
+  const managed = (clubs.data ?? []).filter((row) => row.myRole === 'owner' || row.myRole === 'admin');
+  const [hostChoice, setHostChoice] = useState<string | null>(club ?? null);
+  const host = hostChoice ?? managed[0]?.slug ?? null;
   const [title, setTitle] = useState(event?.title ?? '');
   const [activity, setActivity] = useState<EventActivity>(event?.activity ?? 'run');
   const [startsOn, setStartsOn] = useState(event?.startsOn ?? todayIso());
@@ -214,7 +220,8 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
   const duration = (Number(hours) || 0) * 60 + (Number(minutes) || 0);
   const km = Number(distance.replace(',', '.'));
   const distanceMetres = distance.trim() && Number.isFinite(km) && km > 0 ? Math.round(km * (unit === 'mi' ? MILE : 1000)) : null;
-  const problem = title.trim().length < 2 ? 'Add a name'
+  const problem = !event && !host ? 'Pick the club hosting it'
+    : title.trim().length < 2 ? 'Add a name'
     : !place ? 'Set the meeting point'
       : venue.trim().length < 2 ? 'Name the meeting point'
         : duration < MIN_DURATION || duration > MAX_DURATION ? 'Set how long it lasts'
@@ -227,7 +234,7 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
         title: title.trim(), activity, ...schedule, startsOn, startTime: time, timeZone, durationMinutes: duration, distanceMetres,
         venue: venue.trim(), address: place?.address.trim() || null, latitude: place!.latitude, longitude: place!.longitude, notes: notes.trim() || null,
       };
-      const saved = await (event ? patch<ClubEvent>(`/events/${event.id}`, input) : post<ClubEvent>(`/clubs/${club}/events`, input));
+      const saved = await (event ? patch<ClubEvent>(`/events/${event.id}`, input) : post<ClubEvent>(`/clubs/${host}/events`, input));
       if (!cover) return saved;
       // The event is saved either way; a photo that fails to upload can be added again from Edit.
       try {
@@ -261,6 +268,13 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
 
   return <Modal title={event ? 'Edit event' : 'New event'} onClose={onClose}>
     <form className="space-y-5" onSubmit={submit}>
+      {event ? <p className="flex items-center gap-2.5 rounded-lg border-[1.5px] border-line bg-card p-3 text-[14px]"><ClubLogo club={event.club} size={32} /><span>Hosted by <b>{event.club.name}</b></span></p>
+        : clubs.isLoading ? <Skeleton className="h-16 rounded-lg" />
+          : managed.length ? <Field label="Which club is hosting?" hint={`${managed.find((row) => row.slug === host)?.name ?? 'The club'}’s members and followers get a push when you post it.`}>
+            {(props) => <Dropdown id={props.id} value={host ?? managed[0].slug} onChange={setHostChoice}
+              options={managed.map((row) => ({ value: row.slug, label: row.name, hint: `${row.memberCount ?? 0} members · ${row.followerCount ?? 0} followers`, icon: <ClubLogo club={row} size={22} /> }))} />}
+          </Field>
+            : <Notice tone="neutral" title="Events are hosted by clubs">Start a club for your crew first, then add its events. <Link to="/clubs" className="link" onClick={onClose}>Start a club</Link></Notice>}
       <label className="relative block cursor-pointer overflow-hidden rounded-2xl border-[1.5px] border-line hover:border-ink">
         <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) setCover(file); }} />
         {coverPreview ? <img src={coverPreview} alt="Cover preview" className="block aspect-video w-full object-cover" />

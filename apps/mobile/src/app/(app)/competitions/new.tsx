@@ -9,7 +9,7 @@ import type { Club, CompetitionTable } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { CountriesField, PrizeEditor } from '@/components/ClubPrizes';
 import { DateTimePicker } from '@/components/DateTimePicker';
 import { OpponentPicker, opponentLabel, type Opponent } from '@/components/OpponentPicker';
@@ -20,6 +20,7 @@ import { Button, Card, ErrorNotice, Eyebrow, FieldLabel, Footer, haptic, HardSha
 import { api, post } from '@/lib/api';
 import { keys, useCreator, useUnit } from '@/lib/queries';
 import { colors, radius, wideLabel } from '@/lib/theme';
+import { useKeyboardLift } from '@/lib/keyboard';
 import { toast } from '@/lib/toast';
 import { pickPhoto, uploadPhoto, type PickedPhoto } from '@/lib/upload';
 import { Image } from 'expo-image';
@@ -58,6 +59,7 @@ const AUDIENCES: Array<{ value: 'all' | 'run' | 'walk' | 'cycle'; label: string;
 const AUDIENCE_VERB = { all: '', run: 'run', walk: 'walk', cycle: 'ride' } as const;
 
 export default function NewCompetitionScreen() {
+  const lift = useKeyboardLift();
   const { club: clubId, template: templateId } = useLocalSearchParams<{ club?: string; template?: string }>();
   // "Challenge someone" starters arrive with everything set; the runner just names it and invites.
   const [preset] = useState(() => templateById(templateId));
@@ -167,8 +169,29 @@ export default function NewCompetitionScreen() {
   // The first thing stopping you, shown under the pinned Create button.
   const blocker = title.trim().length < 3 ? 'Give it a name of at least 3 characters.' : Object.values(errors).find(Boolean) ?? null;
 
+  // A draft saves whatever is there and never gets blocked: anything missing or half-typed falls back to a
+  // safe default, and the money, invites and schedule wait until it's finished.
+  const draftPayload = () => {
+    const name = title.trim();
+    const safeScoring = scoringFields.problem
+      ? scoringPayload(draftFor(scoring.challengeType, scoring.scoringMethod), unit, false).fields
+      : scoringFields.fields;
+    return {
+      title: name.length >= 3 ? name : name ? `${name} (draft)` : 'Untitled competition',
+      ...(description.trim() ? { description: description.trim() } : {}),
+      ...safeScoring,
+      timeZone: reminderTimeZone,
+      ...(startIso ? { startsAt: startIso } : {}),
+      ...(endless ? { openEnded: true } : scoringIso && !errors.scoring ? { scoringClosesAt: scoringIso } : {}),
+      capacity: headToHead ? 2 : errors.capacity ? 100 : capacityNumber,
+      ...(capMetres && !errors.cap ? { distanceCapMetres: capMetres } : {}),
+      ...(club.data ? { communityId: club.data.id } : {}),
+      format, visibility: format === 'open' ? 'public' : 'private',
+      publish: 'draft',
+    };
+  };
   const create = useMutation({
-    mutationFn: () => post<CompetitionTable>(mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
+    mutationFn: (asDraft: boolean = false) => asDraft ? post<CompetitionTable>('/tables', draftPayload()) : post<CompetitionTable>(mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
       title: title.trim(),
       ...(description.trim() ? { description: description.trim() } : {}),
       ...scoringFields.fields,
@@ -184,7 +207,7 @@ export default function NewCompetitionScreen() {
       ...(club.data ? { communityId: club.data.id, ...((!draftOnCreate || later) && inviteClubMembers && !headToHead ? { inviteClubMembers: true, ...(club.data.official ? { enrolAudience } : {}) } : {}) } : {}),
       ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
       ...(clubPrizesOn && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
-      ...(later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
+      ...(asDraft ? { publish: 'draft' } : later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
       ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish } } : {}),
       ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
       ...(mode !== 'paid' ? { format, visibility: format === 'open' ? 'public' : 'private' } : {}),
@@ -205,6 +228,7 @@ export default function NewCompetitionScreen() {
       }
       await Promise.all([queryClient.invalidateQueries({ queryKey: keys.tables }), queryClient.invalidateQueries({ queryKey: ['tables', 'mine'] })]);
       haptic('success');
+      if (create.variables) toast({ tone: 'ok', title: 'Saved as a draft', message: mode === 'free' ? 'Only you can see it. Hold the + on Explore to find it.' : 'Saved as a free draft for now. Prize and entry-fee details are set when you finish it.' });
       router.replace({ pathname: '/competitions/[code]', params: { code: table.code, created: '1' } });
     },
   });
@@ -241,10 +265,13 @@ export default function NewCompetitionScreen() {
   const submitLabel = create.isPending ? 'Saving…' : mode === 'paid' ? 'Submit paid draft' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Save funding draft' : later ? (publish === 'draft' ? 'Save draft' : 'Schedule it') : 'Create competition';
   const submitHint = blocker ?? (mode === 'paid' ? 'Jump reviews paid competitions before they open.' : mode === 'sponsored' && fundingStyle === 'FIXED' ? 'Entry opens once your payment is confirmed.' : later ? (publish === 'draft' ? 'Publish it from the club dashboard when it’s ready.' : `Opens ${publishIso ? formatDateTime(publishIso) : 'at the time you pick'}.`) : 'Opens as soon as you create it.');
 
-  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 56 : 0}>
+  return <View style={{ flex: 1, paddingBottom: lift }}>
     <Screen ownKeyboard footer={<Footer>
-      <Button full size="lg" title={submitLabel} loading={create.isPending} disabled={Boolean(blocker)} onPress={() => (blocker ? toast({ tone: 'warn', message: blocker }) : create.mutate())} />
-      <Txt size={12} color="ink3" align="center" numberOfLines={1} style={{ marginTop: 6 }}>{submitHint}</Txt>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        {!later ? <Button style={{ flex: 1 }} full size="lg" variant="secondary" title="Save as draft" loading={create.isPending && Boolean(create.variables)} onPress={() => create.mutate(true)} /> : null}
+        <Button style={{ flex: 1 }} full size="lg" title={later ? submitLabel : mode === 'free' ? 'Create' : submitLabel} loading={create.isPending && !create.variables} disabled={Boolean(blocker)} onPress={() => (blocker ? toast({ tone: 'warn', message: blocker }) : create.mutate(false))} />
+      </View>
+      {later ? <Txt size={12} color="ink3" align="center" numberOfLines={1} style={{ marginTop: 6 }}>{submitHint}</Txt> : null}
     </Footer>}>
       <PageHeader eyebrow="New competition" title="Set up a competition" description="Choose the activity and exact scoring method before you publish." />
       <View style={{ gap: 24 }}>
@@ -434,7 +461,7 @@ export default function NewCompetitionScreen() {
         </View>
       </Sheet>
     </Screen>
-  </KeyboardAvoidingView>;
+  </View>;
 }
 
 function Toggle({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {

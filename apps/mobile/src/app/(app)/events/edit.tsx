@@ -5,15 +5,18 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { EventCover } from '@/components/ClubEvents';
+import { ClubLogo } from '@/components/ClubLogo';
+import { isManager, type ClubSummary } from '@/components/clubs';
 import { DateTimePicker } from '@/components/DateTimePicker';
 import { RepeatEditor, scheduleFor } from '@/components/RepeatEditor';
 import { CameraIcon, CloseIcon, PinIcon, SearchIcon } from '@/components/icons';
 import { SelectField } from '@/components/pickers';
-import { Button, ErrorNotice, FieldLabel, Footer, haptic, Hint, Loading, Screen, TextField, Txt } from '@/components/ui';
+import { Button, ErrorNotice, FieldLabel, Footer, haptic, Hint, Loading, Notice, Screen, Skeleton, TextField, Txt } from '@/components/ui';
 import { api, patch, post } from '@/lib/api';
 import { ACTIVITY_OPTIONS, deviceTimeZone, todayIso, type Schedule, durationLabel, eventKey, MAX_DURATION, MIN_DURATION, type ClubEvent, type EventActivity, type EventInput, type Place } from '@/lib/club-events';
 import { useUnit } from '@/lib/queries';
 import { colors, radius } from '@/lib/theme';
+import { useKeyboardLift } from '@/lib/keyboard';
 import { toast } from '@/lib/toast';
 import { pickPhoto, uploadPhoto, type PickedPhoto } from '@/lib/upload';
 
@@ -22,6 +25,13 @@ const MILE = 1609.344;
 /** Add or edit a club's event: what, when (once or on repeat), and where to meet. */
 export default function EditEventScreen() {
   const { club, id } = useLocalSearchParams<{ club?: string; id?: string }>();
+  const lift = useKeyboardLift();
+  // Events live under a club: the host comes first, from the club page you came from, or picked here.
+  const clubs = useQuery({ queryKey: ['clubs', 'mine'], queryFn: () => api<ClubSummary[]>('/clubs?view=mine'), enabled: !id });
+  const managed = (clubs.data ?? []).filter((row) => isManager(row.myRole));
+  const [hostChoice, setHostChoice] = useState<string | null>(club ?? null);
+  const host = hostChoice ?? managed[0]?.slug ?? null;
+  const hostClub = managed.find((row) => row.slug === host);
   const queryClient = useQueryClient();
   const unit = useUnit();
   const existing = useQuery({ queryKey: eventKey(id ?? 'new'), queryFn: () => api<ClubEvent>(`/events/${id}`), enabled: Boolean(id) });
@@ -53,8 +63,8 @@ export default function EditEventScreen() {
     setTitle(e.title); setActivity(e.activity); setStartsOn(e.startsOn); setSchedule({ repeat: e.repeat, repeatEvery: e.repeatEvery, weekdays: e.weekdays, monthMode: e.monthMode, monthWeek: e.monthWeek, endsOn: e.endsOn }); setTime(e.startTime);
     setHours(String(Math.floor(e.durationMinutes / 60))); setMinutes(String(e.durationMinutes % 60));
     setDistance(e.distanceMetres ? String(+(e.distanceMetres / (unit === 'mi' ? MILE : 1000)).toFixed(1)) : '');
-    setNotes(e.notes ?? ''); setTimeZone(e.timeZone); setVenue(e.venue);
-    setPlace({ name: e.venue, address: e.address ?? '', latitude: e.latitude, longitude: e.longitude });
+    setNotes(e.notes ?? ''); setTimeZone(e.timeZone); setVenue(e.venue ?? '');
+    setPlace(e.latitude != null && e.longitude != null ? { name: e.venue ?? '', address: e.address ?? '', latitude: e.latitude, longitude: e.longitude } : null);
     setLoaded(true);
   }, [existing.data, loaded, unit]);
 
@@ -104,7 +114,8 @@ export default function EditEventScreen() {
   const durationMinutes = (Number(hours) || 0) * 60 + (Number(minutes) || 0);
   const km = Number(distance.replace(',', '.'));
   const distanceMetres = distance.trim() && Number.isFinite(km) && km > 0 ? Math.round(km * (unit === 'mi' ? MILE : 1000)) : null;
-  const problem = title.trim().length < 2 ? 'Add a name'
+  const problem = !id && !host ? 'Pick the club hosting it'
+    : title.trim().length < 2 ? 'Add a name'
     : !place ? 'Set the meeting point'
       : venue.trim().length < 2 ? 'Name the meeting point'
         : durationMinutes < MIN_DURATION || durationMinutes > MAX_DURATION ? 'Set how long it lasts'
@@ -112,18 +123,27 @@ export default function EditEventScreen() {
           : null;
 
   const save = useMutation({
-    mutationFn: async () => {
-      const input: EventInput = {
-        title: title.trim(), activity, ...schedule, startsOn, startTime: time, timeZone, durationMinutes, distanceMetres,
-        venue: venue.trim(), address: place?.address.trim() || null, latitude: place!.latitude, longitude: place!.longitude, notes: notes.trim() || null,
+    // 'post' puts it live, 'draft' saves it quietly, 'publish' saves a draft's changes and puts it live.
+    mutationFn: async (mode: 'post' | 'draft' | 'publish') => {
+      // A draft saves whatever is there: blanks stay blank and anything half-typed falls back to a sensible value.
+      const quick = mode === 'draft';
+      const input: EventInput & { draft?: boolean } = {
+        title: title.trim() || (quick ? 'Untitled event' : title), activity, ...schedule, startsOn, startTime: time, timeZone,
+        durationMinutes: durationMinutes >= MIN_DURATION && durationMinutes <= MAX_DURATION ? durationMinutes : 60,
+        distanceMetres: distanceMetres && distanceMetres >= 500 && distanceMetres <= 200_000 ? distanceMetres : null,
+        venue: place ? venue.trim() || place.name || null : null, address: place?.address.trim() || null,
+        latitude: place?.latitude ?? null, longitude: place?.longitude ?? null, notes: notes.trim() || null,
+        ...(!id && mode === 'draft' ? { draft: true } : {}),
       };
-      const saved = await (id ? patch<ClubEvent>(`/events/${id}`, input) : post<ClubEvent>(`/clubs/${club}/events`, input));
-      if (!cover) return saved;
-      // The event is saved either way; a photo that fails to upload can be added again from Edit.
-      return uploadPhoto<ClubEvent>(`/events/${saved.id}/cover`, cover, { name: 'cover.jpg' }).catch(() => {
-        toast({ tone: 'warn', message: 'Saved, but the cover photo didn’t upload. Try it again from Edit.' });
-        return saved;
-      });
+      let saved = await (id ? patch<ClubEvent>(`/events/${id}`, input) : post<ClubEvent>(`/clubs/${host}/events`, input));
+      if (cover) {
+        // The event is saved either way; a photo that fails to upload can be added again from Edit.
+        saved = await uploadPhoto<ClubEvent>(`/events/${saved.id}/cover`, cover, { name: 'cover.jpg' }).catch(() => {
+          toast({ tone: 'warn', message: 'Saved, but the cover photo didn’t upload. Try it again from Edit.' });
+          return saved;
+        });
+      }
+      return id && mode === 'publish' ? post<ClubEvent>(`/events/${id}/publish`) : saved;
     },
     async onSuccess(saved) {
       haptic('success');
@@ -132,24 +152,45 @@ export default function EditEventScreen() {
         queryClient.invalidateQueries({ queryKey: ['club', saved.club.slug, 'events'] }),
         queryClient.invalidateQueries({ queryKey: ['club-events'] }),
       ]);
-      toast({ tone: 'ok', title: id ? 'Saved' : 'Your event is live', message: id ? 'Everyone going sees the update.' : 'Members and followers just heard about it. Share it to bring more people.' });
+      const mode = save.variables;
+      toast(mode === 'draft' ? { tone: 'ok', title: 'Saved as a draft', message: 'Only your club’s managers can see it. Publish it when it’s ready; hold the + on Explore to find it.' }
+        : mode === 'publish' || !id ? { tone: 'ok', title: 'Your event is live', message: 'Members and followers just heard about it. Share it to bring more people.' }
+          : { tone: 'ok', title: 'Saved', message: 'Everyone going sees the update.' });
       if (id) router.back(); else router.replace(`/events/${saved.id}`);
     },
   });
 
   if (id && !loaded) return <Screen><Stack.Screen options={{ title: 'Edit event' }} />{existing.error ? <ErrorNotice error={existing.error} onRetry={() => void existing.refetch()} /> : <Loading />}</Screen>;
 
-  const submit = () => {
-    if (problem) { haptic('warning'); toast({ tone: 'warn', message: `${problem} first.` }); return; }
-    save.mutate();
+  const isDraft = Boolean(id && existing.data?.draft);
+  const submit = (mode: 'post' | 'draft' | 'publish') => {
+    // Drafts never get blocked; only which club it's under has to be known.
+    const blocker = mode === 'draft' ? (!id && !host ? 'Pick the club hosting it' : null) : problem;
+    if (blocker) { haptic('warning'); toast({ tone: 'warn', message: `${blocker} first.` }); return; }
+    save.mutate(mode);
   };
 
-  return <Screen footer={<Footer>
+  // The buttons ride above the keyboard, so Save as draft is always in reach while typing.
+  return <View style={{ flex: 1, paddingBottom: lift }}>
+  <Screen ownKeyboard footer={<Footer>
     {problem ? <Txt size={12.5} color="ink2" align="center" style={{ marginBottom: 8 }}>{`${problem} to post it.`}</Txt> : null}
-    <Button full size="lg" variant="primary" title={id ? 'Save changes' : 'Post event'} loading={save.isPending} onPress={submit} />
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      {!id || isDraft ? <Button style={{ flex: 1 }} full size="lg" variant="secondary" title={isDraft ? 'Save draft' : 'Save as draft'} loading={save.isPending && save.variables === 'draft'} onPress={() => submit('draft')} /> : null}
+      <Button style={{ flex: 1 }} full size="lg" variant="primary" title={isDraft ? 'Publish' : id ? 'Save changes' : 'Post event'} loading={save.isPending && save.variables !== 'draft'} onPress={() => submit(isDraft ? 'publish' : 'post')} />
+    </View>
   </Footer>}>
     <Stack.Screen options={{ title: id ? 'Edit event' : 'New event' }} />
     <View style={{ gap: 20 }}>
+      {id ? existing.data ? <View style={styles.host}>
+        <ClubLogo club={existing.data.club} size={36} />
+        <View style={{ flex: 1 }}><Txt size={12} color="ink3">Hosted by</Txt><Txt size={15} weight="bold" numberOfLines={1}>{existing.data.club.name}</Txt></View>
+      </View> : null
+        : clubs.isLoading ? <Skeleton style={{ height: 76, borderRadius: radius.lg }} />
+          : managed.length ? <SelectField label="Which club is hosting?" value={host} onChange={setHostChoice}
+            hint={`${hostClub?.name ?? 'The club'}’s members and followers get a push when you post it.`}
+            leading={hostClub ? <ClubLogo club={hostClub} size={26} /> : undefined}
+            options={managed.map((row) => ({ value: row.slug, label: row.name, detail: `${row.memberCount ?? 0} members · ${row.followerCount ?? 0} followers`, icon: <ClubLogo club={row} size={32} /> }))} />
+            : <Notice tone="neutral" title="Events are hosted by clubs" action={<Button size="sm" variant="dark" title="Start a club" onPress={() => router.replace('/clubs')} />}>Start a club for your crew first, then add its events.</Notice>}
       <Pressable onPress={() => void pickPhoto({ maxSide: 1600 }).then((photo) => { if (photo) setCover(photo); })} accessibilityRole="button" accessibilityLabel="Add a cover photo" style={styles.coverPick}>
         {cover ? <Image source={{ uri: cover.uri }} style={{ width: '100%', aspectRatio: 16 / 9 }} contentFit="cover" />
           : existing.data ? <EventCover event={existing.data} />
@@ -218,10 +259,12 @@ export default function EditEventScreen() {
       <TextField label="Notes" optional multiline placeholder="Pace groups, where to leave bags, what happens after…" value={notes} onChangeText={setNotes} maxLength={600} style={{ minHeight: 96 }} />
       <ErrorNotice error={save.error} />
     </View>
-  </Screen>;
+  </Screen>
+  </View>;
 }
 
 const styles = StyleSheet.create({
+  host: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card },
   coverPick: { borderRadius: radius['2xl'], overflow: 'hidden', borderWidth: 1.5, borderColor: colors.line },
   coverEmpty: { aspectRatio: 16 / 9, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.inkWash },
   coverChange: { position: 'absolute', right: 10, bottom: 10, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full, backgroundColor: 'rgba(18,18,18,0.72)', paddingHorizontal: 12, paddingVertical: 6 },

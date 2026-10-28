@@ -28,11 +28,12 @@ export type ClubEvent = {
   timeZone: string;
   durationMinutes: number;
   distanceMetres: number | null;
-  venue: string;
+  /** Null only on a draft that hasn't been given a meeting point yet. */
+  venue: string | null;
   address: string | null;
   coverUrl: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   /** The next time it starts, or the current one's while it's still going; null once a one-off is over. */
   nextAt: string | null;
   club: { id: string; slug: string; name: string; logoUrl: string | null; accentColor: string; verified: boolean; privacy: 'open' | 'invite' };
@@ -43,6 +44,8 @@ export type ClubEvent = {
   distanceKm: number | null;
   /** The viewer's pass, once they've joined. */
   pass: { code: string; checkedIn: boolean } | null;
+  /** Saved but not posted: only the club's managers can see it, and nobody's been told. */
+  draft: boolean;
 };
 export type Guest = { userId: string; username: string | null; displayName: string | null; avatarUrl: string | null; avatarStyle: 'masculine' | 'feminine' | 'neutral'; passCode: string; checkedIn: boolean; joinedAt: string };
 export const ACTIVITY_WORD: Record<EventActivity, string> = { run: 'Running', walk: 'Walking', cycle: 'Cycling', any: 'Run, walk or ride' };
@@ -177,7 +180,7 @@ export const deviceTimeZone = () => {
 /** Opens the phone's maps app with directions to the meeting point. */
 export function openDirections(event: Pick<ClubEvent, 'latitude' | 'longitude' | 'venue'>) {
   const at = `${event.latitude},${event.longitude}`;
-  const label = encodeURIComponent(event.venue);
+  const label = encodeURIComponent(event.venue ?? '');
   const url = Platform.OS === 'ios' ? `http://maps.apple.com/?daddr=${at}&q=${label}` : `geo:${at}?q=${at}(${label})`;
   void Linking.openURL(url).catch(() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${at}`));
 }
