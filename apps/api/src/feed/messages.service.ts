@@ -43,8 +43,8 @@ export class MessagesService {
   }
 
   async inbox(userId: string) {
-    const [direct, clubs] = await Promise.all([this.directInbox(userId), this.clubInbox(userId)]);
-    return [...direct.map((row: Record<string, unknown>) => ({ type: 'direct', ...row })), ...clubs]
+    const [direct, clubs, groups] = await Promise.all([this.directInbox(userId), this.clubInbox(userId), this.groupInbox(userId)]);
+    return [...direct.map((row: Record<string, unknown>) => ({ type: 'direct', ...row })), ...clubs, ...groups]
       .sort((a, b) => new Date(String(b.createdAt)).getTime() - new Date(String(a.createdAt)).getTime())
       .slice(0, 60);
   }
@@ -70,6 +70,102 @@ export class MessagesService {
     ) as Promise<Array<Record<string, unknown>>>;
   }
 
+  private async groupInbox(userId: string) {
+    return this.dataSource.query(
+      `SELECT 'group' AS "type", g."slug" AS "groupSlug", g."name" AS "groupName", g."description",
+              (SELECT count(*) FROM "chat_group_members" x WHERE x."groupId" = g."id")::integer AS "memberCount",
+              COALESCE(last."body", '') AS "body", COALESCE(last."createdAt", m."joinedAt") AS "createdAt", COALESCE(last."kind", 'text') AS "kind",
+              COALESCE(p."displayName", u."displayName", 'Someone') AS "senderName", last."senderId",
+              (SELECT count(*) FROM "direct_messages" x WHERE x."groupId" = g."id" AND x."senderId" <> $1
+                 AND x."createdAt" > COALESCE(m."readAt", m."joinedAt"))::integer AS "unreadCount"
+       FROM "chat_group_members" m
+       JOIN "chat_groups" g ON g."id" = m."groupId"
+       LEFT JOIN LATERAL (
+         SELECT d."body", d."createdAt", d."senderId",
+                CASE WHEN d."audioUrl" IS NOT NULL THEN 'voice' WHEN d."activityId" IS NOT NULL THEN 'activity' ELSE 'text' END AS "kind"
+         FROM "direct_messages" d WHERE d."groupId" = g."id" ORDER BY d."createdAt" DESC, d."id" DESC LIMIT 1
+       ) last ON true
+       LEFT JOIN "users" u ON u."id" = last."senderId" LEFT JOIN "profiles" p ON p."userId" = last."senderId"
+       WHERE m."userId" = $1`,
+      [userId],
+    ) as Promise<Array<Record<string, unknown>>>;
+  }
+
+  private async memberGroup(userId: string, slug: string) {
+    const [group] = await this.dataSource.query(
+      `SELECT g."id", g."slug", g."name", g."description", m."role" AS "myRole",
+              (SELECT count(*) FROM "chat_group_members" x WHERE x."groupId" = g."id")::integer AS "memberCount"
+       FROM "chat_groups" g JOIN "chat_group_members" m ON m."groupId" = g."id" AND m."userId" = $2
+       WHERE g."slug" = $1`,
+      [slug.trim().toLowerCase(), userId],
+    ) as Array<{ id: string; slug: string; name: string; description: string | null; myRole: 'admin' | 'member'; memberCount: number }>;
+    if (!group) throw new ForbiddenException('You’re not in this group');
+    return group;
+  }
+
+  async groupConversation(userId: string, slug: string) {
+    const group = await this.memberGroup(userId, slug);
+    const messages = await this.thread(
+      `m."groupId"=$1 AND NOT ${blockedBy('$2', 'm."senderId"')} AND NOT ${reportedBy('$2', 'message', 'm."id"')}`, [group.id, userId],
+    );
+    const people = await this.dataSource.query(
+      `SELECT p."userId", p."username", COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle",
+              p."verifiedAt" IS NOT NULL AS "verified"
+       FROM "users" u LEFT JOIN "profiles" p ON p."userId" = u."id"
+       WHERE u."id" = ANY($1::uuid[])`,
+      [[...new Set([userId, ...messages.map((message) => message.senderId)])]],
+    );
+    const faces = await this.dataSource.query(
+      `SELECT COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle"
+       FROM "chat_group_members" m JOIN "users" u ON u."id" = m."userId" LEFT JOIN "profiles" p ON p."userId" = m."userId"
+       WHERE m."groupId" = $1 ORDER BY (p."avatarUrl" IS NULL), m."joinedAt" LIMIT 5`,
+      [group.id],
+    );
+    return { group: { ...group, faces }, people, canMessage: true, messages };
+  }
+
+  async markGroupRead(userId: string, slug: string) {
+    const group = await this.memberGroup(userId, slug);
+    await this.dataSource.query(`UPDATE "chat_group_members" SET "readAt"=now() WHERE "groupId"=$1 AND "userId"=$2`, [group.id, userId]);
+    await this.dataSource.query(
+      `UPDATE "notifications" SET "readAt"=now() WHERE "userId"=$1 AND "type"='GROUP_MESSAGE' AND "link"=$2 AND "readAt" IS NULL`,
+      [userId, `/messages/groups/${group.slug}`],
+    );
+    return { read: true };
+  }
+
+  async sendToGroup(userId: string, slug: string, body: string, extras: SendExtras = {}) {
+    const group = await this.memberGroup(userId, slug);
+    const { replyToId, activityId, audioUrl, audioSeconds } = extras;
+    const trimmed = body.trim();
+    await this.checkExtras(userId, trimmed, extras);
+    if (replyToId) {
+      const reply = await this.dataSource.query(`SELECT 1 FROM "direct_messages" WHERE "id"=$1 AND "groupId"=$2`, [replyToId, group.id]) as unknown[];
+      if (!reply.length) throw new BadRequestException('Choose a message from this group to reply to');
+    }
+    const [message] = await this.dataSource.query(
+      `INSERT INTO "direct_messages" ("senderId","groupId","body","replyToId","activityId","audioUrl","audioSeconds") VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING "id","senderId","recipientId","groupId","body","replyToId","activityId","audioUrl","audioSeconds","createdAt"`,
+      [userId, group.id, trimmed, replyToId ?? null, activityId ?? null, audioUrl ?? null, audioUrl ? audioSeconds ?? null : null],
+    );
+    await this.dataSource.query(`UPDATE "chat_group_members" SET "readAt"=now() WHERE "groupId"=$1 AND "userId"=$2`, [group.id, userId]);
+    const link = `/messages/groups/${group.slug}`;
+    await this.notify(
+      `INSERT INTO "notifications" ("userId","type","title","body","link","emailProcessedAt")
+       SELECT m."userId",'GROUP_MESSAGE',$3,COALESCE(p."displayName",'Someone') || ': ' || $4,$5::varchar,now()
+         FROM "chat_group_members" m
+         LEFT JOIN "profiles" p ON p."userId"=$2
+        WHERE m."groupId"=$1 AND m."userId"<>$2
+          AND NOT ${blockedBetween('m."userId"', '$2')}
+          AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId"=m."userId" AND n."type"='GROUP_MESSAGE' AND n."link"=$5::varchar
+                            AND n."readAt" IS NULL AND n."createdAt" > now() - interval '5 minutes')`,
+      [group.id, userId, group.name, preview(trimmed, Boolean(audioUrl), Boolean(activityId)), link],
+    );
+    return message;
+  }
+
   private async directInbox(userId: string) {
     return this.dataSource.query(
       `WITH latest AS (
@@ -78,7 +174,7 @@ export class MessagesService {
            SELECT CASE WHEN "senderId"=$1 THEN "recipientId" ELSE "senderId" END peer,
                   "body","createdAt","senderId","id","readAt",
                   CASE WHEN "duelId" IS NOT NULL THEN 'duel' WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
-           FROM "direct_messages" WHERE ("senderId"=$1 OR "recipientId"=$1) AND "clubId" IS NULL
+           FROM "direct_messages" WHERE ("senderId"=$1 OR "recipientId"=$1) AND "clubId" IS NULL AND "groupId" IS NULL
          ) m ORDER BY peer,"createdAt" DESC,"id" DESC
        )
        , unread AS (
@@ -101,7 +197,10 @@ export class MessagesService {
             + (SELECT COUNT(*) FROM "club_memberships" m
                JOIN "direct_messages" d ON d."clubId" = m."clubId" AND d."senderId" <> $1
                LEFT JOIN "club_chat_reads" r ON r."clubId" = m."clubId" AND r."userId" = $1
-               WHERE m."userId" = $1 AND d."createdAt" > COALESCE(r."readAt", m."joinedAt")) AS "count"`,
+               WHERE m."userId" = $1 AND d."createdAt" > COALESCE(r."readAt", m."joinedAt"))
+            + (SELECT COUNT(*) FROM "chat_group_members" g
+               JOIN "direct_messages" d ON d."groupId" = g."groupId" AND d."senderId" <> $1
+               WHERE g."userId" = $1 AND d."createdAt" > COALESCE(g."readAt", g."joinedAt")) AS "count"`,
       [userId],
     ) as Array<{ count: string | number }>;
     return { count: Number(row.count) };
@@ -247,12 +346,12 @@ export class MessagesService {
     );
     await this.notify(
       `INSERT INTO "notifications" ("userId","type","title","body","link","emailProcessedAt")
-       SELECT m."userId",'CLUB_MESSAGE',$3,COALESCE(p."displayName",'Someone') || ': ' || $4,$5,now()
+       SELECT m."userId",'CLUB_MESSAGE',$3,COALESCE(p."displayName",'Someone') || ': ' || $4,$5::varchar,now()
          FROM "club_memberships" m
          LEFT JOIN "profiles" p ON p."userId"=$2
         WHERE m."clubId"=$1 AND m."userId"<>$2
           AND NOT ${blockedBetween('m."userId"', '$2')}
-          AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId"=m."userId" AND n."type"='CLUB_MESSAGE' AND n."link"=$5
+          AND NOT EXISTS (SELECT 1 FROM "notifications" n WHERE n."userId"=m."userId" AND n."type"='CLUB_MESSAGE' AND n."link"=$5::varchar
                             AND n."readAt" IS NULL AND n."createdAt" > now() - interval '5 minutes')`,
       [club.id, userId, club.name, preview(trimmed, Boolean(audioUrl), Boolean(activityId)), `/clubs/${club.slug}/chat`],
     );
@@ -322,7 +421,8 @@ export class MessagesService {
   async react(userId: string, messageId: string, reaction: string | null) {
     const allowed = await this.dataSource.query(
       `SELECT 1 FROM "direct_messages" m WHERE m."id"=$1 AND (m."senderId"=$2 OR m."recipientId"=$2
-         OR EXISTS (SELECT 1 FROM "club_memberships" c WHERE c."clubId"=m."clubId" AND c."userId"=$2))`,
+         OR EXISTS (SELECT 1 FROM "club_memberships" c WHERE c."clubId"=m."clubId" AND c."userId"=$2)
+         OR EXISTS (SELECT 1 FROM "chat_group_members" g WHERE g."groupId"=m."groupId" AND g."userId"=$2))`,
       [messageId, userId],
     ) as unknown[];
     if (!allowed.length) throw new NotFoundException('Message not found');
@@ -338,7 +438,11 @@ export class MessagesService {
         `INSERT INTO "notifications" ("userId","type","title","body","link")
          SELECT CASE WHEN m."senderId"=$2 THEN m."recipientId" ELSE m."senderId" END,
                 'MESSAGE_REACTION',p."displayName" || ' reacted to your message','Open Messages to see the reaction.','/messages/' || p."username"
-         FROM "direct_messages" m JOIN "profiles" p ON p."userId"=$2 WHERE m."id"=$1 AND m."clubId" IS NULL
+         FROM "direct_messages" m JOIN "profiles" p ON p."userId"=$2 WHERE m."id"=$1 AND m."clubId" IS NULL AND m."groupId" IS NULL
+         UNION ALL
+         SELECT m."senderId",'MESSAGE_REACTION',p."displayName" || ' reacted to your message in ' || g."name",'Open the group to see it.','/messages/groups/' || g."slug"
+         FROM "direct_messages" m JOIN "chat_groups" g ON g."id"=m."groupId" JOIN "profiles" p ON p."userId"=$2
+         WHERE m."id"=$1 AND m."senderId"<>$2
          UNION ALL
          SELECT m."senderId",'MESSAGE_REACTION',p."displayName" || ' reacted to your message in ' || c."name",'Open the club chat to see it.','/clubs/' || c."slug" || '/chat'
          FROM "direct_messages" m JOIN "clubs" c ON c."id"=m."clubId" JOIN "profiles" p ON p."userId"=$2

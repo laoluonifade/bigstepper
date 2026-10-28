@@ -1,8 +1,10 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { ChatThread, VerifiedName, type Person, type Thread } from '@/components/chat';
 import { ClubLogo } from '@/components/ClubLogo';
+import { onAccent } from '@/components/clubs';
+import { FeedIcon } from '@/components/icons';
 import { Txt } from '@/components/ui';
 import { colors } from '@/lib/theme';
 
@@ -34,7 +36,7 @@ export default function ClubChatScreen() {
       senderOf={(data, senderId) => data.people.find((person) => person.userId === senderId) ?? { displayName: 'Former member', avatarUrl: null }}
       onData={onData}
       empty={(data) => <>
-        <View style={{ width: 64, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: data.club.accentColor }}><Text style={{ fontSize: 30 }}>👋</Text></View>
+        <View style={{ width: 64, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: data.club.accentColor }}><FeedIcon size={28} color={onAccent(data.club.accentColor)} /></View>
         <Txt size={15} weight="bold" style={{ marginTop: 12 }}>Start the {data.club.name} chat</Txt>
         <Txt size={14} color="ink3" align="center">Every member sees it. Plan runs, cheer each other on.</Txt>
       </>}

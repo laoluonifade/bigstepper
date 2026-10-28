@@ -22,13 +22,13 @@ import { confirmCheckout, openCheckout } from '@/lib/checkout';
 import { savePayment } from '@/lib/payments';
 import { playSound } from '@/lib/sounds';
 import { keys, useActivities, useUnit } from '@/lib/queries';
-import { colors, fontFamily, GUTTER, radius, scheme, score } from '@/lib/theme';
+import { brand, colors, fontFamily, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecording } from '@/lib/voice';
 import { ActivityBadge, ActivityPicker } from './ActivityRow';
 import { DuelCard, DuelComposer } from './Duel';
 import type { Duel } from '@/lib/duels';
-import { ActivityIcon, CheckIcon, DuelIcon, CopyIcon, EditIcon, FlagIcon, LockIcon, MicIcon, PauseIcon, PlayIcon, ReplyIcon, SendIcon, TrashIcon } from './icons';
+import { ActivityIcon, CheckIcon, DuelIcon, CopyIcon, EditIcon, FlagIcon, JumpLogo, LockIcon, MicIcon, PauseIcon, PlayIcon, ReplyIcon, SendIcon, TrashIcon } from './icons';
 import { Avatar, Button, ErrorNotice, haptic, LiveDot, Skeleton, TextField, Txt, VerifiedTick, type TextFieldRef } from './ui';
 
 /** Whoever wrote a message: the other person in a DM, any member in a club chat. */
@@ -594,3 +594,10 @@ const styles = StyleSheet.create({
   play: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   shared: { flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 220, borderRadius: radius['2xl'], padding: 10 },
 });
+
+/** A Jump-run group's picture: the Jump mark on ink, the same in both themes. */
+export function GroupMark({ size }: { size: number }) {
+  return <View style={{ width: size, height: size, borderRadius: size * 0.25, backgroundColor: brand.ink, alignItems: 'center', justifyContent: 'center' }} accessibilityElementsHidden>
+    <JumpLogo height={size * 0.3} color={brand.paper} />
+  </View>;
+}

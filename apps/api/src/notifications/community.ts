@@ -46,34 +46,34 @@ export async function announceNewCompetitions(manager: EntityManager) {
 }
 
 export async function syncHostsGroup(manager: EntityManager, slug: string) {
-  let [group] = await manager.query(`SELECT "id" FROM "clubs" WHERE "slug" = $1`, [slug]) as Array<{ id: string }>;
-  if (!group) {
-    const [staff] = await manager.query(`SELECT "id" FROM "users" WHERE "role" = 'admin' AND "deletedAt" IS NULL ORDER BY "createdAt" LIMIT 1`) as Array<{ id: string }>;
-    if (!staff) return { added: 0, removed: 0 };
-    [group] = await manager.query(
-      `INSERT INTO "clubs" ("slug","name","ownerUserId","description","accentColor","privacy","inviteCode","verifiedAt")
-       VALUES ($1,'Jump Hosts',$2,'Jump’s group for creators and club owners. Tell us what you want to see, share what’s working, and hear what’s coming first.','#121212','invite',upper(substr(md5(random()::text),1,12)),now())
-       RETURNING "id"`,
-      [slug, staff.id],
-    ) as Array<{ id: string }>;
-    await manager.query(`INSERT INTO "club_memberships" ("clubId","userId","role") VALUES ($1,$2,'owner') ON CONFLICT DO NOTHING`, [group.id, staff.id]);
-  }
   await manager.query(
-    `INSERT INTO "club_memberships" ("clubId","userId","role")
+    `INSERT INTO "chat_groups" ("slug","name","description","system")
+     VALUES ($1,'Jump Hosts','Jump’s group for creators, club owners and competition hosts. Tell us what you want to see, share what’s working, and hear what’s coming first.',true)
+     ON CONFLICT ("slug") DO NOTHING`,
+    [slug],
+  );
+  const [group] = await manager.query(`SELECT "id" FROM "chat_groups" WHERE "slug" = $1`, [slug]) as Array<{ id: string }>;
+  await manager.query(
+    `INSERT INTO "chat_group_members" ("groupId","userId","role")
      SELECT $1, u."id", 'admin' FROM "users" u WHERE u."role" = 'admin' AND u."deletedAt" IS NULL
-     ON CONFLICT ("clubId","userId") DO UPDATE SET "role" = 'admin' WHERE "club_memberships"."role" = 'member'`,
+     ON CONFLICT ("groupId","userId") DO UPDATE SET "role" = 'admin'`,
     [group.id],
   );
-  const eligible = `SELECT cp."userId" FROM "creator_profiles" cp JOIN "users" u ON u."id" = cp."userId" WHERE cp."status" = 'ACTIVE' AND u."deletedAt" IS NULL
-     UNION SELECT m."userId" FROM "club_memberships" m JOIN "clubs" c ON c."id" = m."clubId" JOIN "users" u ON u."id" = m."userId"
-       WHERE m."role" = 'owner' AND c."id" <> $1 AND u."deletedAt" IS NULL`;
+  const eligible = `SELECT cp."userId" FROM "creator_profiles" cp WHERE cp."status" = 'ACTIVE'
+     UNION SELECT m."userId" FROM "club_memberships" m WHERE m."role" = 'owner'
+     UNION SELECT t."creatorId" FROM "competition_tables" t
+       WHERE t."deletedAt" IS NULL AND t."status" NOT IN ('DRAFT','CANCELLED','PENDING_FUNDING','PENDING_APPROVAL')`;
   const added = await manager.query(
-    `INSERT INTO "club_memberships" ("clubId","userId","role") SELECT $1, e."userId", 'member' FROM (${eligible}) e
+    `INSERT INTO "chat_group_members" ("groupId","userId","role")
+     SELECT $1, e."userId", 'member' FROM (${eligible}) e JOIN "users" u ON u."id" = e."userId" WHERE u."deletedAt" IS NULL
      ON CONFLICT DO NOTHING RETURNING "userId"`,
     [group.id],
   ) as unknown[];
   const removed = await manager.query(
-    `WITH gone AS (DELETE FROM "club_memberships" m WHERE m."clubId" = $1 AND m."role" = 'member' AND m."userId" NOT IN (${eligible}) RETURNING m."userId")
+    `WITH gone AS (
+       DELETE FROM "chat_group_members" m WHERE m."groupId" = $1 AND m."role" = 'member'
+         AND (m."userId" NOT IN (${eligible}) OR EXISTS (SELECT 1 FROM "users" u WHERE u."id" = m."userId" AND u."deletedAt" IS NOT NULL))
+       RETURNING m."userId")
      SELECT * FROM gone`,
     [group.id],
   ) as unknown[];

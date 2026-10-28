@@ -111,3 +111,26 @@ export class ClubChatController {
     return this.messages.sendToClub(user.id, club, body, extras);
   }
 }
+
+@Controller('messages/groups/:group')
+@UseGuards(JwtAuthGuard)
+export class GroupChatController {
+  constructor(private readonly messages: MessagesService) {}
+
+  @Get()
+  conversation(@CurrentUser() user: AuthenticatedUser, @Param('group') group: string) {
+    return this.messages.groupConversation(user.id, group);
+  }
+
+  @Post('read')
+  markRead(@CurrentUser() user: AuthenticatedUser, @Param('group') group: string) {
+    return this.messages.markGroupRead(user.id, group);
+  }
+
+  @Post()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  send(@CurrentUser() user: AuthenticatedUser, @Param('group') group: string, @Body() input: SendMessageDto) {
+    const { body, ...extras } = input;
+    return this.messages.sendToGroup(user.id, group, body, extras);
+  }
+}

@@ -73,7 +73,8 @@ export class SafetyRepository {
       `SELECT m."senderId" "userId", jsonb_build_object('body', m."body", 'audioUrl', m."audioUrl", 'clubId', m."clubId", 'createdAt', m."createdAt") "snapshot"
        FROM "direct_messages" m
        WHERE m."id"=$1 AND (m."recipientId"=$2 OR m."senderId"=$2
-         OR (m."clubId" IS NOT NULL AND EXISTS (SELECT 1 FROM "club_memberships" cm WHERE cm."clubId"=m."clubId" AND cm."userId"=$2)))`,
+         OR (m."clubId" IS NOT NULL AND EXISTS (SELECT 1 FROM "club_memberships" cm WHERE cm."clubId"=m."clubId" AND cm."userId"=$2))
+         OR (m."groupId" IS NOT NULL AND EXISTS (SELECT 1 FROM "chat_group_members" gm WHERE gm."groupId"=m."groupId" AND gm."userId"=$2)))`,
       [messageId, viewerId]);
   }
 

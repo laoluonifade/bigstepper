@@ -108,7 +108,7 @@ function Scanner({ camera, onScan }: { camera: typeof import('expo-camera'); onS
     return <View style={styles.center}>
       <Txt size={17} weight="bold" align="center" style={{ color: brand.paper }}>Allow the camera to scan passes</Txt>
       <Txt size={14} align="center" style={{ color: 'rgba(242,239,232,0.7)', marginTop: 8, marginBottom: 20 }}>Jump only uses it while this scanner is open.</Txt>
-      {permission.canAskAgain ? <Button variant="volt" title="Allow camera" onPress={() => void request()} /> : <Button variant="volt" title="Open Settings" onPress={() => void Linking.openSettings()} />}
+      {permission.canAskAgain ? <Button variant="volt" title="Allow camera" style={{ alignSelf: 'center' }} onPress={() => void request()} /> : <Button variant="volt" title="Open Settings" style={{ alignSelf: 'center' }} onPress={() => void Linking.openSettings()} />}
     </View>;
   }
   return <View style={{ flex: 1 }}>

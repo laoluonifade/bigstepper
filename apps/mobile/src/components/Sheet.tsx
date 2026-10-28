@@ -5,6 +5,7 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily, GUTTER, radius, voltWash, wideLabel } from '@/lib/theme';
 import { ChevronRightIcon, CloseIcon } from './icons';
+import { Toaster } from './Toaster';
 import { haptic, Txt } from './ui';
 
 const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
@@ -95,6 +96,8 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
           {footer ? <View style={[styles.footer, { paddingBottom: keyboard ? 12 : Math.max(insets.bottom, 12) }]}>{footer}</View> : null}
         </Animated.View>
       </View>
+      {/* Android draws a sheet in its own window, above the app's toasts; it shows them itself. */}
+      {Platform.OS === 'android' ? <Toaster /> : null}
     </GestureHandlerRootView>
   </Modal>;
 }

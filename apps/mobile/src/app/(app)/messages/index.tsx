@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { router, Stack } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ticks, UnreadBadge, type Thread } from '@/components/chat';
+import { GroupMark, Ticks, UnreadBadge, type Thread } from '@/components/chat';
 import { Sheet } from '@/components/Sheet';
 import { ClubLogo } from '@/components/ClubLogo';
 import { FeedIcon } from '@/components/icons';
@@ -16,7 +16,8 @@ import { colors, fontFamily, GUTTER, radius } from '@/lib/theme';
 
 type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; senderId: string; unreadCount: number; readAt?: string | null };
 type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
-type InboxRow = DirectRow | ClubRow;
+type GroupRow = { type: 'group'; groupSlug: string; groupName: string; description: string | null; memberCount: number; senderName: string; senderId: string | null; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
+type InboxRow = DirectRow | ClubRow | GroupRow;
 
 const preview = (row: InboxRow) => (row.kind === 'voice' ? 'Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity');
 const when = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -32,16 +33,18 @@ export default function MessagesScreen() {
     <ErrorNotice error={inbox.error} onRetry={() => void inbox.refetch()} />
     {inbox.isLoading ? <View style={{ padding: GUTTER }}><Skeleton style={{ height: 128 }} /></View>
       : !inbox.data?.length ? <View style={{ padding: GUTTER }}><EmptyState mark={<FeedIcon size={30} color={colors.ink3} />} title="No messages yet" action={<Button variant="secondary" title="Find runners" onPress={() => router.push('/runners')} />}>Open a runner’s profile and tap Message to say hello.</EmptyState></View>
-        : inbox.data.map((row) => <Pressable key={row.type === 'club' ? `club:${row.clubSlug}` : row.username} onPress={() => router.push(row.type === 'club' ? `/clubs/${row.clubSlug}/chat` : `/messages/${row.username}`)}
+        : inbox.data.map((row) => <Pressable key={row.type === 'club' ? `club:${row.clubSlug}` : row.type === 'group' ? `group:${row.groupSlug}` : row.username}
+          onPress={() => router.push(row.type === 'club' ? `/clubs/${row.clubSlug}/chat` : row.type === 'group' ? `/messages/groups/${row.groupSlug}` : `/messages/${row.username}`)}
           onLongPress={row.type === 'direct' ? () => { haptic('medium'); setPeeking(row); } : undefined} delayLongPress={350}
           style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.card }]}>
-          {row.type === 'club' ? <ClubLogo club={{ name: row.clubName, logoUrl: row.logoUrl }} size={48} /> : <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={48} round />}
+          {row.type === 'club' ? <ClubLogo club={{ name: row.clubName, logoUrl: row.logoUrl }} size={48} /> : row.type === 'group' ? <GroupMark size={48} /> : <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={48} round />}
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
               <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text numberOfLines={1} style={styles.name}>{row.type === 'club' ? row.clubName : row.displayName}</Text>
-                {row.verified ? <VerifiedTick /> : null}
-                {row.type === 'club' ? <View style={styles.clubTag}><Txt size={10} weight="bold" upper tracking={0.06}>{row.memberCount ? `Club · ${row.memberCount}` : 'Club'}</Txt></View>
+                <Text numberOfLines={1} style={styles.name}>{row.type === 'club' ? row.clubName : row.type === 'group' ? row.groupName : row.displayName}</Text>
+                {row.type !== 'group' && row.verified ? <VerifiedTick /> : null}
+                {row.type === 'group' ? <View style={styles.clubTag}><Txt size={10} weight="bold" upper tracking={0.06}>{`Group · ${row.memberCount}`}</Txt></View>
+                  : row.type === 'club' ? <View style={styles.clubTag}><Txt size={10} weight="bold" upper tracking={0.06}>{row.memberCount ? `Club · ${row.memberCount}` : 'Club'}</Txt></View>
                   : <Txt size={13} color="ink3" numberOfLines={1} style={{ flexShrink: 1 }}>{`@${row.username}`}</Txt>}
               </View>
               <Txt size={12} weight={row.unreadCount ? 'semibold' : 'regular'} color={row.unreadCount ? 'ink' : 'ink3'}>{when(row.createdAt)}</Txt>
@@ -50,7 +53,8 @@ export default function MessagesScreen() {
               {/* Your message last: whether they've read it yet. */}
               {row.type === 'direct' && row.senderId === user.id ? <Ticks read={Boolean(row.readAt)} /> : null}
               <Txt size={13} numberOfLines={1} weight={row.unreadCount ? 'semibold' : 'regular'} color={row.unreadCount ? 'ink' : 'ink2'} style={{ flex: 1 }}>
-                {row.type === 'club' ? `${row.senderId === user.id ? 'You' : row.senderName.split(' ')[0]}: ${preview(row)}` : preview(row)}
+                {row.type === 'group' ? (row.senderId ? `${row.senderId === user.id ? 'You' : row.senderName.split(' ')[0]}: ${preview(row)}` : row.description ?? 'Say hello')
+                  : row.type === 'club' ? `${row.senderId === user.id ? 'You' : row.senderName.split(' ')[0]}: ${preview(row)}` : preview(row)}
               </Txt>
               <UnreadBadge count={row.unreadCount} />
             </View>

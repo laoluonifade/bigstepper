@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { FullWindowOverlay } from 'react-native-screens';
 import Animated, { FadeInUp, FadeOutUp, LinearTransition, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily, GUTTER, radius } from '@/lib/theme';
@@ -9,16 +10,23 @@ import { HardShadow } from './ui';
 
 const ACCENT: Record<ToastTone, string> = { bad: colors.bad, warn: colors.warn, ok: colors.ok, info: colors.ink };
 
-/** Toasts drop in under the status bar. Close one with its ×, or swipe it away sideways or up. */
+/**
+ * Toasts drop in under the status bar. Close one with its ×, or swipe it away sideways or up. On iPhone
+ * they sit in a window above everything, sheets and modal screens included; Android sheets show their own.
+ */
 export function Toaster() {
   const toasts = useToasts();
   const insets = useSafeAreaInsets();
   if (toasts.length === 0) return null;
-  return <View pointerEvents="box-none" style={[styles.stack, { top: insets.top + 8 }]}>
+  const stack = <View pointerEvents="box-none" style={[styles.stack, { top: insets.top + 8 }]}>
     {toasts.map((item) => <Animated.View key={item.id} entering={FadeInUp.duration(260)} exiting={FadeOutUp.duration(200)} layout={LinearTransition}>
       <ToastCard item={item} />
     </Animated.View>)}
   </View>;
+  if (Platform.OS !== 'ios') return stack;
+  return <FullWindowOverlay>
+    <GestureHandlerRootView style={StyleSheet.absoluteFill} pointerEvents="box-none">{stack}</GestureHandlerRootView>
+  </FullWindowOverlay>;
 }
 
 function ToastCard({ item }: { item: Toast }) {

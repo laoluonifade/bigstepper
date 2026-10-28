@@ -11,7 +11,7 @@ import { ClubEventsSection } from '@/components/ClubEvents';
 import { ClubLogo } from '@/components/ClubLogo';
 import { ACCENTS, isManager, onAccent, PrivacyChoice, ROLE_LABEL } from '@/components/clubs';
 import { CompetitionRow } from '@/components/competition';
-import { ArrowRightIcon, CameraIcon, CheckIcon, FeedIcon, LinkIcon, LockIcon, PlusIcon, ShareIcon } from '@/components/icons';
+import { ArrowRightIcon, CameraIcon, CheckIcon, CloseIcon, FeedIcon, LinkIcon, LockIcon, PlusIcon, ShareIcon } from '@/components/icons';
 import { Leaderboard } from '@/components/Leaderboard';
 import { Sheet } from '@/components/Sheet';
 import { Avatar, Button, CopyButton, EmptyState, ErrorNotice, FieldLabel, haptic, HardShadow, Loading, Notice, Screen, SectionTitle, Segmented, Skeleton, TextField, Txt, useNow, VerifiedTick } from '@/components/ui';
@@ -341,10 +341,31 @@ function InvitePanel({ club }: { club: Club }) {
     enabled: query.length >= 2,
     staleTime: 30_000,
   });
-  const people = (found.data ?? []).filter((person) => !person.isMe).slice(0, 6);
+  const people = (found.data ?? []).filter((person) => !person.isMe).slice(0, 8);
+  // Who's already in, so they show as members rather than someone to add again.
+  const members = useQuery({ queryKey: keys.clubMembers(club.slug), queryFn: () => api<ClubMember[]>(`/clubs/${club.slug}/members`) });
+  const inClub = new Set((members.data ?? []).map((member) => member.username).filter(Boolean));
+  const [picked, setPicked] = useState<string[]>([]);
+  const togglePick = (handle: string) => { haptic('select'); setPicked((now) => (now.includes(handle) ? now.filter((item) => item !== handle) : [...now, handle])); };
+  // Several at once: each is added in turn, and the summary says how it went.
   const add = useMutation({
-    mutationFn: (handle?: string) => post(`/clubs/${club.slug}/members`, { username: (handle ?? username).trim().replace(/^@/, '') }),
-    async onSuccess() { setUsername(''); await queryClient.invalidateQueries({ queryKey: ['club'] }); toast({ tone: 'ok', message: 'Added. They’re in the club’s live competitions too.' }); },
+    mutationFn: async (handles: string[]) => {
+      let added = 0;
+      const failed: string[] = [];
+      for (const handle of handles) {
+        try { await post(`/clubs/${club.slug}/members`, { username: handle.trim().replace(/^@/, '') }); added += 1; }
+        catch { failed.push(handle); }
+      }
+      return { added, failed };
+    },
+    async onSuccess({ added, failed }) {
+      setUsername(''); setPicked(failed);
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['club'] }), queryClient.invalidateQueries({ queryKey: keys.clubMembers(club.slug) })]);
+      if (added) haptic('success');
+      toast(failed.length
+        ? { tone: 'warn', message: `${added ? `Added ${added}. ` : ''}Couldn’t add ${failed.map((handle) => `@${handle}`).join(', ')}. Check the username and try again.` }
+        : { tone: 'ok', message: `${added === 1 ? 'Added. They’re' : `Added ${added} people. They’re`} in the club’s live competitions too.` });
+    },
   });
   const reset = useMutation({
     mutationFn: () => post(`/clubs/${club.slug}/invite-code`),
@@ -378,21 +399,32 @@ function InvitePanel({ club }: { club: Club }) {
         <FieldLabel label="Add someone on Jump" />
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <TextField containerStyle={{ flex: 1 }} value={username} onChangeText={setUsername} placeholder="@username" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Username to add" />
-          <Button variant="secondary" loading={add.isPending} disabled={!username.trim().replace(/^@/, '')} title={add.isPending ? 'Adding…' : 'Add'} onPress={() => add.mutate(undefined)} />
+          <Button variant="secondary" loading={add.isPending && !picked.length} disabled={!username.trim().replace(/^@/, '') || inClub.has(username.trim().replace(/^@/, '').toLowerCase())} title="Add" onPress={() => add.mutate([username])} />
         </View>
         {query.length >= 2 && people.length ? <View style={styles.found}>
-          {people.map((person, index) => <Pressable key={person.username} onPress={() => { haptic(); add.mutate(person.username); }} disabled={add.isPending}
-            style={({ pressed }) => [styles.foundRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, pressed && { backgroundColor: colors.inkWash }]}
-            accessibilityRole="button" accessibilityLabel={`Add ${person.displayName}`}>
-            <Avatar name={person.displayName} src={person.avatarUrl} avatarStyle={person.avatarStyle} size={34} round />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Txt size={14} weight="semibold" numberOfLines={1}>{person.displayName}</Txt>
-              <Txt size={12} color="ink3" numberOfLines={1}>@{person.username}</Txt>
-            </View>
-            <PlusIcon size={16} />
-          </Pressable>)}
+          {people.map((person, index) => {
+            const member = inClub.has(person.username);
+            const on = picked.includes(person.username);
+            return <Pressable key={person.username} onPress={() => togglePick(person.username)} disabled={member || add.isPending}
+              style={({ pressed }) => [styles.foundRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, pressed && { backgroundColor: colors.inkWash }, member && { opacity: 0.55 }]}
+              accessibilityRole="checkbox" accessibilityState={{ checked: on, disabled: member }} accessibilityLabel={member ? `${person.displayName}, already in the club` : `Pick ${person.displayName}`}>
+              <Avatar name={person.displayName} src={person.avatarUrl} avatarStyle={person.avatarStyle} size={34} round />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Txt size={14} weight="semibold" numberOfLines={1}>{person.displayName}</Txt>
+                <Txt size={12} color="ink3" numberOfLines={1}>@{person.username}</Txt>
+              </View>
+              {member ? <Txt size={12} weight="semibold" color="ink3">In club</Txt>
+                : <View style={[styles.pick, on && styles.pickOn]}>{on ? <CheckIcon size={14} color={colors.onAccent} /> : null}</View>}
+            </Pressable>;
+          })}
         </View> : query.length >= 2 && found.isFetched && !found.isFetching ? <Txt size={12.5} color="ink3" style={{ marginTop: 8 }}>No runners match that.</Txt> : null}
-        <Txt size={12} color="ink2" style={{ marginTop: 6 }}>By their @username. They’re added straight away.</Txt>
+        {picked.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          {picked.map((handle) => <Pressable key={handle} onPress={() => togglePick(handle)} style={styles.pickedChip} accessibilityRole="button" accessibilityLabel={`Remove @${handle}`}>
+            <Txt size={12.5} weight="semibold">@{handle}</Txt><CloseIcon size={12} color={colors.ink2} />
+          </Pressable>)}
+        </View> : null}
+        {picked.length ? <Button full variant="dark" style={{ marginTop: 10 }} loading={add.isPending} title={`Add ${picked.length} ${picked.length === 1 ? 'person' : 'people'}`} onPress={() => add.mutate(picked)} />
+          : <Txt size={12} color="ink2" style={{ marginTop: 6 }}>Search by name or @username and pick as many people as you like. They’re added straight away.</Txt>}
         <ErrorNotice error={add.error} />
       </View>
     </View>
@@ -465,6 +497,9 @@ function EditClubSheet({ club, onClose }: { club: Club; onClose: () => void }) {
 
 const styles = StyleSheet.create({
   found: { marginTop: 8, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, overflow: 'hidden' },
+  pickedChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.full, backgroundColor: colors.inkWash, paddingHorizontal: 10, paddingVertical: 5 },
+  pick: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: colors.edge, alignItems: 'center', justifyContent: 'center' },
+  pickOn: { backgroundColor: colors.volt, borderColor: colors.volt },
   foundRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
   hero: { borderRadius: 24, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   heroLogo: { marginTop: -40, alignSelf: 'flex-start', borderRadius: radius.xl + 3, borderWidth: 3, borderColor: colors.card },

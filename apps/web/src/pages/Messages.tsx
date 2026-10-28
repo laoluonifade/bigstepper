@@ -2,7 +2,7 @@ import { MoreMenu, openBlock, openReport, unblockRunner } from '../components/Sa
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { CSSProperties, FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon, FlagIcon, DuelIcon } from '../components/icons';
+import { ActivityIcon, ArrowLeftIcon, CheckIcon, ClockIcon, CopyIcon, EditIcon, FeedIcon, MicIcon, ReplyIcon, PauseIcon, PlayIcon, SendIcon, TrashIcon, LockIcon, FlagIcon, DuelIcon, JumpLogo } from '../components/icons';
 import { ActivityBadge, ActivityPicker } from '../components/ActivityPicker';
 import { ClubLogo } from '../components/ClubLogo';
 import { DuelCard, DuelComposer } from '../components/Duel';
@@ -23,7 +23,12 @@ import type { Activity, AvatarStyle, CheckoutResponse, Unit } from '../lib/types
 
 type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; senderId: string; unreadCount: number };
 type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
-type InboxRow = DirectRow | ClubRow;
+type GroupRow = { type: 'group'; groupSlug: string; groupName: string; description: string | null; memberCount: number; senderName: string; senderId: string | null; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
+type InboxRow = DirectRow | ClubRow | GroupRow;
+type GroupConversation = Thread & {
+  group: { id: string; slug: string; name: string; description: string | null; memberCount: number; faces: Person[] };
+  people: Array<Person & { userId: string }>;
+};
 /** Whoever wrote a message: the other person in a DM, any member in a club chat. */
 type Person = { displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; username?: string | null };
 type MessageReaction = Reaction;
@@ -46,7 +51,7 @@ export function MessagesPage() {
     <div className="-mx-4 mb-4 sm:mx-0"><RantTabs active="dms" unread={unread} /></div>
     <ErrorNotice error={inbox.error} onRetry={() => void inbox.refetch()} />
     {inbox.isLoading ? <Skeleton className="h-32" /> : !inbox.data?.length ? <EmptyState mark={<FeedIcon size={30} />} title="No messages yet" action={<Link to="/runners" className="btn-secondary">Find runners</Link>}>Open a runner’s profile and tap Message to say hello.</EmptyState> : <ul className="-mx-4 divide-y divide-line border-b border-line sm:mx-0">
-      {inbox.data.map((row) => <li key={row.type === 'club' ? `club:${row.clubSlug}` : row.username}>{row.type === 'club' ? <ClubInboxRow row={row} /> : <Link to="/messages/$username" params={{ username: row.username }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
+      {inbox.data.map((row) => <li key={row.type === 'club' ? `club:${row.clubSlug}` : row.type === 'group' ? `group:${row.groupSlug}` : row.username}>{row.type === 'club' ? <ClubInboxRow row={row} /> : row.type === 'group' ? <GroupInboxRow row={row} /> : <Link to="/messages/$username" params={{ username: row.username }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
         <Avatar name={row.displayName} src={row.avatarUrl} avatarStyle={row.avatarStyle} size={48} className="shrink-0 rounded-full" />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.displayName}</span>{row.verified && <VerifiedTick className="ml-1" />} <span className="text-[13px] text-ink-3">@{row.username}</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
@@ -107,11 +112,55 @@ export function ClubChatPage() {
 
     </>}
     empty={(data) => <>
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl text-[30px]" style={{ background: data.club.accentColor }} aria-hidden="true">👋</span>
+      <span className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: data.club.accentColor, color: onAccentColor(data.club.accentColor ?? '#FF5A1F') }} aria-hidden="true"><FeedIcon size={28} /></span>
       <p className="mt-3 font-bold">Start the {data.club.name} chat</p>
       <p className="text-[14px] text-ink-3">Every member sees it. Plan runs, cheer each other on.</p>
     </>}
   />;
+}
+
+/** A group chat Jump runs, like Jump Hosts: everyone who belongs is already in it. */
+export function GroupChatPage() {
+  const { slug } = useParams({ strict: false }) as { slug: string };
+  return <ChatThread<GroupConversation>
+    group
+    queryKey={['group-chat', slug]}
+    path={`/messages/groups/${encodeURIComponent(slug)}`}
+    back={{ to: '/messages' }}
+    senderOf={(data, senderId) => data.people.find((person) => person.userId === senderId) ?? { displayName: 'Former member', avatarUrl: null }}
+    header={(data) => <>
+      <GroupMark size={42} />
+      <div className="min-w-0 flex-1">
+        <h1 className="wide truncate text-[16px] font-black uppercase md:text-[18px]">{data.group.name}</h1>
+        <span className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-2 md:text-[13px]">
+          <span className="flex -space-x-1.5">{data.group.faces.slice(0, 4).map((face, index) => <Avatar key={index} name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={20} className="rounded-full ring-2 ring-card" />)}</span>
+          <span className="truncate"><b className="font-bold text-ink">{data.group.memberCount}</b> {data.group.memberCount === 1 ? 'member' : 'members'}</span>
+        </span>
+      </div>
+    </>}
+    empty={(data) => <>
+      <GroupMark size={64} />
+      <p className="mt-3 font-bold">{data.group.name}</p>
+      <p className="text-[14px] text-ink-3">{data.group.description ?? 'Say hello to the group.'}</p>
+    </>}
+  />;
+}
+
+/** A Jump-run group's picture: the Jump mark on ink. */
+function GroupMark({ size }: { size: number }) {
+  return <span className="flex shrink-0 items-center justify-center bg-ink text-paper" style={{ width: size, height: size, borderRadius: size * 0.25 }} aria-hidden="true"><JumpLogo height={size * 0.3} className="text-paper" /></span>;
+}
+
+function GroupInboxRow({ row }: { row: GroupRow }) {
+  const user = useUser();
+  const preview = row.senderId ? `${row.senderId === user.id ? 'You' : row.senderName.split(' ')[0]}: ${inboxPreview(row)}` : row.description ?? 'Say hello';
+  return <Link to="/messages/groups/$slug" params={{ slug: row.groupSlug }} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-card">
+    <GroupMark size={48} />
+    <span className="min-w-0 flex-1">
+      <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate"><span className="font-bold">{row.groupName}</span> <span className="ml-1 rounded-full bg-ink/[0.07] px-1.5 py-0.5 align-[2px] text-[10px] font-bold uppercase tracking-wide text-ink-2">Group · {row.memberCount}</span></span><time className={`shrink-0 text-[12px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-3'}`}>{new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time></span>
+      <span className="mt-0.5 flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] ${row.unreadCount ? 'font-semibold text-ink' : 'text-ink-2'}`}>{preview}</span><UnreadBadge count={row.unreadCount} /></span>
+    </span>
+  </Link>;
 }
 
 /**
@@ -508,7 +557,13 @@ function gapMinutes(earlier: Message, later: Message) {
   return (new Date(later.createdAt).getTime() - new Date(earlier.createdAt).getTime()) / 60_000;
 }
 
-const inboxPreview = (row: InboxRow) => row.kind === 'voice' ? '🎤 Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity';
+/** Dark text on light colours, light text on dark ones. */
+function onAccentColor(hex: string) {
+  const [r, g, b] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#121212' : '#F2EFE8';
+}
+
+const inboxPreview = (row: InboxRow) => row.kind === 'voice' ? 'Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity';
 
 function UnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="num min-w-[20px] shrink-0 rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${count} unread messages`}>{count > 9 ? '9+' : count}</span> : null;

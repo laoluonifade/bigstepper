@@ -84,11 +84,15 @@ type DraftTable = { id: string; code: string; title: string; status: string; hos
 export default function CompetitionsScreen() {
   const unit = useUnit();
   const now = useNow(60_000);
-  const params = useLocalSearchParams<{ q?: string; activity?: string }>();
+  const params = useLocalSearchParams<{ q?: string; activity?: string; lens?: string }>();
   const [filter, setFilter] = useState<TypeFilter>('all');
   const queryClient = useQueryClient();
   const profile = useProfile();
   const [lensChoice, setLensChoice] = useState<Lens | null>(null);
+  // A link can open Explore on a lens (the tour, the events push): it shows that view without changing your saved choice.
+  useEffect(() => {
+    if (params.lens === 'events' || params.lens === 'competitions' || params.lens === 'all') setLensChoice(params.lens);
+  }, [params.lens]);
   const kind: Lens = lensChoice ?? profile.data?.exploreLens ?? 'all';
   // Your lens is kept on your account, so Explore opens the way you left it on every device.
   const saveLens = useMutation({

@@ -4,9 +4,10 @@ import { computeMilestones, computeStreaks, creditedMetres, isVerified, nextMile
 import type { Activity, Profile, Unit } from '@jump/shared/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { ComponentRef, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActivityRow } from '@/components/ActivityRow';
+import { GuideTour } from '@/components/GuideTour';
 import { ChallengeSomeone, LeaderboardPeek, MiniRing, MyCompetitions, RaceHero, SUMMARY } from '@/components/CompeteHome';
 import { ArrowRightIcon, ChevronDownIcon, RunIcon } from '@/components/icons';
 import { DivisionBadge, ZoneTag } from '@/components/league';
@@ -48,6 +49,7 @@ export default function DashboardScreen() {
   const name = profile.data?.displayName ?? user.displayName ?? 'runner';
   const queryClient = useQueryClient();
   const refresh = () => void queryClient.invalidateQueries();
+  const leaderboardRef = useRef<ComponentRef<typeof View>>(null);
 
   return <TabScreen refreshing={activities.isRefetching} onRefresh={refresh}>
     <View style={{ marginBottom: 24 }}>
@@ -55,6 +57,7 @@ export default function DashboardScreen() {
       <Txt size={26} weight="extrabold" leading={1.2} numberOfLines={1} style={{ marginTop: 2, letterSpacing: -0.4 }}>{greeting(new Date(now).getHours())}, {name.split(' ')[0]}</Txt>
     </View>
 
+    <GuideTour leaderboard={leaderboardRef} />
     {!user.emailVerified && <VerifyPrompt email={user.email} />}
     <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} />
 
@@ -62,7 +65,7 @@ export default function DashboardScreen() {
     <View style={{ gap: 12 }}>
       <RaceHero unit={unit} now={now} />
       <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
-      <LeaderboardPeek unit={unit} />
+      <View ref={leaderboardRef} collapsable={false}><LeaderboardPeek unit={unit} /></View>
     </View>
     <View style={{ gap: 32, marginTop: 32 }}>
       <MyCompetitions unit={unit} now={now} />

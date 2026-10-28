@@ -75,6 +75,7 @@ const dashboard = createRoute({ getParentRoute: () => root, path: '/dashboard', 
 const feed = createRoute({ getParentRoute: () => root, path: '/feed', validateSearch: (search: Record<string, unknown>): { activity?: string } => typeof search.activity === 'string' ? { activity: search.activity } : {}, component: protectedPage(() => import('./pages/Feed'), 'FeedPage') });
 const feedPost = createRoute({ getParentRoute: () => root, path: '/feed/$id', component: protectedPage(() => import('./pages/Feed'), 'FeedPostPage') });
 const messages = createRoute({ getParentRoute: () => root, path: '/messages', component: protectedPage(() => import('./pages/Messages'), 'MessagesPage') });
+const groupChat = createRoute({ getParentRoute: () => root, path: '/messages/groups/$slug', component: protectedPage(() => import('./pages/Messages'), 'GroupChatPage') });
 const conversation = createRoute({ getParentRoute: () => root, path: '/messages/$username', component: protectedPage(() => import('./pages/Messages'), 'ConversationPage') });
 const duel = createRoute({ getParentRoute: () => root, path: '/duels/$id', component: protectedPage(() => import('./pages/Duel'), 'DuelPage') });
 const newCompetition = createRoute({ getParentRoute: () => root, path: '/competitions/new', validateSearch: (search: Record<string, unknown>): { club?: string; template?: string } => ({ ...(typeof search.club === 'string' ? { club: search.club } : {}), ...(typeof search.template === 'string' ? { template: search.template } : {}) }), component: protectedPage(() => import('./pages/Competitions'), 'NewCompetitionPage') });
@@ -126,7 +127,7 @@ const routeTree = root.addChildren([
   home, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
-  dashboard, setup, interests, welcome, leaderboard, feed, feedPost, messages, conversation, duel, newCompetition, run, runSession, activities, activity,
+  dashboard, setup, interests, welcome, leaderboard, feed, feedPost, messages, groupChat, conversation, duel, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, clubChat, clubDashboard, events, clubEvent, eventGuests, prizes, rewards, identity, wallet, creator, notifications, profile, paymentReturn,
 ]);
 

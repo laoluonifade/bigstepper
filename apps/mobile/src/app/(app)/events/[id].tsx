@@ -8,7 +8,7 @@ import { EventCover, EventStamp } from '@/components/ClubEvents';
 import { EventPass, PassSheet } from '@/components/EventPass';
 import { ClubLogo } from '@/components/ClubLogo';
 import { onAccent } from '@/components/clubs';
-import { ArrowRightIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, TicketIcon, UsersIcon } from '@/components/icons';
+import { ArrowRightIcon, CameraIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, TicketIcon, UsersIcon } from '@/components/icons';
 import { Avatar, Button, EmptyState, ErrorNotice, Footer, haptic, HardShadow, Loading, Notice, Screen, Txt, useNow, VerifiedTick } from '@/components/ui';
 import { api, isApiError, post, WEB_URL } from '@/lib/api';
 import { clockLabel, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, openDirections, scheduleLabel, type ClubEvent } from '@/lib/club-events';
@@ -89,7 +89,7 @@ export default function EventScreen() {
       {e.draft
         ? <Button style={{ flex: 1 }} full variant="primary" title="Publish now" loading={publish.isPending} onPress={() => publish.mutate()} />
         : e.isHost
-        ? <Button style={{ flex: 1 }} full variant="volt" title={`You’re hosting · ${e.attendeeCount} going`} icon={<UsersIcon size={16} color={colors.onAccent} />} onPress={() => router.push({ pathname: '/events/guests', params: { id: e.id } })} />
+        ? <Button style={{ flex: 1 }} full variant="volt" title="Check in" icon={<CameraIcon size={16} color={colors.onAccent} />} onPress={() => router.push({ pathname: '/events/scan', params: { id: e.id } })} />
         : e.pass
         ? <Button style={{ flex: 1 }} full variant="dark" icon={<TicketIcon size={16} color={colors.paper} />} title="Show my pass" onPress={() => setPassOpen(true)} />
         : e.nextAt ? <Button style={{ flex: 1 }} full variant="primary" icon={<TicketIcon size={16} color={colors.onAccent} />} title="Get your pass" loading={join.isPending} onPress={() => join.mutate()} />
@@ -172,7 +172,7 @@ export default function EventScreen() {
             </View>)}
           </View>
           {e.attendeeCount > e.faces.length ? <Txt size={13} color="ink2">{`+${e.attendeeCount - e.faces.length} more`}</Txt> : null}
-        </View> : <Txt size={14} color="ink2">Nobody yet. Get a pass and be the first.</Txt>}
+        </View> : <Txt size={14} color="ink2">{e.isHost ? 'Nobody yet. Share it to get people coming.' : 'Nobody yet. Get a pass and be the first.'}</Txt>}
       </View>
 
       {e.pass && !e.canManage ? <Pressable hitSlop={8} style={{ alignSelf: 'center' }} disabled={leave.isPending}
