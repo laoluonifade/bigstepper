@@ -36,11 +36,11 @@ class ForfeitAwardDto {
   @IsString() @Length(5, 200) reason: string;
 }
 
-@Controller('admin')
 class SettleFlagDto {
   @IsIn(['CLEAR', 'REJECT']) decision: 'CLEAR' | 'REJECT';
 }
 
+@Controller('admin')
 @UseGuards(JwtAuthGuard, PrivilegedGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
