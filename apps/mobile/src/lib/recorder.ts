@@ -706,8 +706,9 @@ async function submitFinish(id: string, at: string, shown: Shown): Promise<Activ
   const timer = setTimeout(() => controller.abort(), FINISH_TIMEOUT_MS);
   const send = (payload: object) => api<Activity>(`/runs/${id}/finish`, { method: 'POST', body: payload, signal: controller.signal });
   try {
-    // A server from before deferred finishing asks for the missing points; finishing without the count ends it anyway.
-    return await send(body).catch((error: unknown) => (isApiError(error, 409) ? send({ at }) : Promise.reject(error)));
+    // An older server either asks for missing points (409) or doesn't know the newer fields (400):
+    // finishing with just the time still ends the run, so it's never dropped over a version mismatch.
+    return await send(body).catch((error: unknown) => (isApiError(error, 409) || isApiError(error, 400) ? send({ at }) : Promise.reject(error)));
   } catch (error) {
     if (isApiError(error, 422)) {
       toast({ tone: 'info', title: 'Nothing to save', message: 'GPS didn’t measure any distance, so there’s no activity to keep.' });
