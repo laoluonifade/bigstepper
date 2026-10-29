@@ -191,7 +191,7 @@ export function drawShareImage(canvas: HTMLCanvasElement, { activity, unit, rout
   ctx.fillStyle = 'rgba(242,239,232,0.6)';
   setFont(ctx, '700 30px', 'expanded');
   ctx.fillText(activityName(activity.startedAt, activity.activityType).toUpperCase(), pad, statsTop);
-  if (activity.verificationStatus === 'VERIFIED') {
+  if ((activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED')) {
     setFont(ctx, '800 26px', 'expanded');
     const label = '✓ VERIFIED';
     const bw = ctx.measureText(label).width + 40;

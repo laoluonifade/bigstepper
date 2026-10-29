@@ -58,7 +58,7 @@ function SendActivitySheet({ activity, unit, onClose }: { activity: Activity; un
       void queryClient.invalidateQueries({ queryKey: ['messages'] });
     },
   });
-  const metres = activity.verificationStatus === 'VERIFIED' ? Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) : activity.recordedDistanceMetres;
+  const metres = (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED') ? Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) : activity.recordedDistanceMetres;
 
   return createPortal(<div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label="Send activity">
     <div className="absolute inset-0 animate-fade bg-ink/50" onClick={onClose} />

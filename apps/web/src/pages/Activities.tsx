@@ -29,12 +29,12 @@ export function ActivitiesPage() {
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const list = useMemo(() => ofKind(activities.data ?? [], kind), [activities.data, kind]);
   const stats = useMemo(() => lifetimeStats(list), [list]);
-  const attention = list.filter((a) => a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED').length;
+  const attention = list.filter((a) => a.verificationStatus === 'REJECTED').length;
   const filtered = list.filter((activity) =>
     filter === 'verified'
-      ? activity.verificationStatus === 'VERIFIED'
+      ? (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED')
       : filter === 'attention'
-        ? activity.verificationStatus === 'FLAGGED' || activity.verificationStatus === 'REJECTED'
+        ? activity.verificationStatus === 'REJECTED'
         : true,
   );
 
@@ -157,7 +157,7 @@ export function ActivityDetailPage() {
 
   const a = activity.data;
   const pending = a.verificationStatus === 'PENDING_VERIFICATION';
-  const verified = a.verificationStatus === 'VERIFIED';
+  const verified = (a.verificationStatus === 'VERIFIED' || a.verificationStatus === 'FLAGGED');
   const metres = shownMetres(a);
   const moving = a.movingSeconds || a.elapsedSeconds;
   const pace = a.activityType === 'cycle' ? formatSpeed(metres, moving, unit) : formatPace(metres, moving, unit);
@@ -173,7 +173,7 @@ export function ActivityDetailPage() {
       />
       {/* Equal, quiet actions that fit one row on a phone. */}
       <div className="-mt-2 mb-6 grid grid-cols-3 gap-2 md:max-w-md">
-        {verified
+        {verified || pending
           ? <Link to="/feed" search={{ activity: a.id }} className={ACTIVITY_ACTION}><FeedIcon size={17} />Post</Link>
           : <span className={cx(ACTIVITY_ACTION, 'pointer-events-none opacity-40')}><FeedIcon size={17} />Post</span>}
         <ShareRun activity={a} unit={unit} className={ACTIVITY_ACTION} plain autoOpen={Boolean(search.fresh) && verified} />
@@ -199,7 +199,7 @@ export function ActivityDetailPage() {
       <section className="panel-strong overflow-hidden">
         <div className="grid gap-6 p-5 sm:grid-cols-[1.3fr_1fr] sm:p-6">
           <div>
-            <p className="eyebrow">{verified ? (fromSteps(a) ? 'Verified distance · from steps' : 'Verified distance') : pending ? 'Recorded distance · provisional' : 'Recorded distance'}</p>
+            <p className="eyebrow">{verified ? (fromSteps(a) ? 'Verified distance · from steps' : 'Verified distance') : 'Distance'}</p>
             <p className="mt-2 flex items-baseline gap-2">
               <span className={cx('score text-[80px] sm:text-[96px]', a.verificationStatus === 'REJECTED' && 'text-ink-3 line-through decoration-4')}>
                 <CountUp value={metres} format={(m) => formatDistanceNumber(m, unit)} />
@@ -242,14 +242,8 @@ export function ActivityDetailPage() {
 
       {verified && <div className="mt-6"><ActivityCredits activityId={a.id} unit={unit} /></div>}
 
-      {pending && (
-        <Notice tone="warn" className="mt-6" title="Checking your route">
-          This usually takes a few seconds. The distance above is provisional until it’s verified. It won’t count on leaderboards
-          before then. This page updates by itself.
-        </Notice>
-      )}
 
-      {a.verificationReasons.length > 0 && (
+      {a.verificationStatus === 'REJECTED' && a.verificationReasons.length > 0 && (
         <section className="mt-8">
           <h2 className="eyebrow mb-3 border-b-2 border-ink pb-2">{verified ? 'Notes from verification' : 'Why this activity was flagged'}</h2>
           <ul className="stagger space-y-3">
@@ -269,7 +263,7 @@ export function ActivityDetailPage() {
         </section>
       )}
 
-      {(a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED') && <ReviewRequest activityId={a.id} />}
+      {(a.verificationStatus === 'REJECTED') && <ReviewRequest activityId={a.id} />}
       <DeleteActivity activityId={a.id} />
     </div>
   );

@@ -40,6 +40,8 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  /** Gzip the JSON body (when the platform supplied a compressor). For big uploads like GPS points. */
+  compress?: boolean;
 }
 
 interface ClientConfig {
@@ -51,6 +53,8 @@ interface ClientConfig {
   getDeviceId?: () => string | null;
   /** Sends requests that carry files (FormData), where the platform's `fetch` can't. Defaults to `fetch`. */
   uploadFetch?: (url: string, init: RequestInit) => Promise<Response>;
+  /** Gzips a JSON string, for requests sent with `compress`. */
+  gzip?: (json: string) => ArrayBuffer;
 }
 
 /** One fetch wrapper for web and mobile, so both handle errors and expired sessions the same way. */
@@ -62,6 +66,8 @@ export function createApiClient(config: ClientConfig) {
     const token = config.getToken();
     const deviceId = config.getDeviceId?.();
     const form = typeof FormData !== 'undefined' && options.body instanceof FormData ? options.body : null;
+    const json = options.body !== undefined && !form ? JSON.stringify(options.body) : undefined;
+    const zipped = json !== undefined && options.compress && config.gzip ? config.gzip(json) : undefined;
     let response: Response;
     try {
       response = await (form && config.uploadFetch ? config.uploadFetch : fetch)(`${baseUrl}${path}`, {
@@ -69,11 +75,12 @@ export function createApiClient(config: ClientConfig) {
         signal: options.signal,
         headers: {
           Accept: 'application/json',
-          ...(options.body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
+          ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...(zipped ? { 'Content-Encoding': 'gzip' } : {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(token && deviceId ? { 'X-Device-Id': deviceId } : {}),
         },
-        body: form ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
+        body: form ?? zipped ?? json,
       });
     } catch (error) {
       if ((error as { name?: string } | null)?.name === 'AbortError') throw error;

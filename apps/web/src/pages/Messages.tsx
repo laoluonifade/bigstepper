@@ -528,7 +528,7 @@ function SharedActivityCard({ activity, unit, dark, mine }: { activity: SharedAc
     <ActivityBadge type={activity.activityType} />
     <span className="min-w-0 flex-1 leading-tight">
       <span className="block truncate text-[13px] font-bold">{activityName(activity.startedAt, activity.activityType)}</span>
-      <span className={cx('num block text-[12px]', dark ? 'text-paper/60' : 'text-ink-3')}>{formatDuration(activity.movingSeconds)}{activity.verificationStatus === 'VERIFIED' ? ' · Verified' : ''}</span>
+      <span className={cx('num block text-[12px]', dark ? 'text-paper/60' : 'text-ink-3')}>{formatDuration(activity.movingSeconds)}{(activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED') ? ' · Verified' : ''}</span>
     </span>
     <span className="score num shrink-0 text-[20px] leading-none">{formatDistance(activity.distanceMetres, unit)}</span>
   </span>;
@@ -539,7 +539,7 @@ function sharedFromMine(activity: Activity | undefined): SharedActivity | null {
   if (!activity) return null;
   return {
     id: activity.id, activityType: activity.activityType, startedAt: activity.startedAt, verificationStatus: activity.verificationStatus,
-    distanceMetres: activity.verificationStatus === 'VERIFIED' ? Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) : activity.recordedDistanceMetres,
+    distanceMetres: (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED') ? Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0) : activity.recordedDistanceMetres,
     movingSeconds: activity.movingSeconds, steps: activity.validatedSteps,
   };
 }

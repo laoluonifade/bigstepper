@@ -7,13 +7,13 @@ import { Activity } from '../activity.entity';
 import { GpsSample } from '../gps-sample.entity';
 import { measureTrack, type TrackMeasure } from '../track';
 import { RunningSession } from '../running-session.entity';
-import { refreshLeagueDistance } from '../../leagues/league-credits';
-import { creditActivities } from '../../tables/competition-credits';
+import { countActivity } from '../count-activity';
 
 const MAX_STEPS_PER_SECOND = 5.5;
 const MIN_STRIDE_METRES = 0.45;
 const SHAKE_ALLOWANCE_STEPS = 150;
 const MIN_MOVED_METRES = 5;
+const FLAG_FOR_ADMIN = new Set(['NO_GPS_MOVEMENT']);
 
 export function judgeActivity(
   track: Pick<TrackMeasure, 'distanceMetres' | 'confidence' | 'usableCount' | 'reasons'>,
@@ -42,7 +42,7 @@ export function judgeActivity(
   const stepCap = Math.ceil(track.distanceMetres / MIN_STRIDE_METRES);
   if (!cycling && steps > Math.max(stepCap * 2, stepCap + SHAKE_ALLOWANCE_STEPS)) reasons.add('STEPS_WITHOUT_MOVEMENT');
   return {
-    status: track.distanceMetres >= MIN_MOVED_METRES ? 'VERIFIED' as const : 'REJECTED' as const,
+    status: [...reasons].some((reason) => FLAG_FOR_ADMIN.has(reason)) ? 'FLAGGED' as const : 'VERIFIED' as const,
     validatedSteps: cycling ? 0 : Math.min(steps, stepCap),
     reasons,
   };
@@ -76,8 +76,6 @@ export class ActivityVerificationProcessor extends WorkerHost {
     const validatedDistance = track.distanceMetres;
     const movingSeconds = track.movingSeconds;
     const confidence = track.confidence;
-    const cycling = activity.activityType === 'cycle';
-    const noun = cycling ? 'ride' : activity.activityType;
     const stepDistance = 0;
 
     await this.dataSource.transaction(async (manager) => {
@@ -97,29 +95,10 @@ export class ActivityVerificationProcessor extends WorkerHost {
       );
       await manager.update(RunningSession, { id: activity.runningSessionId }, { status });
 
-      if (status === 'VERIFIED') {
-        await creditActivities(manager, { activityId: activity.id });
-        if (!cycling) await refreshLeagueDistance(manager, activity.userId);
-        await manager.query(
-          `INSERT INTO "feed_posts" ("userId","body","activityId") SELECT $1,'',$2
-           WHERE NOT EXISTS (SELECT 1 FROM "feed_posts" WHERE "activityId"=$2)`,
-          [activity.userId, activity.id],
-        );
-        await manager.query(
-          `INSERT INTO "notifications" ("userId","type","title","body","link")
-           SELECT $2,'LEADERBOARD_UPDATE','Your standings updated',
-                  'Your verified ' || $3 || ' now counts in ' || t."title" || '.', '/competitions/' || t."code"
-           FROM "table_activity_credits" c JOIN "competition_tables" t ON t."id"=c."tableId"
-           WHERE c."activityId"=$1`, [activity.id, activity.userId, activity.activityType],
-        );
-      }
+      await countActivity(manager, activity);
       if (job.data.recheck && status === 'VERIFIED') {
         await manager.query(`UPDATE "activity_verification_reviews" SET "status"='APPROVED' WHERE "activityId"=$1 AND "status"='PENDING'`, [activity.id]);
       }
-      if (status === 'VERIFIED') await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link") VALUES ($1,'ACTIVITY_VERIFIED',$2,$3,$4)`,
-        [activity.userId, `Your ${noun} is verified`, 'Your distance and steps are checked. Open Jump to see your progress.', `/activities/${activity.id}`],
-      );
     });
     this.logger.log(`Activity ${activity.id} processed as ${status}`);
   }

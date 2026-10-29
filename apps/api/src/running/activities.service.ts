@@ -9,6 +9,8 @@ import { haversineMetres } from './haversine';
 import { MAX_USABLE_ACCURACY_METRES, smoothTrack } from './track';
 import { ActivityVerificationReview } from './activity-verification-review.entity';
 import { Activity } from './activity.entity';
+import { COUNTED_STATUSES, countedMetres, countedSteps } from './counted';
+import { hasPostgis, ROUTE_TOLERANCE_DEGREES } from '../database/postgis';
 
 const PRIVATE_ENDS_METRES = 200;
 
@@ -44,8 +46,8 @@ export class ActivitiesService {
     return this.activities.query(
       `SELECT (a."startedAt" AT TIME ZONE $3)::date::text AS day,
               COUNT(*)::integer AS "activities",
-              COALESCE(SUM(a."validatedSteps") FILTER (WHERE a."verificationStatus"='VERIFIED'), 0)::integer AS steps,
-              COALESCE(SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")) FILTER (WHERE a."verificationStatus"='VERIFIED'), 0)::bigint AS "distanceMetres"
+              COALESCE(SUM(${countedSteps()}) FILTER (WHERE a."verificationStatus" IN ${COUNTED_STATUSES}), 0)::integer AS steps,
+              COALESCE(SUM(${countedMetres()}) FILTER (WHERE a."verificationStatus" IN ${COUNTED_STATUSES}), 0)::bigint AS "distanceMetres"
        FROM "activities" a
        WHERE a."userId"=$1 AND a."verificationStatus"<>'REJECTED'
          AND (a."startedAt" AT TIME ZONE $3)::date >= ($2 || '-01')::date
@@ -86,6 +88,19 @@ export class ActivitiesService {
 
   async track(viewerId: string, activityId: string) {
     const activity = await this.viewable(viewerId, activityId);
+    const route = await this.route(activity);
+    const smoothed = activity.userId === viewerId ? route : hideEnds(route, PRIVATE_ENDS_METRES);
+    const step = Math.max(1, Math.ceil(smoothed.length / 400));
+    const points = smoothed.filter((_, index) => index % step === 0 || index === smoothed.length - 1);
+    return { points: points.map((point) => [Number(point.lat.toFixed(6)), Number(point.lon.toFixed(6))]) };
+  }
+
+  private async route(activity: { id: string; runningSessionId: string; verificationStatus: string }): Promise<Array<{ lat: number; lon: number }>> {
+    const spatial = await hasPostgis(this.activities.manager);
+    if (spatial) {
+      const [stored] = await this.activities.query(`SELECT ST_AsGeoJSON("route") AS "line" FROM "activities" WHERE "id" = $1 AND "route" IS NOT NULL`, [activity.id]) as Array<{ line: string }>;
+      if (stored) return (JSON.parse(stored.line) as { coordinates: Array<[number, number]> }).coordinates.map(([lon, lat]) => ({ lat, lon }));
+    }
     const samples = await this.activities.manager.find(GpsSample, {
       where: { sessionId: activity.runningSessionId },
       order: { sequence: 'ASC' },
@@ -93,10 +108,14 @@ export class ActivitiesService {
     const usable = samples
       .filter((sample) => sample.accuracy === null || sample.accuracy <= MAX_USABLE_ACCURACY_METRES)
       .filter((sample, index, all) => index === 0 || sample.recordedAt.getTime() > all[index - 1].recordedAt.getTime());
-    const smoothed = activity.userId === viewerId ? smoothTrack(usable) : hideEnds(smoothTrack(usable), PRIVATE_ENDS_METRES);
-    const step = Math.max(1, Math.ceil(smoothed.length / 400));
-    const points = smoothed.filter((_, index) => index % step === 0 || index === smoothed.length - 1);
-    return { points: points.map((point) => [Number(point.lat.toFixed(6)), Number(point.lon.toFixed(6))]) };
+    const smoothed = smoothTrack(usable);
+    if (spatial && smoothed.length >= 2 && activity.verificationStatus !== 'PENDING_VERIFICATION') {
+      await this.activities.query(
+        `UPDATE "activities" SET "route" = ST_Simplify(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326), $3)::geography WHERE "id" = $1`,
+        [activity.id, JSON.stringify({ type: 'LineString', coordinates: smoothed.map((point) => [point.lon, point.lat]) }), ROUTE_TOLERANCE_DEGREES],
+      ).catch(() => undefined);
+    }
+    return smoothed;
   }
 
   async view(viewerId: string, activityId: string) {
@@ -113,7 +132,7 @@ export class ActivitiesService {
   private async viewable(viewerId: string, activityId: string) {
     const [activity] = await this.activities.query(
       `SELECT a."id" FROM "activities" a JOIN "users" u ON u."id"=a."userId" AND u."deletedAt" IS NULL
-       WHERE a."id"=$1 AND (a."userId"=$2 OR a."verificationStatus"='VERIFIED')`, [activityId, viewerId],
+       WHERE a."id"=$1 AND (a."userId"=$2 OR a."verificationStatus" IN ${COUNTED_STATUSES})`, [activityId, viewerId],
     ) as Array<{ id: string }>;
     if (!activity) throw new NotFoundException('Activity not found');
     return this.activities.findOneOrFail({ where: { id: activityId } });

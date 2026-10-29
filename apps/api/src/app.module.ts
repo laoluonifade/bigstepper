@@ -31,6 +31,7 @@ import { AmlModule } from './aml/aml.module';
 import { SafetyModule } from './safety/safety.module';
 import { ClubEventsModule } from './club-events/club-events.module';
 import { DuelsModule } from './duels/duels.module';
+import { MetricsController } from './metrics/metrics.controller';
 
 @Module({
   imports: [
@@ -75,7 +76,7 @@ import { DuelsModule } from './duels/duels.module';
     LeaderboardModule,
     PrizesModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, MetricsController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

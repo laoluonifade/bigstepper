@@ -6,9 +6,9 @@ const samples = (ticks: number, perTick: number) =>
 const track = (distanceMetres: number, usableCount = 40) => ({ distanceMetres, confidence: 0.9, usableCount, reasons: new Set<string>() });
 
 describe('judgeActivity', () => {
-  it('doesn’t save a phone shaken while standing still: steps at a human rate, no GPS movement', () => {
+  it('leaves a phone shaken while standing still for an admin: no GPS movement, steps not counted', () => {
     const verdict = judgeActivity(track(0), samples(120, 12), 'walk');
-    expect(verdict.status).toBe('REJECTED');
+    expect(verdict.status).toBe('FLAGGED');
     expect(verdict.validatedSteps).toBe(0);
     expect(verdict.reasons.has('NO_GPS_MOVEMENT')).toBe(true);
     expect(verdict.reasons.has('STEPS_WITHOUT_MOVEMENT')).toBe(true);
@@ -51,6 +51,12 @@ describe('judgeActivity', () => {
     const verdict = judgeActivity(track(100), samples(30, 10), 'walk');
     expect(verdict.status).toBe('VERIFIED');
     expect(verdict.validatedSteps).toBe(Math.ceil(100 / 0.45));
+  });
+
+  it('only flags what a person should look at, never everyday GPS noise', () => {
+    const noisy = { ...track(3000), reasons: new Set(['GPS_GAP', 'LOW_GPS_ACCURACY', 'IMPLAUSIBLE_SPEED']) };
+    expect(judgeActivity(noisy, samples(60, 10), 'walk').status).toBe('VERIFIED');
+    expect(judgeActivity(track(0), samples(10, 1), 'run').status).toBe('FLAGGED');
   });
 
   it('never counts steps on a ride', () => {

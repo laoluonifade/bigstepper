@@ -373,7 +373,6 @@ function WeekPanel({
               <span className="font-semibold text-ink">{formatDistance(remaining, unit)}</span> to your weekly goal.
             </>
           )}
-          {week.pendingMetres > 0 && ` ${formatDistance(week.pendingMetres, unit)} still verifying.`}
         </p>
       </div>
 

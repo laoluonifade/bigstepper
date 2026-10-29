@@ -1,4 +1,4 @@
-import { IsInt, IsISO8601, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsISO8601, IsOptional, Max, Min } from 'class-validator';
 
 export class RunMomentDto {
   @IsOptional()
@@ -11,4 +11,14 @@ export class FinishRunDto extends RunMomentDto {
   @IsInt()
   @Min(0)
   sampleCount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(2_000_000)
+  distanceMetres?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  deferred?: boolean;
 }

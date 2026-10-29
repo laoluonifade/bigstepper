@@ -20,7 +20,7 @@ export class RunningController {
 
   @Post('start')
   start(@CurrentUser() user: AuthenticatedUser, @Body() body?: StartRunDto) {
-    return this.runningService.start(user.id, body?.activityType ?? 'run');
+    return this.runningService.start(user.id, body?.activityType ?? 'run', { id: body?.id, startedAt: body?.startedAt });
   }
 
   @Post(':id/samples')
@@ -38,7 +38,7 @@ export class RunningController {
     @Param('id', ParseUUIDPipe) sessionId: string,
     @Body() body?: FinishRunDto,
   ) {
-    return this.runningService.finish(user.id, sessionId, body?.at, body?.sampleCount);
+    return this.runningService.finish(user.id, sessionId, body?.at, body?.sampleCount, { distanceMetres: body?.distanceMetres, deferred: body?.deferred });
   }
 
   @Post(':id/discard')

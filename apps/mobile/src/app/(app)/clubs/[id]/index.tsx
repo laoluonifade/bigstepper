@@ -7,7 +7,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { ActionMenu } from '@/components/ActionMenu';
-import { ClubEventsSection } from '@/components/ClubEvents';
+import { ClubEventsList } from '@/components/ClubEvents';
 import { ClubLogo } from '@/components/ClubLogo';
 import { ACCENTS, isManager, onAccent, PrivacyChoice, ROLE_LABEL } from '@/components/clubs';
 import { CompetitionRow } from '@/components/competition';
@@ -23,7 +23,7 @@ import { toast } from '@/lib/toast';
 import { pickPhoto, uploadPhoto } from '@/lib/upload';
 import { confirm } from '@/lib/dialog';
 
-type ClubTab = 'competitions' | 'leaderboard' | 'members' | 'invite';
+type ClubTab = 'competitions' | 'events' | 'leaderboard' | 'members' | 'invite';
 
 /** The club's link for any member to pass on: with the invite in it, so invite-only clubs let people in. */
 function clubShareLink(club: Club) {
@@ -91,6 +91,7 @@ export default function ClubScreen() {
   const member = Boolean(role);
   const tabs: Array<{ value: ClubTab; label: string }> = [
     { value: 'competitions', label: 'Competitions' },
+    { value: 'events', label: 'Events' },
     ...(member ? [{ value: 'leaderboard' as const, label: 'Leaderboard' }] : []),
     ...(member || c.privacy === 'open' ? [{ value: 'members' as const, label: 'Members' }] : []),
     ...(isManager(role) ? [{ value: 'invite' as const, label: 'Invite' }] : []),
@@ -129,7 +130,6 @@ export default function ClubScreen() {
       </View>
       <ArrowRightIcon size={16} />
     </Pressable>}
-    {(c.privacy === 'open' || member) && <ClubEventsSection club={c} manager={isManager(role) && !c.suspended} />}
     {!member && <Txt size={13} color="ink2" style={{ marginTop: 16 }}>Follow to hear about every new competition. Join to be in the club, its chat and the competitions it enters members in.</Txt>}
 
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={{ gap: 20 }} accessibilityRole="tablist">
@@ -140,6 +140,7 @@ export default function ClubScreen() {
 
     <View style={{ marginTop: 20 }}>
       {tab === 'competitions' && <ClubCompetitions club={c} />}
+      {tab === 'events' && <ClubEventsList club={c} manager={isManager(role) && !c.suspended} />}
       {tab === 'leaderboard' && member && <ClubLeaderboard id={id} />}
       {tab === 'members' && <ClubMembers club={c} role={role} />}
       {tab === 'invite' && isManager(role) && <InvitePanel club={c} />}

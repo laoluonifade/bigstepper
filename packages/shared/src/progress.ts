@@ -8,7 +8,7 @@ import type { Activity, PublicStats } from './types';
 const DAY = 24 * 60 * 60 * 1000;
 
 export function isVerified(activity: Activity) {
-  return activity.verificationStatus === 'VERIFIED';
+  return (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED');
 }
 
 /**
@@ -27,7 +27,7 @@ export function shownMetres(activity: Activity) {
 
 /** True when a verified activity's distance came from steps (indoors) rather than GPS. */
 export function fromSteps(activity: Activity) {
-  return activity.verificationStatus === 'VERIFIED' && (activity.stepDistanceMetres ?? 0) > activity.validatedDistanceMetres;
+  return (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED') && (activity.stepDistanceMetres ?? 0) > activity.validatedDistanceMetres;
 }
 
 export type ActivityKind = 'all' | 'run' | 'walk';
@@ -93,7 +93,10 @@ export function summariseWeek(activities: Activity[], now = new Date()): WeekSum
     if (!day) continue;
     if (activity.verificationStatus !== 'REJECTED') runs += 1;
     if (isVerified(activity)) day.metres += creditedMetres(activity);
-    else if (activity.verificationStatus === 'PENDING_VERIFICATION') pendingMetres += activity.recordedDistanceMetres;
+    else if (activity.verificationStatus === 'PENDING_VERIFICATION') {
+      day.metres += activity.recordedDistanceMetres;
+      pendingMetres += activity.recordedDistanceMetres;
+    }
   }
   return {
     days,

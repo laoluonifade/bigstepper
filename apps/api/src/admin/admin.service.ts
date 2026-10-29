@@ -24,6 +24,7 @@ import { allocateFundedPrizes, allocatePrizes, assertPrizeSplit } from '../table
 import { paidPrizePot } from '../tables/paid-prize';
 import { AdminAuthService } from './admin-auth.service';
 import { PrizeAwardsService } from '../prizes/prize-awards.service';
+import { uncountActivity } from '../running/count-activity';
 
 @Injectable()
 export class AdminService {
@@ -35,6 +36,41 @@ export class AdminService {
     private readonly awardsService: PrizeAwardsService,
     @InjectQueue(ACTIVITY_VERIFICATION_QUEUE) private readonly verificationQueue: Queue,
   ) {}
+
+  async flaggedRuns(days = 30) {
+    return this.dataSource.query(
+      `SELECT a."id", a."activityType", a."source", a."startedAt", a."verificationStatus", a."verificationReasons",
+              a."recordedDistanceMetres", a."validatedDistanceMetres", a."validatedSteps", a."movingSeconds", a."gpsConfidence",
+              COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", u."email",
+              (SELECT count(*)::integer FROM "table_activity_credits" c WHERE c."activityId" = a."id") AS "competitions"
+       FROM "activities" a JOIN "users" u ON u."id" = a."userId" LEFT JOIN "profiles" p ON p."userId" = a."userId"
+       WHERE a."startedAt" > now() - make_interval(days => $1::int)
+         AND a."verificationStatus" = 'FLAGGED'
+       ORDER BY a."startedAt" DESC LIMIT 200`,
+      [days],
+    );
+  }
+
+  async settleFlag(actorUserId: string, activityId: string, decision: 'CLEAR' | 'REJECT') {
+    return this.dataSource.transaction(async (manager) => {
+      const [activity] = await manager.query(
+        `SELECT "id", "userId", "activityType" FROM "activities" WHERE "id" = $1 AND "verificationStatus" IN ('VERIFIED','FLAGGED') FOR UPDATE`,
+        [activityId],
+      ) as Array<{ id: string; userId: string; activityType: 'walk' | 'run' | 'cycle' }>;
+      if (!activity) throw new NotFoundException('That activity isn’t flagged');
+      if (decision === 'REJECT') {
+        await manager.query(`UPDATE "activities" SET "verificationStatus" = 'REJECTED' WHERE "id" = $1`, [activityId]);
+        await uncountActivity(manager, activity);
+      } else {
+        await manager.query(`UPDATE "activities" SET "verificationStatus" = 'VERIFIED', "verificationReasons" = '[]'::jsonb WHERE "id" = $1`, [activityId]);
+      }
+      await manager.query(
+        `INSERT INTO "admin_audit_events" ("actorUserId","action","targetType","targetId","metadata") VALUES ($1,$2,'activity',$3,'{}'::jsonb)`,
+        [actorUserId, decision === 'REJECT' ? 'ACTIVITY_FLAG_REJECTED' : 'ACTIVITY_FLAG_CLEARED', activityId],
+      );
+      return { decision };
+    });
+  }
 
   async recheckFlagged(actorUserId: string, days = 60) {
     const ids = await this.dataSource.transaction(async (manager) => {

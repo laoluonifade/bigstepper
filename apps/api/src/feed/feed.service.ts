@@ -6,6 +6,7 @@ import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
 import { CreateFeedPostDto } from './create-feed-post.dto';
 import { extractMentions } from './mentions';
+import { countedMetres } from '../running/counted';
 
 @Injectable()
 export class FeedService {
@@ -37,7 +38,7 @@ export class FeedService {
               p."username", p."displayName", p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               a."activityType", a."startedAt", a."validatedSteps",
-              GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") "distanceMetres",
+              ${countedMetres()} "distanceMetres",
               a."movingSeconds",
               (SELECT COUNT(*)::integer FROM "feed_post_reactions" reactions WHERE reactions."postId"=f."id") "reactionCount",
               (SELECT reactions."reaction" FROM "feed_post_reactions" reactions WHERE reactions."postId"=f."id" AND reactions."userId"=$1) "myReaction",
@@ -47,7 +48,7 @@ export class FeedService {
                 GROUP BY r."reaction" ORDER BY COUNT(*) DESC, r."reaction" LIMIT 3) top) "topReactions"
        FROM "feed_posts" f
        JOIN "profiles" p ON p."userId"=f."userId"
-       LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus"='VERIFIED'
+       LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus" IN ('VERIFIED','FLAGGED','PENDING_VERIFICATION')
        LEFT JOIN "duels" d ON d."id"=f."duelId"
        WHERE ($2='explore' OR f."userId"=$1 OR d."opponentId"=$1 OR EXISTS (
            SELECT 1 FROM "follows" follow WHERE follow."followerId"=$1 AND (follow."followingId"=f."userId" OR follow."followingId"=d."opponentId")
@@ -66,7 +67,7 @@ export class FeedService {
               p."username",p."displayName",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
               a."activityType",a."startedAt",a."validatedSteps",
-              GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres") "distanceMetres",a."movingSeconds",
+              ${countedMetres()} "distanceMetres",a."movingSeconds",
               (SELECT COUNT(*)::integer FROM "feed_post_reactions" r WHERE r."postId"=f."id") "reactionCount",
               (SELECT r."reaction" FROM "feed_post_reactions" r WHERE r."postId"=f."id" AND r."userId"=$1) "myReaction",
               (SELECT COUNT(*)::integer FROM "feed_comments" c WHERE c."postId"=f."id") "commentCount",
@@ -74,7 +75,7 @@ export class FeedService {
                 SELECT r."reaction" FROM "feed_post_reactions" r WHERE r."postId"=f."id"
                 GROUP BY r."reaction" ORDER BY COUNT(*) DESC, r."reaction" LIMIT 3) top) "topReactions"
        FROM "feed_posts" f JOIN "profiles" p ON p."userId"=f."userId"
-       LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus"='VERIFIED'
+       LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus" IN ('VERIFIED','FLAGGED','PENDING_VERIFICATION')
        LEFT JOIN "duels" d ON d."id"=f."duelId"
        WHERE f."id"=$2 AND (f."activityId" IS NULL OR a."id" IS NOT NULL)
          AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}`,
@@ -87,7 +88,7 @@ export class FeedService {
   private async assertVisible(viewerId: string, postId: string) {
     const rows = await this.dataSource.query(
       `SELECT 1 FROM "feed_posts" f JOIN "profiles" p ON p."userId"=f."userId"
-       LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus"='VERIFIED'
+       LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus" IN ('VERIFIED','FLAGGED','PENDING_VERIFICATION')
        WHERE f."id"=$1 AND (f."activityId" IS NULL OR a."id" IS NOT NULL) AND NOT ${blockedBetween('$2', 'f."userId"')}`,
       [postId, viewerId],
     ) as unknown[];
@@ -166,7 +167,7 @@ export class FeedService {
     if (input.imageUrl && !this.cloudinary.isOwnPostImage(userId, input.imageUrl)) throw new BadRequestException('Upload the photo again');
     if (input.activityId) {
       const owned = (await this.dataSource.query(
-        `SELECT "id" FROM "activities" WHERE "id"=$1 AND "userId"=$2 AND "verificationStatus"='VERIFIED'`,
+        `SELECT "id" FROM "activities" WHERE "id"=$1 AND "userId"=$2 AND "verificationStatus" IN ('VERIFIED','FLAGGED','PENDING_VERIFICATION')`,
         [input.activityId, userId],
       )) as Array<{ id: string }>;
       if (!owned.length) throw new BadRequestException('Choose one of your verified activities');

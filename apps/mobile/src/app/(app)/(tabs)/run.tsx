@@ -45,7 +45,7 @@ export default function RunScreen() {
       // Finished with no signal: it's on the phone and submits itself once Jump can be reached.
       return <Screen>
         <PageHeader eyebrow="No signal" title="Saved on your phone" description="Your activity is finished and every GPS point is safe here. It submits itself as soon as you’re back in signal; you don’t need to keep Jump open." />
-        <Notice tone="neutral" title={recorder.pendingCount ? `${recorder.pendingCount} GPS ${recorder.pendingCount === 1 ? 'point' : 'points'} waiting` : 'Waiting for signal'}>
+        <Notice tone="neutral" title="Waiting for signal">
           Your time and distance are kept exactly as you recorded them, pauses included.
         </Notice>
         <Button title="Try now" variant="secondary" style={{ marginTop: 24 }} onPress={recorder.syncNow} />
@@ -362,6 +362,11 @@ function Scoreboard() {
               <Stat label="Time" value={formatDuration(seconds)} />
               <View style={styles.pairRule} />
               <Stat label={activityType === 'cycle' ? `${unit}/h` : `Pace /${unit}`} value={activityType === 'cycle' ? speed ?? '–' : pace ?? '–:––'} />
+              {/* Walks count steps too, live from the phone's motion sensor. */}
+              {activityType === 'walk' && <>
+                <View style={styles.pairRule} />
+                <Stat label="Steps" value={recorder.steps === null ? '–' : recorder.steps.toLocaleString('en-GB')} />
+              </>}
             </View>
             {warning && <Text style={[plain(14, '#FFCC00'), { textAlign: 'center', marginTop: 24, lineHeight: 20 }]}>{warning}</Text>}
           </View>

@@ -4,7 +4,7 @@ import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { CompetitionRow } from '../components/competition';
 import { ArrowRightIcon, CameraIcon, CheckIcon, FeedIcon, LinkIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon } from '../components/icons';
 import { Leaderboard } from '../components/Leaderboard';
-import { ClubEventsSection, EventForm } from '../components/ClubEvents';
+import { ClubEventsList, EventForm } from '../components/ClubEvents';
 import { ClubLogo } from '../components/ClubLogo';
 import { Sheet } from '../components/Sheet';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -153,7 +153,7 @@ function PrivacyChoice({ value, onChange }: { value: 'open' | 'invite'; onChange
 
 /* ───────────────────────── Club page ───────────────────────── */
 
-type ClubTab = 'competitions' | 'leaderboard' | 'members' | 'invite';
+type ClubTab = 'competitions' | 'events' | 'leaderboard' | 'members' | 'invite';
 
 /** Club landing page. A valid invite joins signed-in runners, including after sign-up or login. */
 export function ClubDetailPage() {
@@ -222,6 +222,7 @@ export function ClubDetailPage() {
   const member = Boolean(role);
   const tabs: Array<{ value: ClubTab; label: string }> = [
     { value: 'competitions', label: 'Competitions' },
+    { value: 'events', label: 'Events' },
     ...(member ? [{ value: 'leaderboard' as const, label: 'Leaderboard' }] : []),
     ...(member || c.privacy === 'open' ? [{ value: 'members' as const, label: 'Members' }] : []),
     ...(isManager(role) ? [{ value: 'invite' as const, label: 'Invite' }] : []),
@@ -273,7 +274,6 @@ export function ClubDetailPage() {
       <ArrowRightIcon size={16} />
     </Link>}
 
-    {(c.privacy === 'open' || member) && <ClubEventsSection club={c} manager={isManager(role) && !c.suspended} unit={unit} />}
     {addingEvent && <EventForm club={c.slug} unit={unit} onClose={() => setAddingEvent(false)} />}
 
     {!member && user && <p className="mt-4 text-[13px] text-ink-2">Follow to hear about every new competition. Join to be in the club, its chat and the competitions it enters members in.</p>}
@@ -288,6 +288,7 @@ export function ClubDetailPage() {
 
     <div className="mt-5">
       {tab === 'competitions' && <ClubCompetitions club={c} />}
+      {tab === 'events' && <ClubEventsList club={c} manager={isManager(role) && !c.suspended} unit={unit} />}
       {tab === 'leaderboard' && member && <ClubLeaderboard id={id} />}
       {tab === 'members' && <ClubMembers club={c} role={role} />}
       {tab === 'invite' && isManager(role) && <InvitePanel club={c} />}

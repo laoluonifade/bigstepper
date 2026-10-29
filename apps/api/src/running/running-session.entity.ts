@@ -37,6 +37,12 @@ export class RunningSession {
   @Column({ type: 'integer', default: 0 })
   pausedSeconds: number;
 
+  @Column({ type: 'integer', nullable: true })
+  expectedSamples: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  finishRequestedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

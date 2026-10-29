@@ -8,7 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 import { ClubLogo } from '@/components/ClubLogo';
 import { onAccent } from '@/components/clubs';
 import { CalendarIcon, CheckIcon, PinIcon, PlusIcon, RepeatIcon, UsersIcon } from '@/components/icons';
-import { Avatar, Button, haptic, HardShadow, SectionTitle, Txt, useNow } from '@/components/ui';
+import { Avatar, Button, EmptyState, haptic, HardShadow, SectionTitle, Txt, useNow } from '@/components/ui';
 import { api, post } from '@/lib/api';
 import { ACTIVITY_WORD, clockLabel, dateLabel, repeatRule, scheduleLabel, type Schedule, clubEventsKey, distanceAway, EVENT_NOUN, eventKey, nextLabel, posterTime, WEEKDAYS, type ClubEvent } from '@/lib/club-events';
 import { registerForPush } from '@/lib/push';
@@ -138,29 +138,16 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
   </Pressable>;
 }
 
-/** On a club's page: its upcoming events, and for managers a way to add one. */
-export function ClubEventsSection({ club, manager }: { club: { slug: string; name: string; myRole?: string | null; privacy?: string }; manager: boolean }) {
+/** The club's Events tab: every upcoming event, open to anyone, with Add for its managers. */
+export function ClubEventsList({ club, manager }: { club: { slug: string }; manager: boolean }) {
   const events = useQuery({ queryKey: clubEventsKey(club.slug), queryFn: () => api<ClubEvent[]>(`/clubs/${club.slug}/events`) });
-  const list = events.data ?? [];
   const add = () => router.push({ pathname: '/events/edit', params: { club: club.slug } });
-  if (!list.length && !manager) return null;
-  if (!list.length) {
-    return <Pressable onPress={add} style={({ pressed }) => [styles.prompt, pressed && { backgroundColor: colors.inkWash }]} accessibilityRole="button">
-      <View style={styles.promptIcon}><RepeatIcon size={18} color={colors.onAccent} /></View>
-      <View style={{ flex: 1 }}>
-        <Txt size={14} weight="bold">Add an event</Txt>
-        <Txt size={12.5} color="ink2">Your weekly run, a monthly long run or a one-off race day. Runners nearby find it, get a pass and a reminder.</Txt>
-      </View>
-      <PlusIcon size={16} />
-    </Pressable>;
-  }
-  return <View style={{ marginTop: 24 }}>
-    <SectionTitle aside={manager ? <Button size="sm" variant="quiet" title="Add" icon={<PlusIcon size={14} />} onPress={add} /> : `${list.length}`}>Events</SectionTitle>
-    {list.length === 1
-      ? <EventCard event={list[0]} showClub={false} />
-      : <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ gap: 12, paddingHorizontal: 16 }}>
-        {list.map((event) => <View key={event.id} style={{ width: 300 }}><EventCard event={event} showClub={false} /></View>)}
-      </ScrollView>}
+  if (events.isLoading) return <Txt size={13} color="ink2">Loading events…</Txt>;
+  const list = events.data ?? [];
+  return <View style={{ gap: 12 }}>
+    {manager && <Button variant="secondary" title="Add an event" icon={<PlusIcon size={14} />} onPress={add} />}
+    {list.length ? list.map((event) => <EventCard key={event.id} event={event} showClub={false} />)
+      : <EmptyState title="No events yet">{manager ? 'Add your weekly run, a long run or a race day. Runners nearby find it, get a pass and a reminder.' : 'When this club posts a run or meet-up, it shows here.'}</EmptyState>}
   </View>;
 }
 

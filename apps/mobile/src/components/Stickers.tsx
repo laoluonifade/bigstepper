@@ -33,11 +33,11 @@ export function stickerNumbers(activity: Activity, unit: Unit) {
   const metres = shownMetres(activity);
   const seconds = activity.movingSeconds || activity.elapsedSeconds;
   const cycling = activity.activityType === 'cycle';
-  const verified = activity.verificationStatus === 'VERIFIED';
+  const verified = (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED');
   const steps = verified ? activity.validatedSteps : activity.recordedSteps;
   return {
     distance: formatDistanceNumber(metres, unit),
-    distanceLabel: activity.verificationStatus === 'PENDING_VERIFICATION' ? `${unit} · checking` : `${unit} ${PAST[activity.activityType]}`,
+    distanceLabel: `${unit} ${PAST[activity.activityType]}`,
     struck: activity.verificationStatus === 'REJECTED',
     time: formatDuration(seconds),
     pace: (cycling ? formatSpeed(metres, seconds, unit)?.split(' ')[0] : formatPace(metres, seconds, unit)) ?? '–',

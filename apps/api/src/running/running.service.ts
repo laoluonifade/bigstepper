@@ -9,6 +9,8 @@ import { measureTrack } from './track';
 import { RunningSession } from './running-session.entity';
 import { Activity } from './activity.entity';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
+import { announceCounted, countActivity } from './count-activity';
+import { gpsPoints, runEvents } from '../metrics/metrics';
 
 export function momentOf(at: string | undefined, floor: Date, now = new Date()) {
   if (!at) return now;
@@ -19,6 +21,8 @@ export function momentOf(at: string | undefined, floor: Date, now = new Date()) 
 }
 
 const MIN_SAVED_METRES = 5;
+const LATE_POINTS_WAIT_MS = 24 * 60 * 60 * 1000;
+const VERIFY_JOB = { attempts: 5, backoff: { type: 'exponential', delay: 1_000 } } as const;
 
 @Injectable()
 export class RunningService {
@@ -30,10 +34,20 @@ export class RunningService {
     private readonly verificationQueue: Queue,
   ) {}
 
-  async start(userId: string, activityType: 'walk' | 'run' | 'cycle') {
+  async start(userId: string, activityType: 'walk' | 'run' | 'cycle', phone: { id?: string; startedAt?: string } = {}) {
+    if (phone.id) {
+      const known = await this.sessions.findOne({ where: { id: phone.id } });
+      if (known && known.userId === userId) return known;
+      if (known) throw new ConflictException('That run ID is already taken');
+    }
+    const now = new Date();
     try {
       return await this.sessions.save(
-        this.sessions.create({ userId, activityType, status: 'RUNNING', startedAt: new Date(), pausedAt: null }),
+        this.sessions.create({
+          ...(phone.id ? { id: phone.id } : {}),
+          userId, activityType, status: 'RUNNING', pausedAt: null,
+          startedAt: momentOf(phone.startedAt, new Date(now.getTime() - 24 * 60 * 60 * 1000), now),
+        }),
       );
     } catch (error) {
       if (
@@ -54,13 +68,15 @@ export class RunningService {
   }
 
   async addSamples(userId: string, sessionId: string, input: GpsSampleDto[]) {
+    gpsPoints.inc(input.length);
     return this.dataSource.transaction(async (manager) => {
       const session = await manager.findOne(RunningSession, {
         where: { id: sessionId, userId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!session) throw new NotFoundException('Run session not found');
-      if (session.status !== 'RUNNING' && session.status !== 'PAUSED') {
+      const uploadingAfterFinish = session.status === 'PENDING_VERIFICATION' && session.expectedSamples !== null;
+      if (session.status !== 'RUNNING' && session.status !== 'PAUSED' && !uploadingAfterFinish) {
         throw new BadRequestException('Samples can only be added while the run is active');
       }
 
@@ -102,8 +118,22 @@ export class RunningService {
       session.distanceMetres = measureTrack(all, { activityType: session.activityType }).distanceMetres;
       session.stepCount = session.activityType === 'cycle' ? 0 : Math.max(0, ...all.map((sample) => sample.stepCount ?? 0));
       await manager.save(session);
-      return { distanceMetres: session.distanceMetres, stepCount: session.stepCount, sampleCount: all.length };
+      const complete = uploadingAfterFinish && all.length >= session.expectedSamples!;
+      return { distanceMetres: session.distanceMetres, stepCount: session.stepCount, sampleCount: all.length, complete };
+    }).then(async ({ complete, ...result }) => {
+      if (complete) {
+        runEvents.inc({ event: 'uploaded_after_finish' });
+        await this.verifyNow(sessionId);
+      }
+      return result;
     });
+  }
+
+  private async verifyNow(sessionId: string) {
+    const activity = await this.dataSource.getRepository(Activity).findOne({ where: { runningSessionId: sessionId } });
+    if (activity?.verificationStatus === 'PENDING_VERIFICATION') {
+      await this.verificationQueue.add('verify-activity', { activityId: activity.id }, { jobId: `activity-${activity.id}`, ...VERIFY_JOB });
+    }
   }
 
   async discard(userId: string, sessionId: string) {
@@ -118,7 +148,7 @@ export class RunningService {
     });
   }
 
-  async finish(userId: string, sessionId: string, at?: string, sampleCount?: number) {
+  async finish(userId: string, sessionId: string, at?: string, sampleCount?: number, phone: { distanceMetres?: number; deferred?: boolean } = {}) {
     const outcome = await this.dataSource.transaction(async (manager) => {
       const session = await manager.findOne(RunningSession, {
         where: { id: sessionId, userId },
@@ -127,20 +157,27 @@ export class RunningService {
       if (!session) throw new NotFoundException('Run session not found');
 
       const existing = await manager.findOne(Activity, { where: { runningSessionId: sessionId } });
-      if (existing) return { activity: existing };
+      if (existing) return { activity: existing, waiting: false };
       if (!['RUNNING', 'PAUSED'].includes(session.status)) {
         throw new BadRequestException('This run cannot be finished');
       }
 
+      let waiting = false;
       if (sampleCount !== undefined) {
         const received = await manager.count(GpsSample, { where: { sessionId } });
-        if (received < sampleCount) {
-          throw new ConflictException(`Jump has ${received} of the ${sampleCount} GPS points from this run. Sending the rest again.`);
+        const short = received < sampleCount;
+        if (short && !phone.deferred && !session.finishRequestedAt) {
+          session.finishRequestedAt = new Date();
+          await manager.save(session);
+          return { retry: { received, sampleCount } };
         }
-        if (session.distanceMetres < MIN_SAVED_METRES) {
+        waiting = short && Boolean(phone.deferred);
+        const measured = Math.max(session.distanceMetres, waiting ? phone.distanceMetres ?? 0 : 0);
+        if (measured < MIN_SAVED_METRES) {
           await manager.delete(RunningSession, { id: session.id });
-          return { activity: null };
+          return { activity: null, waiting: false };
         }
+        if (waiting) session.expectedSamples = sampleCount;
       }
 
       const finishedAt = momentOf(at, session.pausedAt ?? session.startedAt);
@@ -153,14 +190,13 @@ export class RunningService {
       await manager.save(session);
 
       const elapsedSeconds = Math.max(0, Math.floor((finishedAt.getTime() - session.startedAt.getTime()) / 1000));
-      return {
-        activity: await manager.save(
+      const saved = await manager.save(
           Activity,
           manager.create(Activity, {
             runningSessionId: session.id,
             userId,
             activityType: session.activityType,
-            recordedDistanceMetres: session.distanceMetres,
+            recordedDistanceMetres: waiting ? Math.max(session.distanceMetres, phone.distanceMetres ?? 0) : session.distanceMetres,
             recordedSteps: session.stepCount,
             verificationStatus: 'PENDING_VERIFICATION',
             elapsedSeconds,
@@ -168,17 +204,22 @@ export class RunningService {
             startedAt: session.startedAt,
             finishedAt,
           }),
-        ),
-      };
+      );
+      await announceCounted(manager, saved, await countActivity(manager, saved));
+      return { waiting, activity: saved };
     });
+    runEvents.inc({ event: 'retry' in outcome && outcome.retry ? 'finish_asked_resend' : !outcome.activity ? 'finish_empty' : outcome.waiting ? 'finish_waiting_for_points' : 'finish_complete' });
+    if ('retry' in outcome && outcome.retry) {
+      throw new ConflictException(`Jump has ${outcome.retry.received} of the ${outcome.retry.sampleCount} GPS points from this run. Sending the rest again.`);
+    }
     if (!outcome.activity) throw new UnprocessableEntityException('GPS didn’t measure any distance, so there’s nothing to save.');
     const activity = outcome.activity;
 
-    await this.verificationQueue.add(
-      'verify-activity',
-      { activityId: activity.id },
-      { jobId: `activity-${activity.id}`, attempts: 5, backoff: { type: 'exponential', delay: 1_000 } },
-    );
+    if (outcome.waiting) {
+      await this.verificationQueue.add('verify-activity', { activityId: activity.id }, { jobId: `activity-${activity.id}-late`, delay: LATE_POINTS_WAIT_MS, ...VERIFY_JOB });
+    } else {
+      await this.verificationQueue.add('verify-activity', { activityId: activity.id }, { jobId: `activity-${activity.id}`, ...VERIFY_JOB });
+    }
     return activity;
   }
 

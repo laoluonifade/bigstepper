@@ -75,6 +75,7 @@ export function validateEnvironment(env: Environment) {
     WEB_ORIGIN: required(env, 'WEB_ORIGIN', 'http://localhost:5177'),
     COMMUNITY_CLUB_SLUG: env.COMMUNITY_CLUB_SLUG?.trim().toLowerCase() || 'jump-community-club',
     HOSTS_GROUP_SLUG: env.HOSTS_GROUP_SLUG?.trim().toLowerCase() || 'jump-hosts',
+    METRICS_TOKEN: env.METRICS_TOKEN?.trim() || undefined,
     ADMIN_ORIGIN: env.ADMIN_ORIGIN || (nodeEnv === 'production' ? 'https://admin.startajump.com' : 'http://localhost:5178'),
     DATABASE_URL: connectionUrl(databaseUrl, 'DATABASE_URL', ['postgres:', 'postgresql:']),
     REDIS_URL: connectionUrl(redisUrl, 'REDIS_URL', ['redis:', 'rediss:']),

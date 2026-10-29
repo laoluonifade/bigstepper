@@ -476,7 +476,9 @@ const verificationStyles: Record<VerificationStatus, { color: string; bg: string
   REJECTED: { color: colors.paper, bg: colors.ink, border: colors.ink },
 };
 
+/** Says nothing while a check is still running: an activity looks done the moment it's recorded. */
 export function VerificationTag({ status }: { status: VerificationStatus }) {
+  if (status === 'PENDING_VERIFICATION' || status === 'FLAGGED') return null;
   const look = verificationStyles[status];
   return <Tag color={look.color} background={look.bg} border={look.border}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

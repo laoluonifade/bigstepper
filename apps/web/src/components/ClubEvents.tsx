@@ -6,7 +6,7 @@ import { formatDistance } from '../lib/format';
 import { ACTIVITY_OPTIONS, ACTIVITY_WORD, clockLabel, clubEventsKey, dateLabel, deviceTimeZone, distanceAway, durationLabel, EVENT_NOUN, eventKey, MAX_DURATION, MIN_DURATION, nextLabel, posterTime, repeatRule, todayIso, WEEKDAYS, type ClubEvent, type EventActivity, type EventInput, type Place, type Schedule } from '../lib/club-events';
 import { toast } from '../lib/toast';
 import type { Unit } from '../lib/types';
-import { CalendarIcon, CameraIcon, CheckIcon, PinIcon, PlusIcon, RepeatIcon, TicketIcon, UsersIcon } from './icons';
+import { CalendarIcon, CameraIcon, CheckIcon, PinIcon, PlusIcon, TicketIcon, UsersIcon } from './icons';
 import { DateTimePicker } from './DateTimePicker';
 import { prepare } from './Profile';
 import { Dropdown } from './Dropdown';
@@ -14,7 +14,7 @@ import { RepeatEditor, scheduleFor } from './RepeatEditor';
 import { ClubLogo } from './ClubLogo';
 import { Modal } from './Modal';
 import { PlaceField } from './PlaceField';
-import { Avatar, cx, ErrorNotice, Field, Notice, SectionTitle, Skeleton, useNow } from './ui';
+import { Avatar, cx, ErrorNotice, Field, Notice, Skeleton, useNow } from './ui';
 
 /** Dark text on light colours, light text on dark ones. */
 export function onAccent(hex = '#FF5A1F') {
@@ -123,24 +123,16 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
   </article>;
 }
 
-/** On a club's page: its upcoming events, and for managers a way to add one. */
-export function ClubEventsSection({ club, manager, unit }: { club: { slug: string }; manager: boolean; unit: Unit }) {
+/** The club's Events tab: every upcoming event, open to anyone, with Add for its managers. */
+export function ClubEventsList({ club, manager, unit }: { club: { slug: string }; manager: boolean; unit: Unit }) {
   const events = useQuery({ queryKey: clubEventsKey(club.slug), queryFn: () => api<ClubEvent[]>(`/clubs/${club.slug}/events`) });
   const [adding, setAdding] = useState(false);
+  if (events.isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   const list = events.data ?? [];
-  if (!list.length && !manager) return null;
-  return <section className="mt-6">
-    {list.length ? <>
-      <SectionTitle aside={manager ? <button type="button" className="inline-flex items-center gap-1 text-[13px] font-bold hover:text-track" onClick={() => setAdding(true)}><PlusIcon size={14} />Add</button> : `${list.length}`}>Events</SectionTitle>
-      <div className="grid gap-3 sm:grid-cols-2">{list.map((event) => <EventCard key={event.id} event={event} showClub={false} />)}</div>
-    </> : <button type="button" onClick={() => setAdding(true)} className="flex w-full items-center gap-3 rounded-2xl border-[1.5px] border-dashed border-ink-3 p-3.5 text-left hover:bg-ink/[0.03]">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-volt text-ink"><RepeatIcon size={18} /></span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[14px] font-bold">Add an event</span>
-        <span className="block text-[12.5px] text-ink-2">Your weekly run, a monthly long run or a one-off race day. Runners nearby find it, get a pass and a reminder.</span>
-      </span>
-      <PlusIcon size={16} />
-    </button>}
+  return <section className="space-y-3">
+    {manager && <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setAdding(true)}><PlusIcon size={14} />Add an event</button>}
+    {list.length ? <div className="grid gap-3 sm:grid-cols-2">{list.map((event) => <EventCard key={event.id} event={event} showClub={false} />)}</div>
+      : <p className="rounded-xl bg-ink/[0.05] px-4 py-5 text-[14px] text-ink-2">{manager ? 'No events yet. Add your weekly run, a long run or a race day; runners nearby find it, get a pass and a reminder.' : 'No events yet. When this club posts a run or meet-up, it shows here.'}</p>}
     {adding && <EventForm club={club.slug} unit={unit} onClose={() => setAdding(false)} />}
   </section>;
 }

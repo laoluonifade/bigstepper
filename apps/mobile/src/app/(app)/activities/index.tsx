@@ -23,9 +23,9 @@ export default function ActivitiesScreen() {
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const list = useMemo(() => ofKind(activities.data ?? [], kind), [activities.data, kind]);
   const stats = useMemo(() => lifetimeStats(list), [list]);
-  const attention = list.filter((a) => a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED').length;
-  const filtered = list.filter((activity) => filter === 'verified' ? activity.verificationStatus === 'VERIFIED'
-    : filter === 'attention' ? activity.verificationStatus === 'FLAGGED' || activity.verificationStatus === 'REJECTED' : true);
+  const attention = list.filter((a) => a.verificationStatus === 'REJECTED').length;
+  const filtered = list.filter((activity) => filter === 'verified' ? (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED')
+    : filter === 'attention' ? activity.verificationStatus === 'REJECTED' : true);
   const groups = useMemo(() => {
     const map = new Map<string, Activity[]>();
     for (const activity of filtered) {

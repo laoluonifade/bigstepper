@@ -6,11 +6,12 @@ import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { CloudinaryService } from './cloudinary.service';
 import { Profile } from './profile.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { COUNTED_STATUSES, countedMetres } from '../running/counted';
 
 export const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
 export const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
 
-const DISTANCE = 'GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")';
+const DISTANCE = countedMetres();
 
 @Injectable()
 export class ProfilesService {
@@ -159,14 +160,14 @@ export class ProfilesService {
               COALESCE(MAX(${DISTANCE}), 0)::integer "longestMetres",
               COALESCE(SUM(a."movingSeconds"), 0)::bigint "movingSeconds",
               COALESCE(SUM(${DISTANCE}) FILTER (WHERE a."startedAt" >= date_trunc('month', now())), 0)::bigint "monthMetres"
-       FROM "activities" a WHERE a."userId" = $1 AND a."verificationStatus" = 'VERIFIED'`,
+       FROM "activities" a WHERE a."userId" = $1 AND a."verificationStatus" IN ${COUNTED_STATUSES}`,
       [profile.userId],
     );
     const stats = Object.fromEntries(Object.entries(totals as Record<string, string | number>).map(([key, value]) => [key, Number(value)]));
 
     const recent = await this.dataSource.query(
       `SELECT a."id", a."activityType", a."startedAt", ${DISTANCE}::integer "metres", a."movingSeconds"
-       FROM "activities" a WHERE a."userId" = $1 AND a."verificationStatus" = 'VERIFIED'
+       FROM "activities" a WHERE a."userId" = $1 AND a."verificationStatus" IN ${COUNTED_STATUSES}
        ORDER BY a."startedAt" DESC LIMIT 8`,
       [profile.userId],
     );

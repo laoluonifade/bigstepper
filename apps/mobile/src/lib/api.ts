@@ -1,4 +1,5 @@
 import { createApiClient } from '@jump/shared/api';
+import { gzipSync, strToU8 } from 'fflate';
 import { Storage } from './kv';
 import { clearToken, getToken } from './token';
 import { xhrFetch } from './xhr';
@@ -25,6 +26,10 @@ const client = createApiClient({
   clearToken,
   getDeviceId,
   uploadFetch: xhrFetch,
+  gzip: (json) => {
+    const bytes = gzipSync(strToU8(json), { level: 6 });
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  },
 });
 
 export const API_URL = client.baseUrl;

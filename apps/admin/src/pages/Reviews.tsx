@@ -21,6 +21,7 @@ export function ReviewsPage() {
   const reviews = useQuery({ queryKey: ['admin', 'reviews'], queryFn: () => api<Review[]>('/admin/verification/reviews') });
   return <>
     <PageHeader eyebrow="Activities" title="Activity reviews" description="Flagged walks, runs and rides whose owners asked for a review. Approving puts them on boards; rejecting keeps them off." />
+    <FlaggedRuns />
     <RecheckFlagged />
     <ErrorNotice error={reviews.error} onRetry={() => void reviews.refetch()} />
     {reviews.isLoading ? <Skeleton className="h-48 rounded-2xl" /> : !reviews.data?.length ? <EmptyState title="Nothing to review">Every flagged activity has been decided.</EmptyState>
@@ -72,6 +73,52 @@ function ReviewCard({ review }: { review: Review }) {
     <div className="mt-3 flex gap-2">
       <button type="button" className="btn-primary btn-sm" disabled={note.trim().length < 5 || decide.isPending} onClick={() => decide.mutate('APPROVED')}>Approve</button>
       <button type="button" className="btn-secondary btn-sm" disabled={note.trim().length < 5 || decide.isPending} onClick={() => decide.mutate('REJECTED')}>Reject</button>
+    </div>
+  </article>;
+}
+
+interface FlaggedRun {
+  id: string; activityType: 'walk' | 'run' | 'cycle'; source: string; startedAt: string; verificationStatus: string; verificationReasons: string[];
+  recordedDistanceMetres: number; validatedDistanceMetres: number; validatedSteps: number; movingSeconds: number; gpsConfidence: number;
+  displayName: string; username: string | null; email: string; competitions: number;
+}
+
+/**
+ * Runs the checks had doubts about. Runners never see this: their run stays posted and counted. Clearing
+ * keeps it as it is; rejecting takes it off every live board and the feed.
+ */
+function FlaggedRuns() {
+  const flags = useQuery({ queryKey: ['admin', 'flags'], queryFn: () => api<FlaggedRun[]>('/admin/verification/flags') });
+  if (flags.isLoading) return <Skeleton className="mb-6 h-32 rounded-2xl" />;
+  return <section className="mb-8">
+    <h2 className="text-[17px] font-extrabold">Runs with warnings</h2>
+    <p className="mt-0.5 text-[13px] text-ink-2">From the last 30 days. Runners don’t see these warnings; their runs stay posted and counted unless you reject them.</p>
+    <ErrorNotice error={flags.error} onRetry={() => void flags.refetch()} />
+    {!flags.data?.length ? <p className="mt-3 rounded-xl bg-ink/[0.05] px-4 py-5 text-[14px] text-ink-2">No warnings. Every recent run looked normal.</p>
+      : <ul className="mt-3 space-y-3">{flags.data.map((run) => <li key={run.id}><FlaggedCard run={run} /></li>)}</ul>}
+  </section>;
+}
+
+function FlaggedCard({ run }: { run: FlaggedRun }) {
+  const queryClient = useQueryClient();
+  const settle = useMutation({
+    mutationFn: (decision: 'CLEAR' | 'REJECT') => post(`/admin/verification/flags/${run.id}`, { decision }),
+    async onSuccess(_, decision) {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'flags'] });
+      toast({ tone: 'ok', message: decision === 'CLEAR' ? 'Cleared. The run stays as it is.' : 'Rejected and taken off the boards.' });
+    },
+  });
+  return <article className="rounded-2xl border-[1.5px] border-ink bg-card p-4">
+    <p className="text-[15px] font-bold">{run.displayName} <span className="font-normal text-ink-3">· {run.username ? `@${run.username}` : run.email}</span></p>
+    <p className="mt-0.5 text-[13px] text-ink-2">
+      {run.activityType} from {run.source} · {formatDateTime(run.startedAt)} · {formatDistance(run.validatedDistanceMetres)} checked of {formatDistance(run.recordedDistanceMetres)} recorded · {formatDuration(run.movingSeconds)} moving · {run.validatedSteps.toLocaleString('en-GB')} steps · GPS {Math.round(run.gpsConfidence * 100)}%
+      {run.competitions ? ` · counts in ${run.competitions} ${run.competitions === 1 ? 'competition' : 'competitions'}` : ''}
+    </p>
+    <p className="mt-2 flex flex-wrap gap-1.5">{run.verificationReasons.map((reason) => <span key={reason} className="rounded bg-warn-wash px-1.5 py-0.5 text-[11px] font-bold uppercase text-warn">{reason.replace(/_/g, ' ')}</span>)}</p>
+    <ErrorNotice error={settle.error} />
+    <div className="mt-3 flex gap-2">
+      <button type="button" className="btn-secondary btn-sm" disabled={settle.isPending} onClick={() => settle.mutate('CLEAR')}>Looks fine</button>
+      <button type="button" className="btn-secondary btn-sm text-bad" disabled={settle.isPending} onClick={() => { if (window.confirm('Reject this run? It comes off every live leaderboard and the feed.')) settle.mutate('REJECT'); }}>Reject</button>
     </div>
   </article>;
 }

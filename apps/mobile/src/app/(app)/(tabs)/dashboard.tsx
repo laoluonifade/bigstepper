@@ -206,7 +206,6 @@ function WeekPanel({ userId, unit, week, kind, activities, now, loading }: { use
       <Txt size={13} color="ink2" style={{ marginTop: 8 }}>
         {goal === null ? null : reached ? <Txt size={13} weight="semibold" color="ok">Weekly goal smashed. Anything more is a bonus.</Txt>
           : <><Txt size={13} weight="semibold">{formatDistance(remaining, unit)}</Txt> to your weekly goal.</>}
-        {week.pendingMetres > 0 ? ` ${formatDistance(week.pendingMetres, unit)} still verifying.` : ''}
       </Txt>
     </View>
 

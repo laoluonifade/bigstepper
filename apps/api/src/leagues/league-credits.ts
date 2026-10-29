@@ -1,4 +1,5 @@
 import { EntityManager } from 'typeorm';
+import { COUNTED_STATUSES, countedMetres } from '../running/counted';
 
 export async function refreshLeagueDistance(manager: EntityManager, userId: string) {
   await manager.query(
@@ -13,8 +14,8 @@ export async function refreshLeagueDistance(manager: EntityManager, userId: stri
   await manager.query(
     `UPDATE "league_memberships" m
      SET "creditedDistanceMetres" = COALESCE((
-       SELECT SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")) FROM "activities" a
-       WHERE a."userId" = m."userId" AND a."verificationStatus" = 'VERIFIED' AND a."activityType" IN ('walk','run')
+       SELECT SUM(${countedMetres()}) FROM "activities" a
+       WHERE a."userId" = m."userId" AND a."verificationStatus" IN ${COUNTED_STATUSES} AND a."activityType" IN ('walk','run')
          AND a."startedAt" >= s."startsAt" AND a."startedAt" < s."endsAt"
      ), 0)::integer
      FROM "league_seasons" s
@@ -27,8 +28,8 @@ export async function refreshSeasonDistances(manager: EntityManager, seasonId: s
   await manager.query(
     `UPDATE "league_memberships" m
      SET "creditedDistanceMetres" = COALESCE((
-       SELECT SUM(GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres")) FROM "activities" a
-       WHERE a."userId" = m."userId" AND a."verificationStatus" = 'VERIFIED' AND a."activityType" IN ('walk','run')
+       SELECT SUM(${countedMetres()}) FROM "activities" a
+       WHERE a."userId" = m."userId" AND a."verificationStatus" IN ${COUNTED_STATUSES} AND a."activityType" IN ('walk','run')
          AND a."startedAt" >= s."startsAt" AND a."startedAt" < s."endsAt"
      ), 0)::integer
      FROM "league_seasons" s

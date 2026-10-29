@@ -2,25 +2,36 @@ import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 import { RunningService } from './running.service';
 
 function setup(received: number, distanceMetres: number) {
-  const session = { id: 'session', userId: 'runner', status: 'RUNNING', activityType: 'cycle', distanceMetres, stepCount: 0, pausedSeconds: 0, pausedAt: null, startedAt: new Date(Date.now() - 600_000) };
+  const session: Record<string, unknown> = { id: 'session', userId: 'runner', status: 'RUNNING', activityType: 'cycle', distanceMetres, stepCount: 0, pausedSeconds: 0, pausedAt: null, startedAt: new Date(Date.now() - 600_000), expectedSamples: null, finishRequestedAt: null };
   const manager = {
     findOne: jest.fn(async (entity: { name: string }) => (entity.name === 'RunningSession' ? session : null)),
     count: jest.fn(async () => received),
     delete: jest.fn(async () => undefined),
     save: jest.fn(async (...args: unknown[]) => (args.length === 2 ? { id: 'activity', ...(args[1] as object) } : args[0])),
     create: jest.fn((_: unknown, value: unknown) => value),
+    query: jest.fn(async () => []),
   };
   const dataSource = { transaction: jest.fn(async (work: (value: typeof manager) => Promise<unknown>) => work(manager)) };
   const queue = { add: jest.fn() };
   const service = new RunningService({} as never, dataSource as never, queue as never);
-  return { service, manager, queue };
+  return { service, manager, queue, session };
 }
 
 describe('finishing a run', () => {
-  it('refuses while the server has fewer GPS points than the phone recorded', async () => {
-    const { service, manager } = setup(120, 4000);
+  it('asks an older app to send its points again once, then finishes with what arrived', async () => {
+    const { service, manager, queue } = setup(120, 4000);
     await expect(service.finish('runner', 'session', undefined, 400)).rejects.toBeInstanceOf(ConflictException);
-    expect(manager.save).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ runningSessionId: 'session' }));
+    await expect(service.finish('runner', 'session', undefined, 400)).resolves.toMatchObject({ recordedDistanceMetres: 4000 });
+    expect(queue.add).toHaveBeenCalledWith('verify-activity', expect.anything(), expect.objectContaining({ jobId: 'activity-activity' }));
+  });
+
+  it('finishes straight away for a phone still uploading, and waits for its points before checking', async () => {
+    const { service, queue, session } = setup(120, 900);
+    await expect(service.finish('runner', 'session', undefined, 400, { distanceMetres: 4000, deferred: true }))
+      .resolves.toMatchObject({ recordedDistanceMetres: 4000, verificationStatus: 'PENDING_VERIFICATION' });
+    expect(session.expectedSamples).toBe(400);
+    expect(queue.add).toHaveBeenCalledWith('verify-activity', expect.anything(), expect.objectContaining({ jobId: 'activity-activity-late', delay: expect.any(Number) }));
   });
 
   it('saves once every point has arrived, with the distance from all of them', async () => {

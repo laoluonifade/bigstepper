@@ -287,16 +287,12 @@ const verificationStyles: Record<VerificationStatus, string> = {
   REJECTED: 'border-ink bg-ink text-paper',
 };
 
+/** Says nothing while a check is still running: an activity looks done the moment it's recorded. */
 export function VerificationTag({ status }: { status: VerificationStatus }) {
+  if (status === 'PENDING_VERIFICATION' || status === 'FLAGGED') return null;
   return (
     <span className={cx('tag', verificationStyles[status])}>
-      <span
-        className={cx(
-          'h-1.5 w-1.5 rounded-full bg-current',
-          status === 'PENDING_VERIFICATION' && 'animate-blink',
-        )}
-        aria-hidden="true"
-      />
+      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
       {VERIFICATION_LABEL[status]}
     </span>
   );

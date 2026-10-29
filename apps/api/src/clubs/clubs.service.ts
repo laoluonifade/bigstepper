@@ -15,6 +15,7 @@ import { planOf } from './club-plans';
 import { ClubMembership } from './club-membership.entity';
 import { Club } from './club.entity';
 import { CreateClubDto, UpdateClubDto } from './dto/create-club.dto';
+import { COUNTED_STATUSES, countedMetres } from '../running/counted';
 
 type Role = ClubMembership['role'];
 const MANAGERS: Role[] = ['owner', 'admin'];
@@ -233,10 +234,10 @@ export class ClubsService {
       `SELECT row_number() OVER (ORDER BY COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0) DESC,m."joinedAt" ASC)::integer "rank",
               m."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
-              COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0)::integer "monthMetres"
+              COALESCE(SUM(${countedMetres()}),0)::integer "monthMetres"
        FROM "club_memberships" m JOIN "users" u ON u."id"=m."userId"
        LEFT JOIN "profiles" p ON p."userId"=m."userId"
-       LEFT JOIN "activities" a ON a."userId"=m."userId" AND a."verificationStatus"='VERIFIED' AND a."activityType" IN ('run','walk')
+       LEFT JOIN "activities" a ON a."userId"=m."userId" AND a."verificationStatus" IN ${COUNTED_STATUSES} AND a."activityType" IN ('run','walk')
          AND a."startedAt">=date_trunc('month',now()) AND a."startedAt"<date_trunc('month',now())+interval '1 month'
        WHERE m."clubId"=$1 GROUP BY m."userId",m."joinedAt",p."displayName",u."displayName",p."username",p."avatarUrl",p."gender",p."verifiedAt"
        ORDER BY "monthMetres" DESC,m."joinedAt" ASC LIMIT 500`, [club.id],

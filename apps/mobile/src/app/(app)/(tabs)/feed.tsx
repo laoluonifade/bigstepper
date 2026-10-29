@@ -129,7 +129,7 @@ function Composer({ unit }: { unit: Unit }) {
       void queryClient.invalidateQueries({ queryKey: ['feed'] });
     },
   });
-  const verified = (activities.data ?? []).filter((activity) => activity.verificationStatus === 'VERIFIED');
+  const verified = (activities.data ?? []).filter((activity) => (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED'));
   const attached = verified.find((activity) => activity.id === activityId);
   const canPost = Boolean(body.trim() || activityId || photo?.url) && !create.isPending && !upload.isPending;
 

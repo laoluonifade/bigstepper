@@ -37,6 +37,10 @@ class ForfeitAwardDto {
 }
 
 @Controller('admin')
+class SettleFlagDto {
+  @IsIn(['CLEAR', 'REJECT']) decision: 'CLEAR' | 'REJECT';
+}
+
 @UseGuards(JwtAuthGuard, PrivilegedGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
@@ -44,6 +48,16 @@ export class AdminController {
   @Get('verification/reviews')
   pendingReviews() {
     return this.adminService.pendingReviews();
+  }
+
+  @Get('verification/flags')
+  flaggedRuns() {
+    return this.adminService.flaggedRuns();
+  }
+
+  @Post('verification/flags/:activity')
+  settleFlag(@CurrentUser() user: AuthenticatedUser, @Param('activity', ParseUUIDPipe) activityId: string, @Body() body: SettleFlagDto) {
+    return this.adminService.settleFlag(user.id, activityId, body.decision);
   }
 
   @Post('verification/recheck')

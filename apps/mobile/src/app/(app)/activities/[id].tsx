@@ -5,6 +5,7 @@ import { fromSteps, shownMetres } from '@jump/shared/progress';
 import { metricOf } from '@jump/shared/scoring';
 import type { Activity, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useStillUploading } from '@/lib/run-uploads';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ReactNode, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -26,12 +27,15 @@ export default function ActivityDetailScreen() {
   const unit = useUnit();
   const profile = useProfile();
   const [sheet, setSheet] = useState<'share' | 'send' | null>(null);
+  const cached = useQueryClient().getQueryData<Activity>(keys.activity(id));
+  // Points still going up from this phone: checking waits for them, so there's no need to ask as often.
+  const uploading = useStillUploading(cached?.runningSessionId);
   const activity = useQuery({
     queryKey: keys.activity(id),
     queryFn: () => api<Activity>(`/activities/${id}`),
-    refetchInterval: (query) => (query.state.data?.verificationStatus === 'PENDING_VERIFICATION' ? 2500 : false),
+    refetchInterval: (query) => (query.state.data?.verificationStatus === 'PENDING_VERIFICATION' ? (uploading ? 15_000 : 2500) : false),
   });
-  const track = useQuery({ queryKey: ['activity-track', id], queryFn: () => api<{ points: Array<[number, number]> }>(`/activities/${id}/track`), staleTime: Infinity });
+  const track = useQuery({ queryKey: ['activity-track', id, uploading], queryFn: () => api<{ points: Array<[number, number]> }>(`/activities/${id}/track`), staleTime: Infinity });
 
   if (activity.isLoading) return <Screen><Stack.Screen options={{ title: '' }} /><Loading /></Screen>;
   if (activity.error || !activity.data) return <Screen><Stack.Screen options={{ title: 'Not found' }} /><ErrorNotice error={activity.error ?? new Error('This activity doesn’t exist.')} /></Screen>;
@@ -40,7 +44,7 @@ export default function ActivityDetailScreen() {
   // Someone else's (opened from their profile or the timeline): the same page, read-only, with who did it.
   const mine = a.mine !== false;
   const pending = a.verificationStatus === 'PENDING_VERIFICATION';
-  const verified = a.verificationStatus === 'VERIFIED';
+  const verified = (a.verificationStatus === 'VERIFIED' || a.verificationStatus === 'FLAGGED');
   const metres = shownMetres(a);
   const moving = a.movingSeconds || a.elapsedSeconds;
   const trimmed = verified ? a.recordedDistanceMetres - a.validatedDistanceMetres : 0;
@@ -54,6 +58,7 @@ export default function ActivityDetailScreen() {
     {/* Status only speaks up when something's off: a verified activity just shows when it was. */}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
       {!verified && <VerificationTag status={a.verificationStatus} />}
+      {uploading && mine ? <Txt size={12} weight="semibold" color="ink3">Uploading GPS from this phone</Txt> : null}
       {a.source === 'strava' ? <Txt size={12} weight="bold" style={{ color: '#FC5200' }}>via Strava</Txt> : null}
       <Txt size={11} weight="bold" color="ink2" style={{ marginLeft: 'auto', letterSpacing: 0.8 }}>{dateTag.toUpperCase()}</Txt>
     </View>
@@ -72,7 +77,7 @@ export default function ActivityDetailScreen() {
     <View style={{ marginTop: route.length >= 2 ? 8 : 20, marginHorizontal: 4 }}><StatStickers activity={a} unit={unit} p={colors} /></View>
 
     {mine ? <View style={{ flexDirection: 'row', gap: 10, marginTop: 28, marginBottom: 24 }}>
-      <Action label="Post" icon={<FeedIcon size={17} />} disabled={!verified} onPress={() => router.navigate({ pathname: '/feed', params: { activity: a.id } })} />
+      <Action label="Post" icon={<FeedIcon size={17} />} disabled={!verified && !pending} onPress={() => router.navigate({ pathname: '/feed', params: { activity: a.id } })} />
       <Action label="Share" primary icon={<ShareIcon size={16} color={colors.onAccent} />} onPress={() => setSheet('share')} />
       <Action label="Send" icon={<SendIcon size={16} />} disabled={a.verificationStatus === 'REJECTED'} onPress={() => setSheet('send')} />
     </View> : <View style={{ height: 28 }} />}
@@ -116,9 +121,8 @@ export default function ActivityDetailScreen() {
     </Card>
 
     {verified && <ActivityCredits activityId={a.id} unit={unit} mine={mine} />}
-    {pending && <Notice tone="warn" title="Checking your route" style={{ marginTop: 24 }}>This usually takes a few seconds. The distance above is provisional until it’s verified. It won’t count on leaderboards before then. This page updates by itself.</Notice>}
 
-    {a.verificationReasons.length > 0 && <View style={{ marginTop: 32 }}>
+    {a.verificationStatus === 'REJECTED' && a.verificationReasons.length > 0 && <View style={{ marginTop: 32 }}>
       <View style={styles.heading}><Eyebrow>{verified ? 'Notes from verification' : 'Why this activity was flagged'}</Eyebrow></View>
       <View style={{ gap: 12 }}>
         {a.verificationReasons.map((code) => {
@@ -135,7 +139,7 @@ export default function ActivityDetailScreen() {
     </View>}
 
     {mine && <>
-      {(a.verificationStatus === 'FLAGGED' || a.verificationStatus === 'REJECTED') && <ReviewRequest activityId={a.id} />}
+      {(a.verificationStatus === 'REJECTED') && <ReviewRequest activityId={a.id} />}
       <DeleteActivity activityId={a.id} />
     </>}
 

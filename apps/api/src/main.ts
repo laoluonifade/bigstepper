@@ -5,6 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { httpMetrics } from './metrics/metrics';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
@@ -12,6 +13,8 @@ async function bootstrap() {
   const port = config.getOrThrow<number>('PORT');
 
   app.set('trust proxy', 1);
+  app.use(httpMetrics);
+  app.useBodyParser('json', { limit: '1mb' });
   app.use(helmet());
   app.setGlobalPrefix('v1');
   app.useGlobalPipes(

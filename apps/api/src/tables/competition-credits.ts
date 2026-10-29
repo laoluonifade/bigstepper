@@ -2,6 +2,7 @@ import { EntityManager } from 'typeorm';
 import { ChallengeType, dailyMeasure, ScoringMethod } from './competition-rules';
 import { daysBetween, ScoredActivity, scoreEntrants } from './scoring-engine';
 import { timeEfforts } from './best-effort';
+import { COUNTED_STATUSES, countedMetres, countedSteps } from '../running/counted';
 
 export async function creditActivities(manager: EntityManager, scope: { activityId: string } | { tableId: string; userId: string }) {
   const [filter, params] = 'activityId' in scope
@@ -10,25 +11,27 @@ export async function creditActivities(manager: EntityManager, scope: { activity
   const credited = await manager.query(
     `INSERT INTO "table_activity_credits" ("tableId", "registrationId", "activityId", "creditedDistanceMetres", "creditedSteps", "completionTimeSeconds")
      SELECT t."id", r."id", a."id",
-       LEAST(CASE WHEN t."rulesVersion" = 1 AND t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
+       LEAST(CASE WHEN a."verificationStatus" = 'PENDING_VERIFICATION' THEN a."recordedDistanceMetres"
+                  WHEN t."rulesVersion" = 1 AND t."type"='free' THEN GREATEST(a."validatedDistanceMetres", a."stepDistanceMetres") ELSE a."validatedDistanceMetres" END,
              COALESCE(t."distanceCapMetres", 2147483647)),
-       CASE WHEN t."rulesVersion" >= 2 AND a."stepsSource" IS DISTINCT FROM 'sensor' THEN 0 ELSE a."validatedSteps" END,
+       CASE WHEN t."rulesVersion" >= 2 AND a."stepsSource" IS DISTINCT FROM 'sensor' AND a."verificationStatus" <> 'PENDING_VERIFICATION' THEN 0 ELSE ${countedSteps()} END,
        NULL
      FROM "activities" a
      JOIN "table_registrations" r ON r."userId" = a."userId"
      JOIN "competition_tables" t ON t."id" = r."tableId"
      WHERE ${filter}
-       AND a."verificationStatus" = 'VERIFIED'
+       AND a."verificationStatus" IN ${COUNTED_STATUSES}
        AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')
        AND t."eligibleActivities" ? a."activityType"
        AND a."startedAt" >= COALESCE(t."startsAt", '-infinity'::timestamptz)
        AND a."finishedAt" <= COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)
-       AND a."validatedDistanceMetres" >= COALESCE(t."minActivityMetres", 0)
+       AND ${countedMetres()} >= COALESCE(t."minActivityMetres", 0)
        AND a."movingSeconds" >= COALESCE(t."minActivitySeconds", 0)
        AND (t."rulesVersion" = 1 OR NOT EXISTS (
          SELECT 1 FROM "table_activity_credits" c2 JOIN "activities" a2 ON a2."id" = c2."activityId"
          WHERE c2."registrationId" = r."id" AND a2."id" <> a."id" AND a2."startedAt" < a."finishedAt" AND a2."finishedAt" > a."startedAt"))
-     ON CONFLICT ("tableId", "activityId") DO NOTHING
+     ON CONFLICT ("tableId", "activityId") DO UPDATE
+       SET "creditedDistanceMetres" = EXCLUDED."creditedDistanceMetres", "creditedSteps" = EXCLUDED."creditedSteps"
      RETURNING "id", "tableId", "activityId"`,
     params,
   ) as Array<{ id: string; tableId: string; activityId: string }>;

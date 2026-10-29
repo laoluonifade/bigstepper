@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { EventCard } from '../components/ClubEvents';
+import { ExploreEventCard } from '../components/ClubEvents';
 import { canEnter, CompetitionCard } from '../components/competition';
 import { ArrowRightIcon } from '../components/icons';
 import { Redirect, Skeleton } from '../components/ui';
@@ -82,7 +82,7 @@ function ExploreNow() {
   });
   const now = Date.now();
   const open = (tables.data ?? []).filter((table) => canEnter(table, now)).slice(0, 2);
-  const upcoming = (events.data?.nearby ?? []).slice(0, 3);
+  const upcoming = (events.data?.nearby ?? []).slice(0, 2);
 
   if (tables.isLoading || events.isLoading) return <Skeleton className="h-72 animate-fade" />;
 
@@ -90,7 +90,7 @@ function ExploreNow() {
     return (
       <div className="grid animate-slide-in gap-3 sm:grid-cols-2 [animation-delay:300ms]">
         {open.map((table) => <CompetitionCard key={table.id} table={table} unit="km" now={now} />)}
-        {!open.length && upcoming.map((event) => <EventCard key={event.id} event={event} />)}
+        {upcoming.map((event) => <ExploreEventCard key={event.id} event={event} unit="km" />)}
       </div>
     );
   }

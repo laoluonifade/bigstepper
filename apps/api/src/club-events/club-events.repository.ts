@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { z } from 'zod';
 import { Db, id, num, row, rows, run, text, when } from '../database/sql';
+import { hasPostgis } from '../database/postgis';
 
 export type EventActivity = 'run' | 'walk' | 'cycle' | 'any';
 export type EventRepeat = 'once' | 'daily' | 'weekly' | 'monthly';
@@ -81,8 +82,7 @@ const select = (where: string) => `
     FROM "club_events" e
     JOIN "clubs" c ON c."id" = e."clubId"
     LEFT JOIN "club_memberships" m ON m."clubId" = c."id" AND m."userId" = $1::uuid
-   WHERE (c."privacy" = 'open' OR m."userId" IS NOT NULL)
-     AND (e."publishedAt" IS NOT NULL OR COALESCE(m."role" IN ('owner', 'admin'), false))
+   WHERE (e."publishedAt" IS NOT NULL OR COALESCE(m."role" IN ('owner', 'admin'), false))
      AND ${where}`;
 
 @Injectable()
@@ -104,7 +104,14 @@ export class ClubEventsRepository {
     return row(this.dataSource, eventRow, select(`e."id" = $4`), [viewerId, latitude, longitude, eventId]);
   }
 
-  nearby(viewerId: string, latitude: number, longitude: number, km: number) {
+  async nearby(viewerId: string, latitude: number, longitude: number, km: number) {
+    if (await hasPostgis(this.dataSource)) {
+      return rows(this.dataSource, eventRow,
+        `SELECT * FROM (${select(`c."suspendedAt" IS NULL AND e."place" IS NOT NULL
+           AND ST_DWithin(e."place", ST_SetSRID(ST_MakePoint($3::float8, $2::float8), 4326)::geography, $4::float8 * 1000)`)}) found
+          WHERE "nextAt" IS NOT NULL ORDER BY "nextAt", "distanceKm" LIMIT 60`,
+        [viewerId, latitude, longitude, km]);
+    }
     const spread = km / 111;
     return rows(this.dataSource, eventRow,
       `SELECT * FROM (${select(`c."suspendedAt" IS NULL
@@ -117,7 +124,7 @@ export class ClubEventsRepository {
   /** Published events from open, active clubs for the public Explore and landing pages. */
   upcoming() {
     return rows(this.dataSource, eventRow,
-      `SELECT * FROM (${select(`c."privacy" = 'open' AND c."suspendedAt" IS NULL`)}) found
+      `SELECT * FROM (${select(`c."suspendedAt" IS NULL`)}) found
        WHERE "nextAt" IS NOT NULL ORDER BY "nextAt" LIMIT 12`,
       [null, null, null]);
   }

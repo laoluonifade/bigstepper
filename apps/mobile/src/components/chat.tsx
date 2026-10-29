@@ -497,7 +497,7 @@ function SharedActivityCard({ activity, unit, dark, raised = false, mine }: { ac
     <ActivityBadge type={activity.activityType} />
     <View style={{ flex: 1, minWidth: 0 }}>
       <Txt size={13} weight="bold" numberOfLines={1} color={dark ? 'paper' : 'ink'}>{activityName(activity.startedAt, activity.activityType)}</Txt>
-      <Txt size={12} num style={{ color: dark ? colors.onInkMuted : colors.ink3 }}>{`${formatDuration(activity.movingSeconds)}${activity.verificationStatus === 'VERIFIED' ? ' · Verified' : ''}`}</Txt>
+      <Txt size={12} num style={{ color: dark ? colors.onInkMuted : colors.ink3 }}>{`${formatDuration(activity.movingSeconds)}${(activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED') ? ' · Verified' : ''}`}</Txt>
     </View>
     <Text style={[score(20), { color: dark ? colors.paper : colors.ink }]}>{formatDistance(activity.distanceMetres, unit)}</Text>
   </Pressable>;
