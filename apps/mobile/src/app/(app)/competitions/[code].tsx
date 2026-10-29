@@ -15,7 +15,9 @@ import { PrizeAds } from '@/components/PrizeAd';
 import { ChallengeMark, PhaseTag, TypeTag, cardTheme } from '@/components/competition';
 import { ActionMenu, type MenuAction } from '@/components/ActionMenu';
 import { DateTimePicker } from '@/components/DateTimePicker';
-import { ChevronRightIcon, EditIcon, LockIcon, ShareIcon } from '@/components/icons';
+import { ChevronRightIcon, EditIcon, LockIcon, PinIcon, ShareIcon } from '@/components/icons';
+import { openDirections, type Place } from '@/lib/club-events';
+import { PlaceField } from '@/components/PlaceField';
 import { Leaderboard, type LeaderboardRow } from '@/components/Leaderboard';
 import { ShareCompetitionSheet } from '@/components/ShareCompetition';
 import { Sheet } from '@/components/Sheet';
@@ -200,6 +202,15 @@ export default function CompetitionDetailScreen() {
     {t.club && <Pressable onPress={() => router.push(`/clubs/${t.club!.slug}`)} style={({ pressed }) => [styles.club, pressed && { opacity: 0.8 }]} accessibilityRole="link">
       {t.club.logoUrl ? <Image source={{ uri: t.club.logoUrl }} style={styles.clubLogo} /> : <View style={[styles.clubLogo, { backgroundColor: t.club.accentColor, alignItems: 'center', justifyContent: 'center' }]}><Txt size={13} weight="extrabold">{t.club.name.charAt(0)}</Txt></View>}
       <Txt size={13} numberOfLines={1} style={{ flexShrink: 1 }}><Txt size={13} weight="bold">{t.club.name}</Txt>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</Txt>
+    </Pressable>}
+    {t.latitude != null && t.longitude != null && <Pressable onPress={() => { haptic(); openDirections({ latitude: t.latitude!, longitude: t.longitude!, venue: t.venue ?? null }); }}
+      style={({ pressed }) => [styles.place, pressed && { opacity: 0.8 }]} accessibilityRole="link" accessibilityLabel={`Directions to ${t.venue ?? 'the location'}`}>
+      <View style={styles.placePin}><PinIcon size={16} color={colors.onAccent} /></View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Txt size={14} weight="bold" numberOfLines={1}>{t.venue || t.address || 'Location'}</Txt>
+        {t.address && t.venue ? <Txt size={12.5} color="ink2" numberOfLines={1}>{t.address}</Txt> : null}
+      </View>
+      <Txt size={13} weight="bold" style={{ textDecorationLine: 'underline' }}>Directions</Txt>
     </Pressable>}
 
     {!unpublished && <View style={{ marginTop: 24 }}><EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} entrants={entrants} faces={rows} now={now} /></View>}
@@ -441,6 +452,8 @@ function HostTools({ table, now, creator }: { table: CompetitionTable; now: numb
 function EditCompetitionSheet({ open, onOpenChange, table, now, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; table: CompetitionTable; now: number; onSaved: () => Promise<unknown> }) {
   const [title, setTitle] = useState(table.title);
   const [description, setDescription] = useState(table.description ?? '');
+  const [place, setPlace] = useState<Place | null>(table.latitude != null && table.longitude != null ? { name: table.venue ?? '', address: table.address ?? '', latitude: table.latitude, longitude: table.longitude } : null);
+  const [venue, setVenue] = useState(table.venue ?? '');
   const started = !table.startsAt || new Date(table.startsAt).getTime() <= now;
   const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date(table.startsAt ?? Date.now())));
   const [endsAt, setEndsAt] = useState(() => toLocalInput(new Date(table.scoringClosesAt ?? Date.now() + 7 * 86_400_000)));
@@ -450,6 +463,7 @@ function EditCompetitionSheet({ open, onOpenChange, table, now, onSaved }: { ope
     mutationFn: () => patch(`/tables/${table.id}`, {
       title: title.trim(),
       description: description.trim() || null,
+      ...(place ? { venue: venue.trim() || place.name || null, address: place.address.trim() || null, latitude: place.latitude, longitude: place.longitude } : { venue: null, address: null, latitude: null, longitude: null }),
       ...(free && !started ? { startsAt: fromLocalInput(startsAt) } : {}),
       ...(free ? { scoringClosesAt: openEnded ? null : fromLocalInput(endsAt) } : {}),
     }),
@@ -460,6 +474,8 @@ function EditCompetitionSheet({ open, onOpenChange, table, now, onSaved }: { ope
     <View style={{ gap: 16 }}>
       <TextField label="Name" maxLength={120} value={title} onChangeText={setTitle} />
       <TextField label="What’s it about?" optional hint={`${280 - description.length} characters left`} multiline maxLength={280} value={description} onChangeText={setDescription} style={{ minHeight: 76 }} />
+      <PlaceField label="Location" optional place={place} venue={venue} onPlace={setPlace} onVenue={setVenue} venuePlaceholder="e.g. Lekki Conservation Centre"
+        hint="Where people meet or run it, if there’s one place." />
       {free && !started && <DateTimePicker label="Starts" value={startsAt} min={toLocalInput(new Date())} onChange={setStartsAt} />}
       {free && <>
         {!openEnded && <DateTimePicker label="Ends" hint="Move it later to give everyone more time, or sooner to finish early." value={endsAt} min={toLocalInput(new Date())} onChange={setEndsAt} />}
@@ -727,6 +743,8 @@ const STEP_NUMBER = scheme === 'dark' ? colors.onAccent : colors.volt;
 
 const styles = StyleSheet.create({
   private: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 20, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 12, paddingVertical: 4 },
+  place: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingVertical: 8, paddingLeft: 8, paddingRight: 14 },
+  placePin: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },
   club: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-start', maxWidth: '100%', marginTop: 16, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingVertical: 6, paddingLeft: 6, paddingRight: 16 },
   clubLogo: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.white },
   // At least the banner's own 2:1 shape, so the picture isn't cropped to a strip.

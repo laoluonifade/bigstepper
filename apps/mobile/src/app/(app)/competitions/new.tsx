@@ -25,6 +25,8 @@ import { toast } from '@/lib/toast';
 import { pickPhoto, uploadPhoto, type PickedPhoto } from '@/lib/upload';
 import { Image } from 'expo-image';
 import { PriceTags } from '@/components/PriceTags';
+import { PlaceField } from '@/components/PlaceField';
+import type { Place } from '@/lib/club-events';
 
 /** "2 prizes · 4 winners · top finishers" for the prizes row. */
 function prizeSummary(draft: PrizeDraft) {
@@ -81,6 +83,8 @@ export default function NewCompetitionScreen() {
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState(preset?.title ?? '');
   const [description, setDescription] = useState('');
+  const [place, setPlace] = useState<Place | null>(null);
+  const [venue, setVenue] = useState('');
   const [banner, setBanner] = useState<PickedPhoto | null>(null);
   const [scoring, setScoring] = useState<ScoringDraft>(() => {
     const draft = draftFor(preset?.challengeType ?? 'RUN', preset?.scoringMethod ?? 'FARTHEST_DISTANCE');
@@ -118,6 +122,10 @@ export default function NewCompetitionScreen() {
     setMode('paid');
     setTitle(table.title);
     setDescription(table.description ?? '');
+    if (table.latitude != null && table.longitude != null) {
+      setPlace({ name: table.venue ?? '', address: table.address ?? '', latitude: table.latitude, longitude: table.longitude });
+      setVenue(table.venue ?? '');
+    }
     const target = METRICS[table.scoringMethod].target;
     const amount = target === 'distance' ? (table.targetDistanceMetres ? String(Number(distanceValue(table.targetDistanceMetres, unit).toFixed(2))) : '')
       : target === 'steps' ? String(table.targetSteps ?? '') : target === 'time' ? (table.targetSeconds ? String(table.targetSeconds / 3600) : '') : target === 'sessions' ? String(table.targetSessions ?? '') : '';
@@ -192,6 +200,7 @@ export default function NewCompetitionScreen() {
   // The first thing stopping you, shown under the pinned Create button.
   const blocker = title.trim().length < 3 ? 'Give it a name of at least 3 characters.' : Object.values(errors).find(Boolean) ?? null;
 
+  const placeFields = place ? { venue: venue.trim() || place.name || null, address: place.address.trim() || null, latitude: place.latitude, longitude: place.longitude } : {};
   // A draft saves whatever is there and never gets blocked: anything missing or half-typed falls back to a
   // safe default, and the money, invites and schedule wait until it's finished.
   const draftPayload = () => {
@@ -202,6 +211,7 @@ export default function NewCompetitionScreen() {
     return {
       title: name.length >= 3 ? name : name ? `${name} (draft)` : 'Untitled competition',
       ...(description.trim() ? { description: description.trim() } : {}),
+      ...placeFields,
       ...safeScoring,
       timeZone: reminderTimeZone,
       ...(startIso ? { startsAt: startIso } : {}),
@@ -217,6 +227,7 @@ export default function NewCompetitionScreen() {
     mutationFn: (asDraft: boolean = false) => asDraft ? post<CompetitionTable>('/tables', draftPayload()) : post<CompetitionTable>(original.data ? `/tables/${original.data.id}/convert-paid` : mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
       title: title.trim(),
       ...(description.trim() ? { description: description.trim() } : {}),
+      ...placeFields,
       ...scoringFields.fields,
       timeZone: reminderTimeZone,
       ...(startIso ? { startsAt: startIso } : {}),
@@ -315,6 +326,8 @@ export default function NewCompetitionScreen() {
         <TextField label="Competition name" error={errors.title} value={title} onChangeText={setTitle} maxLength={120} placeholder="e.g. Lekki Saturday 10K" />
         <TextField label="What’s it about?" optional hint={`${280 - description.length} characters left`} multiline maxLength={280} value={description} onChangeText={setDescription} style={{ minHeight: 76 }}
           placeholder="e.g. Our run club’s month of miles. Every Saturday long run counts, slowest finisher buys the smoothies." />
+        <PlaceField label="Location" optional place={place} venue={venue} onPlace={setPlace} onVenue={setVenue} venuePlaceholder="e.g. Lekki Conservation Centre"
+          hint="Where people meet or run it, if there’s one place. They get directions from the competition page." />
 
         <View>
           <FieldLabel label="Banner" optional />

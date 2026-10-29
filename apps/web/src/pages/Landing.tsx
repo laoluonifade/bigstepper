@@ -88,33 +88,10 @@ function ExploreNow() {
 
   if (open.length > 0 || upcoming.length > 0) {
     return (
-      <section className="animate-slide-in rounded-[28px] border-2 border-ink bg-card p-4 shadow-hard sm:p-6 [animation-delay:300ms]">
-        <div className="mb-5 flex items-end justify-between gap-4">
-          <div>
-            <p className="eyebrow">Explore Jump</p>
-            <h2 className="wide mt-1 text-[25px] font-black uppercase leading-none sm:text-[30px]">Move with people</h2>
-          </div>
-          <Link to="/competitions" className="link shrink-0 text-[13px]">See all</Link>
-        </div>
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]">
-          <div>
-            <div className="mb-3 flex items-center justify-between border-b-2 border-ink pb-2">
-              <p className="wide text-[13px] font-extrabold uppercase tracking-[0.08em]">Competitions</p>
-              <Link to="/competitions" className="text-[13px] font-bold text-ink-2 hover:text-ink">Explore</Link>
-            </div>
-            {open.length ? <div className="grid gap-3 sm:grid-cols-2">{open.map((table) => <CompetitionCard key={table.id} table={table} unit="km" now={now} />)}</div>
-              : <p className="rounded-xl bg-ink/[0.05] px-4 py-5 text-[14px] text-ink-2">No competitions are open right now. Start one for your people.</p>}
-          </div>
-          <div>
-            <div className="mb-3 flex items-center justify-between border-b-2 border-ink pb-2">
-              <p className="wide text-[13px] font-extrabold uppercase tracking-[0.08em]">Events</p>
-              <Link to="/events" className="text-[13px] font-bold text-ink-2 hover:text-ink">See events</Link>
-            </div>
-            {upcoming.length ? <div className="space-y-3">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div>
-              : <p className="rounded-xl bg-ink/[0.05] px-4 py-5 text-[14px] text-ink-2">No club events are listed yet.</p>}
-          </div>
-        </div>
-      </section>
+      <div className="grid animate-slide-in gap-3 sm:grid-cols-2 [animation-delay:300ms]">
+        {open.map((table) => <CompetitionCard key={table.id} table={table} unit="km" now={now} />)}
+        {!open.length && upcoming.map((event) => <EventCard key={event.id} event={event} />)}
+      </div>
     );
   }
 

@@ -23,6 +23,7 @@ import { challengeInviteEmail } from '../mail/templates';
 import { ConfigService } from '@nestjs/config';
 import { calculatePrizeBreakdown } from '../payments/financial-policy';
 import { reminderConfig } from './reminder-config';
+import { changesPlace, placeColumns, type PlaceFieldsDto } from './place';
 
 type Invites = { inviteEmails?: string[]; invitePhones?: string[]; inviteClubMembers?: true; communityId?: string };
 
@@ -186,6 +187,7 @@ export class TablesService {
     const table = this.tables.create({
       title: input.title.trim(),
       description: input.description?.trim() || null,
+      ...placeColumns(input),
       code: randomBytes(4).toString('hex').toUpperCase(),
       creatorId,
       type: sponsored ? 'sponsored' : 'free',
@@ -293,6 +295,7 @@ export class TablesService {
       columns: {
         title: input.title.trim(),
         description: input.description?.trim() || null,
+        ...placeColumns(input),
         type: 'paid',
         status: 'PENDING_APPROVAL',
         entryFeeKobo: input.entryFeeKobo,
@@ -362,7 +365,7 @@ export class TablesService {
     });
   }
 
-  async update(tableId: string, userId: string, input: { title?: string; description?: string | null; startsAt?: string; scoringClosesAt?: string | null; endNow?: boolean }) {
+  async update(tableId: string, userId: string, input: PlaceFieldsDto & { title?: string; description?: string | null; startsAt?: string; scoringClosesAt?: string | null; endNow?: boolean }) {
     return this.dataSource.transaction(async (manager) => {
       const table = await manager.findOne(CompetitionTable, { where: { id: tableId }, lock: { mode: 'pessimistic_write' } });
       if (!table) throw new NotFoundException('Competition not found');
@@ -375,6 +378,7 @@ export class TablesService {
         table.title = title;
       }
       if (input.description !== undefined) table.description = input.description?.trim() || null;
+      if (changesPlace(input)) Object.assign(table, placeColumns(input));
       const datesChanging = input.startsAt !== undefined || input.scoringClosesAt !== undefined || input.endNow;
       if (datesChanging && table.type !== 'free') throw new ConflictException('Prize competitions keep the dates they were funded or approved with');
       if (input.startsAt !== undefined) {

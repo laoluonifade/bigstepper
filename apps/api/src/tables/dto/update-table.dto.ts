@@ -1,6 +1,7 @@
 import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { PlaceFieldsDto } from '../place';
 
-export class UpdateTableDto {
+export class UpdateTableDto extends PlaceFieldsDto {
   @IsOptional() @IsString() @MinLength(3) @MaxLength(120)
   title?: string;
 

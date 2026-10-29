@@ -1,7 +1,8 @@
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ActivityType, CompetitionFormat } from '../competition-rules';
+import { PlaceFieldsDto } from '../place';
 
-export class ScoringFieldsDto {
+export class ScoringFieldsDto extends PlaceFieldsDto {
   @IsOptional() @IsInt() @Min(1000) @Max(10_000_000)
   targetSteps?: number;
 

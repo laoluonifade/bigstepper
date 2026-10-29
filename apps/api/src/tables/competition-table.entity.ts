@@ -14,6 +14,18 @@ export class CompetitionTable {
   @Column({ type: 'varchar', length: 280, nullable: true })
   description: string | null;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  venue: string | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  address: string | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  latitude: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  longitude: number | null;
+
   @Column({ unique: true })
   code: string;
 

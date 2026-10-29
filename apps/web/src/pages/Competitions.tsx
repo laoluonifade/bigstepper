@@ -6,7 +6,8 @@ import { ClubLogo } from '../components/ClubLogo';
 import { Dropdown } from '../components/Dropdown';
 import { Modal } from '../components/Modal';
 import { PriceTags } from '../components/PriceTags';
-import type { ClubEvent } from '../lib/club-events';
+import type { ClubEvent, Place } from '../lib/club-events';
+import { PlaceField } from '../components/PlaceField';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ShareCompetitionSheet } from '../components/ShareCompetition';
 import { CountriesField, EMPTY_PRIZES, PRIZE_KIND, PrizeEditor, prizeProblem, prizesPayload, PrizeTerms, type PrizeDraft } from '../components/ClubPrizes';
@@ -16,7 +17,7 @@ import { templateById } from '../lib/templates';
 import { StravaButton } from './Strava';
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon, UsersIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PinIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon, UsersIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -547,6 +548,8 @@ export function NewCompetitionPage() {
   const [mode, setMode] = useState<'free' | 'sponsored' | 'paid'>('free');
   const [title, setTitle] = useState(preset?.title ?? '');
   const [description, setDescription] = useState('');
+  const [place, setPlace] = useState<Place | null>(null);
+  const [venue, setVenue] = useState('');
   const [banner, setBanner] = useState<File | null>(null);
   const bannerPreview = useMemo(() => (banner ? URL.createObjectURL(banner) : null), [banner]);
   useEffect(() => () => { if (bannerPreview) URL.revokeObjectURL(bannerPreview); }, [bannerPreview]);
@@ -643,6 +646,7 @@ export function NewCompetitionPage() {
       post<CompetitionTable>(mode === 'paid' ? '/tables/paid-drafts' : '/tables', {
         title: title.trim(),
         ...(description.trim() ? { description: description.trim() } : {}),
+        ...placeFields(place, venue),
         ...scoringFields.fields,
         timeZone: reminderTimeZone,
         ...(startIso ? { startsAt: startIso } : {}),
@@ -790,6 +794,8 @@ export function NewCompetitionPage() {
               />
             )}
           </Field>
+          <PlaceField label="Location" optional place={place} venue={venue} onPlace={setPlace} onVenue={setVenue} venuePlaceholder="e.g. Lekki Conservation Centre"
+            hint="Where people meet or run it, if there’s one place. They get directions from the competition page." />
           <div>
             <p className="mb-2 text-[13px] font-bold">Banner <span className="font-normal text-ink-3">Optional</span></p>
             {bannerPreview ? (
@@ -1174,6 +1180,12 @@ export function CompetitionDetailPage() {
             {t.club.logoUrl ? <img src={t.club.logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" /> : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: t.club.accentColor }}>{t.club.name.charAt(0)}</span>}
             <span className="min-w-0 truncate text-[13px]"><b>{t.club.name}</b>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</span>
           </Link>}
+          {t.latitude != null && t.longitude != null && <a href={`https://www.google.com/maps/dir/?api=1&destination=${t.latitude},${t.longitude}`} target="_blank" rel="noreferrer noopener"
+            className="mt-3 flex max-w-md items-center gap-2.5 rounded-xl border-[1.5px] border-ink bg-card py-2 pl-2 pr-4 transition-shadow hover:shadow-hard-sm">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-volt text-ink"><PinIcon size={16} /></span>
+            <span className="min-w-0 flex-1"><b className="block truncate text-[14px]">{t.venue || t.address || 'Location'}</b>{t.address && t.venue && <span className="block truncate text-[12.5px] text-ink-2">{t.address}</span>}</span>
+            <span className="text-[13px] font-bold underline underline-offset-2">Directions</span>
+          </a>}
         </div>
 
         {/* The join box: sticky beside the story on desktop, straight after the intro on phones */}
@@ -1421,9 +1433,16 @@ function HostTools({ table, now }: { table: CompetitionTable; now: number }) {
   </section>;
 }
 
+/** The location fields the API takes, from a picked place and the name typed for it. */
+function placeFields(place: Place | null, venue: string) {
+  return place ? { venue: venue.trim() || place.name || null, address: place.address.trim() || null, latitude: place.latitude, longitude: place.longitude } : {};
+}
+
 function EditCompetitionSheet({ table, now, onClose, onSaved }: { table: CompetitionTable; now: number; onClose: () => void; onSaved: () => Promise<unknown> }) {
   const [title, setTitle] = useState(table.title);
   const [description, setDescription] = useState(table.description ?? '');
+  const [place, setPlace] = useState<Place | null>(table.latitude != null && table.longitude != null ? { name: table.venue ?? '', address: table.address ?? '', latitude: table.latitude, longitude: table.longitude } : null);
+  const [venue, setVenue] = useState(table.venue ?? '');
   const started = !table.startsAt || new Date(table.startsAt).getTime() <= now;
   const [startsAt, setStartsAt] = useState(() => toLocalInput(new Date(table.startsAt ?? Date.now())));
   const [endsAt, setEndsAt] = useState(() => toLocalInput(new Date(table.scoringClosesAt ?? Date.now() + 7 * 86_400_000)));
@@ -1433,6 +1452,7 @@ function EditCompetitionSheet({ table, now, onClose, onSaved }: { table: Competi
     mutationFn: () => patch(`/tables/${table.id}`, {
       title: title.trim(),
       description: description.trim() || null,
+      ...(place ? placeFields(place, venue) : { venue: null, address: null, latitude: null, longitude: null }),
       ...(free && !started ? { startsAt: fromLocalInput(startsAt) } : {}),
       ...(free ? { scoringClosesAt: openEnded ? null : fromLocalInput(endsAt) } : {}),
     }),
@@ -1446,6 +1466,8 @@ function EditCompetitionSheet({ table, now, onClose, onSaved }: { table: Competi
       <Field label="What’s it about?" optional hint={`${280 - description.length} characters left`}>
         {(props) => <textarea {...props} className="field min-h-[76px] py-3" maxLength={280} value={description} onChange={(event) => setDescription(event.target.value)} />}
       </Field>
+      <PlaceField label="Location" optional place={place} venue={venue} onPlace={setPlace} onVenue={setVenue} venuePlaceholder="e.g. Lekki Conservation Centre"
+        hint="Where people meet or run it, if there’s one place." />
       {free && !started && <Field label="Starts">
         {(props) => <DateTimePicker {...props} value={startsAt} min={toLocalInput(new Date())} onChange={setStartsAt} />}
       </Field>}
@@ -1748,7 +1770,7 @@ function EntryPanel({
         ) : !user ? (
           <div className="space-y-2">
             <Link to="/register" search={{ redirect: `/competitions/${table.code}?join=1` }} className="btn-primary w-full">
-              Sign up to join
+              Join with email
             </Link>
             <StravaButton intent="login" redirect={`/competitions/${table.code}?join=1`} label="Join with Strava" />
             <p className="text-center text-[13px] text-ink-2">Have an account? <Link to="/login" search={{ redirect: `/competitions/${table.code}?join=1` }} className="font-bold underline">Log in</Link></p>

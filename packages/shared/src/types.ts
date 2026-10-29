@@ -157,6 +157,11 @@ export interface CompetitionTable {
   visibility?: 'public' | 'private';
   /** Host's short pitch, up to 280 characters. */
   description: string | null;
+  /** Where it happens, when the host set a place: a named spot and its pin. */
+  venue?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   code: string;
   type: 'free' | 'paid' | 'sponsored';
   status: string;

@@ -4,16 +4,16 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, patch, post } from '../lib/api';
 import { formatDistance } from '../lib/format';
 import { ACTIVITY_OPTIONS, ACTIVITY_WORD, clockLabel, clubEventsKey, dateLabel, deviceTimeZone, distanceAway, durationLabel, EVENT_NOUN, eventKey, MAX_DURATION, MIN_DURATION, nextLabel, posterTime, repeatRule, todayIso, WEEKDAYS, type ClubEvent, type EventActivity, type EventInput, type Place, type Schedule } from '../lib/club-events';
-import { getCurrentPosition } from '../lib/geo';
 import { toast } from '../lib/toast';
 import type { Unit } from '../lib/types';
-import { CalendarIcon, CameraIcon, CheckIcon, CloseIcon, PinIcon, PlusIcon, RepeatIcon, SearchIcon, TicketIcon, UsersIcon } from './icons';
+import { CalendarIcon, CameraIcon, CheckIcon, PinIcon, PlusIcon, RepeatIcon, TicketIcon, UsersIcon } from './icons';
 import { DateTimePicker } from './DateTimePicker';
 import { prepare } from './Profile';
 import { Dropdown } from './Dropdown';
 import { RepeatEditor, scheduleFor } from './RepeatEditor';
 import { ClubLogo } from './ClubLogo';
 import { Modal } from './Modal';
+import { PlaceField } from './PlaceField';
 import { Avatar, cx, ErrorNotice, Field, Notice, SectionTitle, Skeleton, useNow } from './ui';
 
 /** Dark text on light colours, light text on dark ones. */
@@ -169,56 +169,11 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
   const [notes, setNotes] = useState(event?.notes ?? '');
   const [place, setPlace] = useState<Place | null>(event && event.latitude != null && event.longitude != null ? { name: event.venue ?? '', address: event.address ?? '', latitude: event.latitude, longitude: event.longitude } : null);
   const [venue, setVenue] = useState(event?.venue ?? '');
-  const [search, setSearch] = useState('');
-  // Once a place is picked, the search and "I'm there now" step aside until Change is clicked.
-  const [changing, setChanging] = useState(false);
-  const [results, setResults] = useState<Place[] | null>(null);
-  const [finding, setFinding] = useState<'search' | 'here' | null>(null);
-  const [placeError, setPlaceError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const [cover, setCover] = useState<File | null>(null);
   const coverPreview = useMemo(() => (cover ? URL.createObjectURL(cover) : null), [cover]);
   useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
   const timeZone = event?.timeZone ?? deviceTimeZone();
-
-  // Places load as you type: a short pause after the last key, and only the newest search counts.
-  useEffect(() => {
-    const query = search.trim();
-    if (query.length < 3) { setResults(null); return; }
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      setFinding('search'); setPlaceError(null);
-      api<Place[]>(`/geo/search?q=${encodeURIComponent(query)}${place ? `&lat=${place.latitude}&lon=${place.longitude}` : ''}`, { signal: controller.signal })
-        .then((found) => {
-          setResults(found);
-          if (!found.length) setPlaceError('Nothing found yet. Try the park, street or landmark name with the town.');
-        })
-        .catch(() => { if (!controller.signal.aborted) setPlaceError('Couldn’t search right now. Keep typing, or use where you are.'); })
-        .finally(() => { if (!controller.signal.aborted) setFinding(null); });
-    }, 450);
-    return () => { window.clearTimeout(timer); controller.abort(); };
-    // The pin only biases results; moving it shouldn't search again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
-
-  async function pinHere() {
-    setFinding('here'); setPlaceError(null);
-    try {
-      const position = await getCurrentPosition();
-      const { latitude, longitude } = position.coords;
-      const named = await api<{ name: string | null }>(`/geo/place?lat=${latitude.toFixed(5)}&lon=${longitude.toFixed(5)}`).catch(() => ({ name: null }));
-      choose({ name: venue, address: named.name ?? '', latitude, longitude });
-    } catch { setPlaceError('Couldn’t get your location. Allow location in the browser, or search instead.'); }
-    finally { setFinding(null); }
-  }
-
-  function choose(next: Place) {
-    setChanging(false);
-    setPlace(next);
-    if (next.name) setVenue(next.name);
-    setResults(null);
-    setSearch('');
-  }
 
   const duration = (Number(hours) || 0) * 60 + (Number(minutes) || 0);
   const km = Number(distance.replace(',', '.'));
@@ -321,40 +276,8 @@ export function EventForm({ club, event, unit, onClose }: { club?: string; event
         </div>
         <p className={cx('hint', tried && (duration < MIN_DURATION || duration > MAX_DURATION) && 'font-semibold text-bad')}>{duration >= MIN_DURATION && duration <= MAX_DURATION ? `About ${durationLabel(duration)}, including any warm-up or social time after.` : 'Anything from 15 minutes to 24 hours.'}</p>
       </div>
-      <div>
-        <p className="label">Meeting point</p>
-        {place && <div className="mb-3 flex items-start gap-3 rounded-2xl border-2 border-ink bg-card p-3">
-          <span className="mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-volt text-ink"><PinIcon size={18} /></span>
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <input className="field" aria-label="Meeting point name" maxLength={120} value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. Main gate, Muri Okunola Park" />
-            {place.address && <p className="text-[12.5px] text-ink-2">{place.address}</p>}
-            {!changing && <button type="button" className="text-[13px] font-bold underline underline-offset-2" onClick={() => setChanging(true)}>Change</button>}
-          </div>
-        </div>}
-        {(!place || changing) && <>
-        <div className="relative">
-          <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
-          <input className="field pl-9 pr-10" aria-label="Search for the meeting point" autoComplete="off" value={search} onChange={(e) => { setSearch(e.target.value); setPlaceError(null); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} autoFocus={changing} placeholder={place ? 'Search a different place' : 'Search a park, street or landmark'} />
-          {finding === 'search'
-            ? <span className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-ink-3 border-t-transparent" aria-label="Searching" />
-            : search && <button type="button" className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-ink-3 hover:text-ink" aria-label="Clear search" onClick={() => setSearch('')}><CloseIcon size={14} /></button>}
-        </div>
-        {placeError && <p className="hint font-semibold text-bad">{placeError}</p>}
-        {results && results.length > 0 && <ul className="mt-2 divide-y divide-line overflow-hidden rounded-lg border-[1.5px] border-line bg-card">
-          {results.map((result) => <li key={`${result.latitude},${result.longitude}`}>
-            <button type="button" className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-ink/[0.04]" onClick={() => choose(result)}>
-              <PinIcon size={16} className="shrink-0 text-ink-3" />
-              <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-semibold">{result.name}</span><span className="block truncate text-[12px] text-ink-3">{result.address}</span></span>
-            </button>
-          </li>)}
-        </ul>}
-        <button type="button" className="btn-secondary btn-sm mt-3" disabled={finding === 'here'} onClick={() => void pinHere()}><PinIcon size={14} />{finding === 'here' ? 'Locating…' : 'I’m there now: use my location'}</button>
-        {changing
-          ? <button type="button" className="mt-2 block text-[13px] font-semibold text-ink-3 hover:text-ink" onClick={() => { setChanging(false); setSearch(''); }}>Keep {venue || 'this place'}</button>
-          : <p className="hint">Runners nearby find your event by this spot, and Directions takes them straight to it.</p>}
-        </>}
-      </div>
+      <PlaceField label="Meeting point" place={place} venue={venue} onPlace={setPlace} onVenue={setVenue}
+        hint="Runners nearby find your event by this spot, and Directions takes them straight to it." />
       <Field label="Notes" optional>
         {(props) => <textarea {...props} className="field" maxLength={600} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Pace groups, where to leave bags, what happens after…" />}
       </Field>
