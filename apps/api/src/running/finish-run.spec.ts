@@ -40,6 +40,12 @@ describe('finishing a run', () => {
       .resolves.toMatchObject({ recordedDistanceMetres: 50, measuredOnPhone: true });
   });
 
+  it('saves whatever the new app ends at, even 0.00 km', async () => {
+    const { service, manager } = setup(8, 0);
+    await expect(service.finish('runner', 'session', undefined, 8, { distanceMetres: 0 })).resolves.toMatchObject({ recordedDistanceMetres: 0 });
+    expect(manager.delete).not.toHaveBeenCalled();
+  });
+
   it('keeps a walk with steps even when GPS barely moved (indoors)', async () => {
     const { service, session } = setup(20, 0);
     session.activityType = 'walk';

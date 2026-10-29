@@ -175,7 +175,7 @@ export class RunningService {
         waiting = short && Boolean(phone.deferred);
         const measured = phone.distanceMetres ?? session.distanceMetres;
         const walkedSteps = session.activityType !== 'cycle' && (phone.steps ?? 0) >= MIN_SAVED_STEPS;
-        if (measured < MIN_SAVED_METRES && !walkedSteps) {
+        if (phone.distanceMetres === undefined && measured < MIN_SAVED_METRES && !walkedSteps) {
           await manager.delete(RunningSession, { id: session.id });
           return { activity: null, waiting: false };
         }

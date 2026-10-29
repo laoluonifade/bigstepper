@@ -100,8 +100,6 @@ const ACTIVITY_CHOICES = [
   { value: 'cycle', label: 'Ride', icon: CycleIcon, fill: brand.ink, iconOn: colors.volt },
 ] as const;
 
-/** Less than this reads 0.00 km: GPS measured nothing, so End offers to discard instead. 0.01 km and up is saved. */
-const MIN_SAVE_METRES = 5;
 
 const SNAP = { duration: 300, easing: Easing.out(Easing.cubic) };
 
@@ -286,13 +284,9 @@ function Scoreboard() {
   const full = useAnimatedStyle(() => ({ opacity: interpolate(offset.value, [0, travel * 0.35], [1, 0], Extrapolation.CLAMP) }));
   const compact = useAnimatedStyle(() => ({ opacity: interpolate(offset.value, [travel * 0.65, travel], [0, 1], Extrapolation.CLAMP) }));
 
+  // Whatever you end at is saved, even 0.00: no "nothing to save", no waiting on a check.
   async function confirmFinish() {
-    // Too short to count: there's nothing to submit, so offer to throw it away instead.
-    if (recorder.distanceMetres < MIN_SAVE_METRES) {
-      if (await confirm({ title: 'Nothing to save yet', message: `GPS hasn’t measured any distance for this ${noun} yet. Keep going, or discard it.`, cancelLabel: 'Keep going', confirmLabel: 'Discard', destructive: true })) void recorder.discard();
-      return;
-    }
-    if (await confirm({ title: `Finish this ${noun}?`, message: `${formatDistance(recorder.distanceMetres, unit)} will be submitted for verification.`, cancelLabel: 'Keep going', confirmLabel: 'Finish' })) void finish();
+    if (await confirm({ title: `Finish this ${noun}?`, message: `${formatDistance(recorder.distanceMetres, unit)} goes straight to your activities.`, cancelLabel: 'Keep going', confirmLabel: 'Finish' })) void finish();
   }
 
   async function finish() {
