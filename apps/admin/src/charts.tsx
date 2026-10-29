@@ -45,6 +45,9 @@ function niceMax(value: number) {
 }
 
 export const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+/** "Wed 29 Oct": with the weekday, so a quiet Tuesday reads differently from a quiet Saturday. */
+export const weekdayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const isWeekend = (day: string) => [0, 6].includes(new Date(`${day}T12:00:00`).getDay());
 const total = (row: Row, series: Series[]) => series.reduce((sum, item) => sum + Number(row[item.key] ?? 0), 0);
 
 /** Room on the left for the longest axis label. */
@@ -70,7 +73,7 @@ function Tooltip({ left, width, row, series, format }: { left: number; width: nu
   const flip = left > width - 170;
   return <div className="pointer-events-none absolute top-1 z-10 min-w-[150px] rounded-md border-[1.5px] border-ink bg-card px-3 py-2 text-[12px] shadow-hard-sm"
     style={flip ? { right: width - left + 10 } : { left: left + 10 }}>
-    <p className="font-bold">{dayLabel(row.day)}</p>
+    <p className="font-bold">{weekdayLabel(row.day)}</p>
     {series.map((item) => <p key={item.key} className="mt-1 flex items-center gap-2 text-ink-2">
       <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: item.color }} />
       <span className="flex-1">{item.label}</span><b className="num text-ink">{format(Number(row[item.key] ?? 0))}</b>
@@ -191,8 +194,8 @@ export function ChartCard({ title, headline, hint, legend, rows, series, format,
       {table && rows && series && format ? <div className="max-h-[240px] overflow-auto">
         <table className="w-full text-[12.5px]">
           <thead className="sticky top-0 bg-card text-left text-ink-3"><tr><th className="py-1 font-semibold">Day</th>{series.map((item) => <th key={item.key} className="py-1 text-right font-semibold">{item.label}</th>)}</tr></thead>
-          <tbody>{[...rows].reverse().map((row) => <tr key={row.day} className="border-t border-line">
-            <td className="py-1">{dayLabel(row.day)}</td>
+          <tbody>{[...rows].reverse().map((row) => <tr key={row.day} className={cx('border-t border-line', isWeekend(row.day) && 'bg-ink/[0.04]')}>
+            <td className="py-1">{weekdayLabel(row.day)}{isWeekend(row.day) && <span className="ml-1.5 text-[11px] text-ink-3">weekend</span>}</td>
             {series.map((item) => <td key={item.key} className="num py-1 text-right">{format(Number(row[item.key] ?? 0))}</td>)}
           </tr>)}</tbody>
         </table>
