@@ -18,7 +18,7 @@ export function progressFor(sessions: SessionTrack[], targetMetres: number, from
   for (const session of sessions) {
     const inside = session.points.filter((point) => point.recordedAt >= from && point.recordedAt <= until);
     if (inside.length < 2) continue;
-    const measured = measureTrack(inside, { activityType: session.activityType });
+    const measured = measureTrack(inside, { trailing: true, activityType: session.activityType });
     metres += measured.distanceMetres;
     let previous = 0;
     for (const [at, total] of measured.profile) {

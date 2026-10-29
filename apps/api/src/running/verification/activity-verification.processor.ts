@@ -79,7 +79,7 @@ export class ActivityVerificationProcessor extends WorkerHost {
       where: { sessionId: activity.runningSessionId },
       order: { sequence: 'ASC' },
     });
-    const track = measureTrack(samples, { activityType: activity.activityType });
+    const track = measureTrack(samples, { trailing: true, activityType: activity.activityType });
     const judged = judgeActivity(track, samples, activity.activityType);
     const { reasons } = judged;
     const phone = activity.measuredOnPhone;

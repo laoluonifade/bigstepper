@@ -116,7 +116,7 @@ export class RunningService {
         where: { sessionId },
         order: { sequence: 'ASC' },
       });
-      session.distanceMetres = measureTrack(all, { activityType: session.activityType }).distanceMetres;
+      session.distanceMetres = measureTrack(all, { trailing: true, activityType: session.activityType }).distanceMetres;
       session.stepCount = session.activityType === 'cycle' ? 0 : Math.max(0, ...all.map((sample) => sample.stepCount ?? 0));
       await manager.save(session);
       const complete = uploadingAfterFinish && all.length >= session.expectedSamples!;
