@@ -21,7 +21,7 @@ import { api, isApiError, post } from './api';
 import { confirm } from './dialog';
 import { syncLiveActivity } from './liveActivity';
 import { keys } from './queries';
-import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, countRecorded, getActiveRun, pendingSamples, setActiveRun } from './run-buffer';
+import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, countRecorded, getActiveRun, pendingSamples, recordedPoints, setActiveRun } from './run-buffer';
 import { drainUploads, postPoints, queueUpload } from './run-uploads';
 import { Storage } from './kv';
 import { colors } from './theme';
@@ -232,7 +232,9 @@ function checkpointSteps() {
  * Jump can be reached again. GPS points were already safe in the run buffer.
  */
 /** `start`: begun with no signal, so Jump hasn't heard of the run yet; it's told first, with the phone's ID. */
-type Moment = { type: 'start' | 'pause' | 'resume' | 'finish'; at: string };
+type Moment = { type: 'start' | 'pause' | 'resume' | 'finish'; at: string } & Shown;
+/** What the screen showed at End: saved as the activity's distance and steps, so they never change after. */
+type Shown = { metres?: number; steps?: number };
 const MOMENTS_KEY = (id: string) => `jump_run_moments:${id}`;
 const SESSION_KEY = (id: string) => `jump_run_session:${id}`;
 const SYNC_INTERVAL_MS = 15_000;
@@ -322,7 +324,7 @@ function sync(): Promise<void> {
       if (server.status === 'RUNNING') await flush();
       for (const moment of moments) {
         if (moment.type === 'finish') {
-          const activity = await submitFinish(id, moment.at);
+          const activity = await submitFinish(id, moment.at, moment.metres === undefined ? shownNumbers() : moment);
           setQueuedMoments(id, []);
           await reset({ keepPoints: Boolean(activity) });
           if (activity) queueUpload(id);
@@ -401,12 +403,27 @@ AppState.addEventListener('change', (next) => {
 
 /* ───────────────────────── Lifecycle ───────────────────────── */
 
+/**
+ * Take on a run, new or picked back up after a restart. The distance is measured again from every point
+ * on the phone, so the number on screen covers the whole run, not just what came after reopening.
+ */
 function adopt(run: RunSession) {
   runId = run.id;
   activityType = run.activityType;
-  stepsBefore = run.stepCount ?? 0; // carry on from the server's total after a restart
+  fixes = recordedPoints(run.id);
+  lastFixTime = fixes.length ? fixes[fixes.length - 1].recordedAt.getTime() : 0;
+  stepsBefore = Math.max(run.stepCount ?? 0, ...fixes.map((fix) => fix.stepCount ?? 0));
   stepsNow = 0;
-  set({ session: run, uploadedMetres: run.distanceMetres, localMetres: run.distanceMetres });
+  const localMetres = fixes.length ? measureTrack(fixes, { trailing: true, activityType }).distanceMetres : run.distanceMetres;
+  const route = fixes.filter((fix) => (fix.accuracy ?? 999) <= MAX_USABLE_ACCURACY_METRES).map((fix) => [fix.latitude, fix.longitude] as [number, number]);
+  set({ session: run, uploadedMetres: run.distanceMetres, localMetres, route });
+}
+
+function shownNumbers(): Shown {
+  return {
+    metres: Math.round(Math.max(state.localMetres, state.uploadedMetres)),
+    ...(motionAllowed && activityType !== 'cycle' ? { steps: totalSteps() } : {}),
+  };
 }
 
 /** Back to no run. With `keepPoints`, the run's GPS points stay on the phone for the background upload. */
@@ -640,14 +657,15 @@ async function resume() {
 async function finish(): Promise<Activity | null> {
   const id = runId;
   if (!id) return null;
+  const shown = shownNumbers();
   set({ error: null, phase: 'finishing' });
   checkpointSteps();
   await stopWatching();
   const at = new Date().toISOString();
   // With earlier offline moments still to replay, this one joins the queue behind them.
-  if (queuedMoments(id).length > 0) return finishOffline(id, at);
+  if (queuedMoments(id).length > 0) return finishOffline(id, at, shown);
   try {
-    const activity = await submitFinish(id, at);
+    const activity = await submitFinish(id, at, shown);
     await reset({ keepPoints: Boolean(activity) });
     set({ phase: 'idle' });
     if (!activity) return null;
@@ -656,7 +674,7 @@ async function finish(): Promise<Activity | null> {
     void queryClient?.invalidateQueries({ queryKey: keys.activities });
     return activity;
   } catch (error) {
-    if (!refused(error)) return finishOffline(id, at);
+    if (!refused(error)) return finishOffline(id, at, shown);
     // Jump says this run can't be finished (ended on another device, or already gone): let it go here.
     await reset();
     set({ phase: 'idle' });
@@ -682,8 +700,8 @@ const refused = (error: unknown) => isApiError(error) && error.status >= 400 && 
  * accepts it straight away and checks the run once the points have arrived. Null when GPS measured
  * nothing at all: there's no activity, and the run is simply gone.
  */
-async function submitFinish(id: string, at: string): Promise<Activity | null> {
-  const body = { at, sampleCount: countRecorded(id), distanceMetres: Math.round(Math.max(state.localMetres, state.uploadedMetres)), deferred: true };
+async function submitFinish(id: string, at: string, shown: Shown): Promise<Activity | null> {
+  const body = { at, sampleCount: countRecorded(id), deferred: true, ...(shown.metres !== undefined ? { distanceMetres: shown.metres } : {}), ...(shown.steps !== undefined ? { steps: shown.steps } : {}) };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FINISH_TIMEOUT_MS);
   const send = (payload: object) => api<Activity>(`/runs/${id}/finish`, { method: 'POST', body: payload, signal: controller.signal });
@@ -702,8 +720,8 @@ async function submitFinish(id: string, at: string): Promise<Activity | null> {
 }
 
 /** Finished with no signal: saved on the phone, submitted by `sync()` when Jump can be reached. */
-function finishOffline(id: string, at: string): null {
-  queueMoment(id, { type: 'finish', at });
+function finishOffline(id: string, at: string, shown: Shown): null {
+  queueMoment(id, { type: 'finish', at, ...shown });
   set({ phase: 'saved' });
   return null;
 }

@@ -38,7 +38,7 @@ export class RunningController {
     @Param('id', ParseUUIDPipe) sessionId: string,
     @Body() body?: FinishRunDto,
   ) {
-    return this.runningService.finish(user.id, sessionId, body?.at, body?.sampleCount, { distanceMetres: body?.distanceMetres, deferred: body?.deferred });
+    return this.runningService.finish(user.id, sessionId, body?.at, body?.sampleCount, { distanceMetres: body?.distanceMetres, steps: body?.steps, deferred: body?.deferred });
   }
 
   @Post(':id/discard')

@@ -19,6 +19,12 @@ export class FinishRunDto extends RunMomentDto {
   distanceMetres?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  steps?: number;
+
+  @IsOptional()
   @IsBoolean()
   deferred?: boolean;
 }

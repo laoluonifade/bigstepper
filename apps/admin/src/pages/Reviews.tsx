@@ -80,7 +80,7 @@ function ReviewCard({ review }: { review: Review }) {
 interface FlaggedRun {
   id: string; activityType: 'walk' | 'run' | 'cycle'; source: string; startedAt: string; verificationStatus: string; verificationReasons: string[];
   recordedDistanceMetres: number; validatedDistanceMetres: number; validatedSteps: number; movingSeconds: number; gpsConfidence: number;
-  displayName: string; username: string | null; email: string; competitions: number;
+  displayName: string; username: string | null; email: string; competitions: number; pointsMetres: number | null;
 }
 
 /**
@@ -111,7 +111,7 @@ function FlaggedCard({ run }: { run: FlaggedRun }) {
   return <article className="rounded-2xl border-[1.5px] border-ink bg-card p-4">
     <p className="text-[15px] font-bold">{run.displayName} <span className="font-normal text-ink-3">· {run.username ? `@${run.username}` : run.email}</span></p>
     <p className="mt-0.5 text-[13px] text-ink-2">
-      {run.activityType} from {run.source} · {formatDateTime(run.startedAt)} · {formatDistance(run.validatedDistanceMetres)} checked of {formatDistance(run.recordedDistanceMetres)} recorded · {formatDuration(run.movingSeconds)} moving · {run.validatedSteps.toLocaleString('en-GB')} steps · GPS {Math.round(run.gpsConfidence * 100)}%
+      {run.activityType} from {run.source} · {formatDateTime(run.startedAt)} · {formatDistance(run.recordedDistanceMetres)} on the phone{run.pointsMetres !== null ? `, ${formatDistance(run.pointsMetres)} from its GPS points` : ''} · {formatDuration(run.movingSeconds)} moving · {run.validatedSteps.toLocaleString('en-GB')} steps · GPS {Math.round(run.gpsConfidence * 100)}%
       {run.competitions ? ` · counts in ${run.competitions} ${run.competitions === 1 ? 'competition' : 'competitions'}` : ''}
     </p>
     <p className="mt-2 flex flex-wrap gap-1.5">{run.verificationReasons.map((reason) => <span key={reason} className="rounded bg-warn-wash px-1.5 py-0.5 text-[11px] font-bold uppercase text-warn">{reason.replace(/_/g, ' ')}</span>)}</p>

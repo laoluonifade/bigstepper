@@ -14,6 +14,14 @@ const MIN_STRIDE_METRES = 0.45;
 const SHAKE_ALLOWANCE_STEPS = 150;
 const MIN_MOVED_METRES = 5;
 const FLAG_FOR_ADMIN = new Set(['NO_GPS_MOVEMENT']);
+const PHONE_DISTANCE_SLACK = 1.3;
+const PHONE_DISTANCE_ALLOWANCE_METRES = 150;
+
+export function judgePhoneMeasured(phoneMetres: number, pointsMetres: number, reasons: Set<string>) {
+  const unsupported = phoneMetres > pointsMetres * PHONE_DISTANCE_SLACK + PHONE_DISTANCE_ALLOWANCE_METRES;
+  if (unsupported) reasons.add('PHONE_DISTANCE_UNSUPPORTED');
+  return unsupported ? 'FLAGGED' as const : 'VERIFIED' as const;
+}
 
 export function judgeActivity(
   track: Pick<TrackMeasure, 'distanceMetres' | 'confidence' | 'usableCount' | 'reasons'>,
@@ -72,9 +80,13 @@ export class ActivityVerificationProcessor extends WorkerHost {
       order: { sequence: 'ASC' },
     });
     const track = measureTrack(samples, { activityType: activity.activityType });
-    const { status, validatedSteps, reasons } = judgeActivity(track, samples, activity.activityType);
-    const validatedDistance = track.distanceMetres;
-    const movingSeconds = track.movingSeconds;
+    const judged = judgeActivity(track, samples, activity.activityType);
+    const { reasons } = judged;
+    const phone = activity.measuredOnPhone;
+    const status = phone ? judgePhoneMeasured(activity.recordedDistanceMetres, track.distanceMetres, reasons) : judged.status;
+    const validatedSteps = phone ? activity.recordedSteps : judged.validatedSteps;
+    const validatedDistance = phone ? activity.recordedDistanceMetres : track.distanceMetres;
+    const movingSeconds = phone ? activity.movingSeconds : track.movingSeconds;
     const confidence = track.confidence;
     const stepDistance = 0;
 

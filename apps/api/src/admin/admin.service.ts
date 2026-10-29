@@ -42,8 +42,10 @@ export class AdminService {
       `SELECT a."id", a."activityType", a."source", a."startedAt", a."verificationStatus", a."verificationReasons",
               a."recordedDistanceMetres", a."validatedDistanceMetres", a."validatedSteps", a."movingSeconds", a."gpsConfidence",
               COALESCE(p."displayName", u."displayName", 'Runner') AS "displayName", p."username", u."email",
-              (SELECT count(*)::integer FROM "table_activity_credits" c WHERE c."activityId" = a."id") AS "competitions"
+              (SELECT count(*)::integer FROM "table_activity_credits" c WHERE c."activityId" = a."id") AS "competitions",
+              s."distanceMetres" AS "pointsMetres"
        FROM "activities" a JOIN "users" u ON u."id" = a."userId" LEFT JOIN "profiles" p ON p."userId" = a."userId"
+       LEFT JOIN "running_sessions" s ON s."id" = a."runningSessionId"
        WHERE a."startedAt" > now() - make_interval(days => $1::int)
          AND a."verificationStatus" = 'FLAGGED'
        ORDER BY a."startedAt" DESC LIMIT 200`,

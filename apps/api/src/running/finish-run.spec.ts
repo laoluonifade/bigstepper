@@ -34,6 +34,19 @@ describe('finishing a run', () => {
     expect(queue.add).toHaveBeenCalledWith('verify-activity', expect.anything(), expect.objectContaining({ jobId: 'activity-activity-late', delay: expect.any(Number) }));
   });
 
+  it('saves exactly what the phone showed at End: its distance and steps', async () => {
+    const { service } = setup(400, 900);
+    await expect(service.finish('runner', 'session', undefined, 400, { distanceMetres: 50, steps: 92 }))
+      .resolves.toMatchObject({ recordedDistanceMetres: 50, measuredOnPhone: true });
+  });
+
+  it('keeps a walk with steps even when GPS barely moved (indoors)', async () => {
+    const { service, session } = setup(20, 0);
+    session.activityType = 'walk';
+    await expect(service.finish('runner', 'session', undefined, 20, { distanceMetres: 2, steps: 140 }))
+      .resolves.toMatchObject({ recordedDistanceMetres: 2 });
+  });
+
   it('saves once every point has arrived, with the distance from all of them', async () => {
     const { service, queue } = setup(400, 4000);
     await expect(service.finish('runner', 'session', undefined, 400)).resolves.toMatchObject({ recordedDistanceMetres: 4000, verificationStatus: 'PENDING_VERIFICATION' });

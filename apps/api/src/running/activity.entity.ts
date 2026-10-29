@@ -37,6 +37,9 @@ export class Activity {
   @Column({ type: 'integer', default: 0 })
   recordedSteps: number;
 
+  @Column({ type: 'boolean', default: false })
+  measuredOnPhone: boolean;
+
   @Column({ type: 'integer', default: 0 })
   validatedSteps: number;
 

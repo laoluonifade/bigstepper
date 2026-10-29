@@ -1,4 +1,4 @@
-import { judgeActivity } from './activity-verification.processor';
+import { judgeActivity, judgePhoneMeasured } from './activity-verification.processor';
 
 const START = new Date('2026-10-25T07:00:00Z').getTime();
 const samples = (ticks: number, perTick: number) =>
@@ -69,5 +69,13 @@ describe('judgeActivity', () => {
     const weak = { distanceMetres: 940, confidence: 0.2, usableCount: 30, reasons: new Set(['LOW_GPS_ACCURACY', 'IMPLAUSIBLE_SPEED']) };
     expect(judgeActivity(weak, [], 'cycle').status).toBe('VERIFIED');
     expect(judgeActivity(track(40), samples(10, 1), 'run').status).toBe('VERIFIED');
+  });
+
+  it('keeps the phone’s numbers unless the GPS points can’t support them', () => {
+    expect(judgePhoneMeasured(50, 12, new Set())).toBe('VERIFIED');
+    expect(judgePhoneMeasured(5120, 4980, new Set())).toBe('VERIFIED');
+    const reasons = new Set<string>();
+    expect(judgePhoneMeasured(10_000, 2_000, reasons)).toBe('FLAGGED');
+    expect(reasons.has('PHONE_DISTANCE_UNSUPPORTED')).toBe(true);
   });
 });

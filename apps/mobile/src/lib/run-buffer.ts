@@ -67,6 +67,17 @@ export function pendingSamples(runId: string, limit = 500): BufferedSample[] {
   }));
 }
 
+/** Every point recorded for the run, in order, as the distance measure takes them. */
+export function recordedPoints(runId: string) {
+  return open().getAllSync<Row>('SELECT * FROM samples WHERE runId = ? ORDER BY sequence', runId).map((row) => ({
+    latitude: row.latitude,
+    longitude: row.longitude,
+    accuracy: row.accuracy ?? 999,
+    recordedAt: new Date(row.recordedAt),
+    stepCount: row.stepCount,
+  }));
+}
+
 export function countPending(runId: string): number {
   return open().getFirstSync<{ count: number }>('SELECT COUNT(*) AS count FROM samples WHERE runId = ? AND uploaded = 0', runId)?.count ?? 0;
 }

@@ -21,6 +21,7 @@ export function momentOf(at: string | undefined, floor: Date, now = new Date()) 
 }
 
 const MIN_SAVED_METRES = 5;
+const MIN_SAVED_STEPS = 10;
 const LATE_POINTS_WAIT_MS = 24 * 60 * 60 * 1000;
 const VERIFY_JOB = { attempts: 5, backoff: { type: 'exponential', delay: 1_000 } } as const;
 
@@ -148,7 +149,7 @@ export class RunningService {
     });
   }
 
-  async finish(userId: string, sessionId: string, at?: string, sampleCount?: number, phone: { distanceMetres?: number; deferred?: boolean } = {}) {
+  async finish(userId: string, sessionId: string, at?: string, sampleCount?: number, phone: { distanceMetres?: number; steps?: number; deferred?: boolean } = {}) {
     const outcome = await this.dataSource.transaction(async (manager) => {
       const session = await manager.findOne(RunningSession, {
         where: { id: sessionId, userId },
@@ -172,8 +173,9 @@ export class RunningService {
           return { retry: { received, sampleCount } };
         }
         waiting = short && Boolean(phone.deferred);
-        const measured = Math.max(session.distanceMetres, waiting ? phone.distanceMetres ?? 0 : 0);
-        if (measured < MIN_SAVED_METRES) {
+        const measured = phone.distanceMetres ?? session.distanceMetres;
+        const walkedSteps = session.activityType !== 'cycle' && (phone.steps ?? 0) >= MIN_SAVED_STEPS;
+        if (measured < MIN_SAVED_METRES && !walkedSteps) {
           await manager.delete(RunningSession, { id: session.id });
           return { activity: null, waiting: false };
         }
@@ -196,8 +198,9 @@ export class RunningService {
             runningSessionId: session.id,
             userId,
             activityType: session.activityType,
-            recordedDistanceMetres: waiting ? Math.max(session.distanceMetres, phone.distanceMetres ?? 0) : session.distanceMetres,
-            recordedSteps: session.stepCount,
+            recordedDistanceMetres: phone.distanceMetres ?? session.distanceMetres,
+            recordedSteps: session.activityType === 'cycle' ? 0 : phone.steps ?? session.stepCount,
+            measuredOnPhone: phone.distanceMetres !== undefined,
             verificationStatus: 'PENDING_VERIFICATION',
             elapsedSeconds,
             movingSeconds: Math.max(0, elapsedSeconds - session.pausedSeconds),
