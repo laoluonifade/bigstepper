@@ -1,4 +1,4 @@
-import { Linking, Platform } from 'react-native';
+import { Linking } from 'react-native';
 
 export type EventActivity = 'run' | 'walk' | 'cycle' | 'any';
 export type EventRepeat = 'once' | 'daily' | 'weekly' | 'monthly';
@@ -181,10 +181,8 @@ export const deviceTimeZone = () => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
 };
 
-/** Opens the phone's maps app with directions to the meeting point. */
+/** Directions to the meeting point in Google Maps: its app when it's installed, the website when not. */
 export function openDirections(event: Pick<ClubEvent, 'latitude' | 'longitude' | 'venue'>) {
   const at = `${event.latitude},${event.longitude}`;
-  const label = encodeURIComponent(event.venue ?? '');
-  const url = Platform.OS === 'ios' ? `http://maps.apple.com/?daddr=${at}&q=${label}` : `geo:${at}?q=${at}(${label})`;
-  void Linking.openURL(url).catch(() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${at}`));
+  void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${at}`);
 }
