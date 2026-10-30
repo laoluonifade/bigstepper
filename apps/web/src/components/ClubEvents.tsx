@@ -116,10 +116,10 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
           ? <span className="num flex items-center gap-2 text-[14px] text-ink-2"><UsersIcon size={15} className="text-ink-3" />{event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending</span>
           : <span />}
         {event.isHost
-          ? <span className="inline-flex items-center rounded-full border-[1.5px] border-ink px-4 py-2 text-[14px] font-bold">Hosting</span>
+          ? <span className="wide inline-flex items-center gap-1.5 rounded-md border-2 border-ink px-4 py-2 text-[12.5px] font-extrabold uppercase tracking-[0.08em] bg-card">Hosting</span>
           : going
-          ? <span className="inline-flex items-center gap-1.5 rounded-full bg-volt px-4 py-2 text-[14px] font-bold text-ink"><CheckIcon size={14} />Going</span>
-          : <button type="button" className="relative z-[2] rounded-full px-5 py-2 text-[14px] font-bold transition-transform active:scale-95 disabled:opacity-60" style={{ backgroundColor: event.club.accentColor || '#FF5A1F', color: onAccent(event.club.accentColor || '#FF5A1F') }} disabled={rsvp.isPending} onClick={() => rsvp.mutate()}>{rsvp.isPending ? 'Joining…' : 'RSVP'}</button>}
+          ? <span className="wide inline-flex items-center gap-1.5 rounded-md border-2 border-ink px-4 py-2 text-[12.5px] font-extrabold uppercase tracking-[0.08em] bg-volt text-ink shadow-hard-sm"><CheckIcon size={14} />Going</span>
+          : <button type="button" className="relative z-[2] wide inline-flex items-center gap-1.5 rounded-md border-2 border-ink px-4 py-2 text-[12.5px] font-extrabold uppercase tracking-[0.08em] shadow-hard transition-[transform,box-shadow] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:opacity-60" style={{ backgroundColor: event.club.accentColor || '#FF5A1F', color: onAccent(event.club.accentColor || '#FF5A1F') }} disabled={rsvp.isPending} onClick={() => rsvp.mutate()}>{rsvp.isPending ? 'Joining…' : 'RSVP'}</button>}
       </div>
     </div>
   </article>;

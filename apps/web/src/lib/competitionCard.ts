@@ -5,29 +5,19 @@ import type { CardFormat, CompetitionCardData } from '@jump/shared/competition';
 
 export type { CardFormat, CardPerson, CompetitionCardData } from '@jump/shared/competition';
 
-const SIZES: Record<CardFormat, { w: number; h: number }> = { story: { w: 1080, h: 1920 }, post: { w: 1080, h: 1350 } };
-const INK = '#121212';
-const PAPER = '#F2EFE8';
-const VOLT = '#E4FF3A';
-const FONT = 'Archivo, system-ui, sans-serif';
-const MONO = '"JetBrains Mono", ui-monospace, monospace';
+export const SIZES: Record<CardFormat, { w: number; h: number }> = { story: { w: 1080, h: 1920 }, post: { w: 1080, h: 1350 } };
+export const INK = '#121212';
+export const PAPER = '#F2EFE8';
+export const VOLT = '#E4FF3A';
+export const FONT = 'Archivo, system-ui, sans-serif';
+export const MONO = '"JetBrains Mono", ui-monospace, monospace';
 
-function setFont(ctx: CanvasRenderingContext2D, spec: string, stretch: 'normal' | 'condensed' | 'expanded' = 'normal', family = FONT) {
+export function setFont(ctx: CanvasRenderingContext2D, spec: string, stretch: 'normal' | 'condensed' | 'expanded' = 'normal', family = FONT) {
   ctx.font = `${spec} ${family}`;
   try { (ctx as CanvasRenderingContext2D & { fontStretch?: string }).fontStretch = stretch; } catch { /* older browsers */ }
 }
 
-/** Largest size (≤ max) at which text fits the width, with the font set to it. */
-function fitSize(ctx: CanvasRenderingContext2D, text: string, weight: string, max: number, width: number, stretch: 'normal' | 'condensed' | 'expanded' = 'normal') {
-  let size = max;
-  for (; size > 24; size -= 6) {
-    setFont(ctx, `${weight} ${size}px`, stretch);
-    if (ctx.measureText(text).width <= width) break;
-  }
-  return size;
-}
-
-function wrap(ctx: CanvasRenderingContext2D, text: string, width: number, maxLines: number) {
+export function wrap(ctx: CanvasRenderingContext2D, text: string, width: number, maxLines: number) {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let line = '';
@@ -46,12 +36,12 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, width: number, maxLin
   return lines;
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
 }
 
-function wordmark(ctx: CanvasRenderingContext2D, x: number, y: number, height: number, colour: string) {
+export function wordmark(ctx: CanvasRenderingContext2D, x: number, y: number, height: number, colour: string) {
   const scale = height / JUMP_LOGO.height;
   ctx.save();
   ctx.translate(x, y);
@@ -62,197 +52,247 @@ function wordmark(ctx: CanvasRenderingContext2D, x: number, y: number, height: n
   ctx.restore();
 }
 
-/** A rounded pill, text centred; returns its width. */
-function pill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, h: number, fill: string, colour: string, font: string, alignRight = false) {
-  setFont(ctx, font, 'expanded');
-  const w = ctx.measureText(text).width + h * 0.9;
-  const left = alignRight ? x - w : x;
-  ctx.fillStyle = fill;
-  roundRect(ctx, left, y, w, h, h / 2);
+/** Base size in points; drawn at 3x, so a story is 1080 x 1920 and a post 1080 x 1350. Same layout as the app's card. */
+export const K = 3;
+export const PAD = 22;
+export const CARD = '#FBFAF6';
+export const TRACK = '#FF5A1F';
+export const INK2 = '#55524B';
+
+/** A sticker: rounded, outlined, a hard ink shadow, slightly tilted about its centre. `draw` paints inside it. */
+export function sticker(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, bg: string, tilt: number, draw?: () => void) {
+  const r = 14;
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate((tilt * Math.PI) / 180);
+  ctx.translate(-w / 2, -h / 2);
+  ctx.fillStyle = INK;
+  roundRect(ctx, 4, 4, w, h, r);
   ctx.fill();
-  ctx.fillStyle = colour;
+  ctx.fillStyle = bg;
+  roundRect(ctx, 0, 0, w, h, r);
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  if (draw) {
+    ctx.save();
+    roundRect(ctx, 0, 0, w, h, r);
+    ctx.clip();
+    draw();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/** Text shrunk (down to `min`) until it fits `width`; returns the size used. */
+export function fitText(ctx: CanvasRenderingContext2D, text: string, weight: number, size: number, min: number, width: number, stretch: 'normal' | 'condensed' | 'expanded', family = FONT) {
+  let at = size;
+  for (; at > min; at -= 0.5) {
+    setFont(ctx, `${weight} ${at}px`, stretch, family);
+    if (ctx.measureText(text).width <= width) break;
+  }
+  return at;
+}
+
+/** The ink tag with volt capitals, as at the top of the card. Returns its width. */
+export function tag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, alignRight = false) {
+  setFont(ctx, '800 8.5px', 'expanded');
+  const label = text.toUpperCase();
+  const w = Math.min(316, ctx.measureText(label).width + 18);
+  const left = alignRight ? x - w : x;
+  ctx.fillStyle = INK;
+  roundRect(ctx, left, y, w, 19, 9);
+  ctx.fill();
+  ctx.fillStyle = VOLT;
   ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-  ctx.fillText(text, left + w / 2, y + h / 2 + 2);
-  ctx.textAlign = 'left';
+  ctx.fillText(label, left + 9, y + 10, w - 18);
   ctx.textBaseline = 'alphabetic';
   return w;
 }
 
+const PODIUM = {
+  story: [[106, 0, 104, 146, 2], [0, 18, 98, 128, -4], [218, 22, 98, 124, 4]],
+  post: [[106, 0, 104, 110, 2], [0, 12, 98, 98, -4], [218, 16, 98, 94, 4]],
+} as const;
+const PLACES = [{ place: '1ST', bg: VOLT }, { place: '2ND', bg: CARD }, { place: '3RD', bg: TRACK }];
+
 /**
- * A competition as a picture to post: what it is, what's at stake, who's winning, and how to get in.
- * Built to be stopped on in a story feed: one huge word, the track lanes, and the join code at
- * billboard size.
+ * A competition as a picture to post, in the same sticker style as the app: what it is, what wins, who's
+ * on the podium, and the join code big enough to type from a story.
  */
 export function drawCompetitionCard(canvas: HTMLCanvasElement, data: CompetitionCardData, format: CardFormat, avatars: Map<string, HTMLImageElement>) {
-  const { w: W, h: H } = SIZES[format];
+  const { w: PW, h: PH } = SIZES[format];
   const story = format === 'story';
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = PW;
+  canvas.height = PH;
   const ctx = canvas.getContext('2d')!;
-  const pad = 84;
+  ctx.scale(K, K);
+  const W = PW / K;
+  const H = PH / K;
+  const inner = W - PAD * 2;
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, W, H);
 
-  // Stage: ink, an orange glow up top, a volt glow low down, and the track lanes sweeping through.
+  // Top: the wordmark and a callout.
+  wordmark(ctx, PAD, PAD, 14, INK);
+  const callout = data.me ? (data.me.scored && data.me.rank ? `I’m #${data.me.rank} · beat me` : 'I’m in · join me') : 'Join me';
+  tag(ctx, callout, W - PAD, PAD - 2, true);
+
+  // The name, up to two lines, then what kind of competition it is.
+  const titleTop = PAD + 14 + (story ? 24 : 12);
+  const titleBox = story ? 64 : 44;
+  let size = story ? 30 : 21;
+  let lines: string[] = [];
+  for (; size > 12; size -= 0.5) {
+    setFont(ctx, `900 ${size}px`, 'expanded');
+    lines = wrap(ctx, data.title.toUpperCase(), inner, 2);
+    if (lines.length * size * 1.07 <= titleBox && lines.every((line) => ctx.measureText(line).width <= inner)) break;
+  }
   ctx.fillStyle = INK;
-  ctx.fillRect(0, 0, W, H);
-  const glowTop = ctx.createRadialGradient(W, 0, 0, W, 0, W * 1.05);
-  glowTop.addColorStop(0, 'rgba(255,90,31,0.42)');
-  glowTop.addColorStop(1, 'rgba(255,90,31,0)');
-  ctx.fillStyle = glowTop;
-  ctx.fillRect(0, 0, W, H);
-  const glowLow = ctx.createRadialGradient(0, H, 0, 0, H, W * 0.95);
-  glowLow.addColorStop(0, 'rgba(228,255,58,0.22)');
-  glowLow.addColorStop(1, 'rgba(228,255,58,0)');
-  ctx.fillStyle = glowLow;
-  ctx.fillRect(0, 0, W, H);
-  for (let lane = 0; lane < 8; lane += 1) {
-    const lift = lane * (story ? 92 : 70);
-    ctx.beginPath();
-    ctx.moveTo(-120, H * 0.98 - lift);
-    ctx.bezierCurveTo(W * 0.35, H * 0.82 - lift, W * 0.62, H * 0.42 - lift * 0.8, W + 120, H * 0.3 - lift * 0.7);
-    ctx.strokeStyle = 'rgba(242,239,232,0.06)';
-    ctx.lineWidth = 22;
-    ctx.stroke();
-  }
-  // One bold lane in the activity's colour, low enough to run behind the board, never through the words.
-  ctx.beginPath();
-  ctx.moveTo(-120, H * 0.9);
-  ctx.bezierCurveTo(W * 0.3, H * 0.86, W * 0.7, H * 0.7, W + 120, H * (story ? 0.56 : 0.6));
-  ctx.strokeStyle = data.accent;
-  ctx.globalAlpha = 0.85;
-  ctx.lineWidth = 14;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  ctx.textBaseline = 'top';
+  lines.forEach((line, index) => ctx.fillText(line, PAD, titleTop + index * size * 1.07));
+  ctx.textBaseline = 'alphabetic';
+  const kindTop = titleTop + titleBox + (story ? 10 : 8);
+  tag(ctx, data.kind, PAD, kindTop);
 
-  // Header: the wordmark, and what you're saying.
-  const top = story ? 104 : 76;
-  wordmark(ctx, pad, top, story ? 66 : 56, PAPER);
-  const callout = data.me ? (data.me.scored && data.me.rank ? `I’M #${data.me.rank} · BEAT ME` : 'I’M IN · JOIN ME') : 'JOIN ME';
-  pill(ctx, callout, W - pad, top - 6, story ? 76 : 66, VOLT, INK, `900 ${story ? 30 : 26}px`, true);
-
-  // The big word, the line under it, then the competition's own name.
-  let y = story ? 330 : 214;
-  setFont(ctx, `800 ${story ? 32 : 28}px`, 'expanded');
-  ctx.fillStyle = 'rgba(242,239,232,0.65)';
-  ctx.fillText(data.kind.toUpperCase(), pad, y);
-  const bigSize = fitSize(ctx, data.big.toUpperCase(), '900', story ? 330 : 210, W - pad * 2, 'condensed');
-  y += bigSize * 0.86;
-  ctx.fillStyle = data.accent;
-  ctx.fillText(data.big.toUpperCase(), pad - 6, y);
-  y += story ? 64 : 46;
-  setFont(ctx, `800 ${story ? 40 : 32}px`, 'expanded');
-  ctx.fillStyle = PAPER;
-  ctx.fillText(data.small.toUpperCase(), pad, y);
-  y += story ? 104 : 70;
-  setFont(ctx, `800 ${story ? 70 : 52}px`);
-  ctx.fillStyle = PAPER;
-  for (const line of wrap(ctx, data.title, W - pad * 2, story ? 2 : 1)) {
-    ctx.fillText(line, pad, y);
-    y += story ? 80 : 58;
-  }
-
-  // Stakes, how many are in, time left.
-  y += story ? 4 : 0;
-  let x = pad;
-  const chipH = story ? 66 : 58;
-  for (const [text, fill, colour] of [
-    [data.stakes, data.stakes.startsWith('₦') ? VOLT : 'rgba(242,239,232,0.12)', data.stakes.startsWith('₦') ? INK : PAPER],
-    [`${data.entrants} IN`, 'rgba(242,239,232,0.12)', PAPER],
-    [data.timing, 'rgba(242,239,232,0.12)', PAPER],
-  ] as const) {
-    if (!text) continue;
-    x += pill(ctx, text.toUpperCase(), x, y, chipH, fill, colour, `800 ${story ? 26 : 23}px`) + 14;
-  }
-  y += chipH + (story ? 56 : 30);
-
-  // Who's winning: the top three (and you, if you're further back).
-  const rows = [...data.podium.slice(0, 3)];
-  if (data.me?.scored && !rows.some((row) => row.userId === data.me!.userId)) rows.push(data.me);
-  const rowH = story ? 104 : 74;
-  const cardH = Math.max(1, rows.length) * rowH + (story ? 100 : 76);
-  ctx.fillStyle = PAPER;
-  roundRect(ctx, pad, y, W - pad * 2, cardH, 36);
-  ctx.fill();
-  setFont(ctx, `800 ${story ? 26 : 22}px`, 'expanded');
-  ctx.fillStyle = 'rgba(18,18,18,0.5)';
-  ctx.fillText('LIVE LEADERBOARD', pad + 40, y + (story ? 60 : 46));
-  let rowY = y + (story ? 84 : 62);
-  if (!rows.length) {
-    setFont(ctx, `700 ${story ? 40 : 34}px`);
-    ctx.fillStyle = INK;
-    ctx.fillText('Nobody’s scored yet. First run takes it.', pad + 40, rowY + rowH * 0.6);
-  }
-  for (const row of rows) {
-    const mine = row.userId === data.me?.userId;
-    if (mine) {
-      ctx.fillStyle = 'rgba(228,255,58,0.85)';
-      roundRect(ctx, pad + 16, rowY + 4, W - pad * 2 - 32, rowH - 8, 22);
-      ctx.fill();
-    }
-    const medal = row.rank === 1 ? '#FFD34E' : row.rank === 2 ? '#C9CFD6' : row.rank === 3 ? '#E0A06A' : 'rgba(18,18,18,0.08)';
-    ctx.fillStyle = medal;
-    ctx.beginPath();
-    ctx.arc(pad + 76, rowY + rowH / 2, story ? 30 : 25, 0, Math.PI * 2);
-    ctx.fill();
-    setFont(ctx, `900 ${story ? 32 : 27}px`);
+  // The headline sticker in the activity's colour, with the stakes, headcount and time left beside it.
+  const rowTop = kindTop + 19 + (story ? 22 : 12);
+  const bigW = (inner + 4) * (1.35 / 2.35);
+  const bigSize = story ? 58 : 44;
+  const bigH = 12 + bigSize + 4 + 11 + 12;
+  sticker(ctx, PAD, rowTop + 4, bigW, bigH, data.accent, -2, () => {
+    const fitted = fitText(ctx, data.big.toUpperCase(), 800, bigSize, 20, bigW - 28, 'condensed');
     ctx.fillStyle = INK;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(row.rank), pad + 76, rowY + rowH / 2 + 2);
+    ctx.textBaseline = 'top';
+    ctx.fillText(data.big.toUpperCase(), bigW / 2, 12 + (bigSize - fitted) / 2);
+    setFont(ctx, '800 9px', 'expanded');
+    ctx.fillText(data.small.toUpperCase(), bigW / 2, 12 + bigSize + 4, bigW - 20);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    const avatar = story ? 70 : 54;
-    circleImage(ctx, avatars.get(row.userId), pad + 124, rowY + (rowH - avatar) / 2, avatar, INK, 3);
-    setFont(ctx, `800 ${story ? 36 : 30}px`);
-    ctx.fillStyle = INK;
-    const nameX = pad + 124 + avatar + 22;
-    ctx.textAlign = 'right';
-    ctx.fillText(row.score, W - pad - 40, rowY + rowH / 2 + 12);
-    const scoreW = ctx.measureText(row.score).width;
-    ctx.textAlign = 'left';
-    let name = mine ? 'You' : row.name.split(' ')[0];
-    while (name.length > 1 && ctx.measureText(name).width > W - pad - 40 - scoreW - 30 - nameX) name = name.slice(0, -1);
-    ctx.fillText(name, nameX, rowY + rowH / 2 + 12);
-    rowY += rowH;
+  });
+  const cash = data.stakes.startsWith('₦');
+  const chips = [data.stakes, `${data.entrants} in`, data.timing].filter(Boolean);
+  const chipX = PAD + bigW - 4;
+  const chipW = inner - bigW + 4;
+  const chipH = (story ? 9 : 6) * 2 + 12;
+  let chipY = rowTop;
+  chips.forEach((text, index) => {
+    const dark = index === 0 && cash;
+    sticker(ctx, chipX + (index === 1 ? -8 : 0), chipY, chipW, chipH, dark ? INK : CARD, [3, -2, 2][index], () => {
+      fitText(ctx, text.toUpperCase(), 800, 9, 6, chipW - 16, 'expanded');
+      ctx.fillStyle = dark ? VOLT : INK;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text.toUpperCase(), chipW / 2, chipH / 2 + 0.5);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    });
+    chipY += chipH - 3;
+  });
+
+  // The podium: second and third either side, first raised in the middle. Or an empty sticker.
+  const podiumTop = rowTop + Math.max(4 + bigH, chipY - rowTop + 3) + (story ? 24 : 12);
+  const podium = data.podium.slice(0, 3);
+  if (podium.length) {
+    for (const index of [1, 2, 0]) {
+      const person = podium[index];
+      if (!person) continue;
+      const [x, y, w, h, tilt] = PODIUM[story ? 'story' : 'post'][index];
+      const first = index === 0;
+      const face = story ? (first ? 40 : 34) : (first ? 32 : 28);
+      sticker(ctx, PAD + x, podiumTop + y, w, h - 3, PLACES[index].bg, tilt, () => {
+        ctx.fillStyle = INK;
+        ctx.textBaseline = 'top';
+        setFont(ctx, `900 ${first ? 10 : 9}px`, 'expanded');
+        ctx.fillText(PLACES[index].place, 11, story ? 10 : 7);
+        const faceTop = (story ? 10 : 7) + (first ? 10 : 9) + 4;
+        circleImage(ctx, avatars.get(person.userId), (w - face) / 2, faceTop, face, INK, 1.2);
+        ctx.textAlign = 'center';
+        setFont(ctx, `700 ${first ? 11.5 : 10.5}px`);
+        const name = person.userId === data.me?.userId ? 'You' : person.name.split(' ')[0];
+        ctx.fillText(name, w / 2, faceTop + face + 5, w * 0.88);
+        const scoreSize = story ? (first ? 22 : 18) : (first ? 18 : 15);
+        fitText(ctx, person.score, 800, scoreSize, 9, w * 0.9, 'condensed');
+        ctx.fillText(person.score, w / 2, faceTop + face + 5 + (first ? 11.5 : 10.5) + 4);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+      });
+    }
+  } else {
+    sticker(ctx, PAD, podiumTop + (story ? 40 : 26), inner, 62, CARD, -1, () => {
+      ctx.fillStyle = INK;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      setFont(ctx, '800 16px');
+      ctx.fillText('Nobody’s scored yet.', inner / 2, 14);
+      setFont(ctx, '800 9px', 'expanded');
+      ctx.fillText('FIRST RUN TAKES IT', inner / 2, 38);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    });
   }
-  y += cardH + (story ? 48 : 28);
 
-  // The ask: the join code, huge, on volt.
-  const ctaH = story ? 250 : 196;
-  ctx.fillStyle = VOLT;
-  roundRect(ctx, pad, y, W - pad * 2, ctaH, 40);
-  ctx.fill();
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = INK;
-  ctx.stroke();
-  setFont(ctx, `900 ${story ? 32 : 28}px`, 'expanded');
-  ctx.fillStyle = INK;
-  ctx.fillText('JOIN WITH CODE', pad + 48, y + (story ? 76 : 62));
-  const codeSize = fitSize(ctx, data.code, '800', story ? 120 : 92, W - pad * 2 - 230);
-  setFont(ctx, `800 ${codeSize}px`, 'normal', MONO);
-  ctx.fillText(data.code, pad + 44, y + ctaH - (story ? 58 : 38));
-  // An arrow in a circle: tap me.
-  const cx = W - pad - 100;
-  const cy = y + ctaH / 2;
-  ctx.fillStyle = INK;
-  ctx.beginPath();
-  ctx.arc(cx, cy, story ? 66 : 54, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = VOLT;
-  ctx.lineWidth = 10;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(cx - 24, cy + 24);
-  ctx.lineTo(cx + 22, cy - 22);
-  ctx.moveTo(cx - 8, cy - 24);
-  ctx.lineTo(cx + 24, cy - 24);
-  ctx.lineTo(cx + 24, cy + 8);
-  ctx.stroke();
-  ctx.lineCap = 'butt';
+  // You, under the podium, when you've scored but aren't on it (story only).
+  const me = data.me;
+  if (story && me?.scored && !podium.some((row) => row.userId === me.userId)) {
+    sticker(ctx, PAD, podiumTop + 150 + 14, inner, 34, VOLT, 1, () => {
+      ctx.fillStyle = INK;
+      ctx.textBaseline = 'middle';
+      setFont(ctx, '800 15px', 'condensed');
+      ctx.fillText(String(me.rank ?? ''), 14, 17);
+      setFont(ctx, '800 13px');
+      ctx.fillText('You', 46, 17);
+      setFont(ctx, '800 16px', 'condensed');
+      ctx.textAlign = 'right';
+      ctx.fillText(me.score, inner - 14, 17);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    });
+  }
 
-  setFont(ctx, `700 ${story ? 32 : 26}px`);
-  ctx.fillStyle = 'rgba(242,239,232,0.7)';
-  ctx.textAlign = 'center';
-  ctx.fillText(data.link, W / 2, story ? H - 70 : Math.min(H - 24, y + ctaH + 48));
+  // The join code, big enough to type from a story, with an arrow in.
+  const codeH = story ? 76 : 60;
+  const codeTop = H - (story ? 44 : 38) - codeH;
+  sticker(ctx, PAD, codeTop, inner, codeH, INK, -1.5, () => {
+    const arrow = story ? 44 : 38;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = VOLT;
+    setFont(ctx, '900 9.5px', 'expanded');
+    const codeSize = story ? 38 : 30;
+    const blockTop = (codeH - (11 + 2 + codeSize)) / 2;
+    ctx.fillText('JOIN WITH CODE', 16, blockTop);
+    ctx.fillStyle = PAPER;
+    fitText(ctx, data.code, 600, codeSize, 14, inner - 32 - arrow - 10, 'normal', MONO);
+    ctx.fillText(data.code, 16, blockTop + 13);
+    ctx.textBaseline = 'alphabetic';
+    const cx = inner - 16 - arrow / 2;
+    const cy = codeH / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, arrow / 2, 0, Math.PI * 2);
+    ctx.fillStyle = VOLT;
+    ctx.fill();
+    ctx.save();
+    ctx.translate(cx - 9, cy - 9);
+    ctx.scale(18 / 24, 18 / 24);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke(new Path2D('M4 20 20 4M9 4h11v11'));
+    ctx.restore();
+  });
+
+  // Footer: the link, and the line.
+  setFont(ctx, '700 7.5px', 'expanded');
+  ctx.textBaseline = 'alphabetic';
+  const motto = 'MOVE. COMPETE. WIN.';
+  const mottoW = ctx.measureText(motto).width;
+  ctx.fillStyle = INK2;
+  ctx.fillText(data.link.toUpperCase(), PAD, H - (PAD - 6) - 2, inner - mottoW - 8);
+  ctx.fillStyle = TRACK;
+  ctx.textAlign = 'right';
+  ctx.fillText(motto, W - PAD, H - (PAD - 6) - 2);
   ctx.textAlign = 'left';
 }

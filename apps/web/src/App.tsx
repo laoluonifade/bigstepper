@@ -26,9 +26,10 @@ const home = createRoute({ getParentRoute: () => root, path: '/', component: Lan
 const competitions = createRoute({
   getParentRoute: () => root,
   path: '/competitions',
-  validateSearch: (search: Record<string, unknown>): { q?: string; activity?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { q?: string; activity?: string; tab?: 'events' } => ({
     ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
     ...(typeof search.activity === 'string' && search.activity ? { activity: search.activity } : {}),
+    ...(search.tab === 'events' ? { tab: 'events' as const } : {}),
   }),
   component: page(() => import('./pages/Competitions'), 'CompetitionsPage'),
 });

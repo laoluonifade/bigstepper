@@ -2,7 +2,7 @@ import { formatDistance } from '@jump/shared/format';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { EventCover, EventStamp } from '@/components/ClubEvents';
@@ -18,6 +18,7 @@ import { registerForPush } from '@/lib/push';
 import { useProfile, useUnit } from '@/lib/queries';
 import { colors, display, radius, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { ShareEventSheet } from '@/components/ShareEvent';
 
 /** One club event: when and where, who's coming, and your pass once you've got one. */
 export default function EventScreen() {
@@ -28,6 +29,7 @@ export default function EventScreen() {
   const event = useQuery({ queryKey: eventKey(id), queryFn: () => api<ClubEvent>(`/events/${id}`) });
   const profile = useProfile().data;
   const [passOpen, setPassOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const settle = async (next: ClubEvent) => {
     queryClient.setQueryData(eventKey(id), next);
@@ -82,10 +84,7 @@ export default function EventScreen() {
   // The date is already on the poster; the pill only speaks up when it adds something ("Tomorrow", "Happening now").
   const soon = next.live || ['Today', 'Tomorrow', 'Finished'].includes(next.label);
   const away = distanceAway(e.distanceKm);
-  const share = () => void Share.share({
-    message: `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/events/${e.slug ?? e.id}`,
-    url: `${WEB_URL}/events/${e.slug ?? e.id}`,
-  });
+  const share = () => setSharing(true);
 
   return <Screen refreshing={event.isRefetching} onRefresh={() => void event.refetch()} padded={false}
     footer={<Footer style={{ flexDirection: 'row', gap: 8 }}>
@@ -99,6 +98,7 @@ export default function EventScreen() {
           : <Button style={{ flex: 1 }} full variant="secondary" title="This event has finished" disabled />}
       <Button variant="secondary" title="Share" accessibilityLabel="Share this event" icon={<ShareIcon size={16} />} onPress={share} />
     </Footer>}>
+    <ShareEventSheet open={sharing} onOpenChange={setSharing} event={e} unit={unit} />
     <Stack.Screen options={{ title: e.club.name }} />
     {e.coverUrl
       // With a photo, the photo is the poster: full width, a soft shade at the bottom, and the name on it.

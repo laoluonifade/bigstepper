@@ -224,10 +224,12 @@ export function CompetitionPreviewCard({ table, unit, now, tagged = false }: { t
         </p>
       </div>
       {inIt
-        ? <span className="relative shrink-0 rounded-full border-[1.5px] border-ink px-3 py-1 text-[12px] font-bold">{myRank ? `You’re #${myRank}` : 'You’re in'}</span>
+        ? <span className="relative shrink-0 wide inline-flex items-center gap-1.5 rounded-md border-2 border-ink px-4 py-2 text-[12.5px] font-extrabold uppercase tracking-[0.08em] bg-volt text-ink">{myRank ? `You’re #${myRank}` : 'You’re in'}</span>
         : canJoin
-          ? <button type="button" onClick={() => join.mutate()} disabled={join.isPending} className="relative h-9 shrink-0 rounded-full bg-ink px-5 text-[13px] font-bold text-paper transition-transform active:scale-95 disabled:opacity-60">{join.isPending ? 'Joining…' : 'Join'}</button>
-          : <span className="inline-flex shrink-0 items-center gap-0.5 text-[13px] font-bold">{table.type === 'paid' ? 'Enter' : 'View'}<ChevronRightIcon size={15} /></span>}
+          ? <button type="button" onClick={() => join.mutate()} disabled={join.isPending} className="relative z-[2] shrink-0 wide inline-flex items-center gap-1.5 rounded-md border-2 border-ink px-4 py-2 text-[12.5px] font-extrabold uppercase tracking-[0.08em] bg-track text-ink shadow-hard transition-[transform,box-shadow] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:opacity-60">{join.isPending ? 'Joining…' : 'Join'}</button>
+          : !user && canEnter(table, now) && table.type !== 'paid'
+            ? <Link to="/competitions/$code" params={{ code: table.code }} search={{ join: true }} className="relative z-[2] shrink-0 wide inline-flex items-center gap-1.5 rounded-md border-2 border-ink px-4 py-2 text-[12.5px] font-extrabold uppercase tracking-[0.08em] bg-track text-ink shadow-hard transition-[transform,box-shadow] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">Join</Link>
+            : <span className="inline-flex shrink-0 items-center gap-0.5 text-[13px] font-bold">{table.type === 'paid' ? 'Enter' : 'View'}<ChevronRightIcon size={15} /></span>}
     </div>
   </article>;
 }
@@ -325,7 +327,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
 
       <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
         <span className="font-mono text-[12px] tracking-[0.12em] text-ink-2">{table.code}</span>
-        <span className="flex items-center gap-1 rounded-full bg-track px-4 py-2 text-[12px] font-bold uppercase tracking-[0.08em] text-ink transition-transform group-hover:scale-[1.03]">
+        <span className="wide inline-flex items-center gap-1.5 rounded-md border-2 border-ink px-4 py-2 text-[12.5px] font-extrabold uppercase tracking-[0.08em] bg-track text-ink shadow-hard-sm transition-transform group-hover:-translate-y-0.5">
           {canEnter(table, now) ? 'Join' : 'View'}
           <ArrowRightIcon size={15} className="transition-transform duration-200 group-hover:translate-x-0.5" />
         </span>

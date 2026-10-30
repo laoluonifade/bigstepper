@@ -17,7 +17,7 @@ import { templateById } from '../lib/templates';
 // import { StravaButton } from './Strava'; (back with Join with Strava)
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PinIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon, UsersIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PinIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TableIcon, TrashIcon, UsersIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -176,7 +176,10 @@ function GuestExplore() {
   const unit = useUnit();
   const now = useNow(60_000);
   const search = useSearch({ strict: false }) as { tab?: string };
-  const [tab, setTab] = useState<'competitions' | 'events'>(search.tab === 'events' ? 'events' : 'competitions');
+  const navigate = useNavigate();
+  const tab: 'competitions' | 'events' = search.tab === 'events' ? 'events' : 'competitions';
+  // The tab lives in the link, so Back and shared links open the same one.
+  const setTab = (next: typeof tab) => void navigate({ to: '/competitions', search: next === 'events' ? { tab: 'events' as const } : {}, replace: true });
   const tables = useDiscover('trending', 'all', 'all');
   const competitions = tables.data?.pages.flatMap((page) => page.items) ?? [];
   const explore = useExploreEvents(true);
@@ -184,13 +187,21 @@ function GuestExplore() {
   const loading = tab === 'competitions' ? tables.isLoading : explore.loading;
   return (
     <div className="animate-rise">
-      <h1 className="mb-1 text-[28px] font-extrabold tracking-tight sm:text-[34px]">Explore</h1>
-      <p className="mb-5 text-[15px] text-ink-2">Competitions to join and runs to show up to, all on Jump.</p>
-      <div className="grid grid-cols-2 rounded-xl bg-ink/[0.06] p-1" role="tablist" aria-label="Explore">
-        {([['competitions', 'Competitions'], ['events', 'Events']] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}
-          className={cx('h-10 rounded-lg text-[14px] font-semibold transition-colors', tab === value ? 'bg-card text-ink shadow-[0_0_0_1.5px_#121212]' : 'text-ink-2 hover:text-ink')}>{label}</button>)}
+      <h1 className="text-[30px] font-extrabold tracking-tight sm:text-[36px]">Explore</h1>
+      <p className="mt-1 text-[15px] text-ink-2">Join a competition, or show up to a run near you.</p>
+      {/* Two big tabs with live counts; they stay at the top while you scroll. */}
+      <div className="sticky top-0 z-20 -mx-4 mt-5 bg-paper/95 px-4 py-2 backdrop-blur">
+        <div className="relative grid grid-cols-2 rounded-full border-2 border-ink bg-card p-1" role="tablist" aria-label="Explore">
+          <span aria-hidden="true" className={cx('absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-ink transition-transform duration-300 ease-out', tab === 'events' && 'translate-x-full')} />
+          {([['competitions', 'Competitions', competitions.length, tables.hasNextPage], ['events', 'Events', events.length, false]] as const).map(([value, label, count, more]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}
+            className={cx('relative z-10 flex h-11 items-center justify-center gap-2 rounded-full text-[14.5px] font-bold transition-colors', tab === value ? 'text-paper' : 'text-ink-2 hover:text-ink')}>
+            {value === 'events' ? <CalendarIcon size={16} /> : <TableIcon size={16} />}
+            {label}
+            {count > 0 && <span className={cx('num rounded-full px-1.5 text-[11.5px] font-bold', tab === value ? 'bg-paper/20 text-paper' : 'bg-ink/[0.08] text-ink-2')}>{count}{more ? '+' : ''}</span>}
+          </button>)}
+        </div>
       </div>
-      <div className="mt-5">
+      <div className="mt-3">
         {loading ? <div className="grid gap-3 sm:grid-cols-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-56 rounded-2xl" />)}</div>
           : tab === 'competitions'
             ? competitions.length

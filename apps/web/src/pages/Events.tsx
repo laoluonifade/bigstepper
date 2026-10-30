@@ -5,7 +5,7 @@ import { ClubLogo } from '../components/ClubLogo';
 import { EventCard, EventForm, EventStamp, onAccent } from '../components/ClubEvents';
 import { useConfirm } from '../components/ConfirmDialog';
 import { EventPass, PassModal } from '../components/EventPass';
-import { ArrowRightIcon, CalendarIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, SearchIcon, ShareIcon, TicketIcon, UsersIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, SearchIcon, ShareIcon, TicketIcon, UsersIcon } from '../components/icons';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, PageHeader, SectionTitle, Skeleton, useNow, VerifiedTick } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -16,6 +16,7 @@ import { usePlaceName } from '../lib/place';
 import { useProfile, useUnit } from '../lib/queries';
 import { toast } from '../lib/toast';
 import { CompeteSubNav, ExploreBack } from './Competitions';
+import { ShareEventSheet } from '../components/ShareCompetition';
 
 type Area = { latitude: number; longitude: number; name?: string };
 const RADII = [5, 10, 25, 50];
@@ -117,6 +118,7 @@ export function EventPage() {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [passOpen, setPassOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const profile = useProfile().data;
   const event = useQuery({ queryKey: [...eventKey(id), user?.id ?? 'guest'], queryFn: () => api<ClubEvent>(`/events/${id}`) });
 
@@ -159,13 +161,6 @@ export function EventPage() {
   // The date is already on the poster; the pill only speaks up when it adds something ("Tomorrow", "Happening now").
   const soon = next.live || ['Today', 'Tomorrow', 'Finished'].includes(next.label);
   const away = distanceAway(e.distanceKm);
-  const link = `${window.location.origin}/events/${e.slug ?? e.id}`;
-  const share = async () => {
-    const text = `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}.`;
-    if (navigator.share) { await navigator.share({ title: e.title, text, url: link }).catch(() => undefined); return; }
-    await navigator.clipboard.writeText(`${text} ${link}`).catch(() => undefined);
-    toast({ tone: 'ok', message: 'Link copied.' });
-  };
   const holder = profile?.displayName ?? user?.displayName ?? 'You';
   const joinButton = !e.nextAt
     ? <button type="button" className="btn-secondary flex-1" disabled>This event has finished</button>
@@ -178,9 +173,13 @@ export function EventPage() {
         : <button type="button" className="btn-primary flex-1" disabled={join.isPending} onClick={() => join.mutate()}><TicketIcon size={16} />{join.isPending ? 'Getting your pass…' : 'Get your pass'}</button>;
 
   return <div className="mx-auto max-w-2xl">
+    {sharing && <ShareEventSheet event={e} unit={unit} onClose={() => setSharing(false)} />}
+    <Link to="/competitions" search={{ tab: 'events' }} className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink">
+      <ArrowLeftIcon size={16} /> Events
+    </Link>
     {e.coverUrl
       // With a photo, the photo is the poster: a soft shade at its foot, and the name and time on it.
-      ? <div className="relative -mx-4 -mt-8 overflow-hidden bg-ink/10 sm:mx-0 sm:mt-0 sm:rounded-[28px]">
+      ? <div className="relative -mx-4 overflow-hidden bg-ink/10 sm:mx-0 sm:rounded-[28px]">
         <img src={e.coverUrl} alt="" className="aspect-[4/4.4] w-full animate-settle object-cover sm:aspect-[16/10]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 animate-rise-lg px-5 pb-6 text-white [animation-delay:200ms] sm:px-8 sm:pb-8">
@@ -208,7 +207,7 @@ export function EventPage() {
       {e.pass && !e.isHost && <button type="button" className="block w-full text-left" onClick={() => setPassOpen(true)} aria-label="Open your pass"><EventPass event={e} holder={holder} /></button>}
       <div className="flex gap-2">
         {joinButton}
-        <button type="button" className="btn-secondary" onClick={() => void share()}><ShareIcon size={16} />Share</button>
+        <button type="button" className="btn-secondary" onClick={() => setSharing(true)}><ShareIcon size={16} />Share</button>
       </div>
 
       <Link to="/clubs/$id" params={{ id: e.club.slug }} className="flex items-center gap-3 rounded-2xl border-[1.5px] border-line bg-card p-3 hover:border-ink">
