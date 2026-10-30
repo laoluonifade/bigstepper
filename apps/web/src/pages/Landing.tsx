@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { ExploreEventCard } from '../components/ClubEvents';
 import { canEnter, CompetitionCard } from '../components/competition';
 import { ArrowRightIcon } from '../components/icons';
-import { Redirect, Skeleton } from '../components/ui';
+import { cx, Redirect, Skeleton } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import type { ClubEvent } from '../lib/club-events';
@@ -50,7 +50,7 @@ export function LandingPage() {
             Download iOS beta
           </a>
           <Link to="/competitions" className="btn-secondary min-h-12 px-6">
-            Explore competitions
+            Explore
           </Link>
         </div>
       </section>
@@ -81,16 +81,23 @@ function ExploreNow() {
     queryFn: () => api<{ nearby: ClubEvent[] }>('/events'),
   });
   const now = Date.now();
-  const open = (tables.data ?? []).filter((table) => canEnter(table, now)).slice(0, 2);
-  const upcoming = (events.data?.nearby ?? []).slice(0, 2);
+  // Four on desktop, two on phones: alternate competitions and events, and if one runs short the other fills in.
+  const open = (tables.data ?? []).filter((table) => canEnter(table, now));
+  const upcoming = events.data?.nearby ?? [];
+  const picks: Array<{ kind: 'competition'; table: (typeof open)[number] } | { kind: 'event'; event: ClubEvent }> = [];
+  for (let index = 0; picks.length < 4 && (index < open.length || index < upcoming.length); index += 1) {
+    if (open[index]) picks.push({ kind: 'competition', table: open[index] });
+    if (picks.length < 4 && upcoming[index]) picks.push({ kind: 'event', event: upcoming[index] });
+  }
 
   if (tables.isLoading || events.isLoading) return <Skeleton className="h-72 animate-fade" />;
 
-  if (open.length > 0 || upcoming.length > 0) {
+  if (picks.length > 0) {
     return (
       <div className="grid animate-slide-in gap-3 sm:grid-cols-2 [animation-delay:300ms]">
-        {open.map((table) => <CompetitionCard key={table.id} table={table} unit="km" now={now} />)}
-        {upcoming.map((event) => <ExploreEventCard key={event.id} event={event} unit="km" />)}
+        {picks.map((pick, index) => <div key={pick.kind === 'event' ? `event-${pick.event.id}` : pick.table.id} className={cx('grid [&>*]:h-full', index >= 2 && 'hidden sm:grid')}>
+          {pick.kind === 'event' ? <ExploreEventCard event={pick.event} unit="km" /> : <CompetitionCard table={pick.table} unit="km" now={now} />}
+        </div>)}
       </div>
     );
   }

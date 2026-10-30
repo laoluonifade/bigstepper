@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { ClubLogo } from '../components/ClubLogo';
-import { EventCard, EventCover, EventForm, EventStamp, onAccent } from '../components/ClubEvents';
+import { EventCard, EventForm, EventStamp, onAccent } from '../components/ClubEvents';
 import { useConfirm } from '../components/ConfirmDialog';
 import { EventPass, PassModal } from '../components/EventPass';
-import { ArrowRightIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, SearchIcon, ShareIcon, TicketIcon, UsersIcon } from '../components/icons';
+import { ArrowRightIcon, CalendarIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, SearchIcon, ShareIcon, TicketIcon, UsersIcon } from '../components/icons';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, PageHeader, SectionTitle, Skeleton, useNow, VerifiedTick } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -156,6 +156,8 @@ export function EventPage() {
   const accent = e.club.accentColor || '#FF5A1F';
   const ink = onAccent(accent);
   const next = nextLabel(e, now);
+  // The date is already on the poster; the pill only speaks up when it adds something ("Tomorrow", "Happening now").
+  const soon = next.live || ['Today', 'Tomorrow', 'Finished'].includes(next.label);
   const away = distanceAway(e.distanceKm);
   const link = `${window.location.origin}/events/${e.slug ?? e.id}`;
   const share = async () => {
@@ -176,23 +178,32 @@ export function EventPage() {
         : <button type="button" className="btn-primary flex-1" disabled={join.isPending} onClick={() => join.mutate()}><TicketIcon size={16} />{join.isPending ? 'Getting your pass…' : 'Get your pass'}</button>;
 
   return <div className="mx-auto max-w-2xl">
-    {e.coverUrl && <EventCover event={e} className="mb-4 rounded-2xl border-2 border-ink" />}
-    <div className="relative overflow-hidden rounded-2xl border-2 border-ink px-5 pb-6 pt-7 shadow-hard" style={{ backgroundColor: accent, color: ink }}>
-      <svg className="absolute inset-0 h-full w-full opacity-[0.18]" viewBox="0 0 400 220" preserveAspectRatio="none" aria-hidden="true">
-        {[0, 1, 2, 3, 4, 5].map((lane) => <path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
-      </svg>
-      <div className="relative flex items-end gap-4">
-        <EventStamp event={e} size="lg" />
-        <div className="min-w-0 flex-1">
-          <span className="wide inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ borderColor: ink }}>
-            {next.live && <span className="h-[7px] w-[7px] rounded-full" style={{ backgroundColor: ink }} />}{next.label}
-          </span>
-          <h1 className="wide mt-2 text-[28px] font-black leading-[1.05] sm:text-[34px]">{e.title}</h1>
+    {e.coverUrl
+      // With a photo, the photo is the poster: a soft shade at its foot, and the name and time on it.
+      ? <div className="relative -mx-4 -mt-8 overflow-hidden bg-ink/10 sm:mx-0 sm:mt-0 sm:rounded-[28px]">
+        <img src={e.coverUrl} alt="" className="aspect-[4/4.4] w-full animate-settle object-cover sm:aspect-[16/10]" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 animate-rise-lg px-5 pb-6 text-white [animation-delay:200ms] sm:px-8 sm:pb-8">
+          <div className="flex flex-wrap items-center gap-2">
+            {soon && <WhenPill label={next.label} live={next.live} color="#fff" />}
+            <span className="wide text-[11px] font-extrabold uppercase tracking-[0.08em] text-white/85">{posterTime(e)}</span>
+          </div>
+          <h1 className="wide mt-2.5 text-[32px] font-black leading-[1.04] sm:text-[44px]">{e.title}</h1>
         </div>
       </div>
-    </div>
+      // Without one, the club-coloured poster: the date stamp on top, the name with the full width under it.
+      : <div className="relative animate-rise-lg overflow-hidden rounded-2xl border-2 border-ink px-5 pb-7 pt-6 shadow-hard sm:px-7" style={{ backgroundColor: accent, color: ink }}>
+        <svg className="absolute inset-0 h-full w-full opacity-[0.18]" viewBox="0 0 400 220" preserveAspectRatio="none" aria-hidden="true">
+          {[0, 1, 2, 3, 4, 5].map((lane) => <path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
+        </svg>
+        <div className="relative flex items-center justify-between gap-3">
+          <EventStamp event={e} size="lg" />
+          {soon && <WhenPill label={next.label} live={next.live} color={ink} />}
+        </div>
+        <h1 className="wide relative mt-5 text-[32px] font-black leading-[1.04] sm:text-[40px]">{e.title}</h1>
+      </div>}
 
-    <div className="mt-5 space-y-5">
+    <div className="mt-5 animate-rise space-y-5 [animation-delay:380ms]">
       <ErrorNotice error={join.error ?? leave.error ?? remove.error} />
       {e.pass && !e.isHost && <button type="button" className="block w-full text-left" onClick={() => setPassOpen(true)} aria-label="Open your pass"><EventPass event={e} holder={holder} /></button>}
       <div className="flex gap-2">
@@ -211,19 +222,19 @@ export function EventPage() {
 
       <div className="space-y-3.5 rounded-2xl border-2 border-ink bg-card p-4 shadow-hard">
         <div className="flex items-start gap-3 border-b border-line pb-3.5">
-          <RepeatIcon size={18} className="mt-0.5 shrink-0" />
+          {e.repeat === 'once' ? <CalendarIcon size={18} className="mt-0.5 shrink-0" /> : <RepeatIcon size={18} className="mt-0.5 shrink-0" />}
           <div>
             <p className="text-[15px] font-bold">{scheduleLabel(e)}</p>
             <p className="text-[13px] text-ink-2">{EVENT_NOUN[e.activity]} · about {durationLabel(e.durationMinutes)}{e.distanceMetres ? ` · ${formatDistance(e.distanceMetres, unit)}` : ''}</p>
           </div>
         </div>
-        <div className="flex items-start gap-3 border-b border-line pb-3.5">
+        {e.repeat !== 'once' && <div className="flex items-start gap-3 border-b border-line pb-3.5">
           <ClockIcon size={18} className="mt-0.5 shrink-0" />
           <div>
             <p className="text-[15px] font-bold">{next.live ? 'On right now' : e.nextAt ? `Next: ${next.label}, ${clockLabel(e.startTime)}` : 'This event has finished'}</p>
             <p className="text-[13px] text-ink-2">Times are local to the meeting point.</p>
           </div>
-        </div>
+        </div>}
         <div className="flex items-start gap-3">
           <PinIcon size={18} className="mt-0.5 shrink-0" />
           <div>
@@ -239,13 +250,11 @@ export function EventPage() {
         <p className="whitespace-pre-line text-[15px] leading-relaxed">{e.notes}</p>
       </section>}
 
-      <section>
-        <p className="wide mb-2 text-[12px] font-extrabold uppercase tracking-[0.08em]">{e.attendeeCount ? `${e.attendeeCount} going` : 'Who’s going'}</p>
-        {e.faces.length ? <div className="flex items-center gap-2.5">
-          <div className="flex">{e.faces.map((face, index) => <span key={index} className={cx('rounded-full border-2 border-paper', index > 0 && '-ml-2.5')}><Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={36} className="rounded-full" /></span>)}</div>
-          {e.attendeeCount > e.faces.length && <span className="text-[13px] text-ink-2">+{e.attendeeCount - e.faces.length} more</span>}
-        </div> : <p className="text-[14px] text-ink-2">{e.isHost ? 'Nobody yet. Share it to get people coming.' : 'Nobody yet. Get a pass and be the first.'}</p>}
-      </section>
+      {/* Only the count shows: who's going stays private (the host has the guest list). */}
+      {e.attendeeCount > 0 && <p className="flex items-center gap-2 text-[14px] text-ink-2">
+        <UsersIcon size={16} className="shrink-0" />
+        <span><b className="text-ink">{e.attendeeCount}</b> {e.attendeeCount === 1 ? 'person is' : 'people are'} going</span>
+      </p>}
 
       {e.pass && !e.canManage && <p className="text-center">
         <button type="button" className="text-[13px] font-semibold text-ink-3 hover:text-ink" disabled={leave.isPending}
@@ -269,6 +278,12 @@ export function EventPage() {
  * The host's door list for the next session: everyone holding a pass, checked in by clicking their name
  * or typing the code off their pass. Check-ins count for that session only, so a weekly run starts fresh.
  */
+function WhenPill({ label, live, color }: { label: string; live: boolean; color: string }) {
+  return <span className="wide inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ borderColor: color, color }}>
+    {live && <span className="h-[7px] w-[7px] animate-blink rounded-full" style={{ backgroundColor: color }} />}{label}
+  </span>;
+}
+
 export function EventGuestsPage() {
   const { id } = useParams({ strict: false }) as { id: string };
   const queryClient = useQueryClient();

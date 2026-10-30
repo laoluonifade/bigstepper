@@ -14,7 +14,7 @@ import { CountriesField, EMPTY_PRIZES, PRIZE_KIND, PrizeEditor, prizeProblem, pr
 import { Sheet, SheetRow } from '../components/Sheet';
 import { OpponentPicker, opponentLabel, type Opponent } from '../components/OpponentPicker';
 import { templateById } from '../lib/templates';
-import { StravaButton } from './Strava';
+// import { StravaButton } from './Strava'; (back with Join with Strava)
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
 import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PinIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TrashIcon, UsersIcon } from '../components/icons';
@@ -110,7 +110,7 @@ function useExploreEvents(enabled: boolean) {
   const seen = new Set<string>();
   const all = [...(events.data?.nearby ?? []), ...(events.data?.clubs ?? []), ...(events.data?.going ?? [])].filter((event) => !seen.has(event.id) && seen.add(event.id));
   const upcoming = (rows: ClubEvent[] | undefined) => (rows ?? []).filter((event) => event.nextAt).sort((a, b) => new Date(a.nextAt!).getTime() - new Date(b.nextAt!).getTime());
-  return { list: upcoming(all), nearby: upcoming(events.data?.nearby), going: upcoming(events.data?.going), clubs: upcoming(events.data?.clubs), located: Boolean(spot), denied, ask };
+  return { list: upcoming(all), nearby: upcoming(events.data?.nearby), going: upcoming(events.data?.going), clubs: upcoming(events.data?.clubs), located: Boolean(spot), denied, ask, loading: events.isLoading };
 }
 
 /** How to browse events: the same control as competitions' tabs, with event-shaped choices. */
@@ -165,7 +165,49 @@ const AUDIENCES: Array<{ value: 'all' | 'run' | 'walk' | 'cycle'; label: string;
 ];
 const AUDIENCE_VERB = { all: '', run: 'run', walk: 'walk', cycle: 'ride' } as const;
 
+/** Explore: signed-out visitors get two simple tabs; runners get the full page with lenses and filters. */
 export function CompetitionsPage() {
+  const { user } = useAuth();
+  return user ? <MemberExplore /> : <GuestExplore />;
+}
+
+/** For visitors: open competitions and upcoming club events, nothing to set up. */
+function GuestExplore() {
+  const unit = useUnit();
+  const now = useNow(60_000);
+  const search = useSearch({ strict: false }) as { tab?: string };
+  const [tab, setTab] = useState<'competitions' | 'events'>(search.tab === 'events' ? 'events' : 'competitions');
+  const tables = useDiscover('trending', 'all', 'all');
+  const competitions = tables.data?.pages.flatMap((page) => page.items) ?? [];
+  const explore = useExploreEvents(true);
+  const events = explore.list;
+  const loading = tab === 'competitions' ? tables.isLoading : explore.loading;
+  return (
+    <div className="animate-rise">
+      <h1 className="mb-1 text-[28px] font-extrabold tracking-tight sm:text-[34px]">Explore</h1>
+      <p className="mb-5 text-[15px] text-ink-2">Competitions to join and runs to show up to, all on Jump.</p>
+      <div className="grid grid-cols-2 rounded-xl bg-ink/[0.06] p-1" role="tablist" aria-label="Explore">
+        {([['competitions', 'Competitions'], ['events', 'Events']] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}
+          className={cx('h-10 rounded-lg text-[14px] font-semibold transition-colors', tab === value ? 'bg-card text-ink shadow-[0_0_0_1.5px_#121212]' : 'text-ink-2 hover:text-ink')}>{label}</button>)}
+      </div>
+      <div className="mt-5">
+        {loading ? <div className="grid gap-3 sm:grid-cols-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-56 rounded-2xl" />)}</div>
+          : tab === 'competitions'
+            ? competitions.length
+              ? <>
+                <div className="grid gap-3 sm:grid-cols-2">{competitions.map((table) => <CompetitionPreviewCard key={table.id} table={table} unit={unit} now={now} />)}</div>
+                {tables.hasNextPage && <button type="button" className="btn-secondary mt-5 w-full" onClick={() => void tables.fetchNextPage()} disabled={tables.isFetchingNextPage}>{tables.isFetchingNextPage ? 'Loading…' : 'Load more'}</button>}
+              </>
+              : <EmptyState mark="00" title="No open competitions">New ones open all the time. Join free to start your own.</EmptyState>
+            : events.length
+              ? <div className="grid gap-3 sm:grid-cols-2">{events.map((event) => <ExploreEventCard key={event.id} event={event} unit={unit} />)}</div>
+              : <EmptyState mark="00" title="No events coming up">Clubs post their runs here. Check back soon.</EmptyState>}
+      </div>
+    </div>
+  );
+}
+
+function MemberExplore() {
   const { user } = useAuth();
   const unit = useUnit();
   const now = useNow(60_000);
@@ -1774,7 +1816,8 @@ function EntryPanel({
             <Link to="/register" search={{ redirect: `/competitions/${table.code}?join=1` }} className="btn-primary w-full">
               Join with email
             </Link>
-            <StravaButton intent="login" redirect={`/competitions/${table.code}?join=1`} label="Join with Strava" />
+            {/* Joining with Strava is off while Strava reviews our limits. Put this back when it's approved:
+            <StravaButton intent="login" redirect={`/competitions/${table.code}?join=1`} label="Join with Strava" /> */}
             <p className="text-center text-[13px] text-ink-2">Have an account? <Link to="/login" search={{ redirect: `/competitions/${table.code}?join=1` }} className="font-bold underline">Log in</Link></p>
           </div>
         ) : isPaid && pendingEntryPayment ? (

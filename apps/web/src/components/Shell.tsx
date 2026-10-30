@@ -78,24 +78,23 @@ function PublicShell() {
           <Outlet />
         </div>
       </main>
+      {/* Phones: logo and socials on top, links in two tidy columns, then the small print. Desktop: one row. */}
       <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 text-[13px] text-ink-3 sm:flex-row sm:items-center sm:justify-between">
-          <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-1.5">
-            <Link to="/brands" className="font-medium text-ink-2 hover:text-ink">For brands</Link>
-            {LEGAL_LINKS.map((link) => <Link key={link.to} to={link.to} className="font-medium text-ink-2 hover:text-ink">{link.label}</Link>)}
-            <a href="mailto:start@startajump.com" className="font-medium text-ink-2 hover:text-ink">Contact</a>
-          </nav>
-          <div className="flex items-center gap-4">
-            {/* Jump on social media. */}
-            <nav aria-label="Jump on social media" className="flex gap-2">
-              {SOCIAL_LINKS.map((link) => (
-                <a key={link.href} href={link.href} target="_blank" rel="noreferrer noopener" aria-label={link.label} title={link.label}
-                  className="grid h-9 w-9 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink hover:text-ink">
-                  {link.href.includes('instagram') ? <InstagramIcon size={17} /> : <XLogoIcon size={15} />}
-                </a>
-              ))}
+        <div className="mx-auto max-w-5xl px-4 pb-8 pt-7 sm:py-6">
+          <div className="flex items-center justify-between sm:hidden">
+            <JumpLogo height={18} />
+            <Socials />
+          </div>
+          <div className="mt-6 flex flex-col gap-5 sm:mt-0 sm:flex-row sm:items-center sm:justify-between">
+            <nav aria-label="Legal" className="grid grid-cols-2 gap-x-6 gap-y-3 text-[13.5px] sm:flex sm:flex-wrap sm:gap-x-5 sm:gap-y-1.5 sm:text-[13px]">
+              <Link to="/brands" className="font-medium text-ink-2 hover:text-ink">For brands</Link>
+              <a href="mailto:start@startajump.com" className="font-medium text-ink-2 hover:text-ink">Contact</a>
+              {LEGAL_LINKS.map((link) => <Link key={link.to} to={link.to} className="font-medium text-ink-2 hover:text-ink">{link.label}</Link>)}
             </nav>
-            <p>© {new Date().getFullYear()} Voyatech Limited</p>
+            <div className="flex items-center gap-4">
+              <div className="hidden sm:block"><Socials /></div>
+              <p className="text-[12px] text-ink-3 sm:text-[13px]">© {new Date().getFullYear()} Voyatech Limited</p>
+            </div>
           </div>
         </div>
       </footer>
@@ -369,4 +368,16 @@ function PendingPaymentsBar({ hidden }: { hidden: boolean }) {
       <ArrowRightIcon size={18} />
     </Link>
   );
+}
+
+/** Jump on social media, as small round buttons. */
+function Socials() {
+  return <nav aria-label="Jump on social media" className="flex gap-2">
+    {SOCIAL_LINKS.map((link) => (
+      <a key={link.href} href={link.href} target="_blank" rel="noreferrer noopener" aria-label={link.label} title={link.label}
+        className="grid h-9 w-9 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink hover:text-ink">
+        {link.href.includes('instagram') ? <InstagramIcon size={17} /> : <XLogoIcon size={15} />}
+      </a>
+    ))}
+  </nav>;
 }

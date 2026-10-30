@@ -52,6 +52,7 @@ export default {
         'nav-progress': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(300%)' } },
         rise: { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'none' } },
         'rise-lg': { from: { opacity: '0', transform: 'translateY(18px)' }, to: { opacity: '1', transform: 'none' } },
+        settle: { from: { opacity: '0', transform: 'scale(1.08)' }, to: { opacity: '1', transform: 'scale(1)' } },
         fade: { from: { opacity: '0' }, to: { opacity: '1' } },
         reveal: { from: { transform: 'translateY(105%)' }, to: { transform: 'none' } },
         pop: {
@@ -82,6 +83,7 @@ export default {
         flicker: 'flicker 1.8s ease-in-out infinite',
         rise: 'rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         'rise-lg': 'rise-lg 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+        settle: 'settle 1400ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         fade: 'fade 400ms ease-out both',
         reveal: 'reveal 720ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         pop: 'pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both',

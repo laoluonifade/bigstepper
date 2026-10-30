@@ -38,7 +38,7 @@ export function EventCard({ event, showClub = true }: { event: ClubEvent; showCl
   const now = useNow(60_000);
   const next = nextLabel(event, now);
   const away = distanceAway(event.distanceKm);
-  return <Link to="/events/$id" params={{ id: event.id }} className="flex items-start gap-3.5 rounded-2xl border-2 border-ink bg-card p-3.5 shadow-hard transition-transform active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
+  return <Link to="/events/$id" params={{ id: event.id }} className="flex items-start gap-3.5 rounded-2xl border-2 border-ink bg-card shadow-hard p-3.5 transition-transform duration-150 hover:-translate-y-0.5 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
     <EventStamp event={event} />
     <span className="min-w-0 flex-1">
       <span className={cx('wide flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em]', next.live ? 'text-track' : 'text-ink-2')}>
@@ -97,13 +97,13 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
   const away = distanceAway(event.distanceKm);
   const where = [event.venue, event.distanceMetres ? `${formatDistance(event.distanceMetres, unit)} ${EVENT_NOUN[event.activity].toLowerCase()}` : away].filter(Boolean).join(' · ');
   const going = event.going || rsvp.isSuccess;
-  return <article className="relative overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card transition-shadow hover:shadow-hard-sm">
+  return <article className="relative flex flex-col overflow-hidden rounded-2xl border-2 border-ink bg-card shadow-hard transition-transform duration-150 hover:-translate-y-0.5">
     <Link to="/events/$id" params={{ id: event.id }} className="absolute inset-0 z-[1] rounded-2xl" aria-label={`Open event: ${event.title}`} />
     <div className="relative">
-      <EventCover event={event} />
+      <EventCover event={event} className="aspect-auto h-44" />
       <span className="absolute bottom-3 left-3 max-w-[70%] truncate rounded-full bg-ink/70 px-3 py-1.5 text-[13px] font-semibold text-paper">{event.club.name}</span>
     </div>
-    <div className="space-y-2 p-4">
+    <div className="flex flex-1 flex-col gap-2 p-4">
       <p className="flex items-center gap-2 text-[13px] text-ink-3">
         <span className="wide rounded bg-[#4DA3FF]/15 px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#1F6FD1]">Event</span>
         <span className="truncate">{ACTIVITY_WORD[event.activity]} · In person</span>
@@ -111,13 +111,15 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
       <h3 className="line-clamp-2 text-[20px] font-bold leading-tight">{event.title}</h3>
       <p className={cx('flex items-center gap-2 text-[14px]', next.live ? 'font-semibold text-track' : 'text-ink-2')}><CalendarIcon size={15} className="shrink-0" />{next.live ? `Happening now · ${posterTime(event)}` : posterTime(event)}</p>
       <p className="flex items-center gap-2 text-[14px] text-ink-2"><PinIcon size={15} className="shrink-0 text-ink-3" /><span className="truncate">{where}</span></p>
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <span className="num flex items-center gap-2 text-[14px] text-ink-2"><UsersIcon size={15} className="text-ink-3" />{event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending</span>
+      <div className="mt-auto flex items-center justify-between gap-3 pt-1">
+        {event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0) > 0
+          ? <span className="num flex items-center gap-2 text-[14px] text-ink-2"><UsersIcon size={15} className="text-ink-3" />{event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending</span>
+          : <span />}
         {event.isHost
           ? <span className="inline-flex items-center rounded-full border-[1.5px] border-ink px-4 py-2 text-[14px] font-bold">Hosting</span>
           : going
           ? <span className="inline-flex items-center gap-1.5 rounded-full bg-volt px-4 py-2 text-[14px] font-bold text-ink"><CheckIcon size={14} />Going</span>
-          : <button type="button" className="relative z-[2] rounded-full bg-ink px-5 py-2 text-[14px] font-bold text-paper transition-transform active:scale-95 disabled:opacity-60" disabled={rsvp.isPending} onClick={() => rsvp.mutate()}>{rsvp.isPending ? 'Joining…' : 'RSVP'}</button>}
+          : <button type="button" className="relative z-[2] rounded-full px-5 py-2 text-[14px] font-bold transition-transform active:scale-95 disabled:opacity-60" style={{ backgroundColor: event.club.accentColor || '#FF5A1F', color: onAccent(event.club.accentColor || '#FF5A1F') }} disabled={rsvp.isPending} onClick={() => rsvp.mutate()}>{rsvp.isPending ? 'Joining…' : 'RSVP'}</button>}
       </div>
     </div>
   </article>;

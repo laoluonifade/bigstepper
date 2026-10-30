@@ -3,15 +3,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { EventCover, EventStamp } from '@/components/ClubEvents';
 import { EventPass, PassSheet } from '@/components/EventPass';
 import { ClubLogo } from '@/components/ClubLogo';
 import { onAccent } from '@/components/clubs';
-import { ArrowRightIcon, CameraIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, TicketIcon, UsersIcon } from '@/components/icons';
+import { ArrowRightIcon, CalendarIcon, CameraIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, TicketIcon, UsersIcon } from '@/components/icons';
 import { Avatar, Button, EmptyState, ErrorNotice, Footer, haptic, HardShadow, Loading, Notice, Screen, Txt, useNow, VerifiedTick } from '@/components/ui';
 import { api, isApiError, post, WEB_URL } from '@/lib/api';
-import { clockLabel, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, openDirections, scheduleLabel, type ClubEvent } from '@/lib/club-events';
+import { clockLabel, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, openDirections, posterTime, scheduleLabel, type ClubEvent } from '@/lib/club-events';
 import { confirm } from '@/lib/dialog';
 import { registerForPush } from '@/lib/push';
 import { useProfile, useUnit } from '@/lib/queries';
@@ -78,6 +79,8 @@ export default function EventScreen() {
   const accent = e.club.accentColor || '#FF5A1F';
   const ink = onAccent(accent);
   const next = nextLabel(e, now);
+  // The date is already on the poster; the pill only speaks up when it adds something ("Tomorrow", "Happening now").
+  const soon = next.live || ['Today', 'Tomorrow', 'Finished'].includes(next.label);
   const away = distanceAway(e.distanceKm);
   const share = () => void Share.share({
     message: `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/events/${e.slug ?? e.id}`,
@@ -97,22 +100,39 @@ export default function EventScreen() {
       <Button variant="secondary" title="Share" accessibilityLabel="Share this event" icon={<ShareIcon size={16} />} onPress={share} />
     </Footer>}>
     <Stack.Screen options={{ title: e.club.name }} />
-    {e.coverUrl ? <EventCover event={e} /> : null}
-    <View style={[styles.hero, { backgroundColor: accent }]}>
-      <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 400 220" opacity={0.18}>
-        {[0, 1, 2, 3, 4, 5].map((lane) => <Path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
-      </Svg>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}>
-        <EventStamp event={e} size="lg" />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={[styles.when, { borderColor: ink }]}>
+    {e.coverUrl
+      // With a photo, the photo is the poster: full width, a soft shade at the bottom, and the name on it.
+      ? <Animated.View entering={FadeIn.duration(600)} style={styles.photoHero}>
+        <EventCover event={e} style={[StyleSheet.absoluteFill, { width: '100%', height: '100%', aspectRatio: undefined }]} />
+        <Svg style={styles.shade} preserveAspectRatio="none" viewBox="0 0 1 1" pointerEvents="none">
+          <Defs><LinearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor="#000" stopOpacity={0} /><Stop offset="0.45" stopColor="#000" stopOpacity={0.55} /><Stop offset="1" stopColor="#000" stopOpacity={0.9} /></LinearGradient></Defs>
+          <Rect x="0" y="0" width="1" height="1" fill="url(#shade)" />
+        </Svg>
+        <Animated.View entering={FadeInDown.delay(200).duration(520)} style={styles.photoText}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {soon ? <View style={[styles.when, { borderColor: 'rgba(255,255,255,0.85)', marginTop: 0 }]}>
+              {next.live ? <View style={[styles.dot, { backgroundColor: '#fff' }]} /> : null}
+              <Text style={[wideLabel(11), { color: '#fff' }]}>{next.label}</Text>
+            </View> : null}
+            <Text style={[wideLabel(11), { color: 'rgba(255,255,255,0.85)' }]} numberOfLines={1}>{posterTime(e)}</Text>
+          </View>
+          <Text style={[display(32), { color: '#fff', marginTop: 10 }]} numberOfLines={3}>{e.title}</Text>
+        </Animated.View>
+      </Animated.View>
+      // Without one, the club-coloured poster: the date stamp on top, the name with the full width under it.
+      : <Animated.View entering={FadeInDown.duration(520)} style={[styles.hero, { backgroundColor: accent }]}>
+        <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 400 220" opacity={0.18}>
+          {[0, 1, 2, 3, 4, 5].map((lane) => <Path key={lane} d={`M-20 ${240 - lane * 26}C120 ${210 - lane * 30} 260 ${140 - lane * 22} 420 ${90 - lane * 18}`} fill="none" stroke={ink} strokeWidth="3" />)}
+        </Svg>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <EventStamp event={e} size="lg" />
+          {soon ? <View style={[styles.when, { borderColor: ink, marginTop: 0 }]}>
             {next.live ? <View style={[styles.dot, { backgroundColor: ink }]} /> : null}
             <Text style={[wideLabel(11), { color: ink }]}>{next.label}</Text>
-          </View>
-          <Text style={[display(28), { color: ink, marginTop: 8 }]} numberOfLines={3}>{e.title}</Text>
+          </View> : null}
         </View>
-      </View>
-    </View>
+        <Text style={[display(32), { color: ink, marginTop: 18 }]} numberOfLines={3}>{e.title}</Text>
+      </Animated.View>}
 
     <View style={{ padding: 16, gap: 16 }}>
       <ErrorNotice error={join.error ?? leave.error ?? remove.error ?? publish.error} />
@@ -133,19 +153,19 @@ export default function EventScreen() {
       <HardShadow offset={3} radius={radius['2xl']}>
         <View style={styles.panel}>
           <View style={styles.fact}>
-            <RepeatIcon size={18} />
+            {e.repeat === 'once' ? <CalendarIcon size={18} /> : <RepeatIcon size={18} />}
             <View style={{ flex: 1 }}>
               <Txt size={15} weight="bold">{scheduleLabel(e)}</Txt>
               <Txt size={13} color="ink2">{`${EVENT_NOUN[e.activity]} · about ${durationLabel(e.durationMinutes)}${e.distanceMetres ? ` · ${formatDistance(e.distanceMetres, unit)}` : ''}`}</Txt>
             </View>
           </View>
-          <View style={styles.fact}>
+          {e.repeat !== 'once' ? <View style={styles.fact}>
             <ClockIcon size={18} />
             <View style={{ flex: 1 }}>
               <Txt size={15} weight="bold">{next.live ? 'On right now' : e.nextAt ? `Next: ${next.label}, ${clockLabel(e.startTime)}` : 'This event has finished'}</Txt>
               <Txt size={13} color="ink2">Times are local to the meeting point.</Txt>
             </View>
-          </View>
+          </View> : null}
           <View style={[styles.fact, { borderBottomWidth: 0 }]}>
             <PinIcon size={18} />
             <View style={{ flex: 1 }}>
@@ -163,17 +183,11 @@ export default function EventScreen() {
         <Txt size={15} leading={1.55}>{e.notes}</Txt>
       </View> : null}
 
-      <View>
-        <Text style={[wideLabel(12), { marginBottom: 8 }]}>{e.attendeeCount ? `${e.attendeeCount} going` : 'Who’s going'}</Text>
-        {e.faces.length ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ flexDirection: 'row' }}>
-            {e.faces.map((face, index) => <View key={index} style={{ marginLeft: index ? -10 : 0, borderRadius: 20, borderWidth: 2, borderColor: colors.paper }}>
-              <Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={36} round />
-            </View>)}
-          </View>
-          {e.attendeeCount > e.faces.length ? <Txt size={13} color="ink2">{`+${e.attendeeCount - e.faces.length} more`}</Txt> : null}
-        </View> : <Txt size={14} color="ink2">{e.isHost ? 'Nobody yet. Share it to get people coming.' : 'Nobody yet. Get a pass and be the first.'}</Txt>}
-      </View>
+      {/* Only the count shows: who's going stays private (the host has the guest list). */}
+      {e.attendeeCount > 0 ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <UsersIcon size={16} color={colors.ink2} />
+        <Txt size={14} color="ink2"><Txt size={14} weight="bold">{e.attendeeCount}</Txt>{e.attendeeCount === 1 ? ' person is going' : ' people are going'}</Txt>
+      </View> : null}
 
       {e.pass && !e.canManage ? <Pressable hitSlop={8} style={{ alignSelf: 'center' }} disabled={leave.isPending}
         onPress={() => void confirm({ title: 'Give up your pass?', message: 'You’ll stop getting reminders for this event. You can get a new pass any time.', cancelLabel: 'Keep it', confirmLabel: 'Give it up' }).then((ok) => { if (ok) leave.mutate(); })}>
@@ -192,7 +206,10 @@ export default function EventScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { paddingHorizontal: 16, paddingTop: 28, paddingBottom: 24, overflow: 'hidden' },
+  hero: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 26, overflow: 'hidden' },
+  photoHero: { width: '100%', aspectRatio: 4 / 4.4, backgroundColor: colors.inkWash, overflow: 'hidden', justifyContent: 'flex-end' },
+  shade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '75%' },
+  photoText: { paddingHorizontal: 20, paddingBottom: 22 },
   when: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderWidth: 1.5, borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius['2xl'], borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card },

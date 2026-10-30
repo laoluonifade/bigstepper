@@ -124,8 +124,10 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={styles.line}><PinIcon size={13} color={colors.ink3} /><Txt size={13} color="ink2" numberOfLines={1} style={{ flexShrink: 1 }}>{where}</Txt></View>
         <View style={[styles.line, { marginTop: 2 }]}>
-          <UsersIcon size={12} color={colors.ink3} />
-          <Txt size={12} color="ink3" num>{`${event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending · ${event.club.name}`}</Txt>
+          {event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0) > 0 ? <>
+            <UsersIcon size={12} color={colors.ink3} />
+            <Txt size={12} color="ink3" num>{`${event.attendeeCount + (rsvp.isSuccess && !event.going ? 1 : 0)} attending · ${event.club.name}`}</Txt>
+          </> : <Txt size={12} color="ink3">{event.club.name}</Txt>}
         </View>
       </View>
       {event.isHost ? <View style={styles.inPill}><Txt size={12} weight="bold">Hosting</Txt></View>

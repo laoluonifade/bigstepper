@@ -173,7 +173,7 @@ export function CompetitionPreviewCard({ table, unit, now, tagged = false }: { t
     },
   });
 
-  return <article className="group relative overflow-hidden rounded-2xl border-[1.5px] border-ink bg-card px-4 pb-3.5 pt-4 transition-shadow hover:shadow-hard-sm">
+  return <article className="group relative overflow-hidden rounded-2xl border-2 border-ink bg-card shadow-hard px-4 pb-3.5 pt-4 transition-transform duration-150 hover:-translate-y-0.5">
     {/* The host's banner across the top; without one, a drawn one the same size, so every card in a grid lines up. */}
     {table.bannerUrl ? <img src={table.bannerUrl} alt="" loading="lazy" className="-mx-4 -mt-4 mb-3.5 block aspect-[3/1] w-[calc(100%+2rem)] max-w-none bg-ink/5 object-cover" />
       : <DrawnBanner table={table} headline={hero} />}
@@ -266,10 +266,10 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
     <Link
       to="/competitions/$code"
       params={{ code: table.code }}
-      className="group flex flex-col overflow-hidden rounded-md border-[1.5px] border-ink bg-card transition-[transform,box-shadow] duration-150 ease-out hover:-translate-x-1 hover:-translate-y-1 hover:shadow-hard active:translate-x-0 active:translate-y-0 active:shadow-none"
+      className="group flex flex-col overflow-hidden rounded-2xl border-2 border-ink bg-card shadow-hard transition-transform duration-150 ease-out hover:-translate-y-0.5 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
     >
       {/* Colour band with the headline figure; the host's banner photo behind it when there is one, darkened so the type reads. */}
-      <div className={cx('relative overflow-hidden px-4 pb-4 pt-3', table.bannerUrl ? 'bg-ink text-paper' : theme.band)}>
+      <div className={cx('relative flex h-44 flex-col justify-between overflow-hidden px-4 pb-4 pt-3', table.bannerUrl ? 'bg-ink text-paper' : theme.band)}>
         {table.bannerUrl && <>
           <img src={table.bannerUrl} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]" />
           <span className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/40 to-ink/15" aria-hidden="true" />
@@ -293,6 +293,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
       </div>
 
       <div className="flex flex-1 flex-col px-4 pb-4 pt-3.5">
+        <span className="wide mb-2 self-start rounded bg-ok-wash px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-ok">Competition</span>
         <h3 className="wide line-clamp-2 text-[17px] font-extrabold uppercase leading-[1.05]">{table.title}</h3>
         <p className="mt-1 truncate text-[13px] text-ink-2">
           {table.creator?.displayName ? `Hosted by ${table.creator.displayName}` : 'Community competition'}
@@ -324,9 +325,9 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
 
       <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
         <span className="font-mono text-[12px] tracking-[0.12em] text-ink-2">{table.code}</span>
-        <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.1em] text-ink-2 transition-colors group-hover:text-ink">
+        <span className="flex items-center gap-1 rounded-full bg-track px-4 py-2 text-[12px] font-bold uppercase tracking-[0.08em] text-ink transition-transform group-hover:scale-[1.03]">
           {canEnter(table, now) ? 'Join' : 'View'}
-          <ArrowRightIcon size={16} className="transition-transform duration-200 group-hover:translate-x-1" />
+          <ArrowRightIcon size={15} className="transition-transform duration-200 group-hover:translate-x-0.5" />
         </span>
       </div>
     </Link>
