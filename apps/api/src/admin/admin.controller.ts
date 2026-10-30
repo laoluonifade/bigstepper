@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminService } from './admin.service';
@@ -154,6 +154,19 @@ export class AdminController {
   @UseGuards(AdminOnlyGuard)
   clubs(@Query('q') q?: string, @Query('verified') verified?: string, @Query('offset') offset?: string) {
     return this.adminService.clubs({ q, verified: verified === 'true', offset: Number(offset) || 0 });
+  }
+
+  @Get('events')
+  @UseGuards(AdminOnlyGuard)
+  events(@Query('q') q?: string, @Query('offset') offset?: string) {
+    return this.adminService.events({ q, offset: Number(offset) || 0 });
+  }
+
+  @Get('event-registrations')
+  @UseGuards(AdminOnlyGuard)
+  eventRegistrations(@Query('event') event?: string, @Query('q') q?: string, @Query('offset') offset?: string) {
+    if (event && !/^[0-9a-f-]{36}$/i.test(event)) throw new BadRequestException('Unknown event');
+    return this.adminService.eventRegistrations({ eventId: event || undefined, q, offset: Number(offset) || 0 });
   }
 
   @Get('people')

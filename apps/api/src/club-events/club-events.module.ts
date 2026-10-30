@@ -6,10 +6,13 @@ import { ClubEventsController } from './club-events.controller';
 import { ClubEventsProcessor } from './club-events.processor';
 import { ClubEventsRepository } from './club-events.repository';
 import { ClubEventsService } from './club-events.service';
+import { EventPassesService } from './event-passes.service';
+import { AuthModule } from '../auth/auth.module';
+import { GeoModule } from '../geo/geo.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: CLUB_EVENTS_QUEUE })],
+  imports: [BullModule.registerQueue({ name: CLUB_EVENTS_QUEUE }), AuthModule, GeoModule],
   controllers: [ClubEventsController],
-  providers: [ClubEventsService, ClubEventsRepository, ClubEventsProcessor, CloudinaryService],
+  providers: [ClubEventsService, EventPassesService, ClubEventsRepository, ClubEventsProcessor, CloudinaryService],
 })
 export class ClubEventsModule {}

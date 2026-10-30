@@ -1,14 +1,15 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { AVATAR_MAX_BYTES } from '../profiles/profiles.service';
 import type { EventActivity, EventRepeat } from './club-events.repository';
 import { ClubEventsService } from './club-events.service';
+import { EventPassesService } from './event-passes.service';
 
 class EventDto {
   @IsString() @Length(1, 80)
@@ -88,9 +89,77 @@ class CheckInDto {
   userId?: string;
 }
 
+class RegisterPassDto {
+  @IsOptional() @IsString() @Length(1, 60)
+  firstName?: string;
+
+  @IsOptional() @IsEmail() @MaxLength(254)
+  email?: string;
+
+  @IsOptional() @Matches(/^\+[1-9]\d{7,14}$/, { message: 'Enter your phone number with its country code' })
+  phone?: string;
+
+  @IsOptional() @Matches(/^[A-Z]{2}$/)
+  countryCode?: string;
+
+  @IsOptional() @IsBoolean()
+  marketing?: boolean;
+
+  @IsOptional() @IsUUID()
+  ticketTypeId?: string;
+}
+
+class ResendPassDto {
+  @IsEmail() @MaxLength(254)
+  email: string;
+}
+
+type Reply = { setHeader(name: string, value: string): void; send(body: unknown): void };
+
+const eventRef = (id: string) => {
+  if (!/^[a-z0-9-]{1,100}$/i.test(id)) throw new NotFoundException('Event not found');
+  return id.toLowerCase();
+};
+
 @Controller()
 export class ClubEventsController {
-  constructor(private readonly events: ClubEventsService) {}
+  constructor(private readonly events: ClubEventsService, private readonly passes: EventPassesService) {}
+
+  @Post('events/:id/register')
+  @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  register(@CurrentUser() viewer: AuthenticatedUser | null, @Param('id') id: string, @Body() body: RegisterPassDto) {
+    return this.passes.register(viewer?.id ?? null, eventRef(id), body);
+  }
+
+  @Post('events/:id/pass/resend')
+  @Throttle({ default: { limit: 4, ttl: 60_000 } })
+  resend(@Param('id') id: string, @Body() body: ResendPassDto) {
+    return this.passes.resend(eventRef(id), body.email);
+  }
+
+  @Get('passes/:token')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  pass(@Param('token') token: string) {
+    if (!/^[a-f0-9]{64}$/.test(token)) throw new NotFoundException('This pass link doesn’t work any more');
+    return this.passes.byToken(token);
+  }
+
+  @Get('passes/:token/qr.gif')
+  @Header('Cache-Control', 'public, max-age=86400')
+  async qr(@Param('token') token: string, @Res() reply: Reply) {
+    if (!/^[a-f0-9]{64}$/.test(token)) throw new NotFoundException('Pass not found');
+    reply.setHeader('Content-Type', 'image/gif');
+    reply.send(await this.passes.qr(token));
+  }
+
+  @Get('email/unsubscribe')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async unsubscribe(@Query('u') userId: string, @Query('t') token: string) {
+    const done = typeof userId === 'string' && typeof token === 'string' && /^[0-9a-f-]{36}$/i.test(userId) && await this.passes.unsubscribe(userId, token);
+    const message = done ? 'You’re unsubscribed. We’ll still email passes and updates for events you register for.' : 'This unsubscribe link doesn’t work. Change email settings from your Jump profile instead.';
+    return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jump</title><body style="margin:0;background:#F2EFE8;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#121212;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px"><div style="max-width:420px;background:#FBFAF6;border:1.5px solid #121212;border-radius:12px;padding:28px"><p style="margin:0;font-size:22px;font-weight:900;text-transform:uppercase">${done ? 'Unsubscribed' : 'Link expired'}</p><p style="margin:12px 0 0;font-size:15px;line-height:1.55;color:#55524B">${message}</p></div></body>`;
+  }
 
   @Get('clubs/:id/events')
   @UseGuards(OptionalJwtAuthGuard)
@@ -127,8 +196,7 @@ export class ClubEventsController {
   @Get('events/:id')
   @UseGuards(OptionalJwtAuthGuard)
   get(@Param('id') id: string, @CurrentUser() viewer: AuthenticatedUser | null, @Query() query: NearQuery) {
-    if (!/^[a-z0-9-]{1,100}$/i.test(id)) throw new NotFoundException('Event not found');
-    return this.events.get(id.toLowerCase(), viewer?.id ?? null, query.lat, query.lon);
+    return this.events.get(eventRef(id), viewer?.id ?? null, query.lat, query.lon);
   }
 
   @Patch('events/:id')

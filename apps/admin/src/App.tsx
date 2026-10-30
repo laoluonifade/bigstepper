@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { ReactNode, useEffect, useState } from 'react';
 import { api } from './api';
 import { useAdmin, useAdminAuth } from './auth';
-import { ActivityIcon, CheckIcon, CloseIcon, FlagIcon, HomeIcon, LogoutIcon, MoreIcon, ShieldIcon, TableIcon, UsersIcon, WalletIcon } from './icons';
+import { ActivityIcon, CheckIcon, CloseIcon, FlagIcon, HomeIcon, LogoutIcon, MoreIcon, ShieldIcon, TableIcon, TicketIcon, UsersIcon, WalletIcon } from './icons';
 import { AdminLogin } from './Login';
 import { ClubsPage } from './pages/Clubs';
+import { AdminEventsPage } from './pages/Events';
 import { AdminChallengesPage } from './pages/Competitions';
 import { AdminCreatorsPage } from './pages/Creators';
 import { OverviewPage } from './pages/Overview';
@@ -32,6 +33,7 @@ const SECTIONS: Section[] = [
   { path: '/competitions', label: 'Paid competitions', short: 'Competitions', icon: (size) => <TableIcon size={size} />, page: () => <AdminChallengesPage />, adminOnly: true },
   { path: '/creators', label: 'Creators', icon: (size) => <ShieldIcon size={size} />, page: () => <AdminCreatorsPage />, adminOnly: true },
   { path: '/clubs', label: 'Clubs', icon: (size) => <CheckIcon size={size} />, page: () => <ClubsPage />, adminOnly: true },
+  { path: '/events', label: 'Events', icon: (size) => <TicketIcon size={size} />, page: () => <AdminEventsPage />, adminOnly: true },
 ];
 
 export function AdminApp() {

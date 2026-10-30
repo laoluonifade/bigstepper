@@ -216,3 +216,145 @@ export function competitionDigestEmail(to: { address: string; name?: string }, c
     text: `Popular competitions on Jump:\n${competitions.map((competition) => `• ${competition.title} — ${competition.entrants} joined`).join('\n')}\n\nExplore: ${url}\n\nEmail settings: ${settingsUrl}`,
   };
 }
+
+export interface EventEmail {
+  title: string;
+  club: string;
+  when: string;
+  venue: string;
+  address: string | null;
+  accent: string;
+  coverUrl: string | null;
+  directionsUrl: string | null;
+}
+
+function eventShell(preheader: string, banner: string, body: string, footer: string) {
+  return `<!doctype html>
+<html><body style="margin:0;background:#F2EFE8;font-family:${FONT};color:#121212">
+  <div style="display:none;max-height:0;overflow:hidden">${escapeHtml(preheader)}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FBFAF6;border:1.5px solid #121212;border-radius:12px;overflow:hidden">
+        <tr><td style="padding:22px 28px">${WORDMARK}</td></tr>
+        ${banner}
+        ${body}
+      </table>
+      <div style="max-width:520px;padding:16px 8px 0;font-size:12px;line-height:1.5;color:#8A857B;text-align:center">${footer}</div>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+function onAccent(hex: string) {
+  const value = hex.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((at) => parseInt(value.slice(at, at + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.55 ? '#121212' : '#FFFFFF';
+}
+
+function eventBanner(event: EventEmail, eyebrow: string) {
+  const ink = onAccent(event.accent);
+  const cover = event.coverUrl ? `<tr><td style="border-top:1.5px solid #121212"><img src="${escapeHtml(event.coverUrl)}" width="520" alt="" style="display:block;width:100%;max-width:520px;height:auto;border:0"></td></tr>` : '';
+  return `${cover}
+        <tr><td style="background:${escapeHtml(event.accent)};color:${ink};border-top:1.5px solid #121212;border-bottom:1.5px solid #121212;padding:22px 28px">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;opacity:0.8">${escapeHtml(eyebrow)}</div>
+          <div style="margin-top:8px;font-size:26px;font-weight:900;line-height:1.08;text-transform:uppercase">${escapeHtml(event.title)}</div>
+          <div style="margin-top:12px;font-size:15px;font-weight:700">${escapeHtml(event.when)}</div>
+          <div style="margin-top:4px;font-size:14px">${escapeHtml([event.venue, event.address].filter(Boolean).join(', '))}</div>
+        </td></tr>`;
+}
+
+function button(label: string, url: string, tone: 'primary' | 'quiet' = 'primary') {
+  const style = tone === 'primary'
+    ? 'background:#FF4D12;color:#121212;border:1.5px solid #121212'
+    : 'background:#FBFAF6;color:#121212;border:1.5px solid #121212';
+  return `<a href="${escapeHtml(url)}" style="display:inline-block;${style};border-radius:6px;padding:13px 20px;font-size:13px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none">${escapeHtml(label)}</a>`;
+}
+
+export function eventTicketEmail(to: { address: string; name?: string }, event: EventEmail, pass: { code: string; ticketType: string; url: string; qrUrl: string }): MailMessage {
+  const first = to.name?.trim().split(/\s+/)[0];
+  const body = `
+        <tr><td style="padding:24px 28px 0;font-size:16px;line-height:1.55">${first ? `${escapeHtml(first)}, you’re in.` : 'You’re in.'} Show this pass when you arrive and the host will check you in.</td></tr>
+        <tr><td style="padding:20px 28px 0">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1.5px dashed #8A857B;border-radius:10px">
+            <tr>
+              <td style="padding:16px 18px" valign="middle">
+                <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#8A857B">${escapeHtml(pass.ticketType)}</div>
+                <div style="margin-top:4px;font-size:16px;font-weight:800">${escapeHtml(to.name ?? 'Pass holder')}</div>
+                <div style="margin-top:12px;font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#8A857B">Pass code</div>
+                <div style="margin-top:2px;font-family:Menlo,Consolas,monospace;font-size:22px;letter-spacing:0.08em">${escapeHtml(pass.code)}</div>
+              </td>
+              <td width="140" style="padding:12px" align="right" valign="middle"><img src="${escapeHtml(pass.qrUrl)}" width="128" height="128" alt="QR code for ${escapeHtml(pass.code)}" style="display:block;border:0;background:#FFFFFF"></td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 28px 0">${button('View my pass', pass.url)}${event.directionsUrl ? `&nbsp; ${button('Directions', event.directionsUrl, 'quiet')}` : ''}</td></tr>
+        <tr><td style="padding:20px 28px 26px;font-size:13px;line-height:1.55;color:#55524B">We’ll email you a reminder the day before. Keep this email: the button opens your pass any time, no app or password needed.</td></tr>`;
+  return {
+    to,
+    subject: `Your pass: ${event.title}`,
+    html: eventShell(`Your pass for ${event.title}, ${event.when}`, eventBanner(event, `${event.club} · Your pass`), body,
+      `You’re getting this because you registered for ${escapeHtml(event.title)} on Jump.`),
+    text: `You're in for ${event.title} with ${event.club}.\n\nWhen: ${event.when}\nWhere: ${[event.venue, event.address].filter(Boolean).join(', ')}\nTicket: ${pass.ticketType}\nPass code: ${pass.code}\n\nView your pass: ${pass.url}${event.directionsUrl ? `\nDirections: ${event.directionsUrl}` : ''}`,
+    replyTo: 'start@startajump.com',
+  };
+}
+
+export function eventReminderEmail(to: { address: string; name?: string }, event: EventEmail, heading: string, passUrl: string): MailMessage {
+  const body = `
+        <tr><td style="padding:24px 28px 0;font-size:16px;line-height:1.55">${escapeHtml(heading)}. ${escapeHtml(event.club)} meets at ${escapeHtml(event.venue)}. Bring your pass so the host can check you in.</td></tr>
+        <tr><td style="padding:22px 28px 26px">${button('Show my pass', passUrl)}${event.directionsUrl ? `&nbsp; ${button('Directions', event.directionsUrl, 'quiet')}` : ''}</td></tr>`;
+  return {
+    to,
+    subject: `${heading}: ${event.title}`,
+    html: eventShell(`${heading}: ${event.title}`, eventBanner(event, `${event.club} · Reminder`), body, `You’re getting this because you have a pass for ${escapeHtml(event.title)}.`),
+    text: `${heading}: ${event.title} with ${event.club}.\nWhere: ${[event.venue, event.address].filter(Boolean).join(', ')}\n\nYour pass: ${passUrl}`,
+  };
+}
+
+export function eventChangedEmail(to: { address: string; name?: string }, event: EventEmail, changes: string[], passUrl: string): MailMessage {
+  const body = `
+        <tr><td style="padding:24px 28px 0;font-size:16px;line-height:1.55">${escapeHtml(event.club)} changed ${escapeHtml(changes.join(' and '))} for this event. The new details are above. Your pass still works.</td></tr>
+        <tr><td style="padding:22px 28px 26px">${button('Show my pass', passUrl)}</td></tr>`;
+  return {
+    to,
+    subject: `Update: ${event.title} has a new ${changes[0]}`,
+    html: eventShell(`${event.title}: new ${changes.join(' and ')}`, eventBanner(event, `${event.club} · Updated`), body, `You’re getting this because you have a pass for ${escapeHtml(event.title)}.`),
+    text: `${event.club} changed ${changes.join(' and ')} for ${event.title}.\n\nWhen: ${event.when}\nWhere: ${[event.venue, event.address].filter(Boolean).join(', ')}\n\nYour pass: ${passUrl}`,
+  };
+}
+
+export function eventCancelledEmail(to: { address: string; name?: string }, event: EventEmail, exploreUrl: string): MailMessage {
+  const body = `
+        <tr><td style="padding:24px 28px 0;font-size:16px;line-height:1.55">${escapeHtml(event.club)} has called off ${escapeHtml(event.title)}, so your pass won’t be needed. Sorry about that. There are other runs and meet-ups on Jump.</td></tr>
+        <tr><td style="padding:22px 28px 26px">${button('Find another event', exploreUrl)}</td></tr>`;
+  return {
+    to,
+    subject: `Called off: ${event.title}`,
+    html: eventShell(`${event.title} has been called off`, eventBanner(event, `${event.club} · Called off`), body, `You’re getting this because you had a pass for ${escapeHtml(event.title)}.`),
+    text: `${event.club} has called off ${event.title}. Your pass won't be needed.\n\nFind another event: ${exploreUrl}`,
+  };
+}
+
+export function eventGuestWelcomeEmail(to: { address: string; name?: string }, event: { title: string; club: string }, links: { setPassword: string; app: string; unsubscribe: string | null }): MailMessage {
+  const first = to.name?.trim().split(/\s+/)[0];
+  const body = `
+        <tr><td style="background:#E4FF3A;border-top:1.5px solid #121212;border-bottom:1.5px solid #121212;padding:24px 28px">
+          <div style="font-size:26px;font-weight:900;line-height:1.08;text-transform:uppercase">Your passes live on Jump${first ? `, ${escapeHtml(first)}` : ''}.</div>
+          <div style="margin-top:10px;font-size:15px;line-height:1.5">We kept your pass for ${escapeHtml(event.title)} safe in a free Jump account, so every event you register for is in one place.</div>
+        </td></tr>
+        <tr><td style="padding:24px 28px 0;font-size:15px;line-height:1.6">
+          <p style="margin:0 0 14px">There’s nothing you need to do. Your pass is in the other email, and that link always works.</p>
+          <p style="margin:0">When you want more: set a password to sign in, then record your runs with ${escapeHtml(event.club)} and join free competitions near you.</p>
+        </td></tr>
+        <tr><td style="padding:22px 28px 26px">${button('Set a password', links.setPassword)}&nbsp; ${button('Get the app', links.app, 'quiet')}</td></tr>`;
+  const footer = links.unsubscribe
+    ? `You chose to hear about other runs and events. <a href="${escapeHtml(links.unsubscribe)}" style="color:#8A857B">Unsubscribe</a> any time.`
+    : 'We’ll only email you about passes you register for.';
+  return {
+    to,
+    subject: 'Your Jump account is ready',
+    html: eventShell('Your passes, all in one place', '', body, footer),
+    text: `We kept your pass for ${event.title} in a free Jump account, so all your events are in one place. Nothing to do.\n\nSet a password: ${links.setPassword}\nGet the app: ${links.app}${links.unsubscribe ? `\n\nUnsubscribe from event news: ${links.unsubscribe}` : ''}`,
+    replyTo: 'start@startajump.com',
+  };
+}

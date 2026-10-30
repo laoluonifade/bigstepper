@@ -6,7 +6,7 @@ import { ClubLogo } from '../components/ClubLogo';
 import { Dropdown } from '../components/Dropdown';
 import { Modal } from '../components/Modal';
 import { PriceTags } from '../components/PriceTags';
-import type { ClubEvent, Place } from '../lib/club-events';
+import { byPopularity, countryLabel, type ClubEvent, type Place } from '../lib/club-events';
 import { PlaceField } from '../components/PlaceField';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ShareCompetitionSheet } from '../components/ShareCompetition';
@@ -17,7 +17,7 @@ import { templateById } from '../lib/templates';
 // import { StravaButton } from './Strava'; (back with Join with Strava)
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
-import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PinIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TableIcon, TrashIcon, UsersIcon } from '../components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PinIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TableIcon, TrashIcon, UsersIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
   Avatar,
@@ -110,7 +110,7 @@ function useExploreEvents(enabled: boolean) {
   const seen = new Set<string>();
   const all = [...(events.data?.nearby ?? []), ...(events.data?.clubs ?? []), ...(events.data?.going ?? [])].filter((event) => !seen.has(event.id) && seen.add(event.id));
   const upcoming = (rows: ClubEvent[] | undefined) => (rows ?? []).filter((event) => event.nextAt).sort((a, b) => new Date(a.nextAt!).getTime() - new Date(b.nextAt!).getTime());
-  return { list: upcoming(all), nearby: upcoming(events.data?.nearby), going: upcoming(events.data?.going), clubs: upcoming(events.data?.clubs), located: Boolean(spot), denied, ask, loading: events.isLoading };
+  return { list: upcoming(all), popular: upcoming(all).sort(byPopularity), nearby: upcoming(events.data?.nearby), going: upcoming(events.data?.going), clubs: upcoming(events.data?.clubs), located: Boolean(spot), denied, ask, loading: events.isLoading };
 }
 
 /** How to browse events: the same control as competitions' tabs, with event-shaped choices. */
@@ -183,7 +183,13 @@ function GuestExplore() {
   const tables = useDiscover('trending', 'all', 'all');
   const competitions = tables.data?.pages.flatMap((page) => page.items) ?? [];
   const explore = useExploreEvents(true);
-  const events = explore.list;
+  const [country, setCountry] = useState('all');
+  const [kind, setKind] = useState<'all' | ClubEvent['activity']>('all');
+  const allEvents = explore.popular;
+  const countries = [...new Set(allEvents.map((event) => event.countryCode).filter((code): code is string => Boolean(code)))]
+    .map((code) => ({ code, count: allEvents.filter((event) => event.countryCode === code).length })).sort((a, b) => b.count - a.count);
+  const kinds = EVENT_ACTIVITY.filter((option) => option.value === 'all' || allEvents.some((event) => event.activity === option.value));
+  const events = allEvents.filter((event) => (country === 'all' || event.countryCode === country) && (kind === 'all' || event.activity === kind));
   const loading = tab === 'competitions' ? tables.isLoading : explore.loading;
   return (
     <div className="animate-rise">
@@ -210,8 +216,26 @@ function GuestExplore() {
                 {tables.hasNextPage && <button type="button" className="btn-secondary mt-5 w-full" onClick={() => void tables.fetchNextPage()} disabled={tables.isFetchingNextPage}>{tables.isFetchingNextPage ? 'Loading…' : 'Load more'}</button>}
               </>
               : <EmptyState mark="00" title="No open competitions">New ones open all the time. Join free to start your own.</EmptyState>
-            : events.length
-              ? <div className="grid gap-3 sm:grid-cols-2">{events.map((event) => <ExploreEventCard key={event.id} event={event} unit={unit} />)}</div>
+            : allEvents.length
+              ? <>
+                {/* Where and what: a country picker and the kinds of session on offer, most popular first. */}
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <label className="relative">
+                    <span className="sr-only">Country</span>
+                    <select className="h-9 appearance-none rounded-full border-[1.5px] border-ink bg-card pl-3.5 pr-8 text-[13px] font-bold" value={country} onChange={(changeEvent) => setCountry(changeEvent.target.value)}>
+                      <option value="all">🌍 All countries</option>
+                      {countries.map(({ code, count }) => <option key={code} value={code}>{countryLabel(code)} · {count}</option>)}
+                    </select>
+                    <ChevronDownIcon size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                  </label>
+                  {kinds.length > 2 && kinds.map((option) => <button key={option.value} type="button" aria-pressed={kind === option.value} onClick={() => setKind(option.value)}
+                    className={cx('h-9 rounded-full border-[1.5px] px-3.5 text-[13px] font-bold transition-colors', kind === option.value ? 'border-ink bg-ink text-paper' : 'border-line bg-card hover:border-ink')}>{option.label}</button>)}
+                  <span className="ml-auto text-[12.5px] text-ink-3">Most popular first</span>
+                </div>
+                {events.length
+                  ? <div className="grid gap-3 sm:grid-cols-2">{events.map((event) => <ExploreEventCard key={event.id} event={event} unit={unit} />)}</div>
+                  : <EmptyState mark="00" title="Nothing here yet">No events match those filters. <button type="button" className="font-semibold underline underline-offset-2" onClick={() => { setCountry('all'); setKind('all'); }}>Show all</button></EmptyState>}
+              </>
               : <EmptyState mark="00" title="No events coming up">Clubs post their runs here. Check back soon.</EmptyState>}
       </div>
     </div>

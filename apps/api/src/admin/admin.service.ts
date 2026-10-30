@@ -635,4 +635,59 @@ export class AdminService {
     });
   }
 
+  async events(input: { q?: string; offset?: number }) {
+    const term = input.q?.trim().toLowerCase().replace(/[%_\\]/g, '').slice(0, 80) ?? '';
+    const offset = Math.max(0, Math.min(Number(input.offset) || 0, 100_000));
+    const rows = await this.dataSource.query(
+      `SELECT e."id", e."slug", e."title", e."repeat", e."venue", e."coverUrl", e."createdAt", e."deletedAt", e."publishedAt" IS NULL AS "draft",
+              club_event_next(e."repeat", e."repeatEvery", e."weekdays", e."monthMode", e."monthWeek", e."startsOn", e."endsOn", e."startTime", e."timeZone", e."durationMinutes", now()) AS "nextAt",
+              c."name" AS "clubName", c."slug" AS "clubSlug", c."accentColor",
+              (SELECT count(*) FROM "club_event_attendees" a WHERE a."eventId" = e."id" AND a."cancelledAt" IS NULL)::integer AS "registered",
+              (SELECT count(*) FROM "club_event_attendees" a WHERE a."eventId" = e."id" AND a."cancelledAt" IS NOT NULL)::integer AS "cancelled",
+              (SELECT count(*) FROM "club_event_attendees" a WHERE a."eventId" = e."id" AND a."source" = 'guest')::integer AS "fromWeb",
+              (SELECT count(*) FROM "club_event_attendees" a WHERE a."eventId" = e."id" AND a."newAccount")::integer AS "newAccounts",
+              (SELECT count(*) FROM "club_event_checkins" k WHERE k."eventId" = e."id")::integer AS "checkIns",
+              (SELECT COALESCE(json_agg(json_build_object('name', t."name", 'priceMinor', t."priceMinor", 'currency', t."currency", 'capacity', t."capacity",
+                        'sold', (SELECT count(*) FROM "club_event_attendees" a WHERE a."ticketTypeId" = t."id" AND a."cancelledAt" IS NULL)) ORDER BY t."sortOrder"), '[]'::json)
+                 FROM "event_ticket_types" t WHERE t."eventId" = e."id") AS "tickets",
+              count(*) OVER ()::integer AS "total"
+       FROM "club_events" e JOIN "clubs" c ON c."id" = e."clubId"
+       WHERE $1 = '' OR lower(e."title") LIKE '%' || $1 || '%' OR lower(c."name") LIKE '%' || $1 || '%' OR e."slug" LIKE '%' || $1 || '%'
+       ORDER BY e."deletedAt" IS NOT NULL, e."createdAt" DESC
+       LIMIT 50 OFFSET $2`,
+      [term, offset],
+    ) as Array<Record<string, unknown> & { total: number }>;
+    return { total: rows[0]?.total ?? 0, events: rows.map(({ total: _total, ...row }) => row) };
+  }
+
+  async eventRegistrations(input: { eventId?: string; q?: string; offset?: number }) {
+    const term = input.q?.trim().toLowerCase().replace(/[%_\\]/g, '').slice(0, 120) ?? '';
+    if (!input.eventId && term.length < 3) throw new BadRequestException('Pick an event, or search an email, phone or name');
+    const offset = Math.max(0, Math.min(Number(input.offset) || 0, 100_000));
+    const rows = await this.dataSource.query(
+      `SELECT a."id", a."eventId", e."title" AS "eventTitle", e."slug" AS "eventSlug", c."name" AS "clubName",
+              a."userId", COALESCE(a."name", p."displayName", u."displayName") AS "name", p."username",
+              COALESCE(a."email", u."email") AS "email", u."email" AS "accountEmail", COALESCE(a."phone", p."whatsappNumber") AS "phone",
+              a."passCode", COALESCE(t."name", 'Free pass') AS "ticketType", a."paymentStatus", a."amountMinor", a."currency",
+              a."source", a."newAccount", a."marketingConsent", u."emailVerified",
+              a."createdAt" AS "registeredAt", a."cancelledAt", a."ticketSentAt",
+              (SELECT count(*) FROM "club_event_checkins" k WHERE k."attendeeId" = a."id")::integer AS "checkIns",
+              (SELECT max(k."sessionAt") FROM "club_event_checkins" k WHERE k."attendeeId" = a."id") AS "lastCheckIn",
+              count(*) OVER ()::integer AS "total"
+       FROM "club_event_attendees" a
+       JOIN "club_events" e ON e."id" = a."eventId"
+       JOIN "clubs" c ON c."id" = e."clubId"
+       JOIN "users" u ON u."id" = a."userId"
+       LEFT JOIN "profiles" p ON p."userId" = a."userId"
+       LEFT JOIN "event_ticket_types" t ON t."id" = a."ticketTypeId"
+       WHERE ($1::uuid IS NULL OR a."eventId" = $1::uuid)
+         AND ($2 = '' OR lower(COALESCE(a."email", '')) LIKE '%' || $2 || '%' OR lower(u."email") LIKE '%' || $2 || '%'
+              OR COALESCE(a."phone", p."whatsappNumber", '') LIKE '%' || $2 || '%' OR lower(COALESCE(a."name", p."displayName", '')) LIKE '%' || $2 || '%'
+              OR a."userId"::text = $2 OR lower(a."passCode") = $2)
+       ORDER BY a."createdAt" DESC
+       LIMIT 100 OFFSET $3`,
+      [input.eventId ?? null, term, offset],
+    ) as Array<Record<string, unknown> & { total: number }>;
+    return { total: rows[0]?.total ?? 0, registrations: rows.map(({ total: _total, ...row }) => row) };
+  }
 }

@@ -1,8 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Db } from '../database/sql';
+import { GeoService } from '../geo/geo.service';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
 import { ClubEventsRepository, EventActivity, EventClub, EventInput, EventRow } from './club-events.repository';
+import { eventChanges, EventPassesService } from './event-passes.service';
 
 const MAX_PER_CLUB = 20;
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -67,7 +69,7 @@ function validZone(timeZone: string) {
 
 @Injectable()
 export class ClubEventsService {
-  constructor(private readonly repo: ClubEventsRepository, private readonly cloudinary: CloudinaryService) {}
+  constructor(private readonly repo: ClubEventsRepository, private readonly cloudinary: CloudinaryService, private readonly geo: GeoService, @Inject(forwardRef(() => EventPassesService)) private readonly passes: EventPassesService) {}
 
   private async club(ref: string, viewerId: string | null) {
     const club = await this.repo.club(ref, viewerId);
@@ -141,12 +143,19 @@ export class ClubEventsService {
       if (!draft) await this.announce(db, club, actorId, event, created);
       return created;
     });
+    void this.fillCountries();
     return this.event(eventId, actorId);
   }
 
   private announce(db: Db, club: EventClub, actorId: string, event: Pick<EventInput, 'activity' | 'title' | 'venue'> & Parameters<typeof whenLabel>[0], eventId: string) {
     return this.repo.announce(db, club.id, actorId, `New ${NOUN[event.activity]} from ${club.name}`,
       `${event.title}: ${whenLabel(event)} at ${event.venue}. Tap to get your pass and a reminder before it starts.`, `/events/${eventId}`);
+  }
+
+  async fillCountries(limit = 5) {
+    for (const event of await this.repo.withoutCountry(limit)) {
+      await this.repo.setCountry(event.id, await this.geo.countryCode(event.latitude, event.longitude));
+    }
   }
 
   drafts(actorId: string) {
@@ -171,13 +180,17 @@ export class ClubEventsService {
     const next = this.clean(input);
     if (!event.draft) this.assertPlace(next);
     await this.repo.update(event.id, next);
+    if (!event.draft) void this.passes.changed(event.id, eventChanges(event, next));
+    void this.fillCountries();
     return this.event(eventId, actorId);
   }
 
   async remove(actorId: string, eventId: string) {
     const event = await this.event(eventId, actorId);
     if (!event.canManage) throw new ForbiddenException('Only the club owner or a manager can do that');
+    const contacts = event.draft ? [] : await this.repo.contacts(event.id);
     await this.repo.remove(event.id);
+    if (event.nextAt) void this.passes.cancelled(event, contacts);
     return { removed: true };
   }
 
@@ -198,20 +211,12 @@ export class ClubEventsService {
     return this.event(eventId, actorId);
   }
 
-  private async attend(eventId: string, clubId: string, userId: string) {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      try { return await this.repo.join(eventId, clubId, userId, passCode()); }
-      catch (error) { if ((error as { code?: string }).code !== '23505') throw error; }
-    }
-    throw new ConflictException('Couldn’t issue a pass. Try again.');
-  }
-
   async join(userId: string, eventId: string) {
     const event = await this.event(eventId, userId);
     if (event.draft) throw new ConflictException('This event isn’t published yet');
     if (event.isHost) throw new ConflictException('You’re hosting this one, so you don’t need a pass');
     if (!event.nextAt) throw new ConflictException('This event has finished');
-    await this.attend(event.id, event.clubId, userId);
+    await this.passes.register(userId, event.id, {}, 'app');
     return this.event(eventId, userId);
   }
 
@@ -225,7 +230,7 @@ export class ClubEventsService {
     const event = await this.event(eventId, actorId);
     if (!event.canManage) throw new ForbiddenException('Only the club owner or a manager can check people in');
     if (on && (!event.nextAt || new Date(event.nextAt).getTime() - now > CHECK_IN_OPENS_MS)) throw new ConflictException('Check-in opens 12 hours before it starts');
-    const userId = await this.repo.checkIn(event.id, { code: match.code?.trim(), userId: match.userId }, on);
+    const userId = await this.repo.checkIn(event.id, { code: match.code?.trim(), userId: match.userId }, on, actorId);
     if (!userId) throw new NotFoundException(match.code ? 'No pass with that code for this event' : 'They aren’t on the guest list');
     return { userId, checkedIn: on };
   }

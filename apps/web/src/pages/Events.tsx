@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ClubLogo } from '../components/ClubLogo';
 import { EventCard, EventForm, EventStamp, onAccent } from '../components/ClubEvents';
 import { useConfirm } from '../components/ConfirmDialog';
 import { EventPass, PassModal } from '../components/EventPass';
+import { FindPassSheet, GetPassSheet } from '../components/GetPass';
 import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ClockIcon, PinIcon, RepeatIcon, SearchIcon, ShareIcon, TicketIcon, UsersIcon } from '../components/icons';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, PageHeader, SectionTitle, Skeleton, useNow, VerifiedTick } from '../components/ui';
 import { api, isApiError, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { clockLabel, directionsUrl, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, posterTime, scheduleLabel, type ClubEvent, type Guest, type Place } from '../lib/club-events';
+import { calendarFile, clockLabel, directionsUrl, distanceAway, durationLabel, EVENT_NOUN, eventKey, nextLabel, placeLabel, posterTime, savedPass, scheduleLabel, type ClubEvent, type Guest, type Place, type Registration } from '../lib/club-events';
 import { formatDistance } from '../lib/format';
 import { getCurrentPosition } from '../lib/geo';
 import { usePlaceName } from '../lib/place';
@@ -119,6 +120,9 @@ export function EventPage() {
   const [editing, setEditing] = useState(false);
   const [passOpen, setPassOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [booking, setBooking] = useState(false);
+  const [finding, setFinding] = useState(false);
+  const [guestPass, setGuestPass] = useState(() => savedPass(id));
   const profile = useProfile().data;
   const event = useQuery({ queryKey: [...eventKey(id), user?.id ?? 'guest'], queryFn: () => api<ClubEvent>(`/events/${id}`) });
 
@@ -129,10 +133,11 @@ export function EventPage() {
       queryClient.invalidateQueries({ queryKey: ['club', next.club.slug, 'events'] }),
     ]);
   };
-  const join = useMutation({
-    mutationFn: () => post<ClubEvent>(`/events/${event.data!.id}/join`),
-    async onSuccess(next) { await settle(next); setPassOpen(true); },
-  });
+  async function registered(result: Registration) {
+    if (result.status !== 'issued') return;
+    if (user) await settle({ ...result.event, pass: result.pass });
+    else setGuestPass({ code: result.pass.code, holder: result.holder ?? 'You' });
+  }
   const leave = useMutation({
     mutationFn: () => api<ClubEvent>(`/events/${event.data!.id}/join`, { method: 'DELETE' }),
     async onSuccess(next) { await settle(next); toast({ tone: 'ok', message: 'Pass given up. You won’t get reminders for this one.' }); },
@@ -161,16 +166,16 @@ export function EventPage() {
   // The date is already on the poster; the pill only speaks up when it adds something ("Tomorrow", "Happening now").
   const soon = next.live || ['Today', 'Tomorrow', 'Finished'].includes(next.label);
   const away = distanceAway(e.distanceKm);
-  const holder = profile?.displayName ?? user?.displayName ?? 'You';
+  const pass = e.pass ?? (!user && guestPass ? { code: guestPass.code, checkedIn: false } : null);
+  const shown = pass ? { ...e, pass } : e;
+  const holder = profile?.displayName ?? user?.displayName ?? guestPass?.holder ?? 'You';
   const joinButton = !e.nextAt
     ? <button type="button" className="btn-secondary flex-1" disabled>This event has finished</button>
-    : !user
-      ? <Link to="/login" search={{ redirect: `/events/${e.id}` }} className="btn-primary flex-1"><TicketIcon size={16} />Get your pass</Link>
-      : e.isHost
-        ? <Link to="/events/$id/guests" params={{ id: e.id }} className="btn flex-1 border-2 border-ink bg-volt text-ink shadow-hard"><UsersIcon size={16} />Check in guests</Link>
-        : e.pass
+    : e.isHost
+      ? <Link to="/events/$id/guests" params={{ id: e.id }} className="btn flex-1 border-2 border-ink bg-volt text-ink shadow-hard"><UsersIcon size={16} />Check in guests</Link>
+      : pass
         ? <button type="button" className="btn-dark flex-1" onClick={() => setPassOpen(true)}><TicketIcon size={16} />Show my pass</button>
-        : <button type="button" className="btn-primary flex-1" disabled={join.isPending} onClick={() => join.mutate()}><TicketIcon size={16} />{join.isPending ? 'Getting your pass…' : 'Get your pass'}</button>;
+        : <button type="button" className="btn-primary flex-1" onClick={() => setBooking(true)}><TicketIcon size={16} />Get your pass</button>;
 
   return <div className="mx-auto max-w-2xl">
     {sharing && <ShareEventSheet event={e} unit={unit} onClose={() => setSharing(false)} />}
@@ -203,11 +208,14 @@ export function EventPage() {
       </div>}
 
     <div className="mt-5 animate-rise space-y-5 [animation-delay:380ms]">
-      <ErrorNotice error={join.error ?? leave.error ?? remove.error} />
-      {e.pass && !e.isHost && <button type="button" className="block w-full text-left" onClick={() => setPassOpen(true)} aria-label="Open your pass"><EventPass event={e} holder={holder} /></button>}
-      <div className="flex gap-2">
-        {joinButton}
-        <button type="button" className="btn-secondary" onClick={() => setSharing(true)}><ShareIcon size={16} />Share</button>
+      <ErrorNotice error={leave.error ?? remove.error} />
+      {pass && !e.isHost && <button type="button" className="block w-full text-left" onClick={() => setPassOpen(true)} aria-label="Open your pass"><EventPass event={shown} holder={holder} /></button>}
+      <div>
+        <div className="flex gap-2">
+          {joinButton}
+          <button type="button" className="btn-secondary" onClick={() => setSharing(true)}><ShareIcon size={16} />Share</button>
+        </div>
+        {!user && !pass && e.nextAt && <p className="mt-2.5 text-center text-[13px] text-ink-2">Free · No app or sign-up needed. <button type="button" className="font-semibold text-ink underline underline-offset-2" onClick={() => setFinding(true)}>Already registered?</button></p>}
       </div>
 
       <Link to="/clubs/$id" params={{ id: e.club.slug }} className="flex items-center gap-3 rounded-2xl border-[1.5px] border-line bg-card p-3 hover:border-ink">
@@ -237,7 +245,7 @@ export function EventPage() {
         <div className="flex items-start gap-3">
           <PinIcon size={18} className="mt-0.5 shrink-0" />
           <div>
-            <p className="text-[15px] font-bold">{e.venue}</p>
+            <p className="text-[15px] font-bold">{placeLabel(e)}</p>
             {(e.address || away) && <p className="text-[13px] text-ink-2">{[e.address, away].filter(Boolean).join(' · ')}</p>}
           </div>
         </div>
@@ -268,7 +276,9 @@ export function EventPage() {
       </div>}
     </div>
     {editing && <EventForm event={e} unit={unit} onClose={() => setEditing(false)} />}
-    {passOpen && e.pass && <PassModal event={e} holder={holder} onClose={() => setPassOpen(false)} />}
+    {passOpen && pass && <PassModal event={shown} holder={holder} onClose={() => setPassOpen(false)} />}
+    {booking && <GetPassSheet event={e} onClose={() => setBooking(false)} onIssued={(result) => void registered(result)} />}
+    {finding && <FindPassSheet event={e} onClose={() => setFinding(false)} />}
     {confirm.dialog}
   </div>;
 }
@@ -359,6 +369,50 @@ export function EventGuestsPage() {
             ? <button type="button" className="inline-flex items-center gap-1.5 rounded-full border-[1.5px] border-volt bg-volt px-3.5 py-2 text-[13px] font-bold text-ink" onClick={() => undo.mutate(guest.userId)} aria-label={`Undo check-in for ${guest.displayName ?? 'runner'}`}><CheckIcon size={14} />In</button>
             : <button type="button" className="rounded-full border-[1.5px] border-ink px-3.5 py-2 text-[13px] font-bold hover:bg-ink/[0.04]" onClick={() => checkIn.mutate({ userId: guest.userId })} aria-label={`Check in ${guest.displayName ?? 'runner'}`}>Check in</button>}
         </li>)}</ul>}
+    </div>
+  </div>;
+}
+
+/**
+ * The pass from the email link: no sign-in, the link is the key. Shows the pass to scan, when and where,
+ * and a nudge to keep all passes in the app.
+ */
+export function PassPage() {
+  const { token } = useParams({ strict: false }) as { token: string };
+  const now = useNow(60_000);
+  const pass = useQuery({ queryKey: ['pass', token], queryFn: () => api<{ holder: string | null; ticketType: string; cancelled: boolean; event: ClubEvent }>(`/passes/${token}`), retry: false });
+  const calendar = useMemo(() => (pass.data ? calendarFile(pass.data.event) : null), [pass.data]);
+
+  if (pass.isLoading) return <Loading />;
+  if (!pass.data) {
+    return isApiError(pass.error, 404)
+      ? <EmptyState title="This pass link doesn’t work">The event may have been called off. Ask the host, or find another event on Jump.</EmptyState>
+      : <ErrorNotice error={pass.error} onRetry={() => void pass.refetch()} />;
+  }
+  const { event: e, holder, cancelled } = pass.data;
+  const next = nextLabel(e, now);
+  return <div className="mx-auto max-w-md">
+    <p className="wide text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-2">{pass.data.ticketType}{next.live ? ' · Happening now' : e.nextAt ? ` · ${next.label}` : ' · Finished'}</p>
+    <h1 className="wide mb-4 mt-1 text-[26px] font-black leading-tight">Your pass</h1>
+    {cancelled && <p className="mb-4 rounded-xl border-[1.5px] border-bad bg-bad-wash p-3 text-[14px] font-semibold text-bad">You gave this pass up. Get a new one from the event page if you can make it after all.</p>}
+    <EventPass event={e} holder={holder ?? 'Pass holder'} />
+    <p className="mt-3 text-center text-[13px] text-ink-2">Show this at the start. The host scans the QR or types the code.</p>
+    <div className="mt-5 grid grid-cols-2 gap-2">
+      {calendar && <a href={calendar} download={`${e.slug ?? 'event'}.ics`} className="btn-secondary"><CalendarIcon size={16} />Calendar</a>}
+      <a href={directionsUrl(e)} target="_blank" rel="noreferrer" className={cx('btn-dark', !calendar && 'col-span-2')}><PinIcon size={16} />Directions</a>
+    </div>
+    <Link to="/events/$id" params={{ id: e.slug ?? e.id }} className="mt-5 flex items-center gap-3 rounded-2xl border-[1.5px] border-line bg-card p-3 hover:border-ink">
+      <ClubLogo club={e.club} size={40} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-bold">{e.title}</span>
+        <span className="block truncate text-[12.5px] text-ink-2">{e.club.name} · {[e.venue, e.address].filter(Boolean).join(', ')}</span>
+      </span>
+      <ArrowRightIcon size={16} />
+    </Link>
+    <div className="mt-6 rounded-2xl border-2 border-ink bg-volt p-4 shadow-hard">
+      <p className="wide text-[14px] font-black uppercase">Every pass in one place</p>
+      <p className="mt-1 text-[13.5px] leading-snug">Your passes are saved to a free Jump account under this email. Get the app to record your runs with {e.club.name} and join free competitions.</p>
+      <Link to="/" className="btn-dark btn-sm mt-3">Get the Jump app</Link>
     </div>
   </div>;
 }

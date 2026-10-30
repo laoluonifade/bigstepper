@@ -87,7 +87,7 @@ export function CountryPicker({ value, onChange, name, id, required, placeholder
   </div>;
 }
 
-function splitNumber(value: string, fallback: string) {
+export function splitNumber(value: string, fallback: string) {
   if (!value.startsWith('+')) return { country: fallback, local: value };
   const digits = value.slice(1);
   const matches = COUNTRIES.map(([code]) => code).filter((code) => dialCode(code) && digits.startsWith(dialCode(code)));

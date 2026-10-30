@@ -19,8 +19,17 @@ import { Button, haptic, Txt } from './ui';
 
 type CardFormat = 'story' | 'post';
 
-/** How tall the cover photo sticker is in each shape, so it fills the space above the pass. */
+/** The tallest the cover photo can be in each shape, so it fits the space above the pass. */
 const PHOTO = { story: 150, post: 70 } as const;
+
+/** The photo's size at its own shape inside the room it has; null when it would be too small to make out. */
+function fitPhoto(ratio: number, width: number, height: number) {
+  if (!(ratio > 0)) return null;
+  let w = width;
+  let h = w / ratio;
+  if (h > height) { h = height; w = h * ratio; }
+  return w < width * 0.3 || h < 40 ? null : { w, h };
+}
 
 /**
  * An event as a picture to post, in the competition card's sticker style: what and when, where, the cover
@@ -34,6 +43,9 @@ function EventCard({ event, format, unit }: { event: ClubEvent; format: CardForm
   const chips = [event.distanceMetres ? formatDistance(event.distanceMetres, unit) : EVENT_NOUN[event.activity], event.attendeeCount ? `${event.attendeeCount} going` : 'Free pass'];
   const where = [event.venue, event.address].filter(Boolean).join(', ') || 'Meeting point to be confirmed';
   const slug = event.slug ?? event.id.slice(0, 8);
+  // The photo keeps its own shape, never cropped: its proportions come in once it has loaded.
+  const [ratio, setRatio] = useState(16 / 9);
+  const photo = event.coverUrl ? fitPhoto(ratio, W - PAD * 2, PHOTO[format]) : null;
   return <View style={{ width: W, height: H, backgroundColor: colors.paper, overflow: 'hidden', paddingHorizontal: PAD, paddingTop: PAD }}>
     <JumpLogo height={14} color={colors.ink} />
     <Text style={[styles.title, { marginTop: story ? 24 : 12, fontSize: story ? 30 : 21, lineHeight: story ? 32 : 22, height: story ? 64 : 44 }]} numberOfLines={2} adjustsFontSizeToFit>{event.title}</Text>
@@ -61,9 +73,10 @@ function EventCard({ event, format, unit }: { event: ClubEvent; format: CardForm
       </View>
     </Sticker>
 
-    {event.coverUrl
-      ? <Sticker p={colors} bg={colors.ink} tilt={1.5} padded={false} style={{ marginTop: story ? 18 : 10 }}>
-        <Image source={{ uri: event.coverUrl }} style={{ width: '100%', height: PHOTO[format] }} contentFit="cover" />
+    {event.coverUrl && photo
+      ? <Sticker p={colors} bg={colors.ink} tilt={1.5} padded={false} style={{ marginTop: story ? 18 : 10, alignSelf: 'center', width: photo.w }}>
+        <Image source={{ uri: event.coverUrl }} style={{ width: photo.w, height: photo.h }} contentFit="contain"
+          onLoad={(loaded) => { if (loaded.source.width && loaded.source.height) setRatio(loaded.source.width / loaded.source.height); }} />
       </Sticker>
       : <Sticker p={colors} bg={colors.card} tilt={1} style={{ marginTop: story ? 22 : 10 }}>
         <Text style={styles.empty}>Free to come along.</Text>

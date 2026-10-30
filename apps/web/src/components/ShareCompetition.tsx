@@ -4,6 +4,7 @@ import { competitionCardData } from '@jump/shared/competition';
 import { type CardFormat, drawCompetitionCard } from '../lib/competitionCard';
 import { hasScored } from '../lib/scoring';
 import type { CompetitionTable, StandingRow, Unit } from '../lib/types';
+import { useAuth } from '../lib/auth';
 import type { ClubEvent } from '../lib/club-events';
 import { drawEventCard, eventCardData, loadCover } from '../lib/eventCard';
 import { CopyIcon, ShareIcon } from './icons';
@@ -121,16 +122,17 @@ export function ShareCompetitionSheet({ table, rows, viewerId, unit, onClose }: 
 
 /** Share an event: its card, with when and where, the cover, and the link to get a pass. */
 export function ShareEventSheet({ event, unit, onClose }: { event: ClubEvent; unit: Unit; onClose: () => void }) {
+  const signedIn = Boolean(useAuth().user);
   const url = `${window.location.origin}/events/${event.slug ?? event.id}`;
   const caption = `${event.pass ? 'I’m going to' : 'Come to'} “${event.title}” with ${event.club.name}${event.venue ? ` at ${event.venue}` : ''}. Get a free pass on Jump`;
   const render = useCallback(async (format: CardFormat) => {
-    const data = eventCardData(event, unit, `${window.location.host}`);
+    const data = eventCardData(event, unit, `${window.location.host}`, signedIn);
     const attempt = async (photo: boolean): Promise<Blob | null> => {
       const cover = photo ? await loadCover(event.coverUrl) : null;
       try { return await toPng((canvas) => drawEventCard(canvas, data, format, cover)); }
       catch { return photo ? attempt(false) : null; }
     };
     return attempt(true);
-  }, [event, unit]);
+  }, [event, unit, signedIn]);
   return <ShareCardSheet heading="Share this event" alt={event.title} caption={caption} url={url} name={event.slug ?? event.id.slice(0, 8)} render={render} onClose={onClose} />;
 }

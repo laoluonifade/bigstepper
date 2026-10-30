@@ -56,6 +56,21 @@ export class GeoService {
     return places;
   }
 
+  async countryCode(latitude: number, longitude: number): Promise<string | null> {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=3&lat=${latitude.toFixed(4)}&lon=${longitude.toFixed(4)}`;
+    return this.throttled(async () => {
+      try {
+        const response = await fetch(url, { headers: { 'User-Agent': 'Jump/1.0 (+https://startajump.com)' }, signal: AbortSignal.timeout(6_000) });
+        if (!response.ok) return null;
+        const code = ((await response.json()) as { address?: Address }).address?.country_code;
+        return code && /^[a-z]{2}$/i.test(code) ? code.toUpperCase() : null;
+      } catch (error) {
+        this.logger.warn(`Country lookup failed: ${String(error)}`);
+        return null;
+      }
+    });
+  }
+
   private throttled<T>(task: () => Promise<T>): Promise<T> {
     const run = this.queue.then(async () => {
       const wait = this.lastCall + 1_000 - Date.now();

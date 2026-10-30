@@ -20,7 +20,8 @@ export type EventCardData = {
   link: string;
 };
 
-export function eventCardData(event: ClubEvent, unit: Unit, host: string): EventCardData {
+/** Who's going only shows to signed-in people; anyone else's card says the pass is free. */
+export function eventCardData(event: ClubEvent, unit: Unit, host: string, signedIn = false): EventCardData {
   const at = event.nextAt ? new Date(event.nextAt) : null;
   const zone = (options: Intl.DateTimeFormatOptions) => {
     if (!at) return '';
@@ -34,7 +35,7 @@ export function eventCardData(event: ClubEvent, unit: Unit, host: string): Event
     day: at ? zone({ weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '') : 'Finished',
     time: at ? `${zone({ hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s/g, ' ')}${repeat}` : '',
     venue: [event.venue, event.address].filter(Boolean).join(', ') || 'Meeting point to be confirmed',
-    chips: [event.distanceMetres ? formatDistance(event.distanceMetres, unit) : EVENT_NOUN[event.activity], event.attendeeCount ? `${event.attendeeCount} going` : 'Free pass']
+    chips: [event.distanceMetres ? formatDistance(event.distanceMetres, unit) : EVENT_NOUN[event.activity], signedIn && event.attendeeCount ? `${event.attendeeCount} going` : 'Free pass']
       .filter((chip): chip is string => Boolean(chip)),
     slug: event.slug ?? event.id.slice(0, 8),
     link: `${host}/events/${event.slug ?? event.id}`,
@@ -157,19 +158,18 @@ export function drawEventCard(canvas: HTMLCanvasElement, data: EventCardData, fo
     ctx.textBaseline = 'alphabetic';
   });
 
-  // The cover photo as a big sticker, or a sticker that says what a pass gets you.
+  // The cover photo whole, never cropped: as wide as fits, shorter or narrower to keep its shape and
+  // centred in the space. Too small to see, and the card says what a pass gets you instead.
   const codeH = story ? 76 : 60;
   const codeTop = H - (story ? 44 : 38) - codeH;
   const photoTop = venueTop + venueH + (story ? 18 : 10);
-  const photoH = codeTop - photoTop - (story ? 22 : 14);
-  if (cover && photoH >= 60) {
-    sticker(ctx, PAD, photoTop, inner, photoH, INK, 1.5, () => {
-      const scale = Math.max(inner / cover.width, photoH / cover.height);
-      const w = cover.width * scale;
-      const h = cover.height * scale;
-      ctx.drawImage(cover, (inner - w) / 2, (photoH - h) / 2, w, h);
+  const photoRoom = codeTop - photoTop - (story ? 22 : 14);
+  const photo = cover ? fitPhoto(cover.width / cover.height, inner, photoRoom) : null;
+  if (cover && photo) {
+    sticker(ctx, PAD + (inner - photo.w) / 2, photoTop + (photoRoom - photo.h) / 2, photo.w, photo.h, INK, 1.5, () => {
+      ctx.drawImage(cover, 0, 0, photo.w, photo.h);
     });
-  } else if (photoH >= 50) {
+  } else if (photoRoom >= 50) {
     sticker(ctx, PAD, photoTop + (story ? 18 : 6), inner, 62, CARD, -1, () => {
       ctx.fillStyle = INK;
       ctx.textAlign = 'center';
@@ -216,4 +216,13 @@ export function drawEventCard(canvas: HTMLCanvasElement, data: EventCardData, fo
   setFont(ctx, '700 7.5px', 'expanded');
   ctx.fillStyle = INK2;
   ctx.fillText(data.link.toUpperCase(), PAD, H - (PAD - 6) - 2, inner);
+}
+
+/** The photo's size at its own shape inside the room it has; null when it would be too small to make out. */
+export function fitPhoto(ratio: number, width: number, height: number) {
+  if (!(ratio > 0) || height < 40) return null;
+  let w = width;
+  let h = w / ratio;
+  if (h > height) { h = height; w = h * ratio; }
+  return w < width * 0.3 || h < 40 ? null : { w, h };
 }

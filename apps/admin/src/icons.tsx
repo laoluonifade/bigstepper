@@ -121,3 +121,10 @@ export const MoreIcon = (p: IconProps) => (
     <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth={3} strokeLinecap="round" />
   </Icon>
 );
+
+export const TicketIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-3a2 2 0 0 0 0-4z" />
+    <path d="M14 5v2M14 11v2M14 17v2" />
+  </Icon>
+);

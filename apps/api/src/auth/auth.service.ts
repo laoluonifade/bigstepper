@@ -45,6 +45,67 @@ export class AuthService {
     emailVerified?: boolean;
     afterCreate?: (manager: EntityManager, user: User) => Promise<void>;
   }) {
+    const user = await this.insertAccount(input);
+    const response = await this.generateToken(user);
+    if (user.emailVerified) {
+      if (!user.email.endsWith('.invalid')) this.mail.sendInBackground(welcomeEmail({ address: user.email, name: user.displayName }));
+      return response;
+    }
+    const verificationToken = await this.createActionToken(user.id, 'VERIFY_EMAIL', 24 * 60 * 60 * 1000);
+    this.mail.sendInBackground(
+      verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', verificationToken)),
+    );
+    if (!user.email.endsWith('.invalid')) this.mail.sendInBackground(welcomeEmail({ address: user.email, name: user.displayName }));
+    return {
+      ...response,
+      ...(this.config.get('NODE_ENV') === 'development' ? { developmentVerificationToken: verificationToken } : {}),
+    };
+  }
+
+  async accountForGuest(input: { email: string; name: string; phone: string | null; countryCode: string; marketing: boolean }) {
+    const email = input.email.trim().toLowerCase();
+    const byEmail = await this.usersRepo.findOne({ where: { email } });
+    if (byEmail) return { userId: byEmail.id, created: false, sameEmail: true };
+    if (input.phone) {
+      const [byPhone] = await this.usersRepo.manager.query(
+        `SELECT p."userId" FROM "profiles" p JOIN "users" u ON u."id" = p."userId" WHERE p."whatsappNumber" = $1 ORDER BY u."createdAt" LIMIT 1`, [input.phone],
+      ) as Array<{ userId: string }>;
+      if (byPhone) return { userId: byPhone.userId, created: false, sameEmail: false };
+    }
+    try {
+      const user = await this.insertAccount({
+        email, displayName: input.name, countryCode: input.countryCode, whatsappNumber: input.phone ?? undefined,
+        afterCreate: async (manager, created) => {
+          await manager.query(`UPDATE "profiles" SET "emailDigestEnabled" = $2 WHERE "userId" = $1`, [created.id, input.marketing]);
+        },
+      });
+      return { userId: user.id, created: true, sameEmail: true };
+    } catch (error) {
+      const again = error instanceof ConflictException ? await this.usersRepo.findOne({ where: { email } }) : null;
+      if (again) return { userId: again.id, created: false, sameEmail: true };
+      throw error;
+    }
+  }
+
+  async markEmailVerified(userId: string) {
+    await this.usersRepo.update({ id: userId, emailVerified: false }, { emailVerified: true });
+  }
+
+  async setPasswordLink(userId: string) {
+    return this.webUrl('/reset-password', await this.createActionToken(userId, 'RESET_PASSWORD', 7 * 24 * 60 * 60 * 1000));
+  }
+
+  private async insertAccount(input: {
+    email: string;
+    passwordHash?: string;
+    countryCode: string;
+    displayName?: string;
+    whatsappNumber?: string;
+    gender?: Profile['gender'];
+    username?: string;
+    emailVerified?: boolean;
+    afterCreate?: (manager: EntityManager, user: User) => Promise<void>;
+  }) {
     const normalizedEmail = input.email.trim().toLowerCase();
     const existing = await this.usersRepo.findOne({ where: { email: normalizedEmail } });
     if (existing) throw new ConflictException('Email already registered');
@@ -91,21 +152,7 @@ export class AuthService {
       }
       throw error;
     }
-
-    const response = await this.generateToken(user);
-    if (user.emailVerified) {
-      if (!user.email.endsWith('.invalid')) this.mail.sendInBackground(welcomeEmail({ address: user.email, name: user.displayName }));
-      return response;
-    }
-    const verificationToken = await this.createActionToken(user.id, 'VERIFY_EMAIL', 24 * 60 * 60 * 1000);
-    this.mail.sendInBackground(
-      verificationEmail({ address: user.email, name: user.displayName }, this.webUrl('/verify-email', verificationToken)),
-    );
-    if (!user.email.endsWith('.invalid')) this.mail.sendInBackground(welcomeEmail({ address: user.email, name: user.displayName }));
-    return {
-      ...response,
-      ...(this.config.get('NODE_ENV') === 'development' ? { developmentVerificationToken: verificationToken } : {}),
-    };
+    return user;
   }
 
   private readonly google = new OAuth2Client();

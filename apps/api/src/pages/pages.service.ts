@@ -19,7 +19,7 @@ export class PagesService {
       `SELECT e."title", e."slug", e."venue", e."coverUrl", e."timeZone", c."name" AS "club", c."logoUrl",
               club_event_next(e."repeat", e."repeatEvery", e."weekdays", e."monthMode", e."monthWeek", e."startsOn", e."endsOn", e."startTime", e."timeZone", e."durationMinutes", now()) AS "nextAt"
        FROM "club_events" e JOIN "clubs" c ON c."id" = e."clubId"
-       WHERE (e."id"::text = $1 OR e."slug" = $1) AND e."publishedAt" IS NOT NULL AND c."suspendedAt" IS NULL`,
+       WHERE (e."id"::text = $1 OR e."slug" = $1) AND e."publishedAt" IS NOT NULL AND e."deletedAt" IS NULL AND c."suspendedAt" IS NULL`,
       [ref.toLowerCase()],
     ).catch(() => []) as Array<{ title: string; slug: string; venue: string | null; coverUrl: string | null; timeZone: string; club: string; logoUrl: string | null; nextAt: Date | null }>;
     if (!row) return this.page(null);

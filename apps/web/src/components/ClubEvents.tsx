@@ -3,7 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, patch, post } from '../lib/api';
 import { formatDistance } from '../lib/format';
-import { ACTIVITY_OPTIONS, ACTIVITY_WORD, clockLabel, clubEventsKey, dateLabel, deviceTimeZone, distanceAway, durationLabel, EVENT_NOUN, eventKey, MAX_DURATION, MIN_DURATION, nextLabel, posterTime, repeatRule, todayIso, WEEKDAYS, type ClubEvent, type EventActivity, type EventInput, type Place, type Schedule } from '../lib/club-events';
+import { ACTIVITY_OPTIONS, ACTIVITY_WORD, clockLabel, clubEventsKey, dateLabel, deviceTimeZone, distanceAway, durationLabel, EVENT_NOUN, eventKey, MAX_DURATION, MIN_DURATION, nextLabel, placeLabel, posterTime, repeatRule, todayIso, WEEKDAYS, type ClubEvent, type EventActivity, type EventInput, type Place, type Schedule } from '../lib/club-events';
 import { toast } from '../lib/toast';
 import type { Unit } from '../lib/types';
 import { CalendarIcon, CameraIcon, CheckIcon, PinIcon, PlusIcon, TicketIcon, UsersIcon } from './icons';
@@ -46,7 +46,7 @@ export function EventCard({ event, showClub = true }: { event: ClubEvent; showCl
       </span>
       <span className="mt-0.5 block truncate text-[16px] font-extrabold">{event.title}</span>
       {showClub && <span className="block truncate text-[13px] font-semibold text-ink-2">{event.club.name}</span>}
-      <span className="mt-0.5 flex items-center gap-1 text-[12.5px] text-ink-3"><PinIcon size={13} /><span className="truncate">{away ? `${event.venue} · ${away}` : event.venue}</span></span>
+      <span className="mt-0.5 flex items-center gap-1 text-[12.5px] text-ink-3"><PinIcon size={13} /><span className="truncate" title={event.address ?? undefined}>{away ? `${placeLabel(event)} · ${away}` : placeLabel(event)}</span></span>
       <span className="mt-1.5 flex items-center gap-2">
         {event.faces.length > 0 && <span className="flex">
           {event.faces.slice(0, 4).map((face, index) => <span key={index} className={cx('rounded-full border-2 border-card', index > 0 && '-ml-2')}><Avatar name={face.displayName} src={face.avatarUrl} avatarStyle={face.avatarStyle} size={22} className="rounded-full" /></span>)}
@@ -95,7 +95,7 @@ export function ExploreEventCard({ event, unit }: { event: ClubEvent; unit: Unit
   const next = nextLabel(event, now);
   const rsvp = useEventRsvp(event);
   const away = distanceAway(event.distanceKm);
-  const where = [event.venue, event.distanceMetres ? `${formatDistance(event.distanceMetres, unit)} ${EVENT_NOUN[event.activity].toLowerCase()}` : away].filter(Boolean).join(' · ');
+  const where = [placeLabel(event), event.distanceMetres ? `${formatDistance(event.distanceMetres, unit)} ${EVENT_NOUN[event.activity].toLowerCase()}` : away].filter(Boolean).join(' · ');
   const going = event.going || rsvp.isSuccess;
   return <article className="relative flex flex-col overflow-hidden rounded-2xl border-2 border-ink bg-card shadow-hard transition-transform duration-150 hover:-translate-y-0.5">
     <Link to="/events/$id" params={{ id: event.id }} className="absolute inset-0 z-[1] rounded-2xl" aria-label={`Open event: ${event.title}`} />

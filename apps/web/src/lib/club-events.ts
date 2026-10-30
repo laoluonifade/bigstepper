@@ -1,5 +1,7 @@
 export type EventActivity = 'run' | 'walk' | 'cycle' | 'any';
 export type EventRepeat = 'once' | 'daily' | 'weekly' | 'monthly';
+import { countryName, flag } from './countries';
+
 export type ClubEvent = {
   id: string;
   /** The short name in its link: startajump.com/events/calorie-burn-run. */
@@ -31,6 +33,8 @@ export type ClubEvent = {
   /** Null only on a draft that hasn't been given a meeting point yet. */
   venue: string | null;
   address: string | null;
+  /** Where the meeting point is, as a two-letter code; null until Jump has looked it up. */
+  countryCode?: string | null;
   coverUrl: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -44,11 +48,20 @@ export type ClubEvent = {
   distanceKm: number | null;
   /** The viewer's pass, once they've joined. */
   pass: { code: string; checkedIn: boolean } | null;
+  /** What you can register for. Every event has a free pass; prices and limits come with paid tickets. */
+  tickets?: TicketType[];
   /** Saved but not posted: only the club's managers can see it, and nobody's been told. */
   draft: boolean;
   /** The viewer created it: hosts don't need a pass to their own event. */
   isHost: boolean;
 };
+export type TicketType = { id: string; name: string; description: string | null; priceMinor: number; currency: string; capacity: number | null; remaining: number | null };
+
+/** What registering gives back: the pass to show straight away, or a note that one was already sent. */
+export type Registration =
+  | { status: 'issued'; sentTo: string; holder: string | null; ticketType: string; pass: { code: string; checkedIn: boolean }; event: ClubEvent }
+  | { status: 'existing'; sentTo: string };
+
 export type Guest = { userId: string; username: string | null; displayName: string | null; avatarUrl: string | null; avatarStyle: 'masculine' | 'feminine' | 'neutral'; passCode: string; checkedIn: boolean; joinedAt: string };
 export const ACTIVITY_WORD: Record<EventActivity, string> = { run: 'Running', walk: 'Walking', cycle: 'Cycling', any: 'Run, walk or ride' };
 
@@ -183,3 +196,44 @@ export const deviceTimeZone = () => {
 export function directionsUrl(event: Pick<ClubEvent, 'latitude' | 'longitude'>) {
   return `https://www.google.com/maps/dir/?api=1&destination=${event.latitude},${event.longitude}`;
 }
+
+/** A calendar file for the next session, so the pass lands in the phone's calendar. */
+export function calendarFile(event: Pick<ClubEvent, 'title' | 'nextAt' | 'durationMinutes' | 'venue' | 'address' | 'slug' | 'id' | 'club'>, origin = window.location.origin) {
+  if (!event.nextAt) return null;
+  const start = new Date(event.nextAt);
+  const end = new Date(start.getTime() + event.durationMinutes * 60_000);
+  const stamp = (at: Date) => at.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const clean = (text: string) => text.replace(/[\\;,]/g, (char) => `\\${char}`).replace(/\n/g, '\\n');
+  const link = `${origin}/events/${event.slug ?? event.id}`;
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Jump//Events//EN', 'BEGIN:VEVENT',
+    `UID:${event.id}-${stamp(start)}@startajump.com`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`,
+    `SUMMARY:${clean(event.title)}`, `LOCATION:${clean([event.venue, event.address].filter(Boolean).join(', '))}`,
+    `DESCRIPTION:${clean(`With ${event.club.name}. Your pass: ${link}`)}`, `URL:${link}`, 'END:VEVENT', 'END:VCALENDAR',
+  ];
+  return URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/calendar' }));
+}
+
+const SAVED_PASSES = 'jump_event_passes';
+
+/** Passes got on this browser without signing in, so coming back to the event still shows yours. */
+export function savedPass(eventId: string): { code: string; holder: string } | null {
+  try { return (JSON.parse(localStorage.getItem(SAVED_PASSES) ?? '{}') as Record<string, { code: string; holder: string }>)[eventId] ?? null; } catch { return null; }
+}
+
+export function savePass(eventId: string, pass: { code: string; holder: string }) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVED_PASSES) ?? '{}') as Record<string, { code: string; holder: string }>;
+    localStorage.setItem(SAVED_PASSES, JSON.stringify({ ...all, [eventId]: pass }));
+  } catch { /* private mode: the pass is still in their email */ }
+}
+
+/** The meeting point with its country's flag in front, so a visitor can tell which country it's in. */
+export function placeLabel(event: Pick<ClubEvent, 'venue' | 'countryCode'>) {
+  return event.countryCode ? `${flag(event.countryCode)} ${event.venue ?? ''}`.trim() : event.venue ?? '';
+}
+
+export const countryLabel = (code: string) => `${flag(code)} ${countryName(code)}`;
+
+/** Most people going first; ties go to whichever starts sooner. */
+export const byPopularity = (a: ClubEvent, b: ClubEvent) => b.attendeeCount - a.attendeeCount || new Date(a.nextAt ?? 0).getTime() - new Date(b.nextAt ?? 0).getTime();
