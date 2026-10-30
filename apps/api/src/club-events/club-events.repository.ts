@@ -31,7 +31,7 @@ export interface EventInput {
 const face = z.object({ displayName: text.nullable(), avatarUrl: text.nullable(), avatarStyle: text });
 
 export const eventRow = z.object({
-  id, clubId: id, title: text, activity: z.enum(['run', 'walk', 'cycle', 'any']), notes: text.nullable(),
+  id, slug: text, clubId: id, title: text, activity: z.enum(['run', 'walk', 'cycle', 'any']), notes: text.nullable(),
   repeat: z.enum(['once', 'daily', 'weekly', 'monthly']), repeatEvery: num, weekdays: z.array(num), monthMode: z.enum(['date', 'weekday']).nullable(),
   monthWeek: num.nullable(), startsOn: text, endsOn: text.nullable(), weekday: num,
   startTime: text, timeZone: text, durationMinutes: num, distanceMetres: num.nullable(),
@@ -55,12 +55,19 @@ export const guestRow = z.object({
   passCode: text, checkedIn: z.boolean(), joinedAt: when,
 });
 
+const RESERVED_SLUGS = new Set(['', 'drafts', 'event']);
+
+export function eventSlug(title: string) {
+  const name = title.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/, '');
+  return RESERVED_SLUGS.has(name) ? `event-${Math.random().toString(36).slice(2, 6)}` : name;
+}
+
 const NEXT = `club_event_next(e."repeat", e."repeatEvery", e."weekdays", e."monthMode", e."monthWeek", e."startsOn", e."endsOn", e."startTime", e."timeZone", e."durationMinutes", now())`;
 const KM = `(6371 * 2 * asin(sqrt(power(sin(radians(e."latitude" - $2::float8) / 2), 2)
   + cos(radians($2::float8)) * cos(radians(e."latitude")) * power(sin(radians(e."longitude" - $3::float8) / 2), 2))))`;
 
 const select = (where: string) => `
-  SELECT e."id", e."clubId", e."title", e."activity", e."notes", e."repeat", e."repeatEvery", e."weekdays", e."monthMode", e."monthWeek",
+  SELECT e."id", e."slug", e."clubId", e."title", e."activity", e."notes", e."repeat", e."repeatEvery", e."weekdays", e."monthMode", e."monthWeek",
          to_char(e."startsOn", 'YYYY-MM-DD') AS "startsOn", to_char(e."endsOn", 'YYYY-MM-DD') AS "endsOn",
          extract(dow FROM e."startsOn")::integer AS "weekday", to_char(e."startTime", 'HH24:MI') AS "startTime",
          e."timeZone", e."durationMinutes", e."distanceMetres", e."venue", e."address", e."coverUrl", e."latitude", e."longitude", ${NEXT} AS "nextAt",
@@ -78,7 +85,7 @@ const select = (where: string) => `
                    WHERE a."eventId" = e."id" ORDER BY a."createdAt" LIMIT 5) f) AS "faces",
          CASE WHEN $2::float8 IS NULL OR $3::float8 IS NULL THEN NULL ELSE ${KM} END AS "distanceKm",
          e."publishedAt" IS NULL AS "draft",
-         e."createdBy" IS NOT NULL AND e."createdBy" = $1::uuid AS "isHost"
+         COALESCE(e."createdBy" = $1::uuid, false) AS "isHost"
     FROM "club_events" e
     JOIN "clubs" c ON c."id" = e."clubId"
     LEFT JOIN "club_memberships" m ON m."clubId" = c."id" AND m."userId" = $1::uuid
@@ -101,7 +108,7 @@ export class ClubEventsRepository {
   }
 
   one(eventId: string, viewerId: string | null, latitude: number | null = null, longitude: number | null = null) {
-    return row(this.dataSource, eventRow, select(`e."id" = $4`), [viewerId, latitude, longitude, eventId]);
+    return row(this.dataSource, eventRow, select(`(e."id"::text = $4::text OR e."slug" = $4::text)`), [viewerId, latitude, longitude, eventId]);
   }
 
   async nearby(viewerId: string, latitude: number, longitude: number, km: number) {
@@ -163,11 +170,12 @@ export class ClubEventsRepository {
   async insert(db: Db, clubId: string, createdBy: string, input: EventInput, draft = false) {
     return (await row(db, z.object({ id }),
       `INSERT INTO "club_events" ("clubId","createdBy","title","activity","notes","repeat","repeatEvery","weekdays","monthMode","monthWeek","startsOn","endsOn",
-         "startTime","timeZone","durationMinutes","distanceMetres","venue","address","latitude","longitude","publishedAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,CASE WHEN $21 THEN NULL ELSE now() END) RETURNING "id"`,
+         "startTime","timeZone","durationMinutes","distanceMetres","venue","address","latitude","longitude","publishedAt","slug")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,CASE WHEN $21 THEN NULL ELSE now() END,
+         CASE WHEN EXISTS (SELECT 1 FROM "club_events" WHERE "slug" = $22::text) THEN $22::text || '-' || substr(md5(random()::text), 1, 4) ELSE $22::text END) RETURNING "id"`,
       [clubId, createdBy, input.title, input.activity, input.notes ?? null, input.repeat, input.repeatEvery ?? 1, input.weekdays ?? [], input.monthMode ?? null,
         input.monthWeek ?? null, input.startsOn, input.endsOn ?? null, input.startTime, input.timeZone,
-        input.durationMinutes, input.distanceMetres ?? null, input.venue ?? null, input.address ?? null, input.latitude ?? null, input.longitude ?? null, draft]))!.id;
+        input.durationMinutes, input.distanceMetres ?? null, input.venue ?? null, input.address ?? null, input.latitude ?? null, input.longitude ?? null, draft, eventSlug(input.title)]))!.id;
   }
 
   update(eventId: string, input: EventInput) {

@@ -33,6 +33,7 @@ import {
   Skeleton,
   SubNav,
   useNow,
+  VerifiedTick,
 } from '../components/ui';
 import { DateTimePicker } from '../components/DateTimePicker';
 import { api, isApiError, patch, post } from '../lib/api';
@@ -1171,6 +1172,7 @@ export function CompetitionDetailPage() {
               ) : (
                 <span className="font-bold">{hostName}</span>
               )}
+              {t.creator?.verified && <VerifiedTick size={14} className="ml-1 inline-block align-[-2px]" />}
               {isHost ? ' · you’re hosting' : me ? ' is hosting' : ' invited you to join'}
               <span className="block text-[12px] text-ink-3">Created {formatDate(t.createdAt, { year: 'numeric' })}</span>
             </p>
@@ -1178,7 +1180,7 @@ export function CompetitionDetailPage() {
           {t.description && <p className="mt-4 max-w-xl whitespace-pre-line break-words text-[15px] leading-relaxed">{t.description}</p>}
           {t.club && <Link to="/clubs/$id" params={{ id: t.club.slug }} search={{}} className="mt-4 inline-flex max-w-full items-center gap-2.5 rounded-full border-[1.5px] border-ink bg-card py-1.5 pl-1.5 pr-4 transition-shadow hover:shadow-hard-sm">
             {t.club.logoUrl ? <img src={t.club.logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" /> : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: t.club.accentColor }}>{t.club.name.charAt(0)}</span>}
-            <span className="min-w-0 truncate text-[13px]"><b>{t.club.name}</b>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</span>
+            <span className="min-w-0 truncate text-[13px]"><b>{t.club.name}</b>{t.club.verified && <VerifiedTick size={13} className="ml-1 inline-block align-[-2px]" />}{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</span>
           </Link>}
           {t.latitude != null && t.longitude != null && <a href={`https://www.google.com/maps/dir/?api=1&destination=${t.latitude},${t.longitude}`} target="_blank" rel="noreferrer noopener"
             className="mt-3 flex max-w-md items-center gap-2.5 rounded-xl border-[1.5px] border-ink bg-card py-2 pl-2 pr-4 transition-shadow hover:shadow-hard-sm">

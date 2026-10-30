@@ -128,11 +128,11 @@ export function EventPage() {
     ]);
   };
   const join = useMutation({
-    mutationFn: () => post<ClubEvent>(`/events/${id}/join`),
+    mutationFn: () => post<ClubEvent>(`/events/${event.data!.id}/join`),
     async onSuccess(next) { await settle(next); setPassOpen(true); },
   });
   const leave = useMutation({
-    mutationFn: () => api<ClubEvent>(`/events/${id}/join`, { method: 'DELETE' }),
+    mutationFn: () => api<ClubEvent>(`/events/${event.data!.id}/join`, { method: 'DELETE' }),
     async onSuccess(next) { await settle(next); toast({ tone: 'ok', message: 'Pass given up. You won’t get reminders for this one.' }); },
   });
   const remove = useMutation({
@@ -157,7 +157,7 @@ export function EventPage() {
   const ink = onAccent(accent);
   const next = nextLabel(e, now);
   const away = distanceAway(e.distanceKm);
-  const link = `${window.location.origin}/events/${e.id}`;
+  const link = `${window.location.origin}/events/${e.slug ?? e.id}`;
   const share = async () => {
     const text = `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}.`;
     if (navigator.share) { await navigator.share({ title: e.title, text, url: link }).catch(() => undefined); return; }

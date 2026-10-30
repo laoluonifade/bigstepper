@@ -36,7 +36,7 @@ export default function EventScreen() {
     ]);
   };
   const join = useMutation({
-    mutationFn: () => post<ClubEvent>(`/events/${id}/join`),
+    mutationFn: () => post<ClubEvent>(`/events/${event.data!.id}/join`),
     async onSuccess(next) {
       haptic('success');
       await settle(next);
@@ -45,7 +45,7 @@ export default function EventScreen() {
     },
   });
   const leave = useMutation({
-    mutationFn: () => api<ClubEvent>(`/events/${id}/join`, { method: 'DELETE' }),
+    mutationFn: () => api<ClubEvent>(`/events/${event.data!.id}/join`, { method: 'DELETE' }),
     async onSuccess(next) { haptic(); await settle(next); toast({ tone: 'ok', message: 'Pass given up. You won’t get reminders for this one.' }); },
   });
   const publish = useMutation({
@@ -80,8 +80,8 @@ export default function EventScreen() {
   const next = nextLabel(e, now);
   const away = distanceAway(e.distanceKm);
   const share = () => void Share.share({
-    message: `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/events/${e.id}`,
-    url: `${WEB_URL}/events/${e.id}`,
+    message: `${e.title} with ${e.club.name}: ${scheduleLabel(e)} at ${e.venue}. Join on Jump: ${WEB_URL}/events/${e.slug ?? e.id}`,
+    url: `${WEB_URL}/events/${e.slug ?? e.id}`,
   });
 
   return <Screen refreshing={event.isRefetching} onRefresh={() => void event.refetch()} padded={false}

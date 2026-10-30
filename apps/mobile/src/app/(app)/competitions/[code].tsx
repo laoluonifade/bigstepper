@@ -21,7 +21,7 @@ import { PlaceField } from '@/components/PlaceField';
 import { Leaderboard, type LeaderboardRow } from '@/components/Leaderboard';
 import { ShareCompetitionSheet } from '@/components/ShareCompetition';
 import { Sheet } from '@/components/Sheet';
-import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, Footer, haptic, HardShadow, LiveTag, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow } from '@/components/ui';
+import { Avatar, Button, Card, EmptyState, ErrorNotice, Eyebrow, Footer, haptic, HardShadow, LiveTag, Loading, Notice, Score, Screen, SectionTitle, Skeleton, Tag, TextField, Txt, useNow, VerifiedTick } from '@/components/ui';
 import { api, isApiError, patch, post, WEB_URL } from '@/lib/api';
 import { Storage } from '@/lib/kv';
 import { useAuth } from '@/lib/auth';
@@ -192,7 +192,11 @@ export default function CompetitionDetailScreen() {
       <Pressable disabled={!t.creator?.username} onPress={() => router.push(`/runners/${t.creator!.username}`)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Avatar name={hostName} src={t.creator?.avatarUrl} avatarStyle={t.creator?.avatarStyle} size={40} round />
         <View style={{ flex: 1 }}>
-          <Txt size={14} leading={1.35}><Txt size={14} weight="bold">{hostName}</Txt>{isHost ? ' · you’re hosting' : me ? ' is hosting' : ' invited you to join'}</Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+            <Txt size={14} weight="bold" leading={1.35}>{hostName}</Txt>
+            {t.creator?.verified ? <VerifiedTick size={14} /> : null}
+            <Txt size={14} leading={1.35}>{isHost ? '· you’re hosting' : me ? 'is hosting' : 'invited you to join'}</Txt>
+          </View>
           <Txt size={12} color="ink3">Created {formatDate(t.createdAt, { year: 'numeric' })}</Txt>
         </View>
       </Pressable>
@@ -201,7 +205,9 @@ export default function CompetitionDetailScreen() {
     {t.description ? <Txt size={15} leading={1.55} style={{ marginTop: 16 }}>{t.description}</Txt> : null}
     {t.club && <Pressable onPress={() => router.push(`/clubs/${t.club!.slug}`)} style={({ pressed }) => [styles.club, pressed && { opacity: 0.8 }]} accessibilityRole="link">
       {t.club.logoUrl ? <Image source={{ uri: t.club.logoUrl }} style={styles.clubLogo} /> : <View style={[styles.clubLogo, { backgroundColor: t.club.accentColor, alignItems: 'center', justifyContent: 'center' }]}><Txt size={13} weight="extrabold">{t.club.name.charAt(0)}</Txt></View>}
-      <Txt size={13} numberOfLines={1} style={{ flexShrink: 1 }}><Txt size={13} weight="bold">{t.club.name}</Txt>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</Txt>
+      <Txt size={13} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{t.club.name}</Txt>
+      {t.club.verified ? <VerifiedTick size={13} /> : null}
+      <Txt size={13} numberOfLines={1} style={{ flexShrink: 1, marginLeft: -6 }}>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</Txt>
     </Pressable>}
     {t.latitude != null && t.longitude != null && <Pressable onPress={() => { haptic(); openDirections({ latitude: t.latitude!, longitude: t.longitude!, venue: t.venue ?? null }); }}
       style={({ pressed }) => [styles.place, pressed && { opacity: 0.8 }]} accessibilityRole="link" accessibilityLabel={`Directions to ${t.venue ?? 'the location'}`}>

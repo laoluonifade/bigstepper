@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
@@ -126,8 +126,9 @@ export class ClubEventsController {
 
   @Get('events/:id')
   @UseGuards(OptionalJwtAuthGuard)
-  get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() viewer: AuthenticatedUser | null, @Query() query: NearQuery) {
-    return this.events.get(id, viewer?.id ?? null, query.lat, query.lon);
+  get(@Param('id') id: string, @CurrentUser() viewer: AuthenticatedUser | null, @Query() query: NearQuery) {
+    if (!/^[a-z0-9-]{1,100}$/i.test(id)) throw new NotFoundException('Event not found');
+    return this.events.get(id.toLowerCase(), viewer?.id ?? null, query.lat, query.lon);
   }
 
   @Patch('events/:id')

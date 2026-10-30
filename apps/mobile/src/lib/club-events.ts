@@ -4,6 +4,8 @@ export type EventActivity = 'run' | 'walk' | 'cycle' | 'any';
 export type EventRepeat = 'once' | 'daily' | 'weekly' | 'monthly';
 export type ClubEvent = {
   id: string;
+  /** The short name in its link: startajump.com/events/calorie-burn-run. */
+  slug?: string;
   clubId: string;
   title: string;
   activity: EventActivity;

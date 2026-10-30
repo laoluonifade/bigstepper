@@ -32,10 +32,12 @@ import { SafetyModule } from './safety/safety.module';
 import { ClubEventsModule } from './club-events/club-events.module';
 import { DuelsModule } from './duels/duels.module';
 import { MetricsController } from './metrics/metrics.controller';
+import { PagesModule } from './pages/pages.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
+    PagesModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
