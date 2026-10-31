@@ -1,3 +1,4 @@
+import { NotificationsPage } from './pages/Notifications';
 import { useQuery } from '@tanstack/react-query';
 import { ReactNode, useEffect, useState } from 'react';
 import { api } from './api';
@@ -24,6 +25,7 @@ type Section = {
 };
 
 const SECTIONS: Section[] = [
+  { path: '/notifications', label: 'Notifications', icon: (size) => <ActivityIcon size={size} />, page: () => <NotificationsPage />, adminOnly: true },
   { path: '/', label: 'Overview', icon: (size) => <HomeIcon size={size} />, page: () => <OverviewPage />, adminOnly: true, primary: true },
   { path: '/payouts', label: 'Payouts', icon: (size) => <WalletIcon size={size} />, page: () => <AdminPayoutsPage />, adminOnly: true, primary: true },
   { path: '/risk', label: 'Risk', icon: (size) => <FlagIcon size={size} />, page: () => <RiskPage />, adminOnly: true, primary: true },

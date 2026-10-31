@@ -1,3 +1,4 @@
+import { NotificationPreferences } from '../components/NotificationPreferences';
 import { MoreMenu, openBlock, openReport, unblockRunner } from '../components/Safety';
 import { StravaConnection } from './Strava';
 import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
@@ -346,7 +347,7 @@ function EmailSheet({ profile, onClose }: { profile: Profile; onClose: () => voi
   const save = useSaveProfile(onClose);
   const changes = changedFields(profile, { emailActivityEnabled: activity, emailDigestEnabled: digest });
 
-  return <Modal title="Email updates" onClose={onClose}>
+  return <Modal title="Notifications" onClose={onClose}>
     <form onSubmit={(event) => { event.preventDefault(); if (Object.keys(changes).length) save.mutate(changes); }}>
       <div className="divide-y divide-line">
         <Toggle checked={activity} onChange={setActivity} title="Activity and people" body="Messages, follows, Rant interactions, competition progress and results." />
@@ -356,6 +357,7 @@ function EmailSheet({ profile, onClose }: { profile: Profile; onClose: () => voi
       <ErrorNotice error={save.error} />
       <SheetActions disabled={!Object.keys(changes).length} pending={save.isPending} onCancel={onClose} />
     </form>
+    <NotificationPreferences />
   </Modal>;
 }
 

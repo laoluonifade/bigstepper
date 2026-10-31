@@ -32,6 +32,9 @@ export class Notification {
   @Column({ type: 'timestamptz', nullable: true, select: false })
   emailSentAt: Date | null;
 
+  @Column({ type: 'boolean', nullable: true })
+  inappAllowed: boolean | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

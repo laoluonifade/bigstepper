@@ -1,3 +1,5 @@
+import { EngagementController, EngagementAdminController } from './engagement.controller';
+import { EngagementProcessor } from './engagement.processor';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
@@ -9,7 +11,7 @@ import { PushNotificationsProcessor } from './push-notifications.processor';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Notification]), BullModule.registerQueue({ name: EMAIL_UPDATES_QUEUE }, { name: PUSH_NOTIFICATIONS_QUEUE })],
-  controllers: [NotificationsController],
-  providers: [EmailUpdatesProcessor, PushNotificationsProcessor],
+  controllers: [NotificationsController, EngagementController, EngagementAdminController],
+  providers: [EmailUpdatesProcessor, PushNotificationsProcessor, EngagementProcessor],
 })
 export class NotificationsModule {}

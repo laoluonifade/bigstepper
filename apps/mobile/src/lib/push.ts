@@ -110,6 +110,8 @@ export function listenForPush(queryClient: QueryClient) {
     handled.add(id);
     // Handled: don't replay it when this runs again (signing back in, say).
     try { notifications.clearLastNotificationResponse(); } catch { /* older native side */ }
+    const notificationId=response.notification.request.content.data?.id;
+    if(typeof notificationId==='string') void post(`/notifications/${notificationId}/click`).catch(()=>undefined);
     const link = response.notification.request.content.data?.link;
     if (typeof link === 'string' && link) openWhenReady(link);
   };

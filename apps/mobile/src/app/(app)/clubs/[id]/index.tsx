@@ -248,13 +248,14 @@ function ClubCompetitions({ club }: { club: Club }) {
 function ClubLeaderboard({ id }: { id: string }) {
   const { user } = useAuth();
   const unit = useUnit();
-  const board = useQuery({ queryKey: ['club', id, 'leaderboard'], queryFn: () => api<ClubStanding[]>(`/clubs/${id}/leaderboard`) });
+  const [weekly,setWeekly]=useState(true);
+  const board = useQuery({ queryKey: ['club', id, 'leaderboard', weekly], queryFn: () => api<Array<ClubStanding & {weekMetres?:number}>>(`/clubs/${id}/${weekly?'weekly-leaderboard':'leaderboard'}`) });
   if (board.isLoading) return <Skeleton style={{ height: 160, borderRadius: radius['2xl'] }} />;
   if (board.error) return <ErrorNotice error={board.error} onRetry={() => void board.refetch()} />;
-  return <View>
-    <Txt size={12} color="ink2" style={{ marginBottom: 8 }}>Verified walking and running distance this month.</Txt>
-    <Leaderboard rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, verified: row.verified, metres: row.monthMetres }))}
-      currentUserId={user?.id} unit={unit} empty={<EmptyState title="No activity this month" />} />
+  return <View><Pressable accessibilityRole="button" onPress={()=>setWeekly(!weekly)}><Txt size={13}>{weekly?'This week (UTC) · Show month':'This month · Show week'}</Txt></Pressable>
+    <Txt size={12} color="ink2" style={{ marginBottom: 8 }}>{weekly?'Verified walks and runs this week (UTC).':'Walking and running distance this month.'}</Txt>
+    <Leaderboard rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, verified: row.verified, metres: weekly ? row.weekMetres ?? 0 : row.monthMetres }))}
+      currentUserId={user?.id} unit={unit} empty={<EmptyState title="No activity in this period" />} />
   </View>;
 }
 

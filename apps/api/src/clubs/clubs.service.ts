@@ -244,6 +244,23 @@ export class ClubsService {
     );
   }
 
+  async weekLeaderboard(userId: string, clubRef: string) {
+    const club = await this.find(clubRef);
+    if (!(await this.roleOf(club.id, userId))) throw new ForbiddenException('Join this club to see its leaderboard');
+    return this.dataSource.query(
+      `SELECT row_number() OVER (ORDER BY COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0) DESC,m."joinedAt" ASC)::integer "rank",
+              m."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
+              CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
+              COALESCE(SUM(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0)::integer "weekMetres"
+       FROM "club_memberships" m JOIN "users" u ON u."id"=m."userId"
+       LEFT JOIN "profiles" p ON p."userId"=m."userId"
+       LEFT JOIN "activities" a ON a."userId"=m."userId" AND a."verificationStatus"='VERIFIED' AND a."activityType" IN ('run','walk')
+         AND a."startedAt">=(date_trunc('week',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AND a."finishedAt"<(date_trunc('week',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')+interval '1 week'
+       WHERE m."clubId"=$1 AND u."deletedAt" IS NULL GROUP BY m."userId",m."joinedAt",p."displayName",u."displayName",p."username",p."avatarUrl",p."gender",p."verifiedAt"
+       ORDER BY "weekMetres" DESC,m."joinedAt" ASC LIMIT 500`, [club.id],
+    );
+  }
+
   async competitions(clubRef: string, viewerId?: string | null) {
     const club = await this.find(clubRef);
     const member = Boolean(await this.roleOf(club.id, viewerId));
