@@ -116,7 +116,11 @@ export class EngagementService {
           FROM notification_deliveries WHERE "userId"=$1 AND status<>'suppressed' AND "createdAt">now()-interval '8 days'`,
           [c.userId, window.day, window.week],
         );
-        if (!reason && !retryable && (channel === 'push' ? counts.push >= s.pushDaily : counts.email >= s.emailWeekly))
+        if (
+          !reason &&
+          (!retryable || (channel === 'push' ? s.pushDaily : s.emailWeekly) === 0) &&
+          (channel === 'push' ? counts.push >= s.pushDaily : counts.email >= s.emailWeekly)
+        )
           reason = 'frequency_limit';
       }
       if (!reason && c.newTrigger && cohort(c.userId, s.holdoutPercent) === 'holdout') reason = 'holdout';

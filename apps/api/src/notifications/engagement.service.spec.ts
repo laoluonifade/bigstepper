@@ -92,4 +92,11 @@ describe('EngagementService reservations', () => {
       }).service.reserve({ ...c, newTrigger: true }, 'push'),
     ).toMatchObject({ allowed: false, reason: 'holdout' });
   });
+  it('honors a zero channel limit even for a rate-limit retry', async () => {
+    const { service } = setup({
+      existing: { id: 'd', status: 'failed', reason: 'retryable', attempts: 1 },
+      settings: { ...DEFAULT_SETTINGS, pushDaily: 0 },
+    });
+    expect(await service.reserve(c, 'push')).toMatchObject({ allowed: false, reason: 'frequency_limit' });
+  });
 });
