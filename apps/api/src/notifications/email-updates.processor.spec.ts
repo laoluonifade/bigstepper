@@ -55,4 +55,33 @@ describe('EmailUpdatesProcessor', () => {
     expect(dataSource.query).not.toHaveBeenCalled();
     expect(mail.send).not.toHaveBeenCalled();
   });
+
+  it('skips the digest when no competition is open', async () => {
+    dataSource.query.mockResolvedValueOnce([]);
+
+    await processor.process({ name: 'send-digests' } as never);
+
+    expect(dataSource.query).toHaveBeenCalledTimes(1);
+    expect(mail.send).not.toHaveBeenCalled();
+  });
+
+  it('sends the digest with competitions with or without a banner, linked to the configured site', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      { title: 'Lagos 10K', code: 'LAG10K', challengeType: 'RUN', format: 'open', scoringMethod: 'TOTAL_DISTANCE', bannerUrl: 'https://img.example/a.jpg', entrants: 12 },
+      { title: 'Office steps', code: 'STEPS', challengeType: 'STEP', format: 'head_to_head', scoringMethod: 'TOTAL_STEPS', bannerUrl: null, entrants: 3 },
+    ]).mockResolvedValueOnce([{ userId: 'runner', email: 'runner@example.com', displayName: 'Ada Lovelace' }]).mockResolvedValue([]);
+
+    await processor.process({ name: 'send-digests' } as never);
+
+    expect(dataSource.query.mock.calls[0][0]).toContain('"archivedAt" IS NULL');
+    expect(mail.send).toHaveBeenCalledTimes(1);
+    const message = mail.send.mock.calls[0][0];
+    expect(message.html).toContain('https://jump.example/competitions/LAG10K');
+    expect(message.html).toContain('https://jump.example/competitions/STEPS');
+    expect(message.html).not.toContain('startajump.com/competitions');
+    expect(message.html).toContain('Head to head');
+    expect(message.html).not.toContain('head_to_head');
+    expect(message.html.match(/<img src="https:\/\/img\.example/g)).toHaveLength(1);
+    expect(dataSource.query.mock.calls[2][0]).toContain('"digestNextAt"=now()+interval');
+  });
 });

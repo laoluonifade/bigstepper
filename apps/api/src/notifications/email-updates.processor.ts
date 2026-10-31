@@ -5,12 +5,11 @@ import { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { EMAIL_UPDATES_QUEUE } from '../jobs/jobs.module';
 import { MailService } from '../mail/mail.service';
-import { activityUpdatesEmail, competitionDigestEmail, streakReminderEmail } from '../mail/templates';
+import { activityUpdatesEmail, competitionDigestEmail, CompetitionDigestItem, streakReminderEmail } from '../mail/templates';
 import { STREAK_DAY_SQL, STREAK_TIME_ZONE } from '../running/streaks';
 
 type PendingUpdate = { id: string; userId: string; type: string; title: string; email: string; displayName: string | null; emailVerified: boolean; emailActivityEnabled: boolean };
 type DigestRecipient = { userId: string; email: string; displayName: string | null };
-type CompetitionPick = { title: string; entrants: number };
 const ESSENTIAL_EMAIL_TYPES = new Set(['PAYOUT_RECIPIENT_CHANGED', 'PAYOUT_SENT', 'PAYOUT_REJECTED']);
 
 @Injectable()
@@ -91,12 +90,13 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
 
   private async sendDigests() {
     const picks = await this.dataSource.query(
-      `SELECT t."title",COUNT(r."id")::integer "entrants"
+      `SELECT t."title",t."code",t."challengeType",t."format",t."scoringMethod",t."bannerUrl",COUNT(r."id")::integer "entrants"
        FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId"=t."id"
-       WHERE t."status"='OPEN_FOR_ENTRY' AND (t."entryClosesAt" IS NULL OR t."entryClosesAt">now())
+       WHERE t."status"='OPEN_FOR_ENTRY' AND t."visibility"='public' AND t."archivedAt" IS NULL AND t."deletedAt" IS NULL
+         AND (t."entryClosesAt" IS NULL OR t."entryClosesAt">now())
        GROUP BY t."id" HAVING t."capacity" IS NULL OR COUNT(r."id") < t."capacity"
-       ORDER BY "entrants" DESC,t."createdAt" DESC LIMIT 5`,
-    ) as CompetitionPick[];
+       ORDER BY t."bannerUrl" IS NULL,"entrants" DESC,t."createdAt" DESC LIMIT 4`,
+    ) as CompetitionDigestItem[];
     if (!picks.length) return;
     const recipients = await this.dataSource.query(
       `WITH due AS (
@@ -117,7 +117,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
         try {
           const origin = this.origin();
           await this.mail.send(competitionDigestEmail(
-            { address: recipient.email, name: recipient.displayName ?? undefined }, picks,
+            { address: recipient.email, name: recipient.displayName ?? undefined }, picks, origin,
             `${origin}/competitions`, `${origin}/settings/profile#email-preferences`,
           ));
           await this.dataSource.query(
