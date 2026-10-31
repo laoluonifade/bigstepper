@@ -1,11 +1,12 @@
 import { EmailUpdatesProcessor } from './email-updates.processor';
 
 describe('EmailUpdatesProcessor', () => {
-  const mail = { canSendBulk: true, send: jest.fn().mockResolvedValue(undefined) };
+  const mail = { canSendBulk: true, send: jest.fn().mockResolvedValue(true) };
   const config = { getOrThrow: jest.fn().mockReturnValue('https://jump.example') };
   const queue = { upsertJobScheduler: jest.fn().mockResolvedValue(undefined) };
   const dataSource = { query: jest.fn() };
-  const processor = new EmailUpdatesProcessor(dataSource as never, mail as never, config as never, queue as never, {} as never);
+  const engagement = { settings: jest.fn().mockResolvedValue({ triggers: { digest: true, streak: true } }) };
+  const processor = new EmailUpdatesProcessor(dataSource as never, mail as never, config as never, queue as never, engagement as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -22,7 +23,7 @@ describe('EmailUpdatesProcessor', () => {
 
     expect(mail.send).toHaveBeenCalledTimes(2);
     expect(mail.send.mock.calls[0][0].engagement).toMatchObject({userId:'runner'});
-    expect(dataSource.query.mock.calls[1][1]).toEqual([['a', 'b']]);
+    expect(dataSource.query.mock.calls[1][1]).toEqual([['a', 'b'], ['a', 'b']]);
   });
 
   it('keeps in-app updates but does not email runners who opted out', async () => {
@@ -32,8 +33,9 @@ describe('EmailUpdatesProcessor', () => {
 
     await processor.process({ name: 'send-notifications' } as never);
 
-    expect(mail.send.mock.calls[0][0].engagement).toBeDefined();
+    expect(mail.send).not.toHaveBeenCalled();
     expect(dataSource.query.mock.calls[1][0]).toContain('"emailProcessedAt"=now()');
+    expect(dataSource.query.mock.calls[1][1]).toEqual([['a']]);
   });
 
   it('still sends payout alerts after an activity-email opt-out', async () => {
@@ -59,8 +61,36 @@ describe('EmailUpdatesProcessor', () => {
     mail.send.mockResolvedValueOnce(false);
     dataSource.query.mockResolvedValueOnce([{id:'a',userId:'runner',type:'MILESTONE',title:'Done',body:'Progress',link:'/activities',createdAt:new Date(),email:'runner@example.com',emailVerified:true,emailActivityEnabled:true}]).mockResolvedValue([]);
     await processor.process({name:'send-notifications'} as never);
-    const sent=dataSource.query.mock.calls.find(([sql])=>String(sql).includes('"emailSentAt"=now()'));
-    expect(sent?.[1]).toEqual([[]]);
+    const marked=dataSource.query.mock.calls.find(([sql])=>String(sql).includes('"emailSentAt"=CASE'));
+    expect(marked?.[1]).toEqual([['a'], []]);
   });
 
+  it('skips the digest when no competition is open', async () => {
+    dataSource.query.mockResolvedValueOnce([]);
+
+    await processor.process({ name: 'send-digests' } as never);
+
+    expect(dataSource.query).toHaveBeenCalledTimes(1);
+    expect(mail.send).not.toHaveBeenCalled();
+  });
+
+  it('sends the digest with competitions with or without a banner, linked to the configured site', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      { title: 'Lagos 10K', code: 'LAG10K', challengeType: 'RUN', format: 'open', scoringMethod: 'TOTAL_DISTANCE', bannerUrl: 'https://img.example/a.jpg', entrants: 12 },
+      { title: 'Office steps', code: 'STEPS', challengeType: 'STEP', format: 'head_to_head', scoringMethod: 'TOTAL_STEPS', bannerUrl: null, entrants: 3 },
+    ]).mockResolvedValueOnce([{ userId: 'runner', email: 'runner@example.com', displayName: 'Ada Lovelace' }]).mockResolvedValue([]);
+
+    await processor.process({ name: 'send-digests' } as never);
+
+    expect(dataSource.query.mock.calls[0][0]).toContain('"archivedAt" IS NULL');
+    expect(mail.send).toHaveBeenCalledTimes(1);
+    const message = mail.send.mock.calls[0][0];
+    expect(message.html).toContain('https://jump.example/competitions/LAG10K');
+    expect(message.html).toContain('https://jump.example/competitions/STEPS');
+    expect(message.html).not.toContain('startajump.com/competitions');
+    expect(message.html).toContain('Head to head');
+    expect(message.html).not.toContain('head_to_head');
+    expect(message.html.match(/<img src="https:\/\/img\.example/g)).toHaveLength(1);
+    expect(dataSource.query.mock.calls[2][0]).toContain('"digestNextAt"=now()+interval');
+  });
 });

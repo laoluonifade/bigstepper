@@ -5,15 +5,14 @@ import { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { EMAIL_UPDATES_QUEUE } from '../jobs/jobs.module';
 import { MailService } from '../mail/mail.service';
-import { activityUpdatesEmail, competitionDigestEmail, streakReminderEmail } from '../mail/templates';
-import { notificationCandidate, ESSENTIAL_TYPES } from './engagement-policy';
+import { activityUpdatesEmail, competitionDigestEmail, CompetitionDigestItem, streakReminderEmail } from '../mail/templates';
+import { notificationCandidate } from './engagement-policy';
 import { EngagementService } from './engagement.service';
 import { STREAK_DAY_SQL, STREAK_TIME_ZONE } from '../running/streaks';
 
 type PendingUpdate = { id: string; userId: string; type: string; title: string; email: string; displayName: string | null; emailVerified: boolean; emailActivityEnabled: boolean; body: string; link: string | null; createdAt: Date; engagementKey?: string; engagementExpiresAt?: Date; engagementChannel?: 'push' | 'email' };
 type DigestRecipient = { userId: string; email: string; displayName: string | null };
-type CompetitionPick = { title: string; entrants: number };
-const ESSENTIAL_EMAIL_TYPES = new Set([...ESSENTIAL_TYPES].filter(type=>!['DIRECT_MESSAGE','CLUB_MESSAGE'].includes(type)));
+const ESSENTIAL_EMAIL_TYPES = new Set(['PAYOUT_RECIPIENT_CHANGED', 'PAYOUT_SENT', 'PAYOUT_REJECTED']);
 
 @Injectable()
 @Processor(EMAIL_UPDATES_QUEUE)
@@ -70,32 +69,29 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
         const batch = batches[next++];
         const user = batch[0];
         const ids = batch.map((row) => row.id);
-        const emailRows = batch;
-        const emailIds = emailRows.map((row) => row.id);
-        const skippedIds = batch.filter((row) => !emailRows.includes(row)).map((row) => row.id);
-        if (!user.emailVerified || !emailRows.length) {
+        const essential = batch.filter((row) => ESSENTIAL_EMAIL_TYPES.has(row.type));
+        const optional = user.emailActivityEnabled ? batch.filter((row) => !ESSENTIAL_EMAIL_TYPES.has(row.type)) : [];
+        if (!user.emailVerified || (!essential.length && !optional.length)) {
           await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [ids]);
           continue;
         }
         try {
           const origin = this.origin();
-          const actuallySent: string[]=[];
-          const essential = emailRows.filter(row => ESSENTIAL_EMAIL_TYPES.has(row.type));
-          if (essential.length) { await this.mail.send(activityUpdatesEmail(
-            { address: user.email, name: user.displayName ?? undefined }, essential.map(row => row.title),
-            `${origin}${essential.length === 1 ? essential[0].link ?? '/notifications' : '/notifications'}`, `${origin}/settings/profile#email-preferences`,
-          ));
-          actuallySent.push(...essential.map(row=>row.id)); }
-          for (const row of emailRows.filter(row => !ESSENTIAL_EMAIL_TYPES.has(row.type))) {
+          if (essential.length) {
+            await this.mail.send(activityUpdatesEmail(
+              { address: user.email, name: user.displayName ?? undefined }, essential.map(row => row.title),
+              `${origin}${essential.length === 1 ? essential[0].link ?? '/notifications' : '/notifications'}`, `${origin}/settings/profile#email-preferences`,
+            ));
+            await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now(),"emailSentAt"=now() WHERE "id"=ANY($1::uuid[])`, [essential.map(row => row.id)]);
+          }
+          const sent: string[] = [];
+          for (const row of optional) {
             const message = activityUpdatesEmail({ address: user.email, name: user.displayName ?? undefined },
               [row.title + (row.body ? ': ' + row.body : '')], `${origin}${row.link ?? '/notifications'}${row.link?.includes('?')?'&':'?'}jump_notification=${row.id}`, `${origin}/settings/profile#email-preferences`);
             message.subject=`${row.title} · Jump`;
-            const sent=await this.mail.send({ ...message, engagement: notificationCandidate(row) });
-            if(sent!==false) actuallySent.push(row.id);
+            if (await this.mail.send({ ...message, engagement: notificationCandidate(row) })) sent.push(row.id);
           }
-          await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now(),"emailSentAt"=now() WHERE "id"=ANY($1::uuid[])`, [actuallySent]);
-          await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [emailIds]);
-          if (skippedIds.length) await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [skippedIds]);
+          await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now(),"emailSentAt"=CASE WHEN "id"=ANY($2::uuid[]) THEN now() END WHERE "id"=ANY($1::uuid[]) AND "emailProcessedAt" IS NULL`, [ids, sent]);
         } catch (error) {
           this.logger.error(`Notification email failed for ${user.userId}`, error instanceof Error ? error.stack : String(error));
         }
@@ -105,12 +101,13 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
 
   private async sendDigests() {
     const picks = await this.dataSource.query(
-      `SELECT t."title",COUNT(r."id")::integer "entrants"
+      `SELECT t."title",t."code",t."challengeType",t."format",t."scoringMethod",t."bannerUrl",COUNT(r."id")::integer "entrants"
        FROM "competition_tables" t LEFT JOIN "table_registrations" r ON r."tableId"=t."id"
-       WHERE t."status"='OPEN_FOR_ENTRY' AND (t."entryClosesAt" IS NULL OR t."entryClosesAt">now())
+       WHERE t."status"='OPEN_FOR_ENTRY' AND t."visibility"='public' AND t."archivedAt" IS NULL AND t."deletedAt" IS NULL
+         AND (t."entryClosesAt" IS NULL OR t."entryClosesAt">now())
        GROUP BY t."id" HAVING t."capacity" IS NULL OR COUNT(r."id") < t."capacity"
-       ORDER BY "entrants" DESC,t."createdAt" DESC LIMIT 5`,
-    ) as CompetitionPick[];
+       ORDER BY t."bannerUrl" IS NULL,"entrants" DESC,t."createdAt" DESC LIMIT 4`,
+    ) as CompetitionDigestItem[];
     if (!picks.length) return;
     const recipients = await this.dataSource.query(
       `WITH due AS (
@@ -131,7 +128,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
         try {
           const origin = this.origin();
           const message = competitionDigestEmail(
-            { address: recipient.email, name: recipient.displayName ?? undefined }, picks,
+            { address: recipient.email, name: recipient.displayName ?? undefined }, picks, origin,
             `${origin}/competitions`, `${origin}/settings/profile#email-preferences`,
           );
           await this.mail.send({ ...message, engagement: { userId: recipient.userId, key: `digest:${new Date().toISOString().slice(0,10)}`, type: 'COMPETITION_DIGEST', link: '/competitions', createdAt: new Date(), onlyChannel: 'email' } });
@@ -185,7 +182,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
           { address: row.email, name: row.displayName ?? undefined }, Math.max(1, row.streak),
           `${origin}/run`, `${origin}/settings/profile#email-preferences`,
         );
-        await this.mail.send({ ...message, engagement: { userId: row.userId, key: `streak:${new Date().toISOString().slice(0,10)}`, type: 'STREAK_REMINDER', link: '/run', createdAt: new Date() } });
+        await this.mail.send({ ...message, engagement: { userId: row.userId, key: `streak:${new Date().toISOString().slice(0,10)}`, type: 'STREAK_REMINDER', link: '/run', createdAt: new Date(), onlyChannel: 'email' } });
       } catch (error) {
         this.logger.error(`Streak reminder failed for ${row.userId}`, error instanceof Error ? error.stack : String(error));
       }
