@@ -42,6 +42,21 @@ describe('PushNotificationsProcessor', () => {
     expect(query.mock.calls.some(([sql]) => String(sql).includes('"pushProcessedAt"=now()'))).toBe(true);
   });
 
+  it('sends many notifications in one Expo request and marks them processed together', async () => {
+    const { processor, query } = setup([
+      { id: 'n1', userId: 'u1', type: 'FOLLOW', title: 'a', body: 'b', link: '/u/1', createdAt: now() },
+      { id: 'n2', userId: 'u2', type: 'FOLLOW', title: 'c', body: 'd', link: '/u/2', createdAt: now() },
+    ], [{ token: 'ExponentPushToken[a]', userId: 'u1' }, { token: 'ExponentPushToken[b]', userId: 'u2' }, { token: 'ExponentPushToken[c]', userId: 'u2' }]);
+    const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ data: [{ status: 'ok' }, { status: 'ok' }, { status: 'error' }] }) }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await processor.process(job);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+    expect(sent.map((message: { data: { id: string } }) => message.data.id)).toEqual(['n1', 'n2', 'n2']);
+    const marked = query.mock.calls.find(([sql]) => String(sql).includes('"pushProcessedAt"=now() WHERE "id"=ANY'));
+    expect(marked?.[1]).toEqual([['n1', 'n2']]);
+  });
+
   it('forgets a phone that has uninstalled the app', async () => {
     const { processor, query } = setup([{ id: 'n1', userId: 'u1', type: 'LEADERBOARD_UPDATE', title: 'x', body: 'y', link: null, createdAt: now() }], [{ token: 'ExponentPushToken[old]', userId: 'u1' }]);
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ data: [{ status: 'error', details: { error: 'DeviceNotRegistered' } }] }) })) as unknown as typeof fetch;

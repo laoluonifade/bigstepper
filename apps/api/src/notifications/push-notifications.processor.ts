@@ -14,11 +14,15 @@ type Pending = { id: string; userId: string; type: string; title: string; body: 
 type ExpoMessage = { to: string; title: string; body: string; sound: 'default'; badge: number; channelId: string; data: { id: string; link: string | null; type: string } };
 type ExpoTicket = { status: 'ok' | 'error'; id?: string; message?: string; details?: { error?: string } };
 
+type Outgoing = { row: Pending; deliveryId?: string; messages: ExpoMessage[] };
+type Outcome = { accepted: number; rateLimited: boolean };
+
 class RetryablePushError extends Error {}
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_PROJECT = '@startajump/jump';
 const STALE_MINUTES = 30;
+const EXPO_BATCH = 100;
 const CHANNEL_FOR: Record<string, string> = { DIRECT_MESSAGE: 'messages', MESSAGE_REACTION: 'messages', CLUB_MESSAGE: 'messages' };
 
 @Injectable()
@@ -121,30 +125,28 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     const byUser = new Map<string, string[]>();
     for (const { token, userId } of tokens) byUser.set(userId, [...(byUser.get(userId) ?? []), token]);
 
+    let batch: Outgoing[] = [];
+    let size = 0;
     for (const row of fresh) {
-      const decision = await this.engagement.reserve(notificationCandidate(row), 'push');
-      if (!decision.allowed) {
-        await this.dataSource.query(`UPDATE notifications SET "pushProcessedAt"=now() WHERE id=$1`,[row.id]);
-        continue;
-      }
       const messages: ExpoMessage[] = (byUser.get(row.userId) ?? []).map(to => ({
         to, title: row.title, body: row.body, sound: 'default', badge: badge.get(row.userId) ?? 0,
         channelId: CHANNEL_FOR[row.type] ?? 'default', data: { id: row.id, link: row.link, type: row.type },
       }));
-      if (!messages.length) { await this.engagement.finish(decision.id, 'failed', 'no_device'); continue; }
-      try {
-        let accepted = 0;
-        for (let start=0; start<messages.length; start+=100) accepted += await this.send(messages.slice(start,start+100), decision.id);
-        await this.engagement.finish(decision.id, accepted ? 'sent' : 'failed', accepted ? undefined : 'provider_rejected');
-      } catch (error) {
-        const retryable = error instanceof RetryablePushError;
-        await this.engagement.finish(decision.id, retryable ? 'failed' : 'uncertain', retryable ? 'retryable' : 'transport_error');
-        if (!retryable) this.logger.error('Could not send push notification', error instanceof Error ? error.message : String(error));
-        if (!retryable && decision.id) await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=$1`, [row.id]);
-        break;
+      if (batch.length && size + messages.length > EXPO_BATCH) {
+        if (!await this.flush(batch)) { batch = []; break; }
+        batch = [];
+        size = 0;
       }
-      await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=$1`, [row.id]);
+      const decision = await this.engagement.reserve(notificationCandidate(row), 'push');
+      if (!decision.allowed) {
+        await this.dataSource.query(`UPDATE notifications SET "pushProcessedAt"=now() WHERE id=$1`, [row.id]);
+        continue;
+      }
+      if (!messages.length) { await this.engagement.finish(decision.id, 'failed', 'no_device'); continue; }
+      batch.push({ row, deliveryId: decision.id, messages });
+      size += messages.length;
     }
+    if (batch.length) await this.flush(batch);
     const skipped = rows.filter(row => !fresh.includes(row));
     for (const row of skipped) await this.engagement.reserve(notificationCandidate(row), 'push');
     if (skipped.length) await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`,[skipped.map(r=>r.id)]);
@@ -161,8 +163,41 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     }
   }
 
-  private async send(messages: ExpoMessage[], deliveryId?: string, retried = false): Promise<number> {
-    if (!messages.length) return 0;
+  private async flush(batch: Outgoing[]) {
+    const messages = batch.flatMap(item => item.messages);
+    const deliveries = new Map(batch.map(item => [item.row.id, item.deliveryId]));
+    const outcome = new Map<string, Outcome>();
+    try {
+      for (let start = 0; start < messages.length; start += EXPO_BATCH) {
+        for (const [id, result] of await this.send(messages.slice(start, start + EXPO_BATCH), deliveries)) {
+          const seen = outcome.get(id);
+          outcome.set(id, { accepted: (seen?.accepted ?? 0) + result.accepted, rateLimited: !!seen?.rateLimited || result.rateLimited });
+        }
+      }
+    } catch (error) {
+      const retryable = error instanceof RetryablePushError;
+      for (const item of batch) await this.engagement.finish(item.deliveryId, retryable ? 'failed' : 'uncertain', retryable ? 'retryable' : 'transport_error');
+      if (!retryable) {
+        this.logger.error('Could not send push notifications', error instanceof Error ? error.message : String(error));
+        const optional = batch.filter(item => item.deliveryId).map(item => item.row.id);
+        if (optional.length) await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [optional]);
+      }
+      return false;
+    }
+    const done: string[] = [];
+    for (const item of batch) {
+      const result = outcome.get(item.row.id);
+      if (!result?.accepted && result?.rateLimited) { await this.engagement.finish(item.deliveryId, 'failed', 'retryable'); continue; }
+      await this.engagement.finish(item.deliveryId, result?.accepted ? 'sent' : 'failed', result?.accepted ? undefined : 'provider_rejected');
+      done.push(item.row.id);
+    }
+    if (done.length) await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [done]);
+    return true;
+  }
+
+  private async send(messages: ExpoMessage[], deliveries: Map<string, string | undefined>, retried = false): Promise<Map<string, Outcome>> {
+    const outcome = new Map<string, Outcome>();
+    if (!messages.length) return outcome;
     const accessToken = this.config.get<string>('EXPO_ACCESS_TOKEN');
     const response = await fetch(EXPO_PUSH_URL, {
       method: 'POST', signal: AbortSignal.timeout(10_000),
@@ -173,28 +208,30 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
       const text = await response.text().catch(() => '');
       const stale = retried ? null : this.otherProjectTokens(text);
       if (!stale) {
-        if(response.status===429) throw new RetryablePushError('Expo rate limited the request');
+        if (response.status === 429) throw new RetryablePushError('Expo rate limited the request');
         throw new Error(`Expo push failed: ${response.status}`);
       }
       await this.dataSource.query(`DELETE FROM "push_tokens" WHERE "token"=ANY($1::varchar[])`, [stale]);
-      return this.send(messages.filter(message => !stale.includes(message.to)), deliveryId, true);
+      return this.send(messages.filter(message => !stale.includes(message.to)), deliveries, true);
     }
     const { data } = await response.json() as { data: ExpoTicket[] };
     if (!Array.isArray(data) || data.length !== messages.length) throw new Error('Invalid Expo ticket response');
-    for (let i=0; i<data.length; i++) {
-      const ticket=data[i];
-      if (ticket.status==='ok' && ticket.id) await this.dataSource.query(`INSERT INTO notification_push_receipts(id,"notificationId","deliveryId",token) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`,[ticket.id,messages[i].data.id,deliveryId ?? null,messages[i].to]);
-      if (ticket.details?.error==='DeviceNotRegistered') {
-        await this.dataSource.query(`DELETE FROM push_tokens WHERE token=ANY($1::varchar[])`,[[messages[i].to]]);
+    for (let i = 0; i < data.length; i++) {
+      const ticket = data[i];
+      const message = messages[i];
+      const deliveryId = deliveries.get(message.data.id);
+      if (ticket.status === 'ok' && ticket.id) await this.dataSource.query(`INSERT INTO notification_push_receipts(id,"notificationId","deliveryId",token) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [ticket.id, message.data.id, deliveryId ?? null, message.to]);
+      if (ticket.details?.error === 'DeviceNotRegistered') {
+        await this.dataSource.query(`DELETE FROM push_tokens WHERE token=ANY($1::varchar[])`, [[message.to]]);
         if (deliveryId) {
-          const [user]=await this.dataSource.query(`SELECT "userId" FROM notification_deliveries WHERE id=$1`,[deliveryId]);
-          if(user) await this.engagement.event(user.userId,'device_token_invalidated',`device:${messages[i].data.id}`,deliveryId);
+          const [user] = await this.dataSource.query(`SELECT "userId" FROM notification_deliveries WHERE id=$1`, [deliveryId]);
+          if (user) await this.engagement.event(user.userId, 'device_token_invalidated', `device:${message.data.id}`, deliveryId);
         }
       }
+      const seen = outcome.get(message.data.id) ?? { accepted: 0, rateLimited: false };
+      outcome.set(message.data.id, { accepted: seen.accepted + (ticket.status === 'ok' ? 1 : 0), rateLimited: seen.rateLimited || ticket.details?.error === 'MessageRateExceeded' });
     }
-    const accepted=data.filter(ticket=>ticket.status==='ok').length;
-    if(!accepted && data.some(ticket=>ticket.details?.error==='MessageRateExceeded')) throw new RetryablePushError('Device rate limit');
-    return accepted;
+    return outcome;
   }
 
   private async checkReceipts() {
