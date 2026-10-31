@@ -4,7 +4,7 @@ export const PRIVACY: LegalDocument = {
   slug: 'privacy',
   title: 'Privacy Policy',
   effective: '23 October 2026',
-  updated: '23 October 2026',
+  updated: '1 November 2026',
   body: `1. Introduction
 
 This Privacy Policy explains how Voyatech Limited (“Voyatech”, “we”, “us”, or “our”), the owner and operator of Jump, collects, uses, stores, shares, and otherwise processes personal information when you use Jump.
@@ -84,7 +84,26 @@ Connecting a service is optional unless a particular feature requires it. You ca
 
 Disconnecting a service generally stops future access through that connection, but it does not automatically delete information already imported into Jump. You may request deletion subject to applicable retention requirements.
 
-3.5 Device, Technical, and Usage Information
+3.5 Apple Health
+
+On iPhone, you can choose to connect Jump to Apple Health from You → Connections in the Jump app. Connecting is optional, and Jump only reads the data you allow on Apple’s permission screen.
+
+If you connect Apple Health, Jump reads:
+
+* Workouts: walks, hikes, runs, and rides, with their start and end times, distance, route, and the steps counted during them.
+* Daily step counts from your iPhone and Apple Watch. Steps entered by hand in Apple Health are not used.
+
+We use this information only to add your workouts to your Jump activity history, count your steps and activities in competitions and on leaderboards, and check that results are fair. Imported workouts go through the same checks as activities recorded in Jump.
+
+Jump only reads from Apple Health. It does not write, change, or delete anything in Apple Health.
+
+We do not use information from Apple Health for advertising or marketing, we do not sell it, and we do not share it with third parties for advertising, marketing, or data brokering. We do not use it to make decisions about you unrelated to providing Jump.
+
+Your results in competitions you join, such as step totals and rankings, are visible to other participants in the same way as other activity results.
+
+You can stop access at any time by disconnecting Apple Health from You → Connections in the Jump app, or in your iPhone’s Settings under Health → Data Access & Devices → Jump. Disconnecting Apple Health in Jump stops future imports and deletes the workouts and daily step counts Jump imported from Apple Health, and they stop counting in competitions that are still running. Results in competitions that have already finished keep their final standings. Turning off access only in your iPhone’s Settings stops future imports but does not delete what Jump already imported; disconnect in Jump or delete your account to remove it. Deleting your Jump account also deletes your imported workouts, daily step counts, and the Apple Health connection. Nothing in Apple Health itself is changed.
+
+3.6 Device, Technical, and Usage Information
 
 When you access Jump, we may collect technical information such as:
 
@@ -99,7 +118,7 @@ We use this information to operate, maintain, secure, troubleshoot, and improve 
 
 Where required, we will provide cookie or tracking notices and obtain consent before using non-essential tracking technologies.
 
-3.6 Payments and Transaction Information
+3.7 Payments and Transaction Information
 
 When you make a payment or receive a permitted payout through Jump, we may process:
 
@@ -114,13 +133,13 @@ Payment card details and other sensitive payment credentials may be collected an
 
 The information processed depends on the payment method and provider. We will not claim that payment details are handled exclusively by a provider unless that is how our actual systems operate.
 
-3.7 Communications and Support
+3.8 Communications and Support
 
 If you contact us or communicate with Jump support, we may collect your contact details, the content of your messages, relevant attachments, and information needed to resolve your enquiry.
 
 We may also retain records of complaints, appeals, reports of misconduct, and relevant decisions.
 
-3.8 Information from Other Sources
+3.9 Information from Other Sources
 
 Where permitted by law, we may receive information from payment providers, connected services, identity-verification providers, fraud-prevention services, other users who submit reports, and public sources relevant to security or the integrity of the Platform.
 

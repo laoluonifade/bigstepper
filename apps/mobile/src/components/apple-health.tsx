@@ -6,6 +6,7 @@ import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { api, post } from '@/lib/api';
 import { appleHealthAvailable, requestAppleHealth, syncAppleHealth } from '@/lib/apple-health';
+import { confirm } from '@/lib/dialog';
 import { keys } from '@/lib/queries';
 import { colors, fontFamily, radius } from '@/lib/theme';
 import { ErrorNotice, Txt } from './ui';
@@ -88,8 +89,14 @@ export function AppleHealthConnection() {
   });
   const disconnect = useMutation({
     mutationFn: () => api<AppleHealthStatus>('/apple-health', { method: 'DELETE' }),
-    onSuccess: (next) => queryClient.setQueryData(['apple-health'], next),
+    onSuccess(next) {
+      queryClient.setQueryData(['apple-health'], next);
+      refreshProgress(queryClient);
+    },
   });
+  const askDisconnect = async () => {
+    if (await confirm({ title: 'Disconnect Apple Health?', message: 'Jump deletes the workouts and daily steps it imported from Apple Health, and they stop counting in competitions that are still running. Nothing in Apple Health itself changes.', confirmLabel: 'Disconnect', destructive: true })) disconnect.mutate();
+  };
   if (!appleHealthAvailable() || status.isPending) return null;
   const data = status.data;
   return <View style={styles.connection}>
@@ -107,7 +114,7 @@ export function AppleHealthConnection() {
       ? <Pressable disabled={connect.isPending} onPress={() => connect.mutate()} style={[styles.connect, connect.isPending && { opacity: 0.6 }]} hitSlop={8}>
         <Text style={styles.connectText}>{connect.isPending ? 'Connecting…' : 'Connect'}</Text>
       </Pressable>
-      : <Pressable disabled={disconnect.isPending} onPress={() => disconnect.mutate()} hitSlop={8}><Txt size={13} weight="semibold" color="ink2">{disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}</Txt></Pressable>}
+      : <Pressable disabled={disconnect.isPending} onPress={() => void askDisconnect()} hitSlop={8}><Txt size={13} weight="semibold" color="ink2">{disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}</Txt></Pressable>}
   </View>;
 }
 

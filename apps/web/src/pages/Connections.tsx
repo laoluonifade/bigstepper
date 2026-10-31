@@ -1,6 +1,7 @@
 import { formatRelative } from '@jump/shared/format';
 import type { AppleHealthStatus } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useConfirm } from '../components/ConfirmDialog';
 import { ErrorNotice, PageHeader } from '../components/ui';
 import { api } from '../lib/api';
 import { StravaConnection } from './Strava';
@@ -31,9 +32,13 @@ function HealthMark() {
 function AppleHealthConnection() {
   const queryClient = useQueryClient();
   const status = useQuery({ queryKey: ['apple-health'], queryFn: () => api<AppleHealthStatus>('/apple-health') });
+  const confirm = useConfirm();
   const disconnect = useMutation({
     mutationFn: () => api<AppleHealthStatus>('/apple-health', { method: 'DELETE' }),
-    onSuccess: (next) => queryClient.setQueryData(['apple-health'], next),
+    onSuccess(next) {
+      queryClient.setQueryData(['apple-health'], next);
+      void queryClient.invalidateQueries();
+    },
   });
   const data = status.data;
   return <div className={ROW}>
@@ -47,8 +52,9 @@ function AppleHealthConnection() {
       </p>
       <ErrorNotice error={status.error ?? disconnect.error} className="mt-2" />
     </div>
-    {data?.connected && <button type="button" className="text-[13px] font-semibold text-ink-2 underline-offset-2 hover:text-bad hover:underline" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
+    {data?.connected && <button type="button" className="text-[13px] font-semibold text-ink-2 underline-offset-2 hover:text-bad hover:underline" disabled={disconnect.isPending} onClick={() => confirm.ask({ title: 'Disconnect Apple Health?', body: 'Jump deletes the workouts and daily steps it imported from Apple Health, and they stop counting in competitions that are still running. Nothing in Apple Health itself changes.', confirmLabel: 'Disconnect', danger: true, onConfirm: () => disconnect.mutate() })}>
       {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
     </button>}
+    {confirm.dialog}
   </div>;
 }

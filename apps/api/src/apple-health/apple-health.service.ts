@@ -9,7 +9,8 @@ import { stravaStepTotals } from '../strava/strava-steps';
 import { spreadSteps } from './apple-health-steps';
 import { AppleHealthLink } from './apple-health-link.entity';
 import { AppleHealthWorkoutDto, DailyStepsDto } from './apple-health.dto';
-import { retotal } from '../tables/competition-credits';
+import { refreshLeagueDistance } from '../leagues/league-credits';
+import { retotal, uncreditActivity } from '../tables/competition-credits';
 
 const MAX_WORKOUT_SECONDS = 24 * 60 * 60;
 const ROUTE_SLACK_SECONDS = 120;
@@ -37,7 +38,28 @@ export class AppleHealthService {
   }
 
   async disconnect(userId: string) {
-    await this.links.delete({ userId });
+    await this.dataSource.transaction(async (manager) => {
+      const imported = await manager.query(
+        `SELECT "id", "runningSessionId", "activityType" FROM "activities" WHERE "userId" = $1 AND "source" = 'apple_health' FOR UPDATE`,
+        [userId],
+      ) as Array<{ id: string; runningSessionId: string; activityType: string }>;
+      for (const activity of imported) {
+        await uncreditActivity(manager, activity.id, { liveOnly: true });
+        await manager.query(`DELETE FROM "table_activity_credits" WHERE "activityId" = $1`, [activity.id]);
+      }
+      if (imported.length) await manager.query(`DELETE FROM "running_sessions" WHERE "id" = ANY($1::uuid[])`, [imported.map((activity) => activity.runningSessionId)]);
+      if (imported.some((activity) => activity.activityType !== 'cycle')) await refreshLeagueDistance(manager, userId);
+      const days = await manager.query(`DELETE FROM "daily_steps" WHERE "userId" = $1 RETURNING "day"`, [userId]) as Array<{ day: string }>;
+      if (days.length) {
+        const tables = await manager.query(
+          `SELECT t."id" FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
+           WHERE r."userId" = $1 AND t."allDaySteps" AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
+          [userId],
+        ) as Array<{ id: string }>;
+        if (tables.length) await retotal(manager, tables.map((table) => table.id));
+      }
+      await manager.query(`DELETE FROM "apple_health_links" WHERE "userId" = $1`, [userId]);
+    });
     return { connected: false as const };
   }
 
