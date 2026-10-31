@@ -57,15 +57,15 @@ export function BusinessSection() {
       <div className="grid items-center gap-10 lg:grid-cols-[1fr_0.95fr] lg:gap-12">
         <div className="max-w-xl">
           <p className="eyebrow flex items-center gap-2"><span className="inline-block h-2.5 w-2.5 rotate-45 bg-track" /> Jump for businesses</p>
-          <h2 id="business-heading" className="display mt-4 text-[clamp(42px,7vw,76px)] leading-[0.9] tracking-[-0.055em]">
+          <h2 id="business-heading" className="display mt-4 text-[clamp(36px,6.6vw,68px)] leading-[0.9] tracking-[-0.055em] lg:text-[clamp(44px,4.4vw,60px)]">
             Turn everyday steps into workplace victories.
           </h2>
           <p className="mt-5 max-w-lg text-[16px] leading-relaxed text-ink-2 sm:text-[18px]">
             Your people are already on the move. Bring them together in a workplace club, set a step challenge and give everyone a new reason to show up.
           </p>
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-            <Link to="/register" search={signup} className="btn-primary min-h-12 px-5">Bring Jump to your workplace <ArrowRightIcon size={16} /></Link>
-            <a href="#business-how" className="btn-secondary min-h-12 px-5">See how it works</a>
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <Link to="/register" search={signup} className="btn-primary min-h-12 whitespace-nowrap px-4 max-sm:text-[12px] max-sm:tracking-normal sm:px-5">Bring Jump to your workplace <ArrowRightIcon size={16} /></Link>
+            <a href="#business-how" className="btn-secondary min-h-12 whitespace-nowrap px-4 max-sm:text-[12px] max-sm:tracking-normal sm:px-5">See how it works</a>
           </div>
         </div>
 
@@ -131,12 +131,12 @@ export function BusinessSection() {
       {/* Competition showcase */}
       <div className="relative mt-20 overflow-hidden rounded-md border-2 border-ink bg-ink px-5 py-8 text-paper shadow-hard sm:mt-28 sm:px-9 sm:py-11">
         <div className="absolute -right-24 -top-28 h-72 w-72 rounded-full border-[36px] border-white/[0.06]" aria-hidden="true" />
-        <div className="relative grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
-          <div>
+        <div className="relative grid gap-8">
+          <div className="flex flex-col items-center text-center">
             <p className="eyebrow text-paper/55">Imagine your workplace on Jump</p>
-            <h3 className="display mt-3 max-w-md text-[clamp(36px,5vw,58px)] leading-[0.9] tracking-[-0.045em]">The group chat, with a leaderboard.</h3>
-            <p className="mt-4 max-w-md text-[14px] leading-relaxed text-paper/70">Start a step competition from your club. Each person sees their own progress and place on the board; the challenge gives everyone something to cheer for.</p>
-        <span className="mt-5 inline-flex rounded-sm border border-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-paper/60">Example challenge setups · illustrative</span>
+            <h3 className="display mt-3 max-w-3xl text-[clamp(24px,6.8vw,58px)] leading-[0.9] tracking-[-0.045em]">The group chat, with a leaderboard.</h3>
+            <p className="mt-4 max-w-xl text-[14px] leading-relaxed text-paper/70 sm:text-[15px]">Start a step competition from your club. Each person sees their own progress and place on the board; the challenge gives everyone something to cheer for.</p>
+            <span className="mt-5 inline-flex rounded-sm border border-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-paper/60">Example challenge setups · illustrative</span>
           </div>
           <div className="grid gap-2.5 sm:grid-cols-3">
             {challengeIdeas.map((idea) => <article key={idea.title} className="rounded-md border border-white/15 bg-white/[0.08] p-3.5 backdrop-blur-sm">
@@ -201,7 +201,7 @@ export function BusinessSection() {
             <h3 className="display mt-2 text-[clamp(36px,6vw,64px)] leading-[0.9] tracking-[-0.05em]">Get your people moving.</h3>
             <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink/75 sm:text-[16px]">Bring your teams together, take on a step challenge and make everyday activity a little more exciting.</p>
           </div>
-          <Link to="/register" search={signup} className="btn-dark min-h-12 w-full shrink-0 px-5 sm:w-auto">Create your workplace club <ArrowRightIcon size={16} /></Link>
+          <Link to="/register" search={signup} className="btn-dark min-h-12 w-full shrink-0 whitespace-nowrap px-3 max-sm:text-[12px] max-sm:tracking-normal sm:w-auto sm:px-5">Create your workplace club <ArrowRightIcon size={16} /></Link>
         </div>
       </div>
     </section>
