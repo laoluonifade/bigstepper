@@ -82,6 +82,12 @@ export class ClubsController {
     return this.clubsService.competitions(id, viewer?.id);
   }
 
+  @Get(':id/weekly-leaderboard')
+  @UseGuards(JwtAuthGuard)
+  weeklyLeaderboard(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.clubsService.weekLeaderboard(user.id,id);
+  }
+
   @Get(':id/leaderboard')
   @UseGuards(JwtAuthGuard)
   leaderboard(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

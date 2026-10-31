@@ -11,6 +11,7 @@ import { METRICS } from './competition-rules';
 
 interface ReminderRecipient {
   id: string;
+  userId: string;
   email: string;
   displayName: string | null;
   title: string;
@@ -49,7 +50,7 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
          WHERE t."reminderTime" IS NOT NULL AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
            AND t."startsAt" <= now() AND (t."scoringClosesAt" IS NULL OR t."scoringClosesAt" > now())
            AND (now() AT TIME ZONE t."reminderTimeZone")::time >= t."reminderTime"
-           AND (d."id" IS NULL OR (d."sentAt" IS NULL AND d."claimedAt" < now() - INTERVAL '5 minutes'))
+           AND d."suppressedAt" IS NULL AND (d."id" IS NULL OR (d."sentAt" IS NULL AND d."claimedAt" < now() - INTERVAL '5 minutes'))
            AND NOT EXISTS (
              SELECT 1 FROM "activities" a WHERE a."userId"=r."userId"
                AND a."verificationStatus" IN ('PENDING_VERIFICATION','VERIFIED')
@@ -60,33 +61,36 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
          INSERT INTO "challenge_reminder_deliveries" ("tableId","userId","reminderDate")
          SELECT "tableId","userId","reminderDate" FROM due
          ON CONFLICT ("tableId","userId","reminderDate") DO UPDATE SET "claimedAt"=now()
-         WHERE "challenge_reminder_deliveries"."sentAt" IS NULL
+         WHERE "challenge_reminder_deliveries"."sentAt" IS NULL AND "challenge_reminder_deliveries"."suppressedAt" IS NULL
            AND "challenge_reminder_deliveries"."claimedAt" < now() - INTERVAL '5 minutes'
          RETURNING "id","tableId","userId"
        )
-       SELECT c."id", u."email", u."displayName", t."title", t."code"
+       SELECT c."id", c."userId", u."email", u."displayName", t."title", t."code"
        FROM claimed c JOIN "users" u ON u."id"=c."userId"
        JOIN "competition_tables" t ON t."id"=c."tableId"`,
     )) as ReminderRecipient[];
     if (!recipients.length) return;
 
     const sent: string[] = [];
+    const suppressed: string[]=[];
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(10, recipients.length) }, async () => {
       while (next < recipients.length) {
         const recipient = recipients[next++];
         try {
-          await this.mail.send(challengeReminderEmail(
+          const message = challengeReminderEmail(
             { address: recipient.email, name: recipient.displayName ?? undefined },
             recipient.title,
             `${this.config.getOrThrow<string>('WEB_ORIGIN')}/competitions/${recipient.code}`,
-          ));
-          sent.push(recipient.id);
+          );
+          const delivered=await this.mail.send({ ...message, engagement: { userId: recipient.userId, type: 'CHALLENGE_REMINDER', key: `challenge-reminder:${recipient.id}`, link: `/competitions/${recipient.code}`, createdAt: new Date(), onlyChannel: 'email' } });
+          if(delivered!==false) sent.push(recipient.id); else suppressed.push(recipient.id);
         } catch (error) {
           this.logger.error(`Competition reminder delivery failed for ${recipient.id}`, error instanceof Error ? error.stack : String(error));
         }
       }
     }));
+    if(suppressed.length) await this.dataSource.query(`UPDATE challenge_reminder_deliveries SET "suppressedAt"=now() WHERE id=ANY($1::uuid[])`,[suppressed]);
     if (sent.length) await this.dataSource.query(
       `UPDATE "challenge_reminder_deliveries" SET "sentAt"=now() WHERE "id"=ANY($1::uuid[])`, [sent],
     );

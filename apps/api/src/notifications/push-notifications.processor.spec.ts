@@ -12,7 +12,7 @@ function setup(pending: Array<Record<string, unknown>>, tokens: Array<{ token: s
     if (sql.includes('COUNT(*)')) return [{ userId: 'u1', count: 3 }];
     return [];
   });
-  const processor = new PushNotificationsProcessor({ query } as unknown as DataSource, { get: () => undefined } as unknown as ConfigService, {} as Queue);
+  const processor = new PushNotificationsProcessor({ query } as unknown as DataSource, { get: () => undefined } as unknown as ConfigService, {} as Queue, { reserve: jest.fn().mockResolvedValue({allowed:true}), finish: jest.fn(), event: jest.fn() } as never, {} as never);
   return { processor, query };
 }
 
@@ -22,7 +22,7 @@ describe('PushNotificationsProcessor', () => {
   it('claims with a query that returns rows (a bare UPDATE … RETURNING comes back as [rows, count])', async () => {
     const { processor, query } = setup([], []);
     await processor.process(job);
-    const claim = String(query.mock.calls[0][0]);
+    const claim = String(query.mock.calls.find(([sql])=>String(sql).includes('"pushClaimedAt"=now()'))?.[0]);
     expect(claim).toContain('claimed AS (');
     expect(claim.trim().endsWith('SELECT * FROM claimed')).toBe(true);
   });
@@ -42,11 +42,26 @@ describe('PushNotificationsProcessor', () => {
     expect(query.mock.calls.some(([sql]) => String(sql).includes('"pushProcessedAt"=now()'))).toBe(true);
   });
 
+  it('sends many notifications in one Expo request and marks them processed together', async () => {
+    const { processor, query } = setup([
+      { id: 'n1', userId: 'u1', type: 'FOLLOW', title: 'a', body: 'b', link: '/u/1', createdAt: now() },
+      { id: 'n2', userId: 'u2', type: 'FOLLOW', title: 'c', body: 'd', link: '/u/2', createdAt: now() },
+    ], [{ token: 'ExponentPushToken[a]', userId: 'u1' }, { token: 'ExponentPushToken[b]', userId: 'u2' }, { token: 'ExponentPushToken[c]', userId: 'u2' }]);
+    const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ data: [{ status: 'ok' }, { status: 'ok' }, { status: 'error' }] }) }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await processor.process(job);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+    expect(sent.map((message: { data: { id: string } }) => message.data.id)).toEqual(['n1', 'n2', 'n2']);
+    const marked = query.mock.calls.find(([sql]) => String(sql).includes('"pushProcessedAt"=now() WHERE "id"=ANY'));
+    expect(marked?.[1]).toEqual([['n1', 'n2']]);
+  });
+
   it('forgets a phone that has uninstalled the app', async () => {
     const { processor, query } = setup([{ id: 'n1', userId: 'u1', type: 'LEADERBOARD_UPDATE', title: 'x', body: 'y', link: null, createdAt: now() }], [{ token: 'ExponentPushToken[old]', userId: 'u1' }]);
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ data: [{ status: 'error', details: { error: 'DeviceNotRegistered' } }] }) })) as unknown as typeof fetch;
     await processor.process(job);
-    const removal = query.mock.calls.find(([sql]) => String(sql).startsWith('DELETE FROM "push_tokens"'));
+    const removal = query.mock.calls.find(([sql]) => /DELETE FROM "?push_tokens/.test(String(sql)));
     expect(removal?.[1]).toEqual([['ExponentPushToken[old]']]);
   });
 
@@ -84,10 +99,33 @@ describe('PushNotificationsProcessor', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [{ status: 'ok' }] }) });
     global.fetch = fetchMock as unknown as typeof fetch;
     await processor.process(job);
-    const removal = query.mock.calls.find(([sql]) => String(sql).startsWith('DELETE FROM "push_tokens"'));
+    const removal = query.mock.calls.find(([sql]) => /DELETE FROM "?push_tokens/.test(String(sql)));
     expect(removal?.[1]).toEqual([['ExponentPushToken[old]']]);
     const resent = JSON.parse((fetchMock.mock.calls[1] as unknown as [string, { body: string }])[1].body);
     expect(resent.map((message: { to: string }) => message.to)).toEqual(['ExponentPushToken[new]']);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('"pushProcessedAt"=now()'))).toBe(true);
   });
+  it('never calls Expo after shared policy suppression',async()=>{
+    const {processor}=setup([{id:'n',userId:'u1',type:'MILESTONE',title:'Done',body:'Progress',link:'/activities',createdAt:now()}],[{token:'ExponentPushToken[a]',userId:'u1'}]);
+    const policy=(processor as unknown as {engagement:{reserve:jest.Mock}}).engagement;
+    policy.reserve.mockResolvedValue({allowed:false,reason:'quiet_hours'});
+    global.fetch=jest.fn();await processor.process(job);expect(global.fetch).not.toHaveBeenCalled();
+  });
+  it('keeps explicitly rate-limited optional pushes eligible for a bounded retry',async()=>{
+    const {processor,query}=setup([{id:'n',userId:'u1',type:'MILESTONE',title:'Done',body:'Progress',link:'/activities',createdAt:now()}],[{token:'ExponentPushToken[a]',userId:'u1'}]);
+    const policy=(processor as unknown as {engagement:{reserve:jest.Mock;finish:jest.Mock}}).engagement;
+    policy.reserve.mockResolvedValue({allowed:true,id:'delivery'});
+    global.fetch=jest.fn().mockResolvedValue({ok:false,status:429,text:async()=>''});await processor.process(job);
+    expect(policy.finish).toHaveBeenCalledWith('delivery','failed','retryable');
+    expect(query.mock.calls.some(([sql])=>String(sql).includes('"pushProcessedAt"=now()'))).toBe(false);
+  });
+  it('records Expo receipts without treating provider acceptance as device delivery',async()=>{
+    const {processor,query}=setup([{id:'n',userId:'u1',type:'MILESTONE',title:'Done',body:'Progress',link:'/activities',createdAt:now()}],[{token:'ExponentPushToken[a]',userId:'u1'}]);
+    const policy=(processor as unknown as {engagement:{reserve:jest.Mock;finish:jest.Mock}}).engagement;policy.reserve.mockResolvedValue({allowed:true,id:'delivery'});
+    global.fetch=jest.fn().mockResolvedValue({ok:true,json:async()=>({data:[{status:'ok',id:'receipt'}]})});await processor.process(job);
+    expect(query.mock.calls.some(([sql])=>String(sql).includes('INSERT INTO notification_push_receipts'))).toBe(true);
+    expect(policy.finish).toHaveBeenCalledWith('delivery','sent',undefined);
+    expect(policy.finish).not.toHaveBeenCalledWith('delivery','delivered');
+  });
+
 });

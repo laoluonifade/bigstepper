@@ -1,6 +1,3 @@
-import type { ConfigService } from '@nestjs/config';
-import type { Queue } from 'bullmq';
-import type { DataSource } from 'typeorm';
 import { PushNotificationsProcessor } from './push-notifications.processor';
 import { boostMessage, pickBoosts, StandingRow } from './standing-boost';
 
@@ -51,13 +48,9 @@ describe('standing boost', () => {
     expect(picked.map((p) => [p.userId, p.tableId])).toEqual([['u1', 'close'], ['u2', 'other']]);
   });
 
-  it('only queues between 5pm and 9pm Lagos time, as push-only notifications', async () => {
-    const query = jest.fn(async (sql: string) => (sql.includes('WITH live') ? [row({})] : []));
-    const processor = new PushNotificationsProcessor({ query } as unknown as DataSource, {} as ConfigService, {} as Queue);
-    expect(await processor.queueStandingBoosts(new Date('2026-10-25T08:00:00Z'))).toBe(0);
-    expect(query).not.toHaveBeenCalled();
-    expect(await processor.queueStandingBoosts(new Date('2026-10-25T16:30:00Z'))).toBe(1);
-    const insert = query.mock.calls.find(([sql]) => String(sql).startsWith('INSERT INTO "notifications"'));
-    expect(String(insert?.[0])).toContain('"emailProcessedAt"');
+  it('suppresses the legacy standing generator without reliable synchronization evidence', async()=>{
+    const query=jest.fn();
+    const processor=new PushNotificationsProcessor({query} as never,{} as never,{} as never,{} as never,{} as never);
+    expect(await processor.queueStandingBoosts()).toBe(0);expect(query).not.toHaveBeenCalled();
   });
 });

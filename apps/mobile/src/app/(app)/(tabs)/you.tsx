@@ -1,3 +1,4 @@
+import { NotificationPreferences } from '@/components/NotificationPreferences';
 import { countryName } from '@jump/shared/countries';
 import { formatDate } from '@jump/shared/format';
 import { profileStats } from '@jump/shared/progress';
@@ -358,12 +359,13 @@ function EmailSheet({ profile, onClose }: { profile: Profile; onClose: () => voi
   const [digest, setDigest] = useState(profile.emailDigestEnabled);
   const save = useSaveProfile(onClose);
   const changes = changedFields(profile, { emailActivityEnabled: activity, emailDigestEnabled: digest });
-  return <Sheet open onOpenChange={(open) => !open && onClose()} title="Email updates" footer={<SheetActions disabled={!Object.keys(changes).length} pending={save.isPending} onCancel={onClose} onSave={() => save.mutate(changes)} />}>
+  return <Sheet open onOpenChange={(open) => !open && onClose()} title="Notifications" footer={<SheetActions disabled={!Object.keys(changes).length} pending={save.isPending} onCancel={onClose} onSave={() => save.mutate(changes)} />}>
     <Toggle checked={activity} onChange={setActivity} title="Activity and people" body="Messages, follows, Rant interactions, competition progress and results." />
     <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.line }} />
     <Toggle checked={digest} onChange={setDigest} title="Competition picks" body="Popular open competitions every three days." />
     <Txt size={12} color="ink3" style={{ marginTop: 12 }}>Account-security and payment emails always arrive.</Txt>
     <ErrorNotice error={save.error} />
+    <NotificationPreferences />
   </Sheet>;
 }
 

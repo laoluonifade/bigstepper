@@ -1,5 +1,7 @@
+import { AppState } from 'react-native';
+import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, isApiError, patch } from './api';
+import { api, isApiError, patch, post } from './api';
 import { useAuth } from './auth';
 import { openLink } from './links';
 import type { Activity, CompetitionTable, CreatorEarning, CreatorProfile, FinalResult, LeagueDivision, LeagueMembership, LeagueRules, LeagueSeason, Notification, Profile, StandingRow, Unit, Wallet, WalletTransaction } from '@jump/shared/types';
@@ -87,6 +89,13 @@ export function useFinalResult(tableId: string | undefined) {
 
 export function useNotifications() {
   const { user } = useAuth();
+  useEffect(()=>{
+    if(!user) return;
+    const record=()=>void post('/notifications/context',{timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}).catch(()=>undefined);
+    if(AppState.currentState==='active') record();
+    const listener=AppState.addEventListener('change',state=>{if(state==='active') record();});
+    return ()=>listener.remove();
+  },[user?.id]);
   return useQuery({
     queryKey: keys.notifications,
     queryFn: () => api<Notification[]>('/notifications'),
@@ -190,6 +199,7 @@ export function useOpenNotification() {
     markRead,
     open(item: Notification) {
       if (!item.readAt) markRead.mutate(item.id);
+      void post(`/notifications/${item.id}/click`).catch(()=>undefined);
       const link = notificationLink(item);
       if (link) openLink(link);
     },

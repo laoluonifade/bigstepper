@@ -1,3 +1,4 @@
+import { EngagementModule } from './notifications/engagement.module';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -55,6 +56,7 @@ import { PagesModule } from './pages/pages.module';
       }),
     }),
     RedisModule,
+    EngagementModule,
     MailModule,
     AmlModule,
     SafetyModule,

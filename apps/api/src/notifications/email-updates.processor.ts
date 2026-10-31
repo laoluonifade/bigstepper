@@ -6,9 +6,11 @@ import { DataSource } from 'typeorm';
 import { EMAIL_UPDATES_QUEUE } from '../jobs/jobs.module';
 import { MailService } from '../mail/mail.service';
 import { activityUpdatesEmail, competitionDigestEmail, CompetitionDigestItem, streakReminderEmail } from '../mail/templates';
+import { notificationCandidate } from './engagement-policy';
+import { EngagementService } from './engagement.service';
 import { STREAK_DAY_SQL, STREAK_TIME_ZONE } from '../running/streaks';
 
-type PendingUpdate = { id: string; userId: string; type: string; title: string; email: string; displayName: string | null; emailVerified: boolean; emailActivityEnabled: boolean };
+type PendingUpdate = { id: string; userId: string; type: string; title: string; email: string; displayName: string | null; emailVerified: boolean; emailActivityEnabled: boolean; body: string; link: string | null; createdAt: Date; engagementKey?: string; engagementExpiresAt?: Date; engagementChannel?: 'push' | 'email' };
 type DigestRecipient = { userId: string; email: string; displayName: string | null };
 const ESSENTIAL_EMAIL_TYPES = new Set(['PAYOUT_RECIPIENT_CHANGED', 'PAYOUT_SENT', 'PAYOUT_REJECTED']);
 
@@ -22,6 +24,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     @InjectQueue(EMAIL_UPDATES_QUEUE) private readonly queue: Queue,
+    private readonly engagement: EngagementService,
   ) { super(); }
 
   async onModuleInit() {
@@ -33,8 +36,8 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
   async process(job: Job): Promise<void> {
     if (!this.mail.canSendBulk) return;
     if (job.name === 'send-notifications') await this.sendNotifications();
-    if (job.name === 'send-digests') await this.sendDigests();
-    if (job.name === 'send-streak-reminders') await this.sendStreakReminders();
+    if (job.name === 'send-digests' && (await this.engagement.settings()).triggers.digest) await this.sendDigests();
+    if (job.name === 'send-streak-reminders' && (await this.engagement.settings()).triggers.streak) await this.sendStreakReminders();
   }
 
   private origin() { return this.config.getOrThrow<string>('WEB_ORIGIN').replace(/\/$/, ''); }
@@ -49,7 +52,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
        ), claimed AS (
          UPDATE "notifications" n SET "emailClaimedAt"=now()
          FROM pending WHERE n."id"=pending."id"
-         RETURNING n."id",n."userId",n."type",n."title"
+         RETURNING n.*
        )
        SELECT c.*,u."email",u."displayName",u."emailVerified",COALESCE(p."emailActivityEnabled",true) "emailActivityEnabled"
        FROM claimed c JOIN "users" u ON u."id"=c."userId"
@@ -66,21 +69,29 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
         const batch = batches[next++];
         const user = batch[0];
         const ids = batch.map((row) => row.id);
-        const emailRows = batch.filter((row) => row.emailActivityEnabled || ESSENTIAL_EMAIL_TYPES.has(row.type));
-        const emailIds = emailRows.map((row) => row.id);
-        const skippedIds = batch.filter((row) => !emailRows.includes(row)).map((row) => row.id);
-        if (!user.emailVerified || !emailRows.length) {
+        const essential = batch.filter((row) => ESSENTIAL_EMAIL_TYPES.has(row.type));
+        const optional = user.emailActivityEnabled ? batch.filter((row) => !ESSENTIAL_EMAIL_TYPES.has(row.type)) : [];
+        if (!user.emailVerified || (!essential.length && !optional.length)) {
           await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [ids]);
           continue;
         }
         try {
           const origin = this.origin();
-          await this.mail.send(activityUpdatesEmail(
-            { address: user.email, name: user.displayName ?? undefined },
-            emailRows.map((row) => row.title), `${origin}/notifications`, `${origin}/settings/profile#email-preferences`,
-          ));
-          await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now(),"emailSentAt"=now() WHERE "id"=ANY($1::uuid[])`, [emailIds]);
-          if (skippedIds.length) await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`, [skippedIds]);
+          if (essential.length) {
+            await this.mail.send(activityUpdatesEmail(
+              { address: user.email, name: user.displayName ?? undefined }, essential.map(row => row.title),
+              `${origin}${essential.length === 1 ? essential[0].link ?? '/notifications' : '/notifications'}`, `${origin}/settings/profile#email-preferences`,
+            ));
+            await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now(),"emailSentAt"=now() WHERE "id"=ANY($1::uuid[])`, [essential.map(row => row.id)]);
+          }
+          const sent: string[] = [];
+          for (const row of optional) {
+            const message = activityUpdatesEmail({ address: user.email, name: user.displayName ?? undefined },
+              [row.title + (row.body ? ': ' + row.body : '')], `${origin}${row.link ?? '/notifications'}${row.link?.includes('?')?'&':'?'}jump_notification=${row.id}`, `${origin}/settings/profile#email-preferences`);
+            message.subject=`${row.title} · Jump`;
+            if (await this.mail.send({ ...message, engagement: notificationCandidate(row) })) sent.push(row.id);
+          }
+          await this.dataSource.query(`UPDATE "notifications" SET "emailProcessedAt"=now(),"emailSentAt"=CASE WHEN "id"=ANY($2::uuid[]) THEN now() END WHERE "id"=ANY($1::uuid[]) AND "emailProcessedAt" IS NULL`, [ids, sent]);
         } catch (error) {
           this.logger.error(`Notification email failed for ${user.userId}`, error instanceof Error ? error.stack : String(error));
         }
@@ -116,10 +127,11 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
         const recipient = recipients[next++];
         try {
           const origin = this.origin();
-          await this.mail.send(competitionDigestEmail(
+          const message = competitionDigestEmail(
             { address: recipient.email, name: recipient.displayName ?? undefined }, picks, origin,
             `${origin}/competitions`, `${origin}/settings/profile#email-preferences`,
-          ));
+          );
+          await this.mail.send({ ...message, engagement: { userId: recipient.userId, key: `digest:${new Date().toISOString().slice(0,10)}`, type: 'COMPETITION_DIGEST', link: '/competitions', createdAt: new Date(), onlyChannel: 'email' } });
           await this.dataSource.query(
             `UPDATE "profiles" SET "digestNextAt"=now()+interval '3 days',"digestClaimedAt"=NULL WHERE "userId"=$1`,
             [recipient.userId],
@@ -138,7 +150,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
        days AS (
          SELECT DISTINCT a."userId", ${STREAK_DAY_SQL} AS d
          FROM "activities" a
-         WHERE a."startedAt" > now() - interval '400 days' AND a."verificationStatus"<>'REJECTED'
+         WHERE a."startedAt" > now() - interval '400 days' AND a."verificationStatus"='VERIFIED'
            AND GREATEST(a."recordedDistanceMetres", a."validatedDistanceMetres", a."stepDistanceMetres") >= 100
        ),
        due AS (
@@ -166,10 +178,11 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
     for (const row of rows) {
       try {
         const origin = this.origin();
-        await this.mail.send(streakReminderEmail(
+        const message = streakReminderEmail(
           { address: row.email, name: row.displayName ?? undefined }, Math.max(1, row.streak),
           `${origin}/run`, `${origin}/settings/profile#email-preferences`,
-        ));
+        );
+        await this.mail.send({ ...message, engagement: { userId: row.userId, key: `streak:${new Date().toISOString().slice(0,10)}`, type: 'STREAK_REMINDER', link: '/run', createdAt: new Date(), onlyChannel: 'email' } });
       } catch (error) {
         this.logger.error(`Streak reminder failed for ${row.userId}`, error instanceof Error ? error.stack : String(error));
       }

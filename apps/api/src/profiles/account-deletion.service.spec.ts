@@ -31,7 +31,7 @@ describe('AccountDeletionService', () => {
     expect(await service.blocker('u1')).toBeNull();
     await service.delete('u1');
     const statements = query.mock.calls.map(([sql]) => String(sql));
-    for (const table of ['running_sessions', 'feed_posts', 'direct_messages', 'follows', 'club_memberships', 'push_tokens', 'auth_sessions', 'notifications']) {
+    for (const table of ['running_sessions', 'feed_posts', 'direct_messages', 'follows', 'club_memberships', 'notification_events', 'notification_deliveries', 'notification_preferences', 'push_tokens', 'auth_sessions', 'notifications']) {
       expect(statements.some((sql) => sql.startsWith(`DELETE FROM "${table}"`))).toBe(true);
     }
     expect(statements.findIndex((sql) => sql.includes('"table_activity_credits"'))).toBeLessThan(statements.findIndex((sql) => sql.includes('DELETE FROM "running_sessions"')));

@@ -401,16 +401,17 @@ function ClubCompetitions({ club }: { club: Club }) {
 function ClubLeaderboard({ id }: { id: string }) {
   const { user } = useAuth();
   const unit = useUnit();
-  const board = useQuery({ queryKey: ['club', id, 'leaderboard'], queryFn: () => api<ClubStanding[]>(`/clubs/${id}/leaderboard`) });
+  const [weekly,setWeekly]=useState(true);
+  const board = useQuery({ queryKey: ['club', id, 'leaderboard', weekly], queryFn: () => api<Array<ClubStanding & {weekMetres?:number}>>(`/clubs/${id}/${weekly?'weekly-leaderboard':'leaderboard'}`) });
   if (board.isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   if (board.error) return <ErrorNotice error={board.error} onRetry={() => void board.refetch()} />;
-  return <Leaderboard
-    rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, verified: row.verified, metres: row.monthMetres }))}
+  return <><button type="button" className="mb-3 text-sm underline" onClick={()=>setWeekly(!weekly)}>{weekly?'This week (UTC) · Show month':'This month · Show week'}</button><Leaderboard
+    rows={(board.data ?? []).map((row) => ({ rank: row.rank, userId: row.userId, name: row.displayName, username: row.username, avatarUrl: row.avatarUrl, avatarStyle: row.avatarStyle, verified: row.verified, metres: weekly ? row.weekMetres ?? 0 : row.monthMetres }))}
     currentUserId={user?.id}
     unit={unit}
-    caption="Verified walking and running distance this month."
-    empty={<EmptyState title="No activity this month" />}
-  />;
+    caption={weekly?'Verified walks and runs this week (UTC).':'Walking and running distance this month.'}
+    empty={<EmptyState title="No activity in this period" />}
+  /></>;
 }
 
 function ClubMembers({ club, role }: { club: Club; role: ClubRole | null }) {

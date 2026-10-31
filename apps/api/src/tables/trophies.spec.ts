@@ -22,7 +22,7 @@ describe('trophies', () => {
     const query = jest.fn(async (sql: string) => (sql.includes('"podiumAnnouncedAt" = now()')
       ? [{ userId: 'u1', rank: 1, code: 'ABC', title: 'Move with Tee' }, { userId: 'u2', rank: 2, code: 'ABC', title: 'Move with Tee' }]
       : []));
-    const processor = new PushNotificationsProcessor({ query, manager: { query } } as unknown as DataSource, {} as ConfigService, {} as Queue);
+    const processor = new PushNotificationsProcessor({ query, manager: { query } } as unknown as DataSource, {} as ConfigService, {} as Queue, { reserve: jest.fn().mockResolvedValue({allowed:true}), finish: jest.fn(), event: jest.fn() } as never, {} as never);
     expect(await processor.announcePodiums()).toBe(2);
     const insert = query.mock.calls.find(([sql]) => String(sql).includes("'PODIUM'")) as unknown as [string, unknown[]];
     const rows = JSON.parse(String(insert[1][0]));

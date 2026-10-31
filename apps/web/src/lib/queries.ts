@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
-import { api, isApiError, patch } from './api';
+import { api, isApiError, patch, post } from './api';
 import { useAuth } from './auth';
 import type { Activity, CompetitionTable, CreatorEarning, CreatorProfile, FinalResult, LeagueDivision, LeagueMembership, LeagueRules, LeagueSeason, Notification, Profile, StandingRow, Unit, Wallet, WalletTransaction } from './types';
 
@@ -87,6 +88,18 @@ export function useFinalResult(tableId: string | undefined) {
 
 export function useNotifications() {
   const { user } = useAuth();
+  useEffect(()=>{
+    if(!user) return;
+    const record=()=>{
+      if(document.visibilityState!=='visible') return;
+      void post('/notifications/context',{timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}).catch(()=>undefined);
+      const id=new URLSearchParams(window.location.search).get('jump_notification');
+      if(id) void post(`/notifications/${encodeURIComponent(id)}/click`).catch(()=>undefined);
+    };
+    record();
+    document.addEventListener('visibilitychange',record);
+    return ()=>document.removeEventListener('visibilitychange',record);
+  },[user?.id]);
   return useQuery({
     queryKey: keys.notifications,
     queryFn: () => api<Notification[]>('/notifications'),
@@ -191,6 +204,7 @@ export function useOpenNotification() {
     markRead,
     open(item: Notification) {
       if (!item.readAt) markRead.mutate(item.id);
+      void post(`/notifications/${item.id}/click`).catch(()=>undefined);
       const link = notificationLink(item);
       if (link) router.history.push(link);
     },

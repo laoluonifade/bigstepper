@@ -3,16 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, IsNull } from 'typeorm';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { EngagementService } from './engagement.service';
 import { Notification } from './notification.entity';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
-  constructor(@InjectRepository(Notification) private readonly notifications: Repository<Notification>, private readonly dataSource: DataSource) {}
+  constructor(@InjectRepository(Notification) private readonly notifications: Repository<Notification>, private readonly dataSource: DataSource, private readonly engagement: EngagementService) {}
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
-    return this.notifications.find({ where: { userId: user.id }, order: { createdAt: 'DESC' }, take: 100 });
+    return this.notifications.find({ where: { userId: user.id, inappAllowed: true }, order: { createdAt: 'DESC' }, take: 100 });
   }
 
   @Post('push-token')
@@ -36,13 +37,23 @@ export class NotificationsController {
 
   @Post('read-all')
   async readAll(@CurrentUser() user: AuthenticatedUser) {
-    await this.notifications.update({ userId: user.id, readAt: IsNull() }, { readAt: new Date() });
+    await this.notifications.update({ userId: user.id, readAt: IsNull(), inappAllowed: true }, { readAt: new Date() });
     return { success: true };
   }
 
+  @Post(':id/click')
+  async click(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    const [row]=await this.dataSource.query(`SELECT n.id,d.id AS "deliveryId" FROM notifications n LEFT JOIN notification_deliveries d ON d."userId"=n."userId" AND d."sourceId"=n.id AND d.channel<>'inapp' AND d.status IN ('sent','delivered') WHERE n.id=$1 AND n."userId"=$2 LIMIT 1`,[id,user.id]);
+    if(row) await this.engagement.event(user.id,'deep_link_click',`click:${id}`,row.deliveryId);
+    return {recorded:!!row};
+  }
   @Patch(':id/read')
   async markRead(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
-    await this.notifications.update({ id, userId: user.id }, { readAt: new Date() });
+    const notification=await this.notifications.findOne({where:{id,userId:user.id,inappAllowed:true}});
+    if (notification) {
+      await this.notifications.update({id,userId:user.id},{readAt:new Date()});
+      await this.engagement.event(user.id,'opened',`opened:${id}`);
+    }
     return { success: true };
   }
 }

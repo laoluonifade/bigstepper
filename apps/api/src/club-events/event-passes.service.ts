@@ -205,7 +205,7 @@ export class EventPassesService {
     return true;
   }
 
-  private async each(contacts: ContactRow[], send: (contact: ContactRow) => Promise<void>) {
+  private async each(contacts: ContactRow[], send: (contact: ContactRow) => Promise<unknown>) {
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(5, contacts.length) }, async () => {
       while (next < contacts.length) {
