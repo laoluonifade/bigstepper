@@ -25,6 +25,7 @@ import { WalletsModule } from './wallets/wallets.module';
 import { MailModule } from './mail/mail.module';
 import { FeedModule } from './feed/feed.module';
 import { StravaModule } from './strava/strava.module';
+import { AppleHealthModule } from './apple-health/apple-health.module';
 import { GeoModule } from './geo/geo.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { PrizesModule } from './prizes/prizes.module';
@@ -76,6 +77,7 @@ import { PagesModule } from './pages/pages.module';
     RunningModule,
     TablesModule,
     StravaModule,
+    AppleHealthModule,
     GeoModule,
     LeaderboardModule,
     PrizesModule,

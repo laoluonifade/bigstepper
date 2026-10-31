@@ -8,6 +8,7 @@ import { useNotifications, useUnit, useUnreadMessages } from '@/lib/queries';
 import { movingSeconds, useRecorder } from '@/lib/recorder';
 import { brand, colors, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { ArrowRightIcon, BellIcon, FeedIcon, JumpLogo, SearchIcon } from './icons';
+import { AppleHealthSyncBar } from './apple-health';
 import { StravaSyncBar } from './strava';
 import { IconButton, LiveDot, Screen, Txt, useNow } from './ui';
 
@@ -38,6 +39,7 @@ export function TabScreen({ children, refreshing, onRefresh, banners = true, ove
         <LiveRunBar />
         <PendingPaymentsBar />
         <StravaSyncBar />
+        <AppleHealthSyncBar />
       </>}
       {children}
     </Screen>

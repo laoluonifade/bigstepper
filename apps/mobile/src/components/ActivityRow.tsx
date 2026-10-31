@@ -36,6 +36,7 @@ export function ActivityRow({ activity, unit, last }: { activity: Activity; unit
         <Txt size={12} weight="bold">{activity.activityType === 'cycle' ? 'Ride' : activity.activityType === 'run' ? 'Run' : 'Walk'}</Txt>
         {` · ${formatTime(activity.startedAt)} · ${formatDuration(seconds)}${pace ? ` · ${pace}${activity.activityType === 'cycle' ? '' : ` /${unit}`}` : ''}`}
         {activity.source === 'strava' ? <Txt size={12} weight="bold" style={{ color: '#FC5200' }}> · Strava</Txt> : null}
+        {activity.source === 'apple_health' ? <Txt size={12} weight="bold" style={{ color: '#FF2D55' }}> · Apple Health</Txt> : null}
       </Txt>
     </View>
     <VerificationTag status={activity.verificationStatus} />

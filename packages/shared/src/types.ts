@@ -141,7 +141,7 @@ export interface Activity {
   verificationReasons: string[];
   algorithmVersion: string;
   /** Recorded in Jump, or imported from Strava. */
-  source?: 'jump' | 'strava';
+  source?: 'jump' | 'strava' | 'apple_health';
   startedAt: string;
   finishedAt: string;
   createdAt: string;
@@ -603,6 +603,10 @@ export interface VerificationReview {
 export type StravaStatus =
   | { connected: false }
   | { connected: true; athleteName: string | null; avatarUrl: string | null; lastSyncedAt: string | null; syncing: boolean; canReadActivities: boolean };
+
+export type AppleHealthStatus =
+  | { connected: false }
+  | { connected: true; connectedAt: string; lastSyncedAt: string | null };
 
 export type StravaLoginResponse =
   | (AuthResponse & { status: 'signed-in' })

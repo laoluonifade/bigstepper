@@ -65,7 +65,7 @@ export class Activity {
   verificationReasons: string[];
 
   @Column({ type: 'varchar', length: 20, default: 'jump' })
-  source: 'jump' | 'strava';
+  source: 'jump' | 'strava' | 'apple_health';
 
   @Column({ type: 'varchar', length: 40, nullable: true, unique: true })
   externalId: string | null;

@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/ui": "~58.0.25",
     "@jump/shared": "workspace:*",
+    "@kingstinct/react-native-healthkit": "16.2.0",
     "@maplibre/maplibre-react-native": "11.5.0",
     "@react-native-community/datetimepicker": "9.2.1",
     "@react-native-google-signin/google-signin": "^16.1.5",
@@ -48,6 +49,7 @@
     "react-native": "0.88.0",
     "react-native-gesture-handler": "~3.3.0",
     "react-native-maps": "1.29.11",
+    "react-native-nitro-modules": "0.37.1",
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "~4.30.0",

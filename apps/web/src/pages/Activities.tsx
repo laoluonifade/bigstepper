@@ -169,7 +169,7 @@ export function ActivityDetailPage() {
       <PageHeader
         back={{ to: '/activities', label: 'Activities' }}
         eyebrow={<span className="flex flex-wrap items-center gap-2">{formatDateTime(a.startedAt)} <VerificationTag status={a.verificationStatus} /></span>}
-        title={<>{activityName(a.startedAt, a.activityType)}{a.source === 'strava' && <span className="ml-2 align-middle text-[12px] font-bold normal-case tracking-normal text-[#FC5200]">via Strava</span>}</>}
+        title={<>{activityName(a.startedAt, a.activityType)}{a.source === 'strava' && <span className="ml-2 align-middle text-[12px] font-bold normal-case tracking-normal text-[#FC5200]">via Strava</span>}{a.source === 'apple_health' && <span className="ml-2 align-middle text-[12px] font-bold normal-case tracking-normal text-[#FF2D55]">via Apple Health</span>}</>}
       />
       {/* Equal, quiet actions that fit one row on a phone. */}
       <div className="-mt-2 mb-6 grid grid-cols-3 gap-2 md:max-w-md">

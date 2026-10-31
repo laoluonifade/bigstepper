@@ -13,6 +13,7 @@ import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
 import { AvatarEditor, ProfileHero, ProfileStats, ShareProfileButton } from '@/components/Profile';
 import { TabScreen } from '@/components/Shell';
 import { OptionSheet, Sheet } from '@/components/Sheet';
+import { AppleHealthConnection } from '@/components/apple-health';
 import { StravaConnection } from '@/components/strava';
 import { TrophyCabinet } from '@/components/Trophies';
 import { Button, CopyButton, ErrorNotice, haptic, Loading, Notice, Segmented, Skeleton, TextField, Txt } from '@/components/ui';
@@ -81,6 +82,7 @@ export default function YouScreen() {
     >
       {activities.isLoading ? <Skeleton style={{ height: 80, marginTop: 20 }} /> : <ProfileStats stats={stats} unit={unit} />}
       <StravaConnection />
+      <AppleHealthConnection />
     </ProfileHero>
 
     {/* Podium finishes, a medal each. */}

@@ -60,6 +60,7 @@ export default function ActivityDetailScreen() {
       {!verified && <VerificationTag status={a.verificationStatus} />}
       {uploading && mine ? <Txt size={12} weight="semibold" color="ink3">Uploading GPS from this phone</Txt> : null}
       {a.source === 'strava' ? <Txt size={12} weight="bold" style={{ color: '#FC5200' }}>via Strava</Txt> : null}
+      {a.source === 'apple_health' ? <Txt size={12} weight="bold" style={{ color: '#FF2D55' }}>via Apple Health</Txt> : null}
       <Txt size={11} weight="bold" color="ink2" style={{ marginLeft: 'auto', letterSpacing: 0.8 }}>{dateTag.toUpperCase()}</Txt>
     </View>
     <Text style={display(34)} numberOfLines={2} adjustsFontSizeToFit>{activityName(a.startedAt, a.activityType)}</Text>

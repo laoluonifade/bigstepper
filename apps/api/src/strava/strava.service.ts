@@ -9,7 +9,7 @@ import { AuthService } from '../auth/auth.service';
 import { Profile } from '../profiles/profile.entity';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 import { Activity } from '../running/activity.entity';
-import { GpsSample } from '../running/gps-sample.entity';
+import { alreadyImported, saveImportedActivity } from '../running/import-activity';
 import { RunningSession } from '../running/running-session.entity';
 import { refreshLeagueDistance } from '../leagues/league-credits';
 import { uncreditActivity } from '../tables/competition-credits';
@@ -277,15 +277,9 @@ export class StravaService implements OnApplicationBootstrap {
     const activityType = SPORT_TYPES[summary.sport_type];
     if (!activityType || summary.manual || summary.trainer || summary.start_latlng.length === 0) return false;
     const externalId = `strava:${summary.id}`;
-    if (await this.dataSource.getRepository(Activity).exist({ where: { externalId } })) return false;
-
     const startedAt = new Date(summary.start_date);
     const finishedAt = new Date(startedAt.getTime() + summary.elapsed_time * 1000);
-    const [{ overlapping }] = await this.dataSource.query(
-      `SELECT EXISTS (SELECT 1 FROM "activities" WHERE "userId" = $1 AND "startedAt" < $3 AND "finishedAt" > $2) AS overlapping`,
-      [userId, startedAt, finishedAt],
-    );
-    if (overlapping) return false;
+    if (await alreadyImported(this.dataSource, userId, externalId, startedAt, finishedAt)) return false;
 
     const streams = await this.request<Streams>(account, `/activities/${summary.id}/streams?keys=latlng,time,cadence,distance&key_by_type=true`);
     const points = streams.latlng?.data ?? [];
@@ -293,50 +287,25 @@ export class StravaService implements OnApplicationBootstrap {
     if (points.length < 2 || offsets.length !== points.length) return false;
     const stepTotals = stravaStepTotals(activityType, offsets, points, streams.cadence?.data, streams.distance?.data);
 
-    const activity = await this.dataSource.transaction(async (manager) => {
-      const session = await manager.save(
-        RunningSession,
-        manager.create(RunningSession, {
-          userId,
-          activityType,
-          status: 'PENDING_VERIFICATION',
-          startedAt,
-          finishedAt,
-          distanceMetres: Math.round(summary.distance),
-          pausedSeconds: Math.max(0, summary.elapsed_time - summary.moving_time),
-          pausedAt: null,
-        }),
-      );
-      const samples = points.map(([latitude, longitude], index) => ({
-        sessionId: session.id,
-        sequence: index,
+    const activity = await saveImportedActivity(this.dataSource, {
+      userId,
+      activityType,
+      source: 'strava',
+      externalId,
+      startedAt,
+      finishedAt,
+      distanceMetres: summary.distance,
+      elapsedSeconds: summary.elapsed_time,
+      movingSeconds: summary.moving_time,
+      elevationGainMetres: typeof summary.total_elevation_gain === 'number' ? Math.round(summary.total_elevation_gain) : null,
+      recordedSteps: stepTotals?.at(-1) ?? 0,
+      stepsSource: stepTotals ? (hasCadence(offsets, streams.cadence?.data) ? 'sensor' : 'estimate') : null,
+      points: points.map(([latitude, longitude], index) => ({
         latitude,
         longitude,
         stepCount: stepTotals?.[index] ?? null,
         recordedAt: new Date(startedAt.getTime() + offsets[index] * 1000),
-      }));
-      for (let start = 0; start < samples.length; start += 1000) {
-        await manager.createQueryBuilder().insert().into(GpsSample).values(samples.slice(start, start + 1000)).execute();
-      }
-      return manager.save(
-        Activity,
-        manager.create(Activity, {
-          runningSessionId: session.id,
-          userId,
-          activityType,
-          source: 'strava',
-          externalId,
-          recordedDistanceMetres: Math.round(summary.distance),
-          recordedSteps: stepTotals?.at(-1) ?? 0,
-          stepsSource: stepTotals ? (hasCadence(offsets, streams.cadence?.data) ? 'sensor' : 'estimate') : null,
-          elevationGainMetres: typeof summary.total_elevation_gain === 'number' ? Math.round(summary.total_elevation_gain) : null,
-          verificationStatus: 'PENDING_VERIFICATION',
-          elapsedSeconds: summary.elapsed_time,
-          movingSeconds: summary.moving_time,
-          startedAt,
-          finishedAt,
-        }),
-      );
+      })),
     });
 
     await this.verificationQueue.add(
