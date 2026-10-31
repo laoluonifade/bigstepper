@@ -57,7 +57,7 @@ export class AccountDeletionService {
       await manager.query(`DELETE FROM "club_memberships" WHERE "userId" = $1`, [userId]);
       await manager.query(`DELETE FROM "table_registrations" r USING "competition_tables" t WHERE r."tableId" = t."id" AND r."userId" = $1 AND ${LIVE}`, [userId]);
       await manager.query(`DELETE FROM "challenge_invitations" WHERE "invitedUserId" = $1`, [userId]);
-      for (const table of ['push_tokens', 'notifications', 'auth_sessions', 'auth_action_tokens', 'user_devices', 'strava_accounts', 'challenge_reminder_deliveries']) {
+      for (const table of ['notification_events', 'notification_deliveries', 'notification_preferences', 'push_tokens', 'notifications', 'auth_sessions', 'auth_action_tokens', 'user_devices', 'strava_accounts', 'challenge_reminder_deliveries']) {
         await manager.query(`DELETE FROM "${table}" WHERE "userId" = $1`, [userId]);
       }
 

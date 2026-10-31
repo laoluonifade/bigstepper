@@ -4,7 +4,7 @@ export class EngagementPolicy1793448000000 implements MigrationInterface {
   async up(q: QueryRunner): Promise<void> {
     await q.query(`ALTER TABLE challenge_reminder_deliveries ADD "suppressedAt" timestamptz`);
     await q.query(
-      `CREATE TABLE notification_settings (id boolean PRIMARY KEY DEFAULT true CHECK(id), value jsonb NOT NULL, "updatedBy" uuid REFERENCES users(id), "updatedAt" timestamptz NOT NULL DEFAULT now())`,
+      `CREATE TABLE notification_settings (id boolean PRIMARY KEY DEFAULT true CHECK(id), value jsonb NOT NULL, "updatedBy" uuid REFERENCES users(id) ON DELETE SET NULL, "updatedAt" timestamptz NOT NULL DEFAULT now())`,
     );
     await q.query(
       `INSERT INTO notification_settings(value) VALUES ('{"deliveryEnabled":true,"newTriggersEnabled":false,"pushDaily":2,"emailWeekly":3,"rolloutPercent":0,"holdoutPercent":10,"triggers":{"weeklyRecap":false,"weeklyGoal":false,"deadlines":false,"proximity":false,"streak":false,"digest":false}}')`,
@@ -39,7 +39,7 @@ export class EngagementPolicy1793448000000 implements MigrationInterface {
       "deliveryId" uuid REFERENCES notification_deliveries(id) ON DELETE CASCADE, token text NOT NULL,
       "createdAt" timestamptz NOT NULL DEFAULT now(), "checkedAt" timestamptz, status text NOT NULL DEFAULT 'accepted')`);
     await q.query(
-      `CREATE TABLE notification_settings_audit (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "actorId" uuid NOT NULL REFERENCES users(id), value jsonb NOT NULL, "createdAt" timestamptz NOT NULL DEFAULT now())`,
+      `CREATE TABLE notification_settings_audit (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "actorId" uuid REFERENCES users(id) ON DELETE SET NULL, value jsonb NOT NULL, "createdAt" timestamptz NOT NULL DEFAULT now())`,
     );
   }
   async down(q: QueryRunner): Promise<void> {

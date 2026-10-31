@@ -110,7 +110,12 @@ const { ClubsService } = require(root + '/clubs/clubs.service.js');
     assert.equal(board[0].weekMetres, 1500);
     const report = await new EngagementAdminController(policy, db).performance();
     assert.ok(report.delivery.length > 0);
-    await new EngagementPolicy1793448000000().down({ query: async (s) => pg.exec(s) });
+    await sql(`UPDATE notification_settings SET "updatedBy"=$1`,[id]);
+ await sql(`INSERT INTO notification_settings_audit("actorId",value) VALUES($1,'{}')`,[id]);
+ await sql(`DELETE FROM notifications WHERE "userId"=$1`,[id]);
+ await sql(`DELETE FROM push_tokens WHERE "userId"=$1`,[id]);
+ await sql(`DELETE FROM users WHERE id=$1`,[id]);
+ await new EngagementPolicy1793448000000().down({ query: async (s) => pg.exec(s) });
     console.log(
       'PASS: migration up/down, reservations/caps/dedup/freshness, verified weekly goal, automatic club recap, deadline idempotency, weekly leaderboard, analytics SQL',
     );
