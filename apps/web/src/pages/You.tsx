@@ -56,13 +56,13 @@ function YouLinks() {
 export const YOU_NAV = [
   { to: '/settings/profile', label: 'Profile' },
   { to: '/activities', label: 'Activity' },
+  { to: '/settings/connections', label: 'Connections' },
   { to: '/runners', label: 'Find runners' },
   { to: '/leagues', label: 'League' },
   { to: '/rewards', label: 'Rewards' },
   { to: '/prizes', label: 'Prizes' },
   { to: '/creator', label: 'Creator' },
   { to: '/notifications', label: 'Notifications' },
-  { to: '/settings/connections', label: 'Connections' },
 ] as const;
 
 

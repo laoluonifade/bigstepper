@@ -56,13 +56,13 @@ export default function YouScreen() {
   const emailOn = [me.emailActivityEnabled, me.emailDigestEnabled].filter(Boolean).length;
   const sections: Array<{ href: Href; label: string; icon: ReactNode; badge?: number }> = [
     { href: '/activities', label: 'Your activity', icon: <ActivityIcon size={18} /> },
+    { href: '/connections' as Href, label: 'Connections', icon: <LinkIcon size={18} /> },
     { href: '/leagues', label: 'My league', icon: <LadderIcon size={18} /> },
     { href: '/notifications', label: 'Notifications', icon: <BellIcon size={18} />, badge: unread },
     { href: '/rewards', label: 'Rewards', icon: <WalletIcon size={18} /> },
     { href: '/prizes', label: 'Prizes', icon: <Txt size={16} weight="black">★</Txt> },
     { href: '/creator', label: 'Creator', icon: <UserIcon size={18} /> },
     { href: '/runners', label: 'Find runners', icon: <UsersIcon size={18} /> },
-    { href: '/connections' as Href, label: 'Connections', icon: <LinkIcon size={18} /> },
   ];
 
   return <TabScreen refreshing={profile.isRefetching} onRefresh={() => { void profile.refetch(); void social.refetch(); }}>
