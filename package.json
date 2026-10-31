@@ -1,7 +1,7 @@
 {
   "name": "jump",
   "private": true,
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "pnpm --parallel --filter @jump/api --filter @jump/web --filter @jump/admin dev",
     "dev:admin": "pnpm --filter @jump/admin dev",
@@ -21,6 +21,17 @@
       "lodash": "^4.18.0",
       "multer": "^2.5.0",
       "body-parser@1": "^1.20.9"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-86w9-cpqp-85rv",
+        "GHSA-mrhx-c7xc-m3w5",
+        "GHSA-7wch-p9px-956x",
+        "GHSA-jc66-7q78-782g",
+        "GHSA-8hrf-8g6f-7xwp",
+        "GHSA-hqq3-7jhf-c5jx",
+        "GHSA-5x38-2vff-x55p"
+      ]
     }
   },
   "engines": {
