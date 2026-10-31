@@ -16,7 +16,7 @@ const preferences = { ...DEFAULT_PREFERENCES, timeZone: 'Africa/Lagos' };
 describe('shared notification policy', () => {
   it('defaults all new triggers off with conservative channel limits', () => {
     expect(DEFAULT_SETTINGS).toMatchObject({ newTriggersEnabled: false, pushDaily: 2, emailWeekly: 3 });
-    expect(Object.values(DEFAULT_SETTINGS.triggers).every((on) => !on)).toBe(true);
+    expect(DEFAULT_SETTINGS.triggers).toEqual({ weeklyRecap: false, weeklyGoal: false, deadlines: false, proximity: false, streak: true, digest: true });
     expect(reasonFor({ ...candidate, newTrigger: true }, 'push', preferences, DEFAULT_SETTINGS, now)).toBe(
       'feature_disabled',
     );
@@ -47,8 +47,10 @@ describe('shared notification policy', () => {
     expect(reasonFor({ ...candidate, type: 'STANDING_BOOST' }, 'push', preferences, DEFAULT_SETTINGS, now)).toBe(
       'unestablished_sync_freshness',
     ));
-  it('requires a known timezone and available deep link', () => {
-    expect(reasonFor(candidate, 'push', DEFAULT_PREFERENCES, DEFAULT_SETTINGS, now)).toBe('missing_time_zone');
+  it('falls back to Lagos time without a stored timezone and requires a deep link', () => {
+    expect(reasonFor(candidate, 'push', DEFAULT_PREFERENCES, DEFAULT_SETTINGS, now)).toBeNull();
+    const night = new Date('2026-10-31T22:00:00Z');
+    expect(reasonFor({ ...candidate, createdAt: night }, 'push', DEFAULT_PREFERENCES, DEFAULT_SETTINGS, night)).toBe('quiet_hours');
     expect(reasonFor({ ...candidate, link: null }, 'push', preferences, DEFAULT_SETTINGS, now)).toBe(
       'missing_deep_link',
     );
@@ -104,7 +106,12 @@ describe('shared notification policy', () => {
       'other_channel',
     );
   });
-  it('uses one fingerprint for the same event across all channels', () => {
+  it('keeps in-app notifications visible through quiet hours, stale age and missing links', () => {
+    const late = new Date('2026-11-02T22:00:00Z');
+    expect(reasonFor({ ...candidate, link: null }, 'inapp', preferences, DEFAULT_SETTINGS, late)).toBeNull();
+    expect(reasonFor(candidate, 'inapp', { ...preferences, categories: { milestones: { inapp: false } } }, DEFAULT_SETTINGS, late)).toBe('preference');
+  });
+  it('keys each notification row as its own event', () => {
     const row = {
       id: 'a',
       userId: 'runner',
@@ -114,8 +121,9 @@ describe('shared notification policy', () => {
       link: '/activities',
       createdAt: now,
     };
-    expect(notificationCandidate(row).key).toBe(notificationCandidate({ ...row, id: 'b' }).key);
-    expect(notificationCandidate(row).key).not.toBe(notificationCandidate({ ...row, title: 'Different' }).key);
+    expect(notificationCandidate(row).key).toBe('notification:a');
+    expect(notificationCandidate(row).key).not.toBe(notificationCandidate({ ...row, id: 'b' }).key);
+    expect(notificationCandidate({ ...row, engagementKey: 'goal:w1' }).key).toBe('goal:w1');
   });
   it('uses stable deterministic holdout assignment', () => {
     expect(cohort('runner', 10)).toBe(cohort('runner', 10));

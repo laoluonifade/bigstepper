@@ -83,7 +83,7 @@ export class ChallengeRemindersProcessor extends WorkerHost implements OnModuleI
             recipient.title,
             `${this.config.getOrThrow<string>('WEB_ORIGIN')}/competitions/${recipient.code}`,
           );
-          const delivered=await this.mail.send({ ...message, engagement: { userId: recipient.userId, type: 'CHALLENGE_REMINDER', key: `challenge-reminder:${recipient.id}`, link: `/competitions/${recipient.code}`, createdAt: new Date() } });
+          const delivered=await this.mail.send({ ...message, engagement: { userId: recipient.userId, type: 'CHALLENGE_REMINDER', key: `challenge-reminder:${recipient.id}`, link: `/competitions/${recipient.code}`, createdAt: new Date(), onlyChannel: 'email' } });
           if(delivered!==false) sent.push(recipient.id); else suppressed.push(recipient.id);
         } catch (error) {
           this.logger.error(`Competition reminder delivery failed for ${recipient.id}`, error instanceof Error ? error.stack : String(error));

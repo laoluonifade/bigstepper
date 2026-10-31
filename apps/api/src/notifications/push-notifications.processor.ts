@@ -92,9 +92,7 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
   }
 
   async queueStandingBoosts() {
-    // Disabled until a trustworthy device synchronization watermark exists. Activity upload time is insufficient.
     return 0;
-
   }
 
   private async sendPending() {
@@ -139,13 +137,11 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
         for (let start=0; start<messages.length; start+=100) accepted += await this.send(messages.slice(start,start+100), decision.id);
         await this.engagement.finish(decision.id, accepted ? 'sent' : 'failed', accepted ? undefined : 'provider_rejected');
       } catch (error) {
-        // Acceptance may have happened before a timeout. Never blindly retry a reserved engagement send.
-        const retryable=error instanceof RetryablePushError;
-        await this.engagement.finish(decision.id, retryable?'failed':'uncertain', retryable?'retryable':'transport_error');
-        if(retryable) continue;
-        this.logger.error('Could not send push notification', error instanceof Error ? error.message : String(error));
-        // Preserve the existing retry behavior for operational notifications only.
-        if (!decision.id) continue;
+        const retryable = error instanceof RetryablePushError;
+        await this.engagement.finish(decision.id, retryable ? 'failed' : 'uncertain', retryable ? 'retryable' : 'transport_error');
+        if (!retryable) this.logger.error('Could not send push notification', error instanceof Error ? error.message : String(error));
+        if (!retryable && decision.id) await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=$1`, [row.id]);
+        break;
       }
       await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=$1`, [row.id]);
     }
@@ -160,7 +156,6 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     const rows = await this.dataSource.query(`SELECT * FROM notifications WHERE "inappAllowed" IS NULL ORDER BY "createdAt",id LIMIT 200`) as Pending[];
     for (const row of rows) {
       const decision = await this.engagement.reserve(notificationCandidate(row), 'inapp');
-      // Another worker's reservation must not overwrite the original decision.
       await this.dataSource.query(`UPDATE notifications SET "inappAllowed"=$2 WHERE id=$1 AND "inappAllowed" IS NULL`,[row.id,decision.allowed]);
       if (decision.allowed) await this.engagement.finish(decision.id,'sent');
     }

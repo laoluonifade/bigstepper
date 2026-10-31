@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { STREAK_TIME_ZONE } from '../running/streaks';
 import {
   Candidate,
   Channel,
@@ -26,8 +27,6 @@ export class EngagementService {
     const [row] = await this.db.query(`SELECT value FROM notification_preferences WHERE "userId"=$1`, [userId]);
     return { ...DEFAULT_PREFERENCES, ...row?.value, categories: row?.value?.categories ?? {} };
   }
-  // Serialize all optional reservations for a user, including across workers/channels. Reservations count toward caps,
-  // even if transport fails: ambiguous provider acceptance must never lead to an automatic duplicate send.
   async reserve(c: Candidate, channel: Channel): Promise<{ allowed: boolean; id?: string; reason?: string }> {
     if (isEssential(c.type, channel)) return { allowed: true };
     return this.db.transaction(async (m) => {
@@ -59,7 +58,7 @@ export class EngagementService {
       };
       const p: Preferences = { ...DEFAULT_PREFERENCES, ...row?.value, categories: row?.value?.categories ?? {} };
       const now = new Date();
-      const window = validZone(p.timeZone) ? localWindow(now, p.timeZone) : { day: null, week: null };
+      const window = localWindow(now, validZone(p.timeZone) ? p.timeZone : STREAK_TIME_ZONE);
       let reason =
         !row || row.deletedAt
           ? 'user_unavailable'

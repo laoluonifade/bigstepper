@@ -83,7 +83,6 @@ export class EngagementController {
   @Post('context') async context(@CurrentUser() user: AuthenticatedUser, @Body() input: unknown) {
     const body = object(input);
     if (!validZone(body.timeZone)) throw new BadRequestException('Invalid time zone');
-    // Calendar zone only, never a location or an activity synchronization claim.
     await this.db.query(
       `INSERT INTO notification_preferences("userId",value) VALUES($1,$2)
       ON CONFLICT("userId") DO UPDATE SET value=jsonb_set(notification_preferences.value,'{timeZone}',EXCLUDED.value->'timeZone'),"updatedAt"=now() WHERE notification_preferences.value->>'timeZone' IS NULL`,
@@ -96,7 +95,6 @@ export class EngagementController {
     const body = object(input);
     if (!['return', 'activity', 'participation'].includes(String(body.kind)))
       throw new BadRequestException('Invalid event');
-    // Only a client-observed return is accepted. Activity/participation are derived from persisted domain data in reports.
     if (body.kind !== 'return') throw new BadRequestException('Domain events are measured server-side');
     await this.policy.event(user.id, 'return', `return:${new Date().toISOString().slice(0, 13)}`);
     return { recorded: true };

@@ -47,6 +47,14 @@ export class MailService implements OnModuleInit {
 
   get configured() { return this.enabled || this.smtpEnabled; }
 
+  private async settle(id: string | undefined, status: 'sent' | 'failed' | 'uncertain', reason?: string) {
+    try {
+      await this.engagement?.finish(id, status, reason);
+    } catch (error) {
+      this.logger.error(`Could not record email delivery ${id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async send(message: MailMessage): Promise<boolean> {
     if (!this.enabled && !this.smtpEnabled) {
       throw new ServiceUnavailableException('Email delivery is temporarily unavailable. Please try again later.');
@@ -57,14 +65,14 @@ export class MailService implements OnModuleInit {
     try {
       if (!this.enabled) await this.sendSmtp(message);
       else await this.sendZepto(message);
-      await this.engagement?.finish(decision?.id, 'sent');
+      await this.settle(decision?.id, 'sent');
       return true;
     } catch (error) {
       if (this.enabled && this.smtpEnabled && (!message.engagement || error instanceof MailRejection)) {
         try {
           fallbackAttempted=true;
           await this.sendSmtp(message);
-          await this.engagement?.finish(decision?.id, 'sent');
+          await this.settle(decision?.id, 'sent');
           return true;
         } catch (fallbackError) {
           this.logger.error(`Both email providers rejected delivery: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
@@ -72,7 +80,7 @@ export class MailService implements OnModuleInit {
       } else {
         this.logger.error(`Email provider rejected delivery: ${error instanceof Error ? error.message : String(error)}`);
       }
-      await this.engagement?.finish(decision?.id, error instanceof MailRejection && !fallbackAttempted?'failed':'uncertain', error instanceof MailRejection && !fallbackAttempted && error.status===429?'retryable':'provider_error');
+      await this.settle(decision?.id, error instanceof MailRejection && !fallbackAttempted?'failed':'uncertain', error instanceof MailRejection && !fallbackAttempted && error.status===429?'retryable':'provider_error');
       this.bulkBlockedUntil = Date.now() + 60 * 60_000;
       throw new ServiceUnavailableException('Email delivery is temporarily unavailable. Please try again later.');
     }

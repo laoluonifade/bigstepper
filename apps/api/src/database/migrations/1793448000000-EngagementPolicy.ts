@@ -7,7 +7,7 @@ export class EngagementPolicy1793448000000 implements MigrationInterface {
       `CREATE TABLE notification_settings (id boolean PRIMARY KEY DEFAULT true CHECK(id), value jsonb NOT NULL, "updatedBy" uuid REFERENCES users(id) ON DELETE SET NULL, "updatedAt" timestamptz NOT NULL DEFAULT now())`,
     );
     await q.query(
-      `INSERT INTO notification_settings(value) VALUES ('{"deliveryEnabled":true,"newTriggersEnabled":false,"pushDaily":2,"emailWeekly":3,"rolloutPercent":0,"holdoutPercent":10,"triggers":{"weeklyRecap":false,"weeklyGoal":false,"deadlines":false,"proximity":false,"streak":false,"digest":false}}')`,
+      `INSERT INTO notification_settings(value) VALUES ('{"deliveryEnabled":true,"newTriggersEnabled":false,"pushDaily":2,"emailWeekly":3,"rolloutPercent":0,"holdoutPercent":10,"triggers":{"weeklyRecap":false,"weeklyGoal":false,"deadlines":false,"proximity":false,"streak":true,"digest":true}}')`,
     );
     await q.query(
       `CREATE TABLE notification_preferences ("userId" uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, value jsonb NOT NULL DEFAULT '{}', "updatedAt" timestamptz NOT NULL DEFAULT now())`,

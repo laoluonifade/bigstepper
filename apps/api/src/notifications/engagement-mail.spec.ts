@@ -39,7 +39,7 @@ describe('engagement email transport', () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: true });
     expect(await mail.send(message)).toBe(true);
     expect(policy.reserve).toHaveBeenCalledWith(message.engagement, 'email');
-    expect(policy.finish).toHaveBeenCalledWith('delivery', 'sent');
+    expect(policy.finish).toHaveBeenCalledWith('delivery', 'sent', undefined);
   });
   it('does not send a second engagement email via fallback after ambiguous failure', async () => {
     const { mail, policy } = setup();
@@ -52,7 +52,7 @@ describe('engagement email transport', () => {
   it('preserves SMTP fallback after a definite primary rejection',async()=>{
     const {mail,policy}=setup();global.fetch=jest.fn().mockResolvedValue({ok:false,status:401});
     jest.spyOn(mail as never as {sendSmtp:()=>Promise<void>},'sendSmtp').mockResolvedValue(undefined);
-    expect(await mail.send(message)).toBe(true);expect(policy.finish).toHaveBeenCalledWith('delivery','sent');
+    expect(await mail.send(message)).toBe(true);expect(policy.finish).toHaveBeenCalledWith('delivery','sent',undefined);
   });
   it('does not retry after an ambiguous SMTP fallback failure',async()=>{
     const {mail,policy}=setup();global.fetch=jest.fn().mockResolvedValue({ok:false,status:429});

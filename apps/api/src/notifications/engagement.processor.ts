@@ -5,7 +5,6 @@ import { DataSource } from 'typeorm';
 import { PUSH_NOTIFICATIONS_QUEUE } from '../jobs/jobs.module';
 import { EngagementService } from './engagement.service';
 
-// Reuse the existing push worker queue: no new broker, scheduler, or external service.
 @Injectable()
 export class EngagementProcessor implements OnModuleInit {
   constructor(
@@ -29,7 +28,6 @@ export class EngagementProcessor implements OnModuleInit {
     if (settings.triggers.deadlines) await this.deadlines();
   }
   async weeklyRecaps() {
-    // One local-calendar recap combines movement and club summaries, so club membership cannot multiply email volume.
     await this.db.query(`WITH due AS (
       SELECT u.id AS "userId", np.value->>'timeZone' AS zone,
         date_trunc('week',now() AT TIME ZONE (np.value->>'timeZone')) AS week
@@ -80,7 +78,6 @@ export class EngagementProcessor implements OnModuleInit {
     ON CONFLICT ("userId","engagementKey") WHERE "engagementKey" IS NOT NULL DO NOTHING`);
   }
   async weeklyGoals() {
-    // Use an explicitly configured goal. Do not infer a full-day step goal from session-only activity data.
     await this.db.query(`WITH progress AS (
       SELECT p."userId",p."weeklyGoalMetres",date_trunc('week',now() AT TIME ZONE (np.value->>'timeZone')) AS week,
         COALESCE(sum(GREATEST(a."validatedDistanceMetres",a."stepDistanceMetres")),0) AS metres
