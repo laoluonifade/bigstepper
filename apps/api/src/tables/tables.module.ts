@@ -22,6 +22,5 @@ import { ClubChallengesProcessor } from './club-challenges.processor';
   ],
   controllers: [TablesController, ChallengeStudioController],
   providers: [TablesService, TablesRepository, ChallengeRemindersProcessor, ChallengeStudioService, ClubChallengesProcessor, CloudinaryService],
-  exports: [TablesService],
 })
 export class TablesModule {}

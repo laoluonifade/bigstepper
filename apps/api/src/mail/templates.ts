@@ -56,8 +56,7 @@ function layout(heading: string, intro: string, buttonLabel: string, url: string
 }
 
 export function verificationEmail(to: { address: string; name?: string }, url: string): MailMessage {
-  const greeting = to.name ? `Hi ${to.name}` : 'Confirm';
-  const intro = `${greeting}, verify your email to enter paid competitions and recover your account.`;
+  const intro = `${to.name ? `Hi ${to.name}, v` : 'V'}erify your email to enter paid competitions and recover your account.`;
   const footnote = 'This link expires in 24 hours. If you didn’t create a Jump account, you can ignore this email.';
   return {
     to,
@@ -249,24 +248,32 @@ function digestActivity(type: string) {
   return { label: 'Distance', icon: '📍' };
 }
 
+function digestFormat(format: string) {
+  const value = format.toLowerCase();
+  if (value === 'open') return 'Virtual';
+  if (value === 'invite') return 'Invite only';
+  if (value === 'head_to_head') return 'Head to head';
+  return digestScoring(format);
+}
+
 function digestScoring(method: string) {
   return method.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function competitionDigestEmail(to: { address: string; name?: string }, competitions: CompetitionDigestItem[], url: string, settingsUrl: string): MailMessage {
+export function competitionDigestEmail(to: { address: string; name?: string }, competitions: CompetitionDigestItem[], origin: string, url: string, settingsUrl: string): MailMessage {
   const safeUrl = escapeHtml(url);
   const safeSettingsUrl = escapeHtml(settingsUrl);
   const first = to.name?.trim().split(/\s+/)[0];
-  const featured = competitions.filter((competition) => Boolean(competition.bannerUrl)).slice(0, 4);
-  const cards = featured.map((competition) => {
+  const competitionUrl = (code: string) => `${origin.replace(/\/+$/, '')}/competitions/${encodeURIComponent(code)}`;
+  const cards = competitions.map((competition) => {
     const activity = digestActivity(competition.challengeType);
-    const competitionUrl = `${SITE}/competitions/${encodeURIComponent(competition.code)}`;
+    const link = escapeHtml(competitionUrl(competition.code));
     return `<tr><td style="padding:0 20px 14px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFFFFF" style="background:#FFFFFF;border:1px solid #E7E3DC;border-radius:13px;overflow:hidden">
-        <tr><td style="padding:0"><a href="${escapeHtml(competitionUrl)}" style="display:block;text-decoration:none"><img src="${escapeHtml(competition.bannerUrl!)}" width="520" alt="Banner for ${escapeHtml(competition.title)}" style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:12px 12px 0 0"></a></td></tr>
+        ${competition.bannerUrl ? `<tr><td style="padding:0"><a href="${link}" style="display:block;text-decoration:none"><img src="${escapeHtml(competition.bannerUrl)}" width="520" alt="Banner for ${escapeHtml(competition.title)}" style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:12px 12px 0 0"></a></td></tr>` : ''}
         <tr><td style="padding:15px 16px 16px">
-          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="#E5F5EC" style="background:#E5F5EC;border-radius:999px;padding:5px 9px;font-family:${FONT};font-size:10px;font-weight:700;color:#286443">Competition</td><td style="padding-left:9px;font-family:${FONT};font-size:13px;color:#68645D">${escapeHtml(activity.label)} · ${competition.format.toLowerCase() === 'open' ? 'Virtual' : escapeHtml(competition.format)}</td></tr></table>
-          <div style="padding-top:10px;font-family:${FONT};font-size:19px;font-weight:700;line-height:1.2;color:#121212"><a href="${escapeHtml(competitionUrl)}" style="color:#121212;text-decoration:none">${escapeHtml(competition.title)}</a></div>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="#E5F5EC" style="background:#E5F5EC;border-radius:999px;padding:5px 9px;font-family:${FONT};font-size:10px;font-weight:700;color:#286443">Competition</td><td style="padding-left:9px;font-family:${FONT};font-size:13px;color:#68645D">${escapeHtml(activity.label)} · ${escapeHtml(digestFormat(competition.format))}</td></tr></table>
+          <div style="padding-top:10px;font-family:${FONT};font-size:19px;font-weight:700;line-height:1.2;color:#121212"><a href="${link}" style="color:#121212;text-decoration:none">${escapeHtml(competition.title)}</a></div>
           <div style="padding-top:5px;font-family:${FONT};font-size:14px;line-height:1.45;color:#68645D">${escapeHtml(digestScoring(competition.scoringMethod))}</div>
           <div style="padding-top:13px;border-top:1px solid #EEEAE3;margin-top:13px;font-family:${FONT};font-size:13px;line-height:1.4;color:#55524B"><span style="color:#C94722;font-weight:700">${competition.entrants.toLocaleString('en-US')}</span> people joined</div>
         </td></tr>
@@ -306,9 +313,9 @@ export function competitionDigestEmail(to: { address: string; name?: string }, c
     </td></tr>
   </table>
 </body></html>`;
-  const plain = featured.map((competition) => {
+  const plain = competitions.map((competition) => {
     const activity = digestActivity(competition.challengeType);
-    return `• ${competition.title}\n  ${activity.label} · ${digestScoring(competition.scoringMethod)} · ${competition.entrants} joined\n  ${SITE}/competitions/${encodeURIComponent(competition.code)}`;
+    return `• ${competition.title}\n  ${activity.label} · ${digestScoring(competition.scoringMethod)} · ${competition.entrants} joined\n  ${competitionUrl(competition.code)}`;
   }).join('\n\n');
   return {
     to,
