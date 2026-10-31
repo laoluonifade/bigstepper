@@ -207,13 +207,98 @@ export function streakReminderEmail(to: { address: string; name?: string }, days
   };
 }
 
-export function competitionDigestEmail(to: { address: string; name?: string }, competitions: Array<{ title: string; entrants: number }>, url: string, settingsUrl: string): MailMessage {
-  const intro = `Popular competitions on Jump: ${competitions.map((competition) => `${competition.title} (${competition.entrants} joined)`).join(' · ')}. Find one to move with.`;
+export interface CompetitionDigestItem {
+  title: string;
+  entrants: number;
+  challengeType: string;
+  format: string;
+  scoringMethod: string;
+  bannerUrl: string | null;
+  code: string;
+}
+
+function digestActivity(type: string) {
+  const value = type.toUpperCase();
+  if (value === 'RUN') return { label: 'Run', icon: '🏃' };
+  if (value === 'WALK') return { label: 'Walk', icon: '🚶' };
+  if (value === 'CYCLING') return { label: 'Cycle', icon: '🚴' };
+  if (value === 'STEP') return { label: 'Steps', icon: '👟' };
+  if (value === 'TIMED') return { label: 'Timed activity', icon: '⏱' };
+  return { label: 'Distance', icon: '📍' };
+}
+
+function digestScoring(method: string) {
+  return method.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function competitionDigestEmail(to: { address: string; name?: string }, competitions: CompetitionDigestItem[], url: string, settingsUrl: string): MailMessage {
+  const safeUrl = escapeHtml(url);
+  const safeSettingsUrl = escapeHtml(settingsUrl);
+  const first = to.name?.trim().split(/\s+/)[0];
+  const cards = competitions.map((competition) => {
+    const activity = digestActivity(competition.challengeType);
+    const image = competition.bannerUrl
+      ? `<img src="${escapeHtml(competition.bannerUrl)}" width="520" alt="" style="display:block;width:100%;max-width:520px;height:auto;border:0">`
+      : `<div style="height:84px;background:#F2EFE8;text-align:center;line-height:84px;font-size:34px;color:#121212">${activity.icon}</div>`;
+    const competitionUrl = `${SITE}/competitions/${encodeURIComponent(competition.code)}`;
+    return `<tr><td style="padding:0 20px 14px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF6;border:1px solid #DCD7CC;border-radius:12px;overflow:hidden">
+        <tr><td style="padding:0"><a href="${escapeHtml(competitionUrl)}" style="display:block;text-decoration:none">${image}</a></td></tr>
+        <tr><td style="padding:14px 16px 16px">
+          <div style="font-family:${FONT};font-size:10px;font-weight:800;letter-spacing:0.12em;color:#347454;text-transform:uppercase">Competition <span style="color:#8A857B;font-weight:500;letter-spacing:0">&nbsp; ${escapeHtml(activity.label)} · ${competition.format.toLowerCase() === 'open' ? 'Virtual' : escapeHtml(competition.format)}</span></div>
+          <div style="padding-top:8px;font-family:${FONT};font-size:19px;font-weight:800;line-height:1.2"><a href="${escapeHtml(competitionUrl)}" style="color:#121212;text-decoration:none">${escapeHtml(competition.title)}</a></div>
+          <div style="padding-top:5px;font-family:${FONT};font-size:12px;line-height:1.4;color:#55524B">${escapeHtml(activity.label)} · ${escapeHtml(digestScoring(competition.scoringMethod))}</div>
+          <div style="padding-top:13px;font-family:${FONT};font-size:12px;line-height:1.4;color:#55524B"><span style="color:#FF4D12;font-weight:800">${competition.entrants.toLocaleString('en-US')}</span> joined</div>
+        </td></tr>
+      </table>
+    </td></tr>`;
+  }).join('');
+  const greeting = first ? `Hi ${escapeHtml(first)},` : 'Welcome back.';
+  const html = `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head>
+<body style="margin:0;background:#F2EFE8;font-family:${FONT};color:#121212;-webkit-text-size-adjust:100%">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0">Discover competitions and communities moving on Jump.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F2EFE8" style="background:#F2EFE8">
+    <tr><td align="center" style="padding:18px 12px 28px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#FBFAF6;border:1px solid #DCD7CC;border-radius:12px">
+        <tr><td style="padding:20px 20px 16px;border-bottom:1px solid #DCD7CC">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td width="90" valign="middle">${WORDMARK}</td>
+            <td align="right" valign="middle" style="font-family:${FONT};font-size:10px;font-weight:800;letter-spacing:0.16em;color:#55524B">EXPLORE</td>
+          </tr></table>
+          <div style="height:2px;width:34px;background:#FF4D12;margin-top:15px;font-size:1px;line-height:2px">&nbsp;</div>
+        </td></tr>
+        <tr><td style="padding:23px 20px 18px">
+          <div style="font-family:${FONT};font-size:10px;font-weight:800;letter-spacing:0.14em;color:#FF4D12;text-transform:uppercase">Popular on Jump</div>
+          <div style="padding-top:10px;font-family:${FONT};font-size:29px;font-weight:900;line-height:1.04;letter-spacing:-0.02em;color:#121212">THERE'S ALWAYS A NEW WAY TO MOVE.</div>
+          <div style="padding-top:11px;font-family:${FONT};font-size:14px;line-height:1.5;color:#55524B">${greeting} Discover what's happening on Jump. Find competitions, join communities and see who's leading the way.</div>
+        </td></tr>
+        ${cards}
+        <tr><td style="padding:3px 20px 0">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#FF4D12" style="background:#FF4D12;border-radius:6px;border:1.5px solid #121212">
+            <a href="${safeUrl}" style="display:inline-block;padding:14px 18px;font-family:${FONT};font-size:12px;font-weight:900;letter-spacing:0.08em;color:#121212;text-transform:uppercase;text-decoration:none">Explore all competitions</a>
+          </td></tr></table>
+          <div style="padding-top:10px;font-family:${FONT};font-size:12px;line-height:1.45;color:#55524B">Your next challenge could be one tap away.</div>
+        </td></tr>
+        <tr><td style="padding:26px 20px 8px">
+          <div style="border-top:1px solid #DCD7CC;padding-top:17px;font-family:${FONT};font-size:14px;font-weight:900;letter-spacing:0.08em;color:#121212">JUMP</div>
+          <div style="padding-top:4px;font-family:${FONT};font-size:12px;color:#55524B">Keep moving. Keep jumping.</div>
+          <div style="padding-top:12px;font-family:${FONT};font-size:11px;line-height:1.5;color:#8A857B">You're receiving this because Competition picks are enabled on your Jump profile. <a href="${safeSettingsUrl}" style="color:#55524B;text-decoration:underline">Email preferences</a></div>
+          <div style="padding-top:10px;font-family:${FONT};font-size:10px;color:#8A857B">Button not working? <a href="${safeUrl}" style="color:#55524B;word-break:break-all">${safeUrl}</a></div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  const plain = competitions.map((competition) => {
+    const activity = digestActivity(competition.challengeType);
+    return `• ${competition.title}\n  ${activity.label} · ${digestScoring(competition.scoringMethod)} · ${competition.entrants} joined\n  ${SITE}/competitions/${encodeURIComponent(competition.code)}`;
+  }).join('\n\n');
   return {
     to,
     subject: 'Popular competitions on Jump',
-    html: layout('Find your next competition', intro, 'Explore competitions', url, `Sent every three days. Turn it off in your profile settings: ${settingsUrl}`),
-    text: `Popular competitions on Jump:\n${competitions.map((competition) => `• ${competition.title} — ${competition.entrants} joined`).join('\n')}\n\nExplore: ${url}\n\nEmail settings: ${settingsUrl}`,
+    html,
+    text: `THERE'S ALWAYS A NEW WAY TO MOVE.\n\nDiscover what's happening on Jump. Find competitions, join communities and see who's leading the way.\n\n${plain}\n\nExplore all competitions: ${url}\nYour next challenge could be one tap away.\n\nKeep moving. Keep jumping.\nEmail preferences: ${settingsUrl}`,
   };
 }
 

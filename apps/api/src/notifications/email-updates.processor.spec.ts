@@ -5,7 +5,8 @@ describe('EmailUpdatesProcessor', () => {
   const config = { getOrThrow: jest.fn().mockReturnValue('https://jump.example') };
   const queue = { upsertJobScheduler: jest.fn().mockResolvedValue(undefined) };
   const dataSource = { query: jest.fn() };
-  const processor = new EmailUpdatesProcessor(dataSource as never, mail as never, config as never, queue as never);
+  const tables = { list: jest.fn() };
+  const processor = new EmailUpdatesProcessor(dataSource as never, mail as never, config as never, tables as never, queue as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
