@@ -94,7 +94,7 @@ export class EmailUpdatesProcessor extends WorkerHost implements OnModuleInit {
     const available = await this.tables.list('popular', 'all', 'all');
     const picks = available
       .filter((table) => table.status === 'OPEN_FOR_ENTRY' && table.visibility === 'public' && !table.archivedAt && !table.deletedAt &&
-        (!table.entryClosesAt || new Date(table.entryClosesAt) > new Date()) && (!table.capacity || table.entrantCount < table.capacity))
+        Boolean(table.bannerUrl) && (!table.entryClosesAt || new Date(table.entryClosesAt) > new Date()) && (!table.capacity || table.entrantCount < table.capacity))
       .slice(0, 4)
       .map((table): CompetitionDigestItem => ({
         title: table.title,
