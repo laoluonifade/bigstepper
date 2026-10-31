@@ -23,6 +23,7 @@ function protectedPage<M extends Record<string, unknown>>(load: () => Promise<M>
 
 const root = createRootRoute({ component: AppShell });
 const home = createRoute({ getParentRoute: () => root, path: '/', component: LandingPage });
+const business = createRoute({ getParentRoute: () => root, path: '/business', component: page(() => import('./pages/Business'), 'BusinessPage') });
 const competitions = createRoute({
   getParentRoute: () => root,
   path: '/competitions',
@@ -126,7 +127,7 @@ function tokenSearch(search: Record<string, unknown>): { token?: string } {
 }
 
 const routeTree = root.addChildren([
-  home, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
+  home, business, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, setup, interests, welcome, leaderboard, feed, feedPost, messages, groupChat, conversation, duel, newCompetition, run, runSession, activities, activity,
