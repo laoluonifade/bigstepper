@@ -18,7 +18,7 @@ jobs:
           node-version-file: .nvmrc
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      # Two advisories are ignored in package.json (pnpm.auditConfig): node-forge and braces reach only the
+      # Two advisories are ignored in pnpm-workspace.yaml (auditConfig): node-forge and braces reach only the
       # mobile app's Expo dev tooling and have no patched release yet. Drop them once fixes ship.
       - run: pnpm audit --prod --audit-level=high
       - run: pnpm lint
