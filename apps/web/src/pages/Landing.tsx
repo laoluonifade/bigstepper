@@ -53,6 +53,9 @@ export function LandingPage() {
             Explore
           </Link>
         </div>
+        <Link to="/business" className="mt-4 inline-flex items-center gap-1 text-[13px] font-semibold text-ink-2 underline decoration-ink/25 underline-offset-4 transition-colors hover:text-ink hover:decoration-track">
+          For businesses <span aria-hidden="true">↗</span>
+        </Link>
       </section>
 
       <div className="text-left">
