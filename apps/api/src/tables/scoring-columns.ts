@@ -25,7 +25,6 @@ export function scoringColumns(input: ScoringFieldsDto & { challengeType: Challe
     rulesVersion: 2,
   };
   if (input.allDaySteps && input.challengeType !== 'STEP') throw new BadRequestException('All-day steps are only for step competitions');
-  if (columns.allDaySteps && prizes) throw new BadRequestException('All-day steps are for free competitions. Prize competitions count GPS-checked walks and runs.');
   try {
     assertScoringConfiguration({ ...columns, prizes });
   } catch (error) {
