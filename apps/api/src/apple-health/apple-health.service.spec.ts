@@ -3,6 +3,8 @@ import { alreadyImported, saveImportedActivity } from '../running/import-activit
 import { spreadSteps } from './apple-health-steps';
 import { AppleHealthService } from './apple-health.service';
 
+jest.mock('../tables/competition-credits', () => ({ retotal: jest.fn() }));
+
 jest.mock('../running/import-activity', () => ({
   alreadyImported: jest.fn(),
   saveImportedActivity: jest.fn(),
@@ -69,6 +71,31 @@ describe('AppleHealthService', () => {
     expect(save.mock.calls[0][1].recordedSteps).toBe(1800 * 4);
     await service.importWorkout('runner', { ...workout, activityType: 'cycle' });
     expect(save.mock.calls[1][1]).toMatchObject({ recordedSteps: 0, stepsSource: null });
+  });
+});
+
+describe('AppleHealthService daily steps', () => {
+  function stepsSetup(changed: Array<{ day: string }>, tables: Array<{ id: string }>) {
+    const query = jest.fn().mockResolvedValueOnce(changed).mockResolvedValueOnce(tables);
+    const dataSource = { query, transaction: jest.fn(async (work: (manager: unknown) => Promise<void>) => work('manager')) };
+    const links = { exist: jest.fn().mockResolvedValue(true) };
+    return { service: new AppleHealthService(links as never, dataSource as never, {} as never), query, dataSource };
+  }
+  const today = new Date().toISOString().slice(0, 10);
+
+  it('saves recent days only and rescores all-day step competitions the runner is in', async () => {
+    const { service, query, dataSource } = stepsSetup([{ day: today }], [{ id: 'table' }]);
+    await expect(service.saveDailySteps('runner', [{ day: today, steps: 12_000 }, { day: '2001-01-01', steps: 5 }])).resolves.toEqual({ saved: 1 });
+    expect(JSON.parse(query.mock.calls[0][1][1])).toEqual([{ day: today, steps: 12_000 }]);
+    expect(query.mock.calls[0][0]).toContain('LEAST(x."steps", 100000)');
+    expect(dataSource.transaction).toHaveBeenCalled();
+  });
+
+  it('does nothing more when no day changed', async () => {
+    const { service, query, dataSource } = stepsSetup([], []);
+    await service.saveDailySteps('runner', [{ day: today, steps: 100 }]);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 });
 

@@ -1,6 +1,5 @@
 import { NotificationPreferences } from '../components/NotificationPreferences';
 import { MoreMenu, openBlock, openReport, unblockRunner } from '../components/Safety';
-import { StravaConnection } from './Strava';
 import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
@@ -63,6 +62,7 @@ export const YOU_NAV = [
   { to: '/prizes', label: 'Prizes' },
   { to: '/creator', label: 'Creator' },
   { to: '/notifications', label: 'Notifications' },
+  { to: '/settings/connections', label: 'Connections' },
 ] as const;
 
 
@@ -105,7 +105,6 @@ export function ProfileSettingsPage() {
         }
       >
         {activities.isLoading ? <Skeleton className="mt-5 h-20" /> : <ProfileStats stats={stats} unit={unit} />}
-        <StravaConnection />
       </ProfileHero>
       <div className="mx-auto max-w-2xl"><YouLinks /></div>
 
@@ -129,6 +128,11 @@ export function ProfileSettingsPage() {
                 options={[{ value: 'everyone', label: 'Everyone' }, { value: 'following', label: 'I follow' }]} />
             </div>
           </div>
+          <Link to="/settings/connections" className={ROW}>
+            <span className="flex-1 text-[14px] font-semibold">Connections</span>
+            <span className="text-[13px] text-ink-3">Strava, Apple Health</span>
+            <ChevronRightIcon size={16} className="text-ink-3" />
+          </Link>
           <button type="button" className={ROW} onClick={() => setSheet('email')}>
             <span className="flex-1 text-left text-[14px] font-semibold">Email updates</span>
             <span className="text-[13px] text-ink-3">{emailOn === 2 ? 'All on' : emailOn === 1 ? '1 of 2 on' : 'Off'}</span>

@@ -8,11 +8,14 @@ import { alreadyImported, saveImportedActivity } from '../running/import-activit
 import { stravaStepTotals } from '../strava/strava-steps';
 import { spreadSteps } from './apple-health-steps';
 import { AppleHealthLink } from './apple-health-link.entity';
-import { AppleHealthWorkoutDto } from './apple-health.dto';
+import { AppleHealthWorkoutDto, DailyStepsDto } from './apple-health.dto';
+import { retotal } from '../tables/competition-credits';
 
 const MAX_WORKOUT_SECONDS = 24 * 60 * 60;
 const ROUTE_SLACK_SECONDS = 120;
 const MAX_STEPS_PER_SECOND = 4;
+const MAX_DAILY_STEPS = 100_000;
+const MAX_DAYS_BACK = 40;
 
 @Injectable()
 export class AppleHealthService {
@@ -41,6 +44,33 @@ export class AppleHealthService {
   async synced(userId: string) {
     await this.links.update({ userId }, { lastSyncedAt: new Date() });
     return this.status(userId);
+  }
+
+  async saveDailySteps(userId: string, days: DailyStepsDto[]) {
+    if (!(await this.links.exist({ where: { userId } }))) throw new BadRequestException('Connect Apple Health first');
+    const today = Date.now();
+    const valid = days.filter(({ day }) => {
+      const time = Date.parse(`${day}T00:00:00Z`);
+      return Number.isFinite(time) && time <= today + 86_400_000 && time >= today - MAX_DAYS_BACK * 86_400_000;
+    });
+    if (!valid.length) return { saved: 0 };
+    const changed = await this.dataSource.query(
+      `INSERT INTO "daily_steps" ("userId", "day", "steps")
+       SELECT $1, x."day", LEAST(x."steps", ${MAX_DAILY_STEPS}) FROM jsonb_to_recordset($2::jsonb) AS x("day" date, "steps" integer)
+       ON CONFLICT ("userId", "day") DO UPDATE SET "steps" = EXCLUDED."steps", "updatedAt" = now()
+       WHERE "daily_steps"."steps" IS DISTINCT FROM EXCLUDED."steps"
+       RETURNING "day"`,
+      [userId, JSON.stringify(valid)],
+    ) as Array<{ day: string }>;
+    if (changed.length) {
+      const tables = await this.dataSource.query(
+        `SELECT t."id" FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
+         WHERE r."userId" = $1 AND t."allDaySteps" AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
+        [userId],
+      ) as Array<{ id: string }>;
+      if (tables.length) await this.dataSource.transaction((manager) => retotal(manager, tables.map((table) => table.id)));
+    }
+    return { saved: changed.length };
   }
 
   async importWorkout(userId: string, workout: AppleHealthWorkoutDto) {

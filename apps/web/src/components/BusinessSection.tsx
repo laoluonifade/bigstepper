@@ -30,7 +30,7 @@ const benefits = [
   {
     number: '04',
     title: 'Make wellness measurable',
-    body: 'Follow participation and verified step challenge progress on leaderboards. Steps count during recorded walks and runs.',
+    body: 'Follow participation and step challenge progress on leaderboards. Turn on all-day steps and every step from Apple Health counts.',
     mark: '⌁',
     tone: 'bg-[#FFD9C8]',
   },
@@ -168,7 +168,7 @@ export function BusinessSection() {
             <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{body}</p>
           </li>)}
         </ol>
-        <p className="mt-3 text-[11px] leading-relaxed text-ink-3">Step counts depend on a compatible phone and motion permission. Jump counts steps during a recorded walk or run, but does not passively track steps throughout the day.</p>
+        <p className="mt-3 text-[11px] leading-relaxed text-ink-3">Step counts depend on a compatible phone and motion permission. In step challenges with all-day steps turned on, Jump counts every step from Apple Health on iPhone; Android support is coming. Otherwise, steps count during recorded walks and runs.</p>
       </div>
 
       {/* Flexible participation */}

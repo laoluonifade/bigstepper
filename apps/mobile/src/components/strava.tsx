@@ -77,7 +77,7 @@ export function StravaSyncBar({ hidden }: { hidden?: boolean }) {
   </View>;
 }
 
-/** One compact row in the profile card: connect, or who's connected and when it last synced. */
+/** One row on the Connections screen: connect, or who's connected and when it last synced. */
 export function StravaConnection() {
   const queryClient = useQueryClient();
   const status = useStravaStatus();
@@ -108,7 +108,7 @@ export function StravaConnection() {
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: STRAVA_ORANGE, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 16 },
   barText: { fontFamily: fontFamily('bold'), fontSize: 13, color: colors.white },
-  connection: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16, marginTop: 16 },
+  connection: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 16 },
   badge: { width: 36, height: 36, borderRadius: 18, backgroundColor: STRAVA_ORANGE, alignItems: 'center', justifyContent: 'center' },
   connect: { height: 36, justifyContent: 'center', borderRadius: radius.base, backgroundColor: STRAVA_ORANGE, paddingHorizontal: 12 },
   connectText: { fontFamily: fontFamily('bold', 'wide'), fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.white },

@@ -71,7 +71,7 @@ export function AppleHealthSyncBar({ hidden }: { hidden?: boolean }) {
   </View>;
 }
 
-/** One compact row in the profile card: connect Apple Health, or when it last synced. iPhone only. */
+/** One row on the Connections screen: connect Apple Health, or when it last synced. iPhone only. */
 export function AppleHealthConnection() {
   const queryClient = useQueryClient();
   const status = useAppleHealthStatus();
@@ -97,7 +97,7 @@ export function AppleHealthConnection() {
     <View style={{ flex: 1, minWidth: 0 }}>
       <Txt size={14} weight="bold">Apple Health</Txt>
       <Txt size={12} color="ink2">
-        {!data?.connected ? 'Import walks, runs and rides from Apple Watch and other apps'
+        {!data?.connected ? 'Import workouts and your daily steps from iPhone and Apple Watch'
           : sync.isPending ? 'Syncing…'
             : data.lastSyncedAt ? `Synced ${formatRelative(data.lastSyncedAt)}` : 'Connected'}
       </Txt>
@@ -114,7 +114,7 @@ export function AppleHealthConnection() {
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: HEALTH_RED, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 16 },
   barText: { fontFamily: fontFamily('bold'), fontSize: 13, color: colors.white },
-  connection: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 16, marginTop: 16 },
+  connection: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 16 },
   badge: { width: 36, height: 36, borderRadius: 10, backgroundColor: HEALTH_RED, alignItems: 'center', justifyContent: 'center' },
   connect: { height: 36, justifyContent: 'center', borderRadius: radius.base, backgroundColor: colors.ink, paddingHorizontal: 12 },
   connectText: { fontFamily: fontFamily('bold', 'wide'), fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.white },

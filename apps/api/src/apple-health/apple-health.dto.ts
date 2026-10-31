@@ -1,4 +1,5 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsUUID, Matches, Max, Min, ValidateNested } from 'class-validator';
 
 export class AppleHealthWorkoutDto {
   @IsUUID()
@@ -34,4 +35,23 @@ export class AppleHealthWorkoutDto {
   @ArrayMinSize(2)
   @ArrayMaxSize(6000)
   route: Array<[number, number, number]>;
+}
+
+export class DailyStepsDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  day: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  steps: number;
+}
+
+export class DailyStepsSyncDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => DailyStepsDto)
+  days: DailyStepsDto[];
 }

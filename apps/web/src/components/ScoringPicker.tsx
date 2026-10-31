@@ -84,6 +84,14 @@ export function ScoringPicker({ draft, onChange, unit, prizes, error }: {
       </Field>}
     </div>}
 
+    {draft.challengeType === 'STEP' && !prizes && <label className="flex cursor-pointer items-start gap-3 rounded-md border-[1.5px] border-line bg-card px-4 py-3">
+      <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[#121212]" checked={draft.allDaySteps} onChange={(event) => set({ allDaySteps: event.target.checked })} />
+      <span>
+        <span className="block text-[14px] font-semibold">Count all-day steps</span>
+        <span className="block text-[13px] leading-snug text-ink-2">Every step from Apple Health counts, not just steps on recorded walks and runs. iPhone only for now: anyone else scores from their recorded walks and runs. Free competitions only.</span>
+      </span>
+    </label>}
+
     {draft.challengeType === 'TIMED' && <fieldset>
       <legend className="label">What counts</legend>
       <div className="flex flex-wrap gap-2">

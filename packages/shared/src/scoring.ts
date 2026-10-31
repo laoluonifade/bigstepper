@@ -4,7 +4,7 @@ import type { CompetitionTable, Unit } from './types';
 
 /** The scoring fields of a competition: enough to label, format and explain its scores. */
 export type Scored = Pick<CompetitionTable, 'challengeType' | 'scoringMethod' | 'targetDistanceMetres'> &
-  Partial<Pick<CompetitionTable, 'targetSteps' | 'targetSeconds' | 'targetSessions' | 'dailyTarget' | 'minSessions' | 'minActivityMetres' | 'minActivitySeconds' | 'eligibleActivities' | 'timeZone' | 'rulesVersion' | 'distanceCapMetres'>>;
+  Partial<Pick<CompetitionTable, 'targetSteps' | 'targetSeconds' | 'targetSessions' | 'dailyTarget' | 'minSessions' | 'minActivityMetres' | 'minActivitySeconds' | 'eligibleActivities' | 'timeZone' | 'rulesVersion' | 'distanceCapMetres' | 'allDaySteps'>>;
 
 export function metricOf(method: ScoringMethod | string): MetricDefinition {
   return METRICS[method as ScoringMethod] ?? METRICS.FARTHEST_DISTANCE;
@@ -190,6 +190,10 @@ export function rulesLines(table: Scored, unit: Unit): string[] {
   if (metric.aggregate === 'weeklyVariation') lines.push('Ranked on how evenly your weekly time spreads across full weeks.');
   if (metric.aggregate === 'paceVariation') lines.push(`Ranked on how steady your pace is across ${kinds.join(' and ')} of at least ${target}. You need at least ${Math.max(2, table.minSessions ?? 3)} to be ranked.`);
 
+  if (table.allDaySteps) {
+    lines.push('All-day steps: every step your iPhone and Apple Watch count through Apple Health adds up, not just steps on recorded walks and runs. Connect Apple Health in Jump on your iPhone (You → Connections). Steps typed into Apple Health by hand don’t count, and a day counts up to 100,000 steps.');
+    lines.push('Not on iPhone yet? Your verified walks and runs count instead, until all-day steps come to Android.');
+  }
   lines.push(`Verified ${list(kinds)} count if they start after the competition starts and finish before it ends, whenever you joined. Flagged activities count only after a reviewer approves them.`);
   if (table.minActivityMetres || table.minActivitySeconds) {
     const parts = [table.minActivityMetres ? formatDistance(table.minActivityMetres, unit) : null, table.minActivitySeconds ? formatAmountOfTime(table.minActivitySeconds) : null].filter(Boolean);
@@ -197,7 +201,7 @@ export function rulesLines(table: Scored, unit: Unit): string[] {
   }
   if (table.minSessions && metric.aggregate !== 'paceVariation') lines.push(`You need at least ${table.minSessions} qualifying ${sessionNoun(table, table.minSessions)} to rank above anyone who hasn’t reached that.`);
   if (engine) lines.push('Each outing counts once. If the same activity arrives twice (say from Jump and Strava), only one copy counts.');
-  if (engine && (metric.measure === 'steps' || dailyMeasure(table.challengeType, table.scoringMethod) === 'steps')) {
+  if (engine && !table.allDaySteps && (metric.measure === 'steps' || dailyMeasure(table.challengeType, table.scoringMethod) === 'steps')) {
     lines.push('Only measured steps count: your phone’s motion sensor in Jump, or cadence from a watch synced through Strava. Steps estimated from GPS distance don’t.');
   }
   if (metric.measure === 'elevation') lines.push('Elevation comes from Strava. Activities recorded in Jump don’t carry elevation yet, so they add none.');

@@ -8,13 +8,11 @@ import { router, type Href } from 'expo-router';
 import { ReactNode, useMemo, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { Linking, Pressable, Share, StyleSheet, Switch, View } from 'react-native';
-import { ActivityIcon, BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, LadderIcon, LogoutIcon, SendIcon, UserIcon, UsersIcon, WalletIcon, XLogoIcon } from '@/components/icons';
+import { ActivityIcon, BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, LadderIcon, LinkIcon, LogoutIcon, SendIcon, UserIcon, UsersIcon, WalletIcon, XLogoIcon } from '@/components/icons';
 import { CountryPicker, GenderSelect, PhoneField } from '@/components/pickers';
 import { AvatarEditor, ProfileHero, ProfileStats, ShareProfileButton } from '@/components/Profile';
 import { TabScreen } from '@/components/Shell';
 import { OptionSheet, Sheet } from '@/components/Sheet';
-import { AppleHealthConnection } from '@/components/apple-health';
-import { StravaConnection } from '@/components/strava';
 import { TrophyCabinet } from '@/components/Trophies';
 import { Button, CopyButton, ErrorNotice, haptic, Loading, Notice, Segmented, Skeleton, TextField, Txt } from '@/components/ui';
 import { api, patch, WEB_URL } from '@/lib/api';
@@ -64,6 +62,7 @@ export default function YouScreen() {
     { href: '/prizes', label: 'Prizes', icon: <Txt size={16} weight="black">★</Txt> },
     { href: '/creator', label: 'Creator', icon: <UserIcon size={18} /> },
     { href: '/runners', label: 'Find runners', icon: <UsersIcon size={18} /> },
+    { href: '/connections' as Href, label: 'Connections', icon: <LinkIcon size={18} /> },
   ];
 
   return <TabScreen refreshing={profile.isRefetching} onRefresh={() => { void profile.refetch(); void social.refetch(); }}>
@@ -81,8 +80,6 @@ export default function YouScreen() {
       </>}
     >
       {activities.isLoading ? <Skeleton style={{ height: 80, marginTop: 20 }} /> : <ProfileStats stats={stats} unit={unit} />}
-      <StravaConnection />
-      <AppleHealthConnection />
     </ProfileHero>
 
     {/* Podium finishes, a medal each. */}

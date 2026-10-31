@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ActivityType, CompetitionFormat } from '../competition-rules';
 import { PlaceFieldsDto } from '../place';
 
@@ -32,4 +32,7 @@ export class ScoringFieldsDto extends PlaceFieldsDto {
 
   @IsOptional() @IsString() @MaxLength(64)
   timeZone?: string;
+
+  @IsOptional() @IsBoolean()
+  allDaySteps?: boolean;
 }

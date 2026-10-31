@@ -77,6 +77,9 @@ export class CompetitionTable {
   @Column({ type: 'integer', nullable: true })
   minSessions: number | null;
 
+  @Column({ type: 'boolean', default: false })
+  allDaySteps: boolean;
+
   @Column({ type: 'integer', nullable: true })
   minActivityMetres: number | null;
 

@@ -62,7 +62,7 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "Jump imports the walks, runs and rides you record with Apple Watch or other apps in Apple Health, with their route, distance and steps, so they count on your leaderboards.",
+          "NSHealthShareUsageDescription": "Jump reads your walks, runs and rides (with their route, distance and steps) and your daily step count from Apple Health, so they count in your competitions and on leaderboards.",
           "NSHealthUpdateUsageDescription": false,
           "background": false
         }

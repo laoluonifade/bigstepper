@@ -214,6 +214,7 @@ export interface ScoringSettings {
   dailyTarget?: number | null;
   minSessions?: number | null;
   eligibleActivities?: ActivityType[] | null;
+  allDaySteps?: boolean;
   /** Cash on the line (paid or funded). */
   prizes?: boolean;
 }
@@ -238,6 +239,8 @@ export function scoringProblem(settings: ScoringSettings): string | null {
     if (!between(settings.dailyTarget, min, max)) return 'That daily amount is out of range';
   }
   if (settings.minSessions != null && !between(settings.minSessions, 1, 100)) return 'Minimum sessions must be between 1 and 100';
+  if (settings.allDaySteps && settings.challengeType !== 'STEP') return 'All-day steps are only for step competitions';
+  if (settings.allDaySteps && settings.prizes) return 'All-day steps are for free competitions. Prize competitions count GPS-checked walks and runs.';
   if (settings.eligibleActivities) {
     if (!settings.eligibleActivities.length || settings.eligibleActivities.some((kind) => !activity.kinds.includes(kind))) return `Choose which ${activity.sessions} count`;
   }

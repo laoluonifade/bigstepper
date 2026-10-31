@@ -58,8 +58,15 @@ export async function uncreditActivity(manager: EntityManager, activityId: strin
 export async function retotal(manager: EntityManager, tableIds: string[]) {
   await manager.query(
     `UPDATE "table_registrations" r
-     SET "creditedDistanceMetres" = COALESCE(totals.distance, 0), "creditedSteps" = COALESCE(totals.steps, 0), "completionTimeSeconds" = totals.best_time
+     SET "creditedDistanceMetres" = COALESCE(totals.distance, 0), "creditedSteps" = COALESCE(days.steps, totals.steps, 0), "completionTimeSeconds" = totals.best_time
      FROM "table_registrations" own
+     JOIN "competition_tables" t ON t."id" = own."tableId"
+     LEFT JOIN LATERAL (
+       SELECT SUM(d."steps")::integer AS steps FROM "daily_steps" d
+       WHERE t."allDaySteps" AND d."userId" = own."userId"
+         AND d."day" BETWEEN (COALESCE(t."startsAt", t."createdAt") AT TIME ZONE t."timeZone")::date
+                         AND (LEAST(now(), COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)) AT TIME ZONE t."timeZone")::date
+     ) days ON true
      LEFT JOIN (
        SELECT c."registrationId", SUM(c."creditedDistanceMetres")::integer AS distance,
               SUM(c."creditedSteps")::integer AS steps, MIN(c."completionTimeSeconds")::integer AS best_time
@@ -85,6 +92,7 @@ interface TableRules {
   dailyTarget: number | null;
   minSessions: number | null;
   timeZone: string;
+  allDaySteps: boolean;
   startDay: string;
   endDay: string;
 }
@@ -93,7 +101,7 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
   for (const tableId of tableIds) {
     const [table] = await manager.query(
       `SELECT "id", "challengeType", "scoringMethod", "rulesVersion", "targetDistanceMetres", "targetSteps", "targetSeconds",
-              "targetSessions", "dailyTarget", "minSessions", "timeZone",
+              "targetSessions", "dailyTarget", "minSessions", "timeZone", "allDaySteps",
               to_char((COALESCE("startsAt", "createdAt") AT TIME ZONE "timeZone")::date, 'YYYY-MM-DD') AS "startDay",
               to_char((LEAST(now(), COALESCE("scoringClosesAt", 'infinity'::timestamptz)) AT TIME ZONE "timeZone")::date, 'YYYY-MM-DD') AS "endDay"
        FROM "competition_tables" WHERE "id" = $1`,
@@ -111,6 +119,9 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
        WHERE c."tableId" = $1`,
       [tableId, table.timeZone],
     ) as ScoredActivity[];
+    const days = table.allDaySteps ? await allDayRows(manager, table) : [];
+    const daily = new Set(days.map((row) => row.registrationId));
+    const scored = [...rows.filter((row) => !daily.has(row.registrationId)), ...days];
     const scores = scoreEntrants({
       method: table.scoringMethod,
       rulesVersion: table.rulesVersion,
@@ -122,7 +133,7 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
       dailyMeasure: dailyMeasure(table.challengeType, table.scoringMethod),
       minSessions: table.minSessions,
       windowDays: daysBetween(table.startDay, table.endDay),
-    }, registrations.map((row) => row.id), rows);
+    }, registrations.map((row) => row.id), scored);
     const values = [...scores].map(([id, entrant]) => ({ id, ...entrant }));
     await manager.query(
       `UPDATE "table_registrations" r
@@ -133,4 +144,17 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
       [JSON.stringify(values)],
     );
   }
+}
+
+function allDayRows(manager: EntityManager, table: TableRules) {
+  return manager.query(
+    `SELECT r."id" AS "registrationId", 'day:' || to_char(d."day", 'YYYY-MM-DD') AS "activityId",
+            d."day"::timestamp AT TIME ZONE $2 AS "startedAt",
+            LEAST(d."updatedAt", (d."day" + 1)::timestamp AT TIME ZONE $2) AS "finishedAt",
+            to_char(d."day", 'YYYY-MM-DD') AS "day", 0 AS "distance", d."steps", 0 AS "movingSeconds", 0 AS "elapsedSeconds",
+            NULL AS "elevation", NULL AS "completionSeconds"
+     FROM "table_registrations" r JOIN "daily_steps" d ON d."userId" = r."userId"
+     WHERE r."tableId" = $1 AND d."day" BETWEEN $3::date AND $4::date`,
+    [table.id, table.timeZone, table.startDay, table.endDay],
+  ) as Promise<ScoredActivity[]>;
 }

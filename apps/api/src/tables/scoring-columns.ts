@@ -20,9 +20,12 @@ export function scoringColumns(input: ScoringFieldsDto & { challengeType: Challe
     eligibleActivities: input.challengeType === 'TIMED' && input.eligibleActivities?.length
       ? [...new Set(input.eligibleActivities)]
       : eligibleKinds(input.challengeType),
+    allDaySteps: input.challengeType === 'STEP' && Boolean(input.allDaySteps),
     timeZone: validTimeZone(input.timeZone) ?? validTimeZone(input.reminderTimeZone) ?? 'Africa/Lagos',
     rulesVersion: 2,
   };
+  if (input.allDaySteps && input.challengeType !== 'STEP') throw new BadRequestException('All-day steps are only for step competitions');
+  if (columns.allDaySteps && prizes) throw new BadRequestException('All-day steps are for free competitions. Prize competitions count GPS-checked walks and runs.');
   try {
     assertScoringConfiguration({ ...columns, prizes });
   } catch (error) {

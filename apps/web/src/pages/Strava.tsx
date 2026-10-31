@@ -244,7 +244,7 @@ export function StravaSyncBar({ hidden }: { hidden?: boolean }) {
 }
 
 /** One compact row in the profile card: connect, or who's connected and when it last synced. */
-export function StravaConnection() {
+export function StravaConnection({ className = 'mt-4 flex items-center gap-3 border-t border-line pt-4' }: { className?: string }) {
   const queryClient = useQueryClient();
   const status = useStravaStatus();
   const disconnect = useMutation({
@@ -256,7 +256,7 @@ export function StravaConnection() {
   const data = status.data;
 
   return (
-    <div className="mt-4 flex items-center gap-3 border-t border-line pt-4">
+    <div className={className}>
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FC5200] text-white">
         <StravaMark />
       </span>
