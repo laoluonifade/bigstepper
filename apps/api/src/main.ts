@@ -17,6 +17,7 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: '1mb' });
   app.use(helmet());
   app.setGlobalPrefix('v1');
+  app.use((_request: unknown,response: {setHeader(name:string,value:string):void},next:()=>void)=>{response.setHeader('X-Robots-Tag','noindex, nofollow');next();});
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

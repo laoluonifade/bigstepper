@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { anonKey, type ViewRequest } from './engagement';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -96,8 +96,8 @@ export class ClubsController {
 
   @Post(':id/join')
   @UseGuards(JwtAuthGuard)
-  join(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: JoinClubDto) {
-    return this.clubsService.join(user.id, id, body.invite);
+  join(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: JoinClubDto, @Headers('x-jump-acquisition') attribution?:string) {
+    return this.clubsService.join(user.id, id, body.invite, attribution);
   }
 
   @Post(':id/follow')

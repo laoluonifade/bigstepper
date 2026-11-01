@@ -51,6 +51,7 @@ interface ClientConfig {
   clearToken: () => void;
   /** A stable id for this install, sent so the API can spot several accounts on one device. */
   getDeviceId?: () => string | null;
+  getAcquisitionToken?: () => string | null;
   /** Sends requests that carry files (FormData), where the platform's `fetch` can't. Defaults to `fetch`. */
   uploadFetch?: (url: string, init: RequestInit) => Promise<Response>;
   /** Gzips a JSON string, for requests sent with `compress`. */
@@ -64,6 +65,7 @@ export function createApiClient(config: ClientConfig) {
 
   async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const token = config.getToken();
+    const acquisition=config.getAcquisitionToken?.();
     const deviceId = config.getDeviceId?.();
     const form = typeof FormData !== 'undefined' && options.body instanceof FormData ? options.body : null;
     const json = options.body !== undefined && !form ? JSON.stringify(options.body) : undefined;
@@ -75,6 +77,7 @@ export function createApiClient(config: ClientConfig) {
         signal: options.signal,
         headers: {
           Accept: 'application/json',
+          ...(acquisition ? {'X-Jump-Acquisition':acquisition} : {}),
           ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
           ...(zipped ? { 'Content-Encoding': 'gzip' } : {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),

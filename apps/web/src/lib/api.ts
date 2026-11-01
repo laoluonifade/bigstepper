@@ -1,3 +1,4 @@
+import { organicToken } from './organic';
 import { createApiClient } from '@jump/shared/api';
 import { clearToken, getToken } from './token';
 
@@ -22,6 +23,7 @@ const client = createApiClient({
   getToken,
   clearToken,
   getDeviceId,
+  getAcquisitionToken:organicToken,
 });
 
 export const API_URL = client.baseUrl;

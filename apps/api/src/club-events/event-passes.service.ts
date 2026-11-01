@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { SeoAnalyticsService } from '../pages/seo-analytics.service';
+import { BadRequestException, ConflictException, Injectable, Optional, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { DataSource } from 'typeorm';
@@ -42,6 +43,7 @@ export class EventPassesService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
+    @Optional() private readonly seoAnalytics?: SeoAnalyticsService,
   ) {}
 
   private web(path: string) {
@@ -92,7 +94,7 @@ export class EventPassesService {
     throw new ConflictException('Couldn’t issue a pass. Try again.');
   }
 
-  async register(viewerId: string | null, ref: string, input: PassRequest, from: 'app' | 'web' = 'web') {
+  async register(viewerId: string | null, ref: string, input: PassRequest, from: 'app' | 'web' = 'web', attribution?:string) {
     const event = await this.openEvent(ref);
     const ticket = input.ticketTypeId ? event.tickets.find((option) => option.id === input.ticketTypeId) : event.tickets[0];
     if (input.ticketTypeId && !ticket) throw new NotFoundException('That ticket isn’t available for this event');
@@ -122,6 +124,7 @@ export class EventPassesService {
     if (created) this.welcome(event, pass, Boolean(input.marketing));
     const sentTo = maskEmail(pass.sentTo);
     if (!issued) return { status: 'existing' as const, sentTo };
+    await this.seoAnalytics?.conversion(attribution,'event_registration',issued.id).catch(()=>undefined);
     return {
       status: 'issued' as const,
       sentTo,

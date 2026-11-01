@@ -1,0 +1,72 @@
+export const EVENT_PUBLIC = `e."publishedAt" IS NOT NULL AND e."deletedAt" IS NULL AND c."suspendedAt" IS NULL`;
+export const CLUB_PUBLIC = `c."privacy"='open' AND c."suspendedAt" IS NULL`;
+export const COMPETITION_PUBLIC = `t."visibility"='public' AND t."deletedAt" IS NULL AND t."archivedAt" IS NULL AND t."status" NOT IN ('DRAFT','SCHEDULED','CANCELLED') AND (t."communityId" IS NULL OR (c."privacy"='open' AND c."suspendedAt" IS NULL))`;
+export const NEXT = `club_event_next(e."repeat",e."repeatEvery",e."weekdays",e."monthMode",e."monthWeek",e."startsOn",e."endsOn",e."startTime",e."timeZone",e."durationMinutes",now())`;
+export const EVENT_SELECT = `SELECT e."id",e."slug",e."title",e."activity",e."notes",e."venue",e."address",e."countryCode",e."latitude",e."longitude",e."coverUrl",e."timeZone",e."durationMinutes",e."updatedAt",e."deletedAt",e."publishedAt",c."slug" AS "clubSlug",c."name" AS "clubName",c."location",c."privacy",c."suspendedAt",${NEXT} AS "nextAt" FROM club_events e JOIN clubs c ON c.id=e."clubId"`;
+export const CLUB_SELECT = `SELECT c.id,c.slug,c.name,c.description,c.location,c."logoUrl",c."updatedAt" FROM clubs c`;
+export const COMPETITION_SELECT = `SELECT t.id,t.code,t.title,t.description,t."bannerUrl",t."type",t.status,t."startsAt",t."scoringClosesAt",t."entryClosesAt",t."challengeType",t."scoringMethod",t."eligibleActivities",t."targetSteps",t."targetDistanceMetres",t."targetSeconds",t."targetSessions",t."dailyTarget",t."minSessions",t."format",t."minActivityMetres",t."minActivitySeconds",t."entryFeeKobo",t.capacity,t."createdAt",t."timeZone",t.visibility,t."deletedAt",c.name AS "clubName",c.slug AS "clubSlug" FROM competition_tables t LEFT JOIN clubs c ON c.id=t."communityId"`;
+export interface PublicEvent {
+  id: string;
+  slug: string;
+  title: string;
+  activity: string;
+  notes: string | null;
+  venue: string | null;
+  address: string | null;
+  countryCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  coverUrl: string | null;
+  timeZone: string;
+  durationMinutes: number;
+  updatedAt: Date;
+  deletedAt: Date | null;
+  publishedAt: Date | null;
+  clubSlug: string;
+  clubName: string;
+  location: string | null;
+  privacy: string;
+  suspendedAt: Date | null;
+  nextAt: Date | null;
+}
+export interface PublicClub {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  location: string | null;
+  logoUrl: string | null;
+  updatedAt: Date;
+}
+export interface PublicCompetition {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  bannerUrl: string | null;
+  type: string;
+  status: string;
+  startsAt: Date | null;
+  scoringClosesAt: Date | null;
+  entryClosesAt: Date | null;
+  challengeType: import('../tables/competition-rules').ChallengeType;
+  scoringMethod: import('../tables/competition-rules').ScoringMethod;
+  eligibleActivities: string[];
+  targetSeconds: number | null;
+  targetSessions: number | null;
+  dailyTarget: number | null;
+  minSessions: number | null;
+  format: string;
+  targetSteps: number | null;
+  targetDistanceMetres: number | null;
+  minActivityMetres: number | null;
+  minActivitySeconds: number | null;
+  entryFeeKobo: number;
+  capacity: number | null;
+  createdAt: Date;
+  timeZone: string;
+  visibility: string;
+  deletedAt: Date | null;
+  clubName: string | null;
+  clubSlug: string | null;
+}
