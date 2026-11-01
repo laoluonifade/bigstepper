@@ -129,7 +129,6 @@ export function BusinessSection() {
         <div className="absolute -right-24 -top-28 h-72 w-72 rounded-full border-[36px] border-white/[0.06]" aria-hidden="true" />
         <div className="relative grid gap-8">
           <div className="flex flex-col items-center text-center">
-            <p className="eyebrow text-paper/55">Imagine your workplace on Jump</p>
             <h3 className="display mt-3 max-w-3xl text-[clamp(24px,6.8vw,58px)] leading-[0.9] tracking-[-0.045em]">A challenge worth joining.</h3>
             <span className="mt-5 inline-flex rounded-sm border border-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-paper/60">Example challenge setups · illustrative</span>
           </div>
