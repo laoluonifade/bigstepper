@@ -54,10 +54,7 @@ export function BusinessSection() {
             Turn everyday steps into workplace victories.
           </h2>
           <p className="mt-5 max-w-lg text-[16px] leading-relaxed text-ink-2 sm:text-[18px]">
-            Create a workplace club and turn daily steps into friendly competition.
-          </p>
-          <p className="mt-4 max-w-lg text-[14px] leading-relaxed text-ink-2 sm:text-[15px]">
-            Connect Apple Health on iPhone. Everyday steps sync automatically.
+            Bring your team together with step challenges. Sync everyday steps through Apple Health on iPhone.
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link to="/register" search={signup} className="btn-primary min-h-12 whitespace-nowrap px-4 max-sm:text-[12px] max-sm:tracking-normal sm:px-5">Create your workplace club <ArrowRightIcon size={16} /></Link>
