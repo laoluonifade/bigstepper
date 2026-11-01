@@ -67,12 +67,13 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
           const health = !recorded && (day?.healthSteps ?? 0) > 0;
           const moved = recorded || health;
           const value = metric === 'steps' ? (day?.steps ?? 0) : Number(day?.distanceMetres ?? 0);
+          const shown = value > 0 ? (metric === 'steps' ? compact(value) : formatDistanceNumber(value, unit)) : (day?.steps ?? 0) > 0 ? compact(day!.steps) : '•';
           const what = recorded ? `${day!.activities} ${day!.activities === 1 ? 'activity' : 'activities'}` : 'steps from Apple Health';
           return <View key={date} style={styles.cell}>
             <View style={[styles.day, recorded ? { backgroundColor: colors.track } : health ? { backgroundColor: HEALTH_PINK } : { backgroundColor: 'rgba(18,18,18,0.035)' }, date === todayKey && { borderWidth: 2, borderColor: colors.edge }]}
               accessibilityLabel={moved ? `${date}: ${what}, ${metric === 'steps' ? `${value} steps` : formatDistance(value, unit)}` : `${date}: rest day`}>
               <Text style={[styles.dayNumber, recorded ? { color: colors.paper } : health ? { color: '#FFFFFF' } : { color: colors.ink3, fontFamily: fontFamily('medium') }]}>{dayNumber}</Text>
-              {moved && <Text numberOfLines={1} style={[styles.dayValue, health && { color: '#FFFFFF' }]}>{value > 0 ? (metric === 'steps' ? compact(value) : formatDistanceNumber(value, unit)) : '•'}</Text>}
+              {moved && <Text numberOfLines={1} style={[styles.dayValue, health && { color: '#FFFFFF' }]}>{shown}</Text>}
             </View>
           </View>;
         })}

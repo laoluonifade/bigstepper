@@ -77,7 +77,7 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
                 <span className={cx('num block text-[12px] font-bold', !moved && 'font-medium text-ink-3')}>{index + 1}</span>
                 {moved && (
                   <span className="num block truncate text-[10px] font-semibold opacity-90 sm:text-[12px]">
-                    {value > 0 ? (metric === 'steps' ? Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(value) : formatDistanceNumber(value, unit)) : '•'}
+                    {value > 0 ? (metric === 'steps' ? Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(value) : formatDistanceNumber(value, unit)) : (day?.steps ?? 0) > 0 ? Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(day!.steps) : '•'}
                   </span>
                 )}
               </div>

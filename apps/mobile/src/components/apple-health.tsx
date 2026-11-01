@@ -9,7 +9,7 @@ import { api, post } from '@/lib/api';
 import { appleHealthAvailable, requestAppleHealth, syncAppleHealth } from '@/lib/apple-health';
 import { confirm } from '@/lib/dialog';
 import { keys } from '@/lib/queries';
-import { colors, fontFamily, radius } from '@/lib/theme';
+import { colors, fontFamily, radius, score } from '@/lib/theme';
 import { ErrorNotice, Txt } from './ui';
 
 const HEALTH_RED = '#FF2D55';
@@ -40,11 +40,11 @@ function useAppleHealthSync(onImported?: (count: number) => void) {
   });
 }
 
-function useDailySteps() {
+export function useDailySteps() {
   const status = useAppleHealthStatus();
   return useQuery({
     queryKey: ['apple-health', 'days'],
-    queryFn: () => api<DailySteps[]>('/apple-health/days?limit=30'),
+    queryFn: () => api<DailySteps[]>('/apple-health/days?limit=60'),
     enabled: Boolean(status.data?.connected),
   });
 }
@@ -67,30 +67,47 @@ export function HealthToday({ unit }: { unit: Unit }) {
   const counted = week.filter((day) => day.steps > 0);
   const average = counted.length ? Math.round(counted.reduce((sum, day) => sum + day.steps, 0) / counted.length) : 0;
   const most = Math.max(1000, ...week.map((day) => day.steps));
-  return <Pressable onPress={() => router.push('/activities')} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.9 }]} accessibilityRole="button"
+  return <Pressable onPress={() => router.push('/activities')} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]} accessibilityRole="button"
     accessibilityLabel={`Steps today, ${(today?.steps ?? 0).toLocaleString('en-GB')}, from Apple Health`}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-      <Txt size={15} weight="bold">Steps today</Txt>
-      <View style={styles.via}><HealthMark size={11} color={HEALTH_RED} /><Txt size={12} weight="bold" style={{ color: HEALTH_RED }}>Apple Health</Txt></View>
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <View style={styles.via}><HealthMark size={11} color={HEALTH_RED} /><Txt size={11} weight="bold" upper tracking={0.1} style={{ color: HEALTH_RED }}>Steps today</Txt></View>
+      <Text style={styles.big}>{(today?.steps ?? 0).toLocaleString('en-GB')}</Text>
+      <Txt size={12} color="ink2" num>
+        {today?.distanceMetres != null ? `${formatDistanceNumber(today.distanceMetres, unit)} ${unit} · ` : ''}{`avg ${average.toLocaleString('en-GB')}/day`}
+      </Txt>
     </View>
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginTop: 4 }}>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.big}>{(today?.steps ?? 0).toLocaleString('en-GB')}</Text>
-        <Txt size={13} color="ink2" num numberOfLines={1} style={{ marginTop: 2 }}>
-          {today?.distanceMetres != null ? <Txt size={13} weight="bold" num>{`${formatDistanceNumber(today.distanceMetres, unit)} ${unit}`}</Txt> : null}
-          {`${today?.distanceMetres != null ? ' walked · ' : ''}7-day avg ${average.toLocaleString('en-GB')}`}
-        </Txt>
-      </View>
-      <View style={styles.week} accessible={false}>
-        {week.map((day, index) => <View key={day.key} style={styles.weekColumn}>
-          <View style={[styles.weekBar, index === 6 && { borderWidth: 1, borderColor: colors.ink3 }]}>
-            {day.steps > 0 && <View style={{ height: `${Math.max(8, (day.steps / most) * 100)}%`, borderRadius: 4, backgroundColor: HEALTH_RED }} />}
-          </View>
-          <Txt size={9} weight="semibold" color={index === 6 ? 'ink' : 'ink3'}>{day.letter}</Txt>
-        </View>)}
-      </View>
+    <View style={styles.week} accessible={false}>
+      {week.map((day, index) => <View key={day.key} style={styles.weekColumn}>
+        <View style={[styles.weekBar, index === 6 && { borderWidth: 1, borderColor: colors.ink3 }]}>
+          {day.steps > 0 && <View style={{ height: `${Math.max(8, (day.steps / most) * 100)}%`, borderRadius: 3, backgroundColor: HEALTH_RED }} />}
+        </View>
+        <Txt size={9} weight="semibold" color={index === 6 ? 'ink' : 'ink3'}>{day.letter}</Txt>
+      </View>)}
     </View>
   </Pressable>;
+}
+
+/** One day of Apple Health in your history: all-day steps and walking distance. There's no route, so it has no page of its own. */
+export function HealthDayRow({ day, unit, last }: { day: DailySteps; unit: Unit; last?: boolean }) {
+  const date = new Date(`${day.day}T12:00:00`);
+  return <View style={[styles.dayRow, !last && styles.dayLine]} accessibilityLabel={`${date.toDateString()}: ${day.steps} steps from Apple Health`}>
+    <View style={{ width: 44, alignItems: 'center' }}>
+      <Text style={score(26)}>{date.getDate()}</Text>
+      <Text style={styles.dayMonth}>{date.toLocaleDateString('en-GB', { month: 'short' })}</Text>
+    </View>
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+        <Text style={score(26)}>{day.steps.toLocaleString('en-GB')}</Text>
+        <Txt size={12} weight="semibold" color="ink2">steps</Txt>
+      </View>
+      <Txt size={12} color="ink2" num numberOfLines={1} style={{ marginTop: 2 }}>
+        <Txt size={12} weight="bold">All day</Txt>
+        {day.distanceMetres != null ? ` · ${formatDistanceNumber(day.distanceMetres, unit)} ${unit} walked` : ''}
+        <Txt size={12} weight="bold" style={{ color: HEALTH_RED }}> · Apple Health</Txt>
+      </Txt>
+    </View>
+    <View style={styles.dayBadge}><HealthMark size={16} /></View>
+  </View>;
 }
 
 /** Pulls new Apple Health workouts when Jump opens or comes back to the front, with a thin bar while it works. */
@@ -174,11 +191,15 @@ export function AppleHealthConnection() {
 
 const styles = StyleSheet.create({
   via: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  tile: { borderRadius: 20, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 14 },
-  big: { fontFamily: fontFamily('bold'), fontSize: 28, lineHeight: 32, letterSpacing: -0.5, color: colors.ink, fontVariant: ['tabular-nums'] },
-  week: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 56 },
-  weekColumn: { alignItems: 'center', gap: 4, height: '100%' },
-  weekBar: { flex: 1, width: 10, borderRadius: 4, backgroundColor: colors.inkWash, overflow: 'hidden', justifyContent: 'flex-end' },
+  tile: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, padding: 12, paddingLeft: 14 },
+  big: { fontFamily: fontFamily('bold'), fontSize: 22, lineHeight: 26, letterSpacing: -0.4, color: colors.ink, fontVariant: ['tabular-nums'], marginTop: 2 },
+  week: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 44 },
+  weekColumn: { alignItems: 'center', gap: 3, height: '100%' },
+  weekBar: { flex: 1, width: 8, borderRadius: 3, backgroundColor: colors.inkWash, overflow: 'hidden', justifyContent: 'flex-end' },
+  dayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 4 },
+  dayLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  dayMonth: { fontFamily: fontFamily('bold'), fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: colors.ink2 },
+  dayBadge: { width: 30, height: 30, borderRadius: 9, backgroundColor: HEALTH_RED, alignItems: 'center', justifyContent: 'center' },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: HEALTH_RED, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 16 },
   barText: { fontFamily: fontFamily('bold'), fontSize: 13, color: colors.white },
   connection: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 16 },

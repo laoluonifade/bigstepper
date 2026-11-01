@@ -7,7 +7,6 @@ const LOOK_BACK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIRST_SYNC_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ROUTE_POINTS = 5000;
 const STEP_DAYS = 35;
-const STEP_RESYNC_DAYS = 3;
 
 const ACTIVITY: Partial<Record<WorkoutActivityType, 'walk' | 'run' | 'cycle'>> = { 52: 'walk', 24: 'walk', 37: 'run', 13: 'cycle' };
 
@@ -80,7 +79,7 @@ function localDay(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-/** Each day's steps and walking distance from iPhone and Apple Watch, leaving out anything typed in by hand. Competitions only count what came after connecting. */
+/** The last five weeks of daily steps and walking distance from iPhone and Apple Watch (the server skips days that didn't change), leaving out anything typed in by hand. Competitions only count what came after connecting. */
 async function sumSince(measure: 'steps' | 'metres', from: Date, to: Date) {
   const filter = { date: { startDate: from, endDate: to }, NOT: [{ metadata: { withMetadataKey: 'HKWasUserEntered' } }] };
   const stats = await (measure === 'steps'
@@ -89,17 +88,11 @@ async function sumSince(measure: 'steps' | 'metres', from: Date, to: Date) {
   return Math.round(stats?.sumQuantity?.quantity ?? 0);
 }
 
-async function syncDailySteps(since: string | null, connectedAt: string) {
+async function syncDailySteps(connectedAt: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const start = new Date(today);
   start.setDate(start.getDate() - STEP_DAYS);
-  if (since) {
-    const resync = new Date(since);
-    resync.setHours(0, 0, 0, 0);
-    resync.setDate(resync.getDate() - STEP_RESYNC_DAYS);
-    if (resync > start) start.setTime(resync.getTime());
-  }
   const options = { filter: { date: { startDate: start, endDate: new Date() }, NOT: [{ metadata: { withMetadataKey: 'HKWasUserEntered' } }] } };
   const healthKit = requireHealthKit();
   const [steps, distance] = await Promise.all([
@@ -135,7 +128,7 @@ export async function syncAppleHealth(since: string | null, connectedAt: string)
     if (!activityType || metadata?.HKWasUserEntered || metadata?.HKIndoorWorkout) continue;
     if (await upload(workout, activityType)) imported += 1;
   }
-  await syncDailySteps(since, connectedAt);
+  await syncDailySteps(connectedAt);
   await post('/apple-health/synced');
   return imported;
 }

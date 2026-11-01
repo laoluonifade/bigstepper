@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useMemo, useState } from 'react';
 import { ActivityRow, fromSteps, shownMetres } from '../components/ActivityRow';
 import { ActivityCalendar } from '../components/ActivityCalendar';
+import { HealthDayRow, useHealthDays } from '../components/HealthToday';
 import { SendActivityButton } from '../components/SendActivitySheet';
 import { ShareRun } from '../components/ShareRun';
 import { CheckIcon, FeedIcon, RunIcon, SendIcon } from '../components/icons';
@@ -17,9 +18,15 @@ import { useUser } from '../lib/auth';
 import { KindFilter } from './Dashboard';
 import { keys, useActivities, useProfile, useUnit } from '../lib/queries';
 import { metricOf } from '../lib/scoring';
-import type { Activity } from '../lib/types';
+import type { Activity, DailySteps } from '../lib/types';
 
 type Filter = 'all' | 'verified' | 'attention';
+
+function monthCount(items: Array<{ activity?: Activity }>) {
+  const activities = items.filter((item) => item.activity).length;
+  const days = items.length - activities;
+  return [activities ? `${activities} ${activities === 1 ? 'activity' : 'activities'}` : null, days ? `${days} Apple Health ${days === 1 ? 'day' : 'days'}` : null].filter(Boolean).join(' · ');
+}
 
 export function ActivitiesPage() {
   const activities = useActivities();
@@ -43,14 +50,20 @@ export function ActivitiesPage() {
         : true,
   );
 
+  const healthDays = useHealthDays();
   const groups = useMemo(() => {
-    const map = new Map<string, Activity[]>();
-    for (const activity of filtered) {
-      const label = new Date(activity.startedAt).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      map.set(label, [...(map.get(label) ?? []), activity]);
+    const showHealth = filter === 'all' && kind !== 'run';
+    const entries: Array<{ at: number; activity?: Activity; day?: DailySteps }> = [
+      ...filtered.map((activity) => ({ at: new Date(activity.startedAt).getTime(), activity })),
+      ...(showHealth ? (healthDays.data ?? []).filter((day) => day.steps > 0).map((day) => ({ at: new Date(`${day.day}T23:59:00`).getTime(), day })) : []),
+    ].sort((a, b) => b.at - a.at);
+    const map = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      const label = new Date(entry.at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      map.set(label, [...(map.get(label) ?? []), entry]);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [filtered, healthDays.data, filter, kind]);
 
   return (
     <div className="animate-rise">
@@ -105,7 +118,7 @@ export function ActivitiesPage() {
             <Skeleton key={i} className="h-16" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : groups.length === 0 ? (
         <EmptyState
           title={filter === 'all' && kind === 'all' ? 'No activities yet' : 'Nothing here'}
           action={
@@ -127,10 +140,10 @@ export function ActivitiesPage() {
       ) : (
         groups.map(([month, items]) => (
           <section key={month} className="mb-6">
-            <h2 className="eyebrow mb-1 flex items-baseline justify-between border-b-2 border-ink pb-2">{month}<span className="num normal-case tracking-normal text-ink-3">{items.length} {items.length === 1 ? 'activity' : 'activities'}</span></h2>
-            {items.map((activity) => (
-              <ActivityRow key={activity.id} activity={activity} unit={unit} />
-            ))}
+            <h2 className="eyebrow mb-1 flex items-baseline justify-between border-b-2 border-ink pb-2">{month}<span className="num normal-case tracking-normal text-ink-3">{monthCount(items)}</span></h2>
+            {items.map((entry) => entry.activity
+              ? <ActivityRow key={entry.activity.id} activity={entry.activity} unit={unit} />
+              : <HealthDayRow key={entry.day!.day} day={entry.day!} unit={unit} />)}
           </section>
         ))
       )}

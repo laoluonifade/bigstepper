@@ -1,12 +1,13 @@
 import { formatDistanceNumber, formatDuration } from '@jump/shared/format';
 import { lifetimeStats, ofKind, type ActivityKind } from '@jump/shared/progress';
-import type { Activity } from '@jump/shared/types';
+import type { Activity, DailySteps } from '@jump/shared/types';
 import { useQuery } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ActivityCalendar } from '@/components/ActivityCalendar';
 import { ActivityRow } from '@/components/ActivityRow';
+import { HealthDayRow, useDailySteps } from '@/components/apple-health';
 import { RunIcon } from '@/components/icons';
 import { Button, Card, EmptyState, ErrorNotice, Eyebrow, Screen, Segmented, Skeleton, Stat, Txt } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -33,14 +34,20 @@ export default function ActivitiesScreen() {
   const attention = list.filter((a) => a.verificationStatus === 'REJECTED').length;
   const filtered = list.filter((activity) => filter === 'verified' ? (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED')
     : filter === 'attention' ? activity.verificationStatus === 'REJECTED' : true);
+  const healthDays = useDailySteps();
   const groups = useMemo(() => {
-    const map = new Map<string, Activity[]>();
-    for (const activity of filtered) {
-      const label = new Date(activity.startedAt).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      map.set(label, [...(map.get(label) ?? []), activity]);
+    const showHealth = filter === 'all' && kind !== 'run';
+    const entries: Array<{ at: number; activity?: Activity; day?: DailySteps }> = [
+      ...filtered.map((activity) => ({ at: new Date(activity.startedAt).getTime(), activity })),
+      ...(showHealth ? (healthDays.data ?? []).filter((day) => day.steps > 0).map((day) => ({ at: new Date(`${day.day}T23:59:00`).getTime(), day })) : []),
+    ].sort((a, b) => b.at - a.at);
+    const map = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      const label = new Date(entry.at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      map.set(label, [...(map.get(label) ?? []), entry]);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [filtered, healthDays.data, filter, kind]);
 
   return <Screen refreshing={activities.isRefetching} onRefresh={() => { void activities.refetch(); void summary.refetch(); }}>
     <Stack.Screen options={{ title: 'Your activities' }} />
@@ -68,18 +75,26 @@ export default function ActivitiesScreen() {
 
     <ErrorNotice error={activities.error} onRetry={() => void activities.refetch()} />
     {activities.isLoading ? <View style={{ gap: 12 }}>{[0, 1, 2].map((i) => <Skeleton key={i} style={{ height: 64 }} />)}</View>
-      : filtered.length === 0 ? <EmptyState title={filter === 'all' && kind === 'all' ? 'No activities yet' : 'Nothing here'}
+      : groups.length === 0 ? <EmptyState title={filter === 'all' && kind === 'all' ? 'No activities yet' : 'Nothing here'}
         action={filter === 'all' && kind === 'all' ? <Button title="Start an activity" icon={<RunIcon size={16} />} onPress={() => router.navigate('/run')} /> : undefined}>
         {filter === 'attention' ? 'None of these need attention.' : filter === 'verified' ? 'Verified activities will appear here.' : kind !== 'all' ? `No ${kind}s recorded yet.` : 'Record a walk, run or ride and it’ll show up here.'}
       </EmptyState>
         : groups.map(([month, items]) => <View key={month} style={{ marginBottom: 24 }}>
           <View style={styles.month}>
             <Eyebrow>{month}</Eyebrow>
-            <Txt size={11} color="ink3" num>{items.length} {items.length === 1 ? 'activity' : 'activities'}</Txt>
+            <Txt size={11} color="ink3" num>{monthCount(items)}</Txt>
           </View>
-          {items.map((activity, index) => <ActivityRow key={activity.id} activity={activity} unit={unit} last={index === items.length - 1} />)}
+          {items.map((entry, index) => entry.activity
+            ? <ActivityRow key={entry.activity.id} activity={entry.activity} unit={unit} last={index === items.length - 1} />
+            : <HealthDayRow key={entry.day!.day} day={entry.day!} unit={unit} last={index === items.length - 1} />)}
         </View>)}
   </Screen>;
+}
+
+function monthCount(items: Array<{ activity?: Activity }>) {
+  const activities = items.filter((item) => item.activity).length;
+  const days = items.length - activities;
+  return [activities ? `${activities} ${activities === 1 ? 'activity' : 'activities'}` : null, days ? `${days} Apple Health ${days === 1 ? 'day' : 'days'}` : null].filter(Boolean).join(' · ');
 }
 
 const styles = StyleSheet.create({
