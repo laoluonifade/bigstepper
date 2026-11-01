@@ -30,7 +30,7 @@ const benefits = [
   {
     number: '04',
     title: 'Make wellness measurable',
-    body: 'Follow participation and step challenge progress on leaderboards. Turn on all-day steps and every step from Apple Health counts.',
+    body: 'Follow participation and challenge progress on leaderboards. Supported challenges include everyday steps and walking distance synced from Apple Health.',
     mark: '⌁',
     tone: 'bg-[#FFD9C8]',
   },
@@ -62,6 +62,9 @@ export function BusinessSection() {
           </h2>
           <p className="mt-5 max-w-lg text-[16px] leading-relaxed text-ink-2 sm:text-[18px]">
             Your people are already on the move. Bring them together in a workplace club, set a step challenge and give everyone a new reason to show up.
+          </p>
+          <p className="mt-4 max-w-lg text-[14px] leading-relaxed text-ink-2 sm:text-[15px]">
+            On iPhone, employees can connect Apple Health once to sync everyday steps—from the commute to a lunchtime walk—without starting a separate recording.
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link to="/register" search={signup} className="btn-primary min-h-12 whitespace-nowrap px-4 max-sm:text-[12px] max-sm:tracking-normal sm:px-5">Bring Jump to your workplace <ArrowRightIcon size={16} /></Link>
@@ -160,15 +163,15 @@ export function BusinessSection() {
           {[
             ['01', 'Create your workplace club', 'Set up a club using your company name, description and logo.'],
             ['02', 'Invite your people', 'Share the club invite link. Colleagues join with a Jump account they already have or create one.'],
-            ['03', 'Record a walk or run', 'Start an activity in Jump and allow motion access. Steps are counted automatically while that activity is recording.'],
-            ['04', 'Compete and celebrate', 'Set up a club competition, follow the individual leaderboard and celebrate the people taking part.'],
+            ['03', 'Connect Apple Health on iPhone', 'Employees choose to grant access. Daily steps from their iPhone and Apple Watch then sync to Jump.'],
+            ['04', 'Compete and celebrate', 'Choose a supported free challenge for your club, follow the individual leaderboard and celebrate everyday movement.'],
           ].map(([n, title, body]) => <li key={n} className="relative rounded-md border-[1.5px] border-ink bg-card p-4 sm:p-5">
             <span className="score text-[30px] text-track">{n}</span>
             <h3 className="wide mt-5 text-[18px] font-extrabold uppercase leading-tight">{title}</h3>
             <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{body}</p>
           </li>)}
         </ol>
-        <p className="mt-3 text-[11px] leading-relaxed text-ink-3">Step counts depend on a compatible phone and motion permission. In step challenges with all-day steps turned on, Jump counts every step from Apple Health on iPhone; Android support is coming. Otherwise, steps count during recorded walks and runs.</p>
+        <p className="mt-3 text-[11px] leading-relaxed text-ink-3">Apple Health syncing requires the latest iPhone app and permission. Daily steps and walking distance count in supported free step, walking and distance challenges, from the time each person connects. iOS controls background sync timing, so leaderboards may take time to update. On Android, colleagues can record walks and runs in Jump.</p>
       </div>
 
       {/* Flexible participation */}
