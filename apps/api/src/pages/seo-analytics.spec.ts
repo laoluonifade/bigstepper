@@ -38,6 +38,18 @@ describe('organic acquisition', () => {
       (await service.landing(session, 'google', '/business')).token,
     ).toContain('.');
   });
+  it.each(['chatgpt', 'perplexity', 'gemini', 'copilot', 'claude'])(
+    'attributes confirmed conversions from %s without storing referrer queries',
+    async (source) => {
+      const { service, query } = setup();
+      const { token } = await service.landing(session, source, '/about');
+      await service.conversion(token, 'event_registration', 'new-pass');
+      const params = query.mock.calls[query.mock.calls.length - 1][1];
+      expect(params[1]).toBe(source);
+      expect(params[3]).toBe('event_registration');
+      expect(params).toHaveLength(5);
+    },
+  );
   it('does not attribute private or non-indexable pages', async () => {
     const { service, pages } = setup();
     pages.resolve.mockResolvedValue({
