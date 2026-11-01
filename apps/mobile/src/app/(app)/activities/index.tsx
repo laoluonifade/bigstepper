@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ActivityCalendar } from '@/components/ActivityCalendar';
 import { ActivityRow } from '@/components/ActivityRow';
+import { DailyStepsList } from '@/components/apple-health';
 import { RunIcon } from '@/components/icons';
 import { Button, Card, EmptyState, ErrorNotice, Eyebrow, Screen, Segmented, Skeleton, Stat, Txt } from '@/components/ui';
 import { useUser } from '@/lib/auth';
@@ -48,6 +49,8 @@ export default function ActivitiesScreen() {
     </Card>
 
     <ActivityCalendar unit={unit} />
+
+    <DailyStepsList unit={unit} />
 
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
       <Text style={wideLabel(16, 0)}>History</Text>

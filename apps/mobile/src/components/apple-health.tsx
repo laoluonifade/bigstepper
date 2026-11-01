@@ -1,5 +1,5 @@
-import { formatRelative } from '@jump/shared/format';
-import type { AppleHealthStatus } from '@jump/shared/types';
+import { formatDistanceNumber, formatRelative } from '@jump/shared/format';
+import type { AppleHealthStatus, DailySteps, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -9,7 +9,7 @@ import { appleHealthAvailable, requestAppleHealth, syncAppleHealth } from '@/lib
 import { confirm } from '@/lib/dialog';
 import { keys } from '@/lib/queries';
 import { colors, fontFamily, radius } from '@/lib/theme';
-import { ErrorNotice, Txt } from './ui';
+import { Card, ErrorNotice, Eyebrow, Txt } from './ui';
 
 const HEALTH_RED = '#FF2D55';
 const STALE_AFTER_MS = 10 * 60 * 1000;
@@ -37,6 +37,86 @@ function useAppleHealthSync(onImported?: (count: number) => void) {
       onImported?.(imported);
     },
   });
+}
+
+function useDailySteps() {
+  const status = useAppleHealthStatus();
+  return useQuery({
+    queryKey: ['apple-health', 'days'],
+    queryFn: () => api<DailySteps[]>('/apple-health/days?limit=30'),
+    enabled: Boolean(status.data?.connected),
+  });
+}
+
+function localDay(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function dayLabel(day: string) {
+  const today = new Date();
+  if (day === localDay(today)) return 'Today';
+  today.setDate(today.getDate() - 1);
+  if (day === localDay(today)) return 'Yesterday';
+  return new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function ViaHealth() {
+  return <View style={styles.via}><HealthMark size={11} color={HEALTH_RED} /><Txt size={12} weight="bold" style={{ color: HEALTH_RED }}>via Apple Health</Txt></View>;
+}
+
+/** Today's steps and walking distance from Apple Health, on the dashboard. Hidden until Apple Health is connected. */
+export function HealthToday({ unit }: { unit: Unit }) {
+  const days = useDailySteps();
+  const today = days.data?.find((row) => row.day === localDay(new Date()));
+  if (!today) return null;
+  return <Card style={{ padding: 16 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Eyebrow>Today</Eyebrow>
+      <ViaHealth />
+    </View>
+    <View style={{ flexDirection: 'row', gap: 24, marginTop: 8 }}>
+      <View>
+        <Txt size={26} weight="extrabold" num>{today.steps.toLocaleString('en-GB')}</Txt>
+        <Txt size={12} color="ink2">steps</Txt>
+      </View>
+      {today.distanceMetres != null && <View>
+        <Txt size={26} weight="extrabold" num>{formatDistanceNumber(today.distanceMetres, unit)}</Txt>
+        <Txt size={12} color="ink2">{unit} walked</Txt>
+      </View>}
+    </View>
+  </Card>;
+}
+
+/** Every day's steps and walking distance from Apple Health, kept apart from recorded activities. */
+export function DailyStepsList({ unit }: { unit: Unit }) {
+  const days = useDailySteps();
+  const [expanded, setExpanded] = useState(false);
+  const list = days.data ?? [];
+  if (!list.length) return null;
+  const shown = expanded ? list : list.slice(0, 7);
+  const most = Math.max(...list.map((row) => row.steps), 1);
+  return <Card style={{ padding: 16, marginBottom: 24 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Txt size={15} weight="bold" accessibilityRole="header">Daily steps</Txt>
+      <ViaHealth />
+    </View>
+    <Txt size={12} color="ink3" style={{ marginTop: 2 }}>Everything your iPhone and Apple Watch counted, including outside recorded walks and runs.</Txt>
+    <View style={{ marginTop: 12 }}>
+      {shown.map((row, index) => <View key={row.day} style={[styles.dayRow, index > 0 && styles.dayLine]}>
+        <Txt size={13} weight="semibold" style={{ width: 92 }}>{dayLabel(row.day)}</Txt>
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={styles.track}><View style={[styles.fill, { width: `${Math.max(2, (row.steps / most) * 100)}%` }]} /></View>
+        </View>
+        <View style={{ width: 96, alignItems: 'flex-end' }}>
+          <Txt size={13} weight="bold" num>{row.steps.toLocaleString('en-GB')}</Txt>
+          {row.distanceMetres != null && <Txt size={11} color="ink3" num>{`${formatDistanceNumber(row.distanceMetres, unit)} ${unit}`}</Txt>}
+        </View>
+      </View>)}
+    </View>
+    {list.length > 7 && <Pressable onPress={() => setExpanded((open) => !open)} hitSlop={8} style={{ marginTop: 8 }} accessibilityRole="button">
+      <Txt size={13} weight="semibold" color="ink2">{expanded ? 'Show less' : `Show ${list.length} days`}</Txt>
+    </Pressable>}
+  </Card>;
 }
 
 /** Pulls new Apple Health workouts when Jump opens or comes back to the front, with a thin bar while it works. */
@@ -119,6 +199,11 @@ export function AppleHealthConnection() {
 }
 
 const styles = StyleSheet.create({
+  via: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  dayLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  track: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden' },
+  fill: { height: 6, borderRadius: 3, backgroundColor: HEALTH_RED },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: HEALTH_RED, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 16 },
   barText: { fontFamily: fontFamily('bold'), fontSize: 13, color: colors.white },
   connection: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 16 },

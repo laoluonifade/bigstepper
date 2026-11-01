@@ -45,6 +45,12 @@ export class DailyStepsDto {
   @Min(0)
   @Max(1_000_000)
   steps: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  distanceMetres?: number;
 }
 
 export class DailyStepsSyncDto {

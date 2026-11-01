@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, DefaultValuePipe, Delete, Get, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -13,6 +13,11 @@ export class AppleHealthController {
   @Get()
   status(@CurrentUser() user: AuthenticatedUser) {
     return this.appleHealth.status(user.id);
+  }
+
+  @Get('days')
+  days(@CurrentUser() user: AuthenticatedUser, @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number) {
+    return this.appleHealth.days(user.id, Math.min(Math.max(limit, 1), 60));
   }
 
   @Post('connect')

@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { ComponentRef, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActivityRow } from '@/components/ActivityRow';
+import { HealthToday } from '@/components/apple-health';
 import { GuideTour } from '@/components/GuideTour';
 import { ChallengeSomeone, LeaderboardPeek, MiniRing, MyCompetitions, RaceHero, SUMMARY } from '@/components/CompeteHome';
 import { ArrowRightIcon, ChevronDownIcon, RunIcon } from '@/components/icons';
@@ -65,6 +66,7 @@ export default function DashboardScreen() {
     <View style={{ gap: 12 }}>
       <RaceHero unit={unit} now={now} />
       <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
+      <HealthToday unit={unit} />
       <View ref={leaderboardRef} collapsable={false}><LeaderboardPeek unit={unit} /></View>
     </View>
     <View style={{ gap: 32, marginTop: 32 }}>

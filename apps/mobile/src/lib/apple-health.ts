@@ -78,7 +78,7 @@ function localDay(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-/** Each day's step total from iPhone and Apple Watch, leaving out steps someone typed in by hand. */
+/** Each day's steps and walking distance from iPhone and Apple Watch, leaving out anything typed in by hand. */
 async function syncDailySteps(since: string | null) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -90,13 +90,19 @@ async function syncDailySteps(since: string | null) {
     resync.setDate(resync.getDate() - STEP_RESYNC_DAYS);
     if (resync > start) start.setTime(resync.getTime());
   }
-  const days = await requireHealthKit().queryStatisticsCollectionForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], start, { day: 1 }, {
-    filter: { date: { startDate: start, endDate: new Date() }, NOT: [{ metadata: { withMetadataKey: 'HKWasUserEntered' } }] },
-    unit: 'count',
-  });
-  const totals = days
+  const options = { filter: { date: { startDate: start, endDate: new Date() }, NOT: [{ metadata: { withMetadataKey: 'HKWasUserEntered' } }] } };
+  const healthKit = requireHealthKit();
+  const [steps, distance] = await Promise.all([
+    healthKit.queryStatisticsCollectionForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], start, { day: 1 }, { ...options, unit: 'count' }),
+    healthKit.queryStatisticsCollectionForQuantity('HKQuantityTypeIdentifierDistanceWalkingRunning', ['cumulativeSum'], start, { day: 1 }, { ...options, unit: 'm' }).catch(() => []),
+  ]);
+  const metres = new Map(distance.filter((day) => day.startDate && day.sumQuantity).map((day) => [localDay(new Date(day.startDate!)), Math.round(day.sumQuantity!.quantity)]));
+  const totals = steps
     .filter((day) => day.startDate && day.sumQuantity)
-    .map((day) => ({ day: localDay(new Date(day.startDate!)), steps: Math.round(day.sumQuantity!.quantity) }));
+    .map((day) => {
+      const date = localDay(new Date(day.startDate!));
+      return { day: date, steps: Math.round(day.sumQuantity!.quantity), ...(metres.has(date) ? { distanceMetres: metres.get(date) } : {}) };
+    });
   if (totals.length) await post('/apple-health/steps', { days: totals });
 }
 

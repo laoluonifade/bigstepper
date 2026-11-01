@@ -17,6 +17,7 @@ const ROUTE_SLACK_SECONDS = 120;
 const MAX_STEPS_PER_SECOND = 4;
 const MAX_DAILY_STEPS = 100_000;
 const MAX_DAYS_BACK = 40;
+const MAX_DAILY_METRES = 150_000;
 
 @Injectable()
 export class AppleHealthService {
@@ -63,6 +64,14 @@ export class AppleHealthService {
     return { connected: false as const };
   }
 
+  days(userId: string, limit: number) {
+    return this.dataSource.query(
+      `SELECT to_char("day", 'YYYY-MM-DD') AS "day", "steps", "distanceMetres", "updatedAt"
+       FROM "daily_steps" WHERE "userId" = $1 ORDER BY "day" DESC LIMIT $2`,
+      [userId, limit],
+    ) as Promise<Array<{ day: string; steps: number; distanceMetres: number | null; updatedAt: Date }>>;
+  }
+
   async synced(userId: string) {
     await this.links.update({ userId }, { lastSyncedAt: new Date() });
     return this.status(userId);
@@ -77,10 +86,11 @@ export class AppleHealthService {
     });
     if (!valid.length) return { saved: 0 };
     const changed = await this.dataSource.query(
-      `INSERT INTO "daily_steps" ("userId", "day", "steps")
-       SELECT $1, x."day", LEAST(x."steps", ${MAX_DAILY_STEPS}) FROM jsonb_to_recordset($2::jsonb) AS x("day" date, "steps" integer)
-       ON CONFLICT ("userId", "day") DO UPDATE SET "steps" = EXCLUDED."steps", "updatedAt" = now()
-       WHERE "daily_steps"."steps" IS DISTINCT FROM EXCLUDED."steps"
+      `INSERT INTO "daily_steps" ("userId", "day", "steps", "distanceMetres")
+       SELECT $1, x."day", LEAST(x."steps", ${MAX_DAILY_STEPS}), CASE WHEN x."distanceMetres" IS NULL THEN NULL ELSE LEAST(x."distanceMetres", ${MAX_DAILY_METRES}) END
+       FROM jsonb_to_recordset($2::jsonb) AS x("day" date, "steps" integer, "distanceMetres" integer)
+       ON CONFLICT ("userId", "day") DO UPDATE SET "steps" = EXCLUDED."steps", "distanceMetres" = COALESCE(EXCLUDED."distanceMetres", "daily_steps"."distanceMetres"), "updatedAt" = now()
+       WHERE "daily_steps"."steps" IS DISTINCT FROM EXCLUDED."steps" OR "daily_steps"."distanceMetres" IS DISTINCT FROM COALESCE(EXCLUDED."distanceMetres", "daily_steps"."distanceMetres")
        RETURNING "day"`,
       [userId, JSON.stringify(valid)],
     ) as Array<{ day: string }>;

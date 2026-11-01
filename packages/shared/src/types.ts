@@ -610,6 +610,9 @@ export type AppleHealthStatus =
   | { connected: false }
   | { connected: true; connectedAt: string; lastSyncedAt: string | null };
 
+/** One day's totals from Apple Health: every step the iPhone and Apple Watch counted, not just recorded activities. */
+export type DailySteps = { day: string; steps: number; distanceMetres: number | null; updatedAt: string };
+
 export type StravaLoginResponse =
   | (AuthResponse & { status: 'signed-in' })
   | { status: 'needs-signup'; signupToken: string; athlete: { name: string | null; avatarUrl: string | null } };

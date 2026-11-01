@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useMemo, useState } from 'react';
 import { ActivityRow, fromSteps, shownMetres } from '../components/ActivityRow';
 import { ActivityCalendar } from '../components/ActivityCalendar';
+import { DailyStepsList } from '../components/DailySteps';
 import { SendActivityButton } from '../components/SendActivitySheet';
 import { ShareRun } from '../components/ShareRun';
 import { CheckIcon, FeedIcon, RunIcon, SendIcon } from '../components/icons';
@@ -71,6 +72,8 @@ export function ActivitiesPage() {
       </div>
 
       <ActivityCalendar unit={unit} />
+
+      <DailyStepsList unit={unit} />
 
       <div className="mb-4">
         <div className="flex items-end justify-between gap-3">
