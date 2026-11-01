@@ -1,6 +1,7 @@
 import type { AuthResponse, User } from '@jump/shared/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import { api, isApiError, onUnauthorized, post } from './api';
 import { unregisterForPush } from './push';
 import { clearToken, getToken, loadToken, setToken } from './token';
@@ -67,6 +68,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [attempt, signOutLocally]);
+
+  // The verification link opens in the browser, so check again whenever Jump comes back on screen, and every
+  // few seconds while it's open, until the email is verified. The banner then clears without a restart.
+  const waitingForEmail = status === 'signed-in' && user?.emailVerified === false;
+  useEffect(() => {
+    if (!waitingForEmail) return;
+    const check = () => {
+      void api<User>('/auth/session').then((fresh) => {
+        if (fresh.emailVerified) setUser((current) => (current ? { ...current, ...fresh } : fresh));
+      }).catch(() => undefined);
+    };
+    const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') check(); });
+    const timer = setInterval(() => { if (AppState.currentState === 'active') check(); }, 15_000);
+    return () => { subscription.remove(); clearInterval(timer); };
+  }, [waitingForEmail]);
 
   const value = useMemo<AuthState>(
     () => ({
