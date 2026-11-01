@@ -120,7 +120,7 @@ export function EventPage() {
   const [editing, setEditing] = useState(false);
   const [passOpen, setPassOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [booking, setBooking] = useState(false);
+  const [booking, setBooking] = useState(()=>typeof window!=='undefined' && new URLSearchParams(window.location.search).get('getPass')==='1');
   const [finding, setFinding] = useState(false);
   const [guestPass, setGuestPass] = useState(() => savedPass(id));
   const profile = useProfile().data;

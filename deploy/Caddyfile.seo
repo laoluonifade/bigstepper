@@ -1,0 +1,56 @@
+# Integration blueprint for startajump.com. Merge with the existing TLS/proxy config;
+# validate with `caddy validate` and reload only during an authorized deployment.
+startajump.com {
+ root * /var/www/startajump/apps/web/dist
+ encode zstd gzip
+ @assets path /assets/*
+ handle @assets {
+  header Cache-Control "public, max-age=31536000, immutable"
+  file_server
+ }
+ @worker path /sw.js /offline.html
+ handle @worker {
+  header Cache-Control "no-cache"
+  header X-Robots-Tag "noindex, nofollow"
+  file_server
+ }
+ @static path_regexp static ^/(manifest\.webmanifest|favicon\.svg|apple-touch-icon\.png|icon-192\.png|icon-512\.png|brands/[^/]+\.(png|jpe?g|svg|webp))$
+ handle @static {
+  file_server
+ }
+ handle /robots.txt {
+  rewrite * /v1/pages/robots.txt
+  reverse_proxy 127.0.0.1:6311
+ }
+ handle /sitemap.xml {
+  rewrite * /v1/pages/sitemap.xml
+  reverse_proxy 127.0.0.1:6311
+ }
+ handle /sitemaps/* {
+  rewrite * /v1/pages{path}
+  reverse_proxy 127.0.0.1:6311
+ }
+ # Explicit application routes retain the SPA, auth and payment hand-offs, but never enter the index.
+ @app path_regexp app ^/(login|register|verify-email|forgot-password|reset-password|auth(/.*)?|strava(/.*)?|dashboard|setup|interests|welcome|leaderboard|feed(/.*)?|messages(/.*)?|duels(/.*)?|run|runs(/.*)?|activities(/.*)?|leagues(/.*)?|prizes|rewards|identity|wallet|creator|notifications|settings(/.*)?|payments(/.*)?|passes(/.*)?|runners(/.*)?|clubs|clubs/[^/]+/(chat|dashboard)|events/[^/]+/guests|competitions/new|terms|privacy|safety|support|delete-account|brands/preview)/?$
+ handle @app {
+  header X-Robots-Tag "noindex, nofollow"
+  header Cache-Control "no-store"
+  rewrite * /index.html
+  file_server
+ }
+ @public path_regexp public ^/($|business/?$|brands/?$|events/?$|competitions/?$|events/[A-Za-z0-9_-]+/?$|clubs/[A-Za-z0-9_-]+/?$|competitions/[A-Za-z0-9_-]+/?$|running-events(/in/[a-z0-9-]+)?/?$|running-clubs(/in/[a-z0-9-]+)?/?$|step-challenges/?$|virtual-fitness-challenges/?$|workplace-step-challenges/?$|corporate-wellness-competitions/?$)
+ handle @public {
+  rewrite * /v1/pages/html?path={path}
+  reverse_proxy 127.0.0.1:6311
+ }
+ handle {
+  header X-Robots-Tag "noindex, nofollow"
+  respond "Page not found" 404
+ }
+}
+# Existing api.startajump.com and admin.startajump.com site blocks must retain
+# their current behavior and add: header >X-Robots-Tag "noindex, nofollow"
+
+www.startajump.com {
+ redir https://startajump.com{uri} 308
+}

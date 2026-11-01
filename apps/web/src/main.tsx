@@ -9,6 +9,8 @@ import { AuthProvider } from './lib/auth';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: 1 } } });
 
+const prerendered=document.getElementById('jump-public-page');
+if(prerendered?.textContent){try{const page=JSON.parse(prerendered.textContent) as {path:string;body:string};if(page.path===window.location.pathname)queryClient.setQueryData(['public-discovery',page.path],{body:page.body});}catch{/* normal client fetching remains available */}}
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>

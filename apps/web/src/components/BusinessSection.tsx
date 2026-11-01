@@ -44,9 +44,9 @@ export function BusinessSection() {
       <div className="grid items-center gap-10 lg:grid-cols-[1fr_0.95fr] lg:gap-12">
         <div className="max-w-xl">
           <p className="eyebrow flex items-center gap-2"><span className="inline-block h-2.5 w-2.5 rotate-45 bg-track" /> Jump for businesses</p>
-          <h2 id="business-heading" className="display mt-4 text-[clamp(36px,6.6vw,68px)] leading-[0.9] tracking-[-0.055em] lg:text-[clamp(44px,4.4vw,60px)]">
+          <h1 id="business-heading" className="display mt-4 text-[clamp(36px,6.6vw,68px)] leading-[0.9] tracking-[-0.055em] lg:text-[clamp(44px,4.4vw,60px)]">
             Turn everyday steps into workplace victories.
-          </h2>
+          </h1>
           <p className="mt-5 max-w-lg text-[16px] leading-relaxed text-ink-2 sm:text-[18px]">
             Bring your team together with step challenges. Sync everyday steps through Apple Health on iPhone.
           </p>
@@ -63,7 +63,7 @@ export function BusinessSection() {
             <WorkdayIllustration />
             <div className="relative z-10 -mt-2 rounded-md border-2 border-ink bg-card p-4 shadow-hard-sm sm:ml-12 sm:mr-3 sm:p-5">
               <div className="flex items-center gap-3">
-                <img src="/brands/stripe-logo.png" alt="Stripe logo" className="h-12 w-12 shrink-0 rounded-xl border-2 border-ink object-cover shadow-hard-sm" />
+                <img src="/brands/stripe-logo.png" alt="Stripe logo" width="48" height="48" className="h-12 w-12 shrink-0 rounded-xl border-2 border-ink object-cover shadow-hard-sm" />
                 <div className="min-w-0 flex-1">
                   <p className="eyebrow">Illustrative example · Stripe</p>
                   <p className="wide mt-1 truncate text-[18px] font-extrabold uppercase">Stripe Walk Club</p>

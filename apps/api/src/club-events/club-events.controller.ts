@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
@@ -128,8 +128,8 @@ export class ClubEventsController {
   @Post('events/:id/register')
   @UseGuards(OptionalJwtAuthGuard)
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
-  register(@CurrentUser() viewer: AuthenticatedUser | null, @Param('id') id: string, @Body() body: RegisterPassDto) {
-    return this.passes.register(viewer?.id ?? null, eventRef(id), body);
+  register(@CurrentUser() viewer: AuthenticatedUser | null, @Param('id') id: string, @Body() body: RegisterPassDto, @Headers('x-jump-acquisition') attribution?:string) {
+    return this.passes.register(viewer?.id ?? null, eventRef(id), body, 'web', attribution);
   }
 
   @Post('events/:id/pass/resend')

@@ -1,5 +1,6 @@
+import { SeoAnalyticsService } from '../pages/seo-analytics.service';
 import { recordShare, recordView } from './engagement';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
@@ -34,6 +35,7 @@ export class ClubsService {
     private readonly cloudinary: CloudinaryService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    @Optional() private readonly seoAnalytics?: SeoAnalyticsService,
   ) {}
 
   async create(userId: string, input: CreateClubDto) {
@@ -304,22 +306,26 @@ export class ClubsService {
     return { following, followerCount };
   }
 
-  async join(userId: string, clubRef: string, invite?: string) {
+  async join(userId: string, clubRef: string, invite?: string, attribution?: string) {
     const club = await this.find(clubRef);
     if (club.privacy === 'invite' && invite?.toUpperCase() !== club.inviteCode) {
       throw new ForbiddenException('This club is invite-only. Ask a manager for the invite link.');
     }
-    return this.dataSource.transaction(async (manager) => {
+    let newlyJoined=false;
+    const result=await this.dataSource.transaction(async (manager) => {
       const inserted = await manager.query(
         `INSERT INTO "club_memberships" ("clubId", "userId", "role") VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING RETURNING "id"`,
         [club.id, userId],
       ) as unknown[];
       await manager.query(`INSERT INTO "club_follows" ("clubId","userId") VALUES ($1,$2) ON CONFLICT DO NOTHING`, [club.id, userId]);
       if (!inserted.length) return { joined: true, competitions: 0 };
+      newlyJoined=true;
       const enrolled = await enrolClubMembers(manager, { clubId: club.id, userId });
       await this.notifyManagers(manager, club, userId, 'joined');
       return { joined: true, competitions: enrolled.length };
     });
+    if(newlyJoined)await this.seoAnalytics?.conversion(attribution,'club_join',club.id).catch(()=>undefined);
+    return result;
   }
 
   async leave(userId: string, clubRef: string) {

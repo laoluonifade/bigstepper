@@ -1,3 +1,5 @@
+import { OrganicAttribution } from './OrganicAttribution';
+import { SeoHead } from './SeoHead';
 import { SafetyHost } from './Safety';
 import { StravaSyncBar } from '../pages/Strava';
 import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
@@ -38,7 +40,7 @@ export function Private({ children }: { children: ReactNode }) {
 const AUTH_PATHS = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/brands/preview'];
 
 export function AppShell() {
-  return <><NavigationProgress /><Shell /></>;
+  return <><OrganicAttribution /><SeoHead /><NavigationProgress /><Shell /></>;
 }
 
 function Shell() {
@@ -85,6 +87,12 @@ function PublicShell() {
             <JumpLogo height={18} />
             <Socials />
           </div>
+          <nav aria-label="Explore Jump" className="mb-6 mt-6 flex flex-wrap gap-x-5 gap-y-3 text-[13px] sm:mt-0">
+            <Link to="/running-events" className="font-medium text-ink-2 hover:text-ink">Running events</Link>
+            <Link to="/running-clubs" className="font-medium text-ink-2 hover:text-ink">Running clubs</Link>
+            <Link to="/step-challenges" className="font-medium text-ink-2 hover:text-ink">Step challenges</Link>
+            <Link to="/virtual-fitness-challenges" className="font-medium text-ink-2 hover:text-ink">Virtual challenges</Link>
+          </nav>
           <div className="mt-6 flex flex-col gap-5 sm:mt-0 sm:flex-row sm:items-center sm:justify-between">
             <nav aria-label="Legal" className="grid grid-cols-2 gap-x-6 gap-y-3 text-[13.5px] sm:flex sm:flex-wrap sm:gap-x-5 sm:gap-y-1.5 sm:text-[13px]">
               <Link to="/business" className="font-medium text-ink-2 hover:text-ink">For businesses</Link>

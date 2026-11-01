@@ -127,8 +127,17 @@ function tokenSearch(search: Record<string, unknown>): { token?: string } {
   return typeof search.token === 'string' ? { token: search.token } : {};
 }
 
+const discovery0=createRoute({getParentRoute:()=>root,path:'/running-events',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const discovery1=createRoute({getParentRoute:()=>root,path:'/running-clubs',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const discovery2=createRoute({getParentRoute:()=>root,path:'/step-challenges',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const discovery3=createRoute({getParentRoute:()=>root,path:'/virtual-fitness-challenges',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const discovery4=createRoute({getParentRoute:()=>root,path:'/running-events/in/$location',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const discovery5=createRoute({getParentRoute:()=>root,path:'/running-clubs/in/$location',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const discoveryRoutes=[discovery0,discovery1,discovery2,discovery3,discovery4,discovery5] as const;
+const workplaceAlias=createRoute({getParentRoute:()=>root,path:'/workplace-step-challenges',beforeLoad:()=>{throw redirect({to:'/business',replace:true});}});
+const corporateAlias=createRoute({getParentRoute:()=>root,path:'/corporate-wellness-competitions',beforeLoad:()=>{throw redirect({to:'/business',replace:true});}});
 const routeTree = root.addChildren([
-  home, business, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
+  ...discoveryRoutes,workplaceAlias,corporateAlias,home, business, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
   dashboard, setup, interests, welcome, leaderboard, feed, feedPost, messages, groupChat, conversation, duel, newCompetition, run, runSession, activities, activity,
