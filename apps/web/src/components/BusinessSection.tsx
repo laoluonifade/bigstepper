@@ -8,29 +8,22 @@ const clubAccents = ['#8B7CF6', '#FF5A1F', '#E4FF3A', '#5EE0C1'];
 const benefits = [
   {
     number: '01',
-    title: 'Improve employee wellbeing',
-    body: 'Encourage people to move more by turning walks and runs into shared challenges that fit around the workday.',
+    title: 'Get people moving',
+    body: 'Make everyday movement part of the workday.',
     mark: '↗',
     tone: 'bg-volt',
   },
   {
     number: '02',
-    title: 'Increase employee engagement',
-    body: 'Give employees something enjoyable to join beyond daily work, with recurring challenges, progress and friendly competition.',
-    mark: '✦',
-    tone: 'bg-track',
-  },
-  {
-    number: '03',
-    title: 'Strengthen team relationships',
-    body: 'Bring colleagues together around shared step challenges. Everyone can cheer each other on from the club leaderboard.',
+    title: 'Bring colleagues together',
+    body: 'Build connections through friendly step challenges.',
     mark: 'VS',
     tone: 'bg-[#D9E8FF]',
   },
   {
-    number: '04',
-    title: 'Make wellness measurable',
-    body: 'Follow participation and challenge progress on leaderboards. Supported challenges include everyday steps and walking distance synced from Apple Health.',
+    number: '03',
+    title: 'See everyone’s progress',
+    body: 'Follow participation and individual leaderboards.',
     mark: '⌁',
     tone: 'bg-[#FFD9C8]',
   },
@@ -61,13 +54,13 @@ export function BusinessSection() {
             Turn everyday steps into workplace victories.
           </h2>
           <p className="mt-5 max-w-lg text-[16px] leading-relaxed text-ink-2 sm:text-[18px]">
-            Your people are already on the move. Bring them together in a workplace club, set a step challenge and give everyone a new reason to show up.
+            Create a workplace club and turn daily steps into friendly competition.
           </p>
           <p className="mt-4 max-w-lg text-[14px] leading-relaxed text-ink-2 sm:text-[15px]">
-            On iPhone, employees can connect Apple Health once to sync everyday steps—from the commute to a lunchtime walk—without starting a separate recording.
+            Connect Apple Health on iPhone. Everyday steps sync automatically.
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <Link to="/register" search={signup} className="btn-primary min-h-12 whitespace-nowrap px-4 max-sm:text-[12px] max-sm:tracking-normal sm:px-5">Bring Jump to your workplace <ArrowRightIcon size={16} /></Link>
+            <Link to="/register" search={signup} className="btn-primary min-h-12 whitespace-nowrap px-4 max-sm:text-[12px] max-sm:tracking-normal sm:px-5">Create your workplace club <ArrowRightIcon size={16} /></Link>
             <a href="#business-how" className="btn-secondary min-h-12 whitespace-nowrap px-4 max-sm:text-[12px] max-sm:tracking-normal sm:px-5">See how it works</a>
           </div>
         </div>
@@ -118,9 +111,9 @@ export function BusinessSection() {
 
       {/* Benefits */}
       <div className="mt-20 sm:mt-28">
-        <SectionIntro eyebrow="Why teams pick Jump" title="A little movement. A lot more momentum." body="Set up a club, invite your people and kick off a step challenge together." />
-        <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {benefits.map((item) => <article key={item.number} className="flex min-h-[218px] flex-col rounded-md border-[1.5px] border-ink bg-card p-4 transition-transform duration-150 hover:-translate-y-1 sm:p-5">
+        <SectionIntro eyebrow="Why teams pick Jump" title="Move more. Connect more." />
+        <div className="mt-7 grid gap-3 sm:grid-cols-3">
+          {benefits.map((item) => <article key={item.number} className="flex min-h-[180px] flex-col rounded-md border-[1.5px] border-ink bg-card p-4 transition-transform duration-150 hover:-translate-y-1 sm:p-5">
             <div className="flex items-center justify-between">
               <span className="score text-[15px] text-ink-3">{item.number}</span>
               <span className={`grid h-10 w-10 place-items-center rounded-full border-2 border-ink text-[15px] font-black ${item.tone}`}>{item.mark}</span>
@@ -137,15 +130,13 @@ export function BusinessSection() {
         <div className="relative grid gap-8">
           <div className="flex flex-col items-center text-center">
             <p className="eyebrow text-paper/55">Imagine your workplace on Jump</p>
-            <h3 className="display mt-3 max-w-3xl text-[clamp(24px,6.8vw,58px)] leading-[0.9] tracking-[-0.045em]">The group chat, with a leaderboard.</h3>
-            <p className="mt-4 max-w-xl text-[14px] leading-relaxed text-paper/70 sm:text-[15px]">Start a step competition from your club. Each person sees their own progress and place on the board; the challenge gives everyone something to cheer for.</p>
+            <h3 className="display mt-3 max-w-3xl text-[clamp(24px,6.8vw,58px)] leading-[0.9] tracking-[-0.045em]">A challenge worth joining.</h3>
             <span className="mt-5 inline-flex rounded-sm border border-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-paper/60">Example challenge setups · illustrative</span>
           </div>
           <div className="grid gap-2.5 sm:grid-cols-3">
             {challengeIdeas.map((idea) => <article key={idea.title} className="rounded-md border border-white/15 bg-white/[0.08] p-3.5 backdrop-blur-sm">
               <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-paper/50">{idea.tag}</p>
               <h4 className="mt-3 min-h-[42px] text-[15px] font-extrabold leading-tight">{idea.title}</h4>
-              <p className="mt-1 min-h-[32px] text-[11px] leading-snug text-paper/60">{idea.detail}</p>
               <div className="mt-4 flex items-end justify-between gap-2">
                 <span className="text-[10px] text-paper/50">Progress</span>
                 <span className="num text-[12px] font-extrabold">{idea.value}</span>
@@ -158,41 +149,22 @@ export function BusinessSection() {
 
       {/* How it works */}
       <div id="business-how" className="scroll-mt-8 mt-20 sm:mt-28">
-        <SectionIntro eyebrow="No complicated onboarding" title="Four steps to your first workplace challenge." body="Set up your club, share its invite link and choose a challenge your people can join." />
-        <ol className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SectionIntro eyebrow="No complicated onboarding" title="Start in three steps." />
+        <ol className="mt-8 grid gap-3 sm:grid-cols-3">
           {[
-            ['01', 'Create your workplace club', 'Set up a club using your company name, description and logo.'],
-            ['02', 'Invite your people', 'Share the club invite link. Colleagues join with a Jump account they already have or create one.'],
-            ['03', 'Connect Apple Health on iPhone', 'Employees choose to grant access. Daily steps from their iPhone and Apple Watch then sync to Jump.'],
-            ['04', 'Compete and celebrate', 'Choose a supported free challenge for your club, follow the individual leaderboard and celebrate everyday movement.'],
+            ['01', 'Create your club', 'Add your workplace and invite colleagues.'],
+            ['02', 'Connect Apple Health', 'On iPhone, allow access to sync daily steps.'],
+            ['03', 'Start a challenge', 'Choose a supported free challenge and follow the leaderboard.'],
           ].map(([n, title, body]) => <li key={n} className="relative rounded-md border-[1.5px] border-ink bg-card p-4 sm:p-5">
             <span className="score text-[30px] text-track">{n}</span>
             <h3 className="wide mt-5 text-[18px] font-extrabold uppercase leading-tight">{title}</h3>
             <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{body}</p>
           </li>)}
         </ol>
-        <p className="mt-3 text-[11px] leading-relaxed text-ink-3">Apple Health syncing requires the latest iPhone app and permission. Daily steps and walking distance count in supported free step, walking and distance challenges, from the time each person connects. iOS controls background sync timing, so leaderboards may take time to update. On Android, colleagues can record walks and runs in Jump.</p>
-      </div>
-
-      {/* Flexible participation */}
-      <div className="mt-20 sm:mt-28">
-        <div className="grid items-end gap-5 sm:grid-cols-[1fr_auto]">
-          <SectionIntro eyebrow="Built for every workplace" title="One club. Wherever your people are." body="The challenge is virtual, so nobody has to be in the same office or even the same city to join in." />
-          <span className="hidden h-20 w-20 rotate-6 place-items-center border-2 border-ink bg-track text-[30px] font-black shadow-hard sm:grid" aria-hidden="true">↗</span>
-        </div>
-        <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['Small teams', 'Start a friendly challenge among a handful of colleagues.'],
-            ['Big workplaces', 'Invite the wider crew into one club and one shared competition.'],
-            ['Remote teams', 'Join from home, on the commute or wherever your day takes you.'],
-            ['Recurring rituals', 'Run another step challenge whenever your people are ready.'],
-          ].map(([title, body], index) => <article key={title} className="rounded-md border-[1.5px] border-line bg-card p-4 sm:p-5">
-            <span className="score text-[13px] text-ink-3">0{index + 1} / 04</span>
-            <h3 className="wide mt-4 text-[18px] font-extrabold uppercase">{title}</h3>
-            <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{body}</p>
-          </article>)}
-        </div>
-        <p className="mt-3 text-[11px] leading-relaxed text-ink-3">Everyone can join the same club competition, with an individual leaderboard. Jump doesn’t currently show department rankings or combined team totals.</p>
+        <details className="mt-4 text-[12px] leading-relaxed text-ink-3">
+          <summary className="cursor-pointer font-semibold">Tracking details</summary>
+          <p className="mt-2 max-w-2xl">Apple Health requires the latest iPhone app and permission. Daily steps and walking distance count in supported free challenges from the time you connect. iOS controls sync timing. Android users can record walks and runs in Jump.</p>
+        </details>
       </div>
 
       {/* Final CTA */}
@@ -200,9 +172,7 @@ export function BusinessSection() {
         <span className="absolute -right-7 -top-16 rotate-12 text-[180px] font-black leading-none text-ink/[0.06]" aria-hidden="true">J</span>
         <div className="relative flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
           <div className="max-w-2xl">
-            <p className="eyebrow">Your next workplace rivalry starts here</p>
             <h3 className="display mt-2 text-[clamp(36px,6vw,64px)] leading-[0.9] tracking-[-0.05em]">Get your people moving.</h3>
-            <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink/75 sm:text-[16px]">Bring your teams together, take on a step challenge and make everyday activity a little more exciting.</p>
           </div>
           <Link to="/register" search={signup} className="btn-dark min-h-12 w-full shrink-0 whitespace-nowrap px-3 max-sm:text-[12px] max-sm:tracking-normal sm:w-auto sm:px-5">Create your workplace club <ArrowRightIcon size={16} /></Link>
         </div>
@@ -211,11 +181,11 @@ export function BusinessSection() {
   );
 }
 
-function SectionIntro({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
+function SectionIntro({ eyebrow, title, body }: { eyebrow: string; title: string; body?: string }) {
   return <div className="max-w-2xl">
     <p className="eyebrow">{eyebrow}</p>
     <h3 className="display mt-2 text-[clamp(30px,4.8vw,48px)] leading-[0.92] tracking-[-0.04em]">{title}</h3>
-    <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink-2">{body}</p>
+    {body && <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink-2">{body}</p>}
   </div>;
 }
 
