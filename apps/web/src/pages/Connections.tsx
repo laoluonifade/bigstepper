@@ -3,7 +3,7 @@ import type { AppleHealthStatus } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ErrorNotice, PageHeader } from '../components/ui';
-import { api } from '../lib/api';
+import { api, patch } from '../lib/api';
 import { StravaConnection } from './Strava';
 import { YouBack } from './You';
 
@@ -40,8 +40,13 @@ function AppleHealthConnection() {
       void queryClient.invalidateQueries();
     },
   });
+  const share = useMutation({
+    mutationFn: (shareSteps: boolean) => patch<AppleHealthStatus>('/apple-health', { shareSteps }),
+    onSuccess: (next) => queryClient.setQueryData(['apple-health'], next),
+  });
   const data = status.data;
-  return <div className={ROW}>
+  return <div className="px-4 py-4">
+    <div className="flex items-center gap-3">
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#FF2D55] text-white"><HealthMark /></span>
     <div className="min-w-0 flex-1">
       <p className="text-[14px] font-bold">Apple Health</p>
@@ -50,11 +55,19 @@ function AppleHealthConnection() {
           : !data?.connected ? 'Connect from the Jump app on your iPhone to import workouts and daily steps'
             : data.lastSyncedAt ? `Synced ${formatRelative(data.lastSyncedAt)} from your iPhone` : 'Connected on your iPhone'}
       </p>
-      <ErrorNotice error={status.error ?? disconnect.error} className="mt-2" />
+      <ErrorNotice error={status.error ?? disconnect.error ?? share.error} className="mt-2" />
     </div>
     {data?.connected && <button type="button" className="text-[13px] font-semibold text-ink-2 underline-offset-2 hover:text-bad hover:underline" disabled={disconnect.isPending} onClick={() => confirm.ask({ title: 'Disconnect Apple Health?', body: 'Jump deletes the workouts and daily steps it imported from Apple Health, and they stop counting in competitions that are still running. Nothing in Apple Health itself changes.', confirmLabel: 'Disconnect', danger: true, onConfirm: () => disconnect.mutate() })}>
       {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
     </button>}
+    </div>
+    {data?.connected && <label className="mt-3 flex cursor-pointer items-center gap-3 pl-12">
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-semibold">Post my daily steps to Rant</span>
+        <span className="block text-[12px] text-ink-2">Once a day at 9pm, for days with at least 500 steps. Your followers see it.</span>
+      </span>
+      <input type="checkbox" className="h-4 w-4 shrink-0 accent-[#121212]" checked={data.shareSteps !== false} disabled={share.isPending} onChange={(event) => share.mutate(event.target.checked)} />
+    </label>}
     {confirm.dialog}
   </div>;
 }

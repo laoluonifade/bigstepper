@@ -95,11 +95,11 @@ If you connect Apple Health, Jump reads:
 
 We use this information only to add your workouts to your Jump activity history, count your steps, distance, and activities in competitions and on leaderboards (from the time you connect Apple Health), and check that results are fair. Imported workouts go through the same checks as activities recorded in Jump.
 
-Jump only reads from Apple Health. It does not write, change, or delete anything in Apple Health.
+Jump only reads from Apple Health. It does not write, change, or delete anything in Apple Health. While you’re connected, iOS may wake Jump in the background when Apple Health has new steps or workouts, so they reach Jump without you opening the app.
 
 We do not use information from Apple Health for advertising or marketing, we do not sell it, and we do not share it with third parties for advertising, marketing, or data brokering. We do not use it to make decisions about you unrelated to providing Jump.
 
-Your results in competitions you join, such as step totals and rankings, are visible to other participants in the same way as other activity results.
+Your results in competitions you join, such as step totals and rankings, are visible to other participants in the same way as other activity results. Unless you turn it off under You → Connections, Jump also posts your day’s step total and walking distance to Rant once each evening (for days with at least 500 steps), where the people who can see your Rants can see it. Turning it off removes those posts.
 
 You can stop access at any time by disconnecting Apple Health from You → Connections in the Jump app, or in your iPhone’s Settings under Health → Data Access & Devices → Jump. Disconnecting Apple Health in Jump stops future imports and deletes the workouts and daily step counts Jump imported from Apple Health, and they stop counting in competitions that are still running. Results in competitions that have already finished keep their final standings. Turning off access only in your iPhone’s Settings stops future imports but does not delete what Jump already imported; disconnect in Jump or delete your account to remove it. Deleting your Jump account also deletes your imported workouts, daily step counts, and the Apple Health connection. Nothing in Apple Health itself is changed.
 

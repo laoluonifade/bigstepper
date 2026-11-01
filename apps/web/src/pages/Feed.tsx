@@ -36,6 +36,10 @@ type FeedPost = {
   validatedSteps: number | null;
   distanceMetres: number | null;
   movingSeconds: number | null;
+  /** A day of Apple Health steps this post shares, posted by Jump at 9pm, with that day's latest totals. */
+  stepsDay?: string | null;
+  daySteps?: number | null;
+  dayMetres?: number | null;
   reactionCount: number;
   myReaction: Reaction | null;
   topReactions?: Reaction[];
@@ -242,6 +246,7 @@ function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCance
       {/* In the list these are part of the card, so a tap anywhere opens the post. */}
       {item.imageUrl && <img src={item.imageUrl} alt="" loading="lazy" className="mt-2.5 max-h-[420px] w-full rounded-2xl border border-line object-cover" />}
       {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={false} />}
+      {item.stepsDay && item.daySteps != null && <StepsAttachment item={item} unit={unit} />}
       {item.duel && <DuelCard duel={item.duel} viewerId={viewerId} unit={unit} actions={false} className="z-[1] mt-2.5" />}
       <ActionBar item={item} viewerId={viewerId} />
       {confirmingDelete && <div className="relative z-[1] mt-2 flex items-center justify-end gap-4 text-[13px]">
@@ -384,6 +389,7 @@ export function FeedPostPage() {
         {item.body && <p className="mt-4 whitespace-pre-wrap break-words text-[19px] leading-relaxed"><MentionText text={item.body} /></p>}
         {item.imageUrl && <PostImage src={item.imageUrl} className="mt-3 max-h-[560px]" />}
         {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} />}
+        {item.stepsDay && item.daySteps != null && <StepsAttachment item={item} unit={unit} />}
         {item.duel && <DuelCard duel={item.duel} viewerId={user.id} unit={unit} actions={false} className="mt-3" />}
         <p className="mt-4 text-[14px] text-ink-3">
           <time dateTime={item.createdAt}>{posted.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {posted.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</time>
@@ -503,6 +509,23 @@ export function SendButton({ disabled, label, children }: { disabled: boolean; l
   return <button className="my-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-track text-paper transition hover:bg-track-deep disabled:bg-transparent disabled:text-ink-3" aria-label={label} title={label} disabled={disabled}>
     {children ?? <SendIcon size={15} />}
   </button>;
+}
+
+/** A day of steps from Apple Health, shared once in the evening instead of a post for every walk. */
+function StepsAttachment({ item, unit }: { item: FeedPost; unit: Unit }) {
+  const day = new Date(`${item.stepsDay}T12:00:00`);
+  return <span className="mt-2.5 flex items-stretch overflow-hidden rounded-xl border border-line">
+    <span className="flex w-12 shrink-0 items-center justify-center bg-[#FF2D55] text-white" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.4 10.6 20.1C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.6L12 21.4Z" /></svg>
+    </span>
+    <span className="flex min-w-0 flex-1 items-center justify-between gap-3 bg-card px-3 py-2.5">
+      <span className="min-w-0">
+        <span className="wide block text-[10.5px] font-extrabold uppercase tracking-[0.1em] text-ink-2">{day.toLocaleDateString('en-GB', { weekday: 'long' })}’s steps</span>
+        <span className="num block truncate text-[12px] text-ink-2">{item.dayMetres != null ? `${formatDistance(item.dayMetres, unit)} walked · ` : ''}Apple Health</span>
+      </span>
+      <span className="score num shrink-0 text-[24px] leading-none">{(item.daySteps ?? 0).toLocaleString('en-GB')}</span>
+    </span>
+  </span>;
 }
 
 function ActivityAttachment({ item, unit, mine }: { item: FeedPost; unit: Unit; mine: boolean }) {

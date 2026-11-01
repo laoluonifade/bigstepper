@@ -1,8 +1,8 @@
-import { Body, Controller, DefaultValuePipe, Delete, Get, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, DefaultValuePipe, Delete, Get, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AppleHealthWorkoutDto, DailyStepsSyncDto } from './apple-health.dto';
+import { AppleHealthSettingsDto, AppleHealthWorkoutDto, DailyStepsSyncDto } from './apple-health.dto';
 import { AppleHealthService } from './apple-health.service';
 
 @Controller('apple-health')
@@ -20,6 +20,11 @@ export class AppleHealthController {
     return this.appleHealth.days(user.id, Math.min(Math.max(limit, 1), 60));
   }
 
+  @Patch()
+  settings(@CurrentUser() user: AuthenticatedUser, @Body() body: AppleHealthSettingsDto) {
+    return this.appleHealth.settings(user.id, body.shareSteps);
+  }
+
   @Post('connect')
   connect(@CurrentUser() user: AuthenticatedUser) {
     return this.appleHealth.connect(user.id);
@@ -33,7 +38,7 @@ export class AppleHealthController {
   @Post('steps')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   dailySteps(@CurrentUser() user: AuthenticatedUser, @Body() body: DailyStepsSyncDto) {
-    return this.appleHealth.saveDailySteps(user.id, body.days);
+    return this.appleHealth.saveDailySteps(user.id, body.days, body.timeZone);
   }
 
   @Post('workouts')

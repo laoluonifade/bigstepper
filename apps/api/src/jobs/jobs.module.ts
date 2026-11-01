@@ -11,6 +11,7 @@ export const AML_MONITOR_QUEUE = 'aml-monitor';
 export const CLUB_CHALLENGES_QUEUE = 'club-challenges';
 export const DUELS_QUEUE = 'duels';
 export const CLUB_EVENTS_QUEUE = 'club-events';
+export const APPLE_HEALTH_QUEUE = 'apple-health';
 
 @Module({
   imports: [BullModule.registerQueue({ name: ACTIVITY_VERIFICATION_QUEUE })],

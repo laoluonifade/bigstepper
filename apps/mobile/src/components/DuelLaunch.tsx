@@ -11,7 +11,8 @@ import { Avatar, Button, haptic, HardShadow } from './ui';
 
 const SEEN_KEY = 'jump_seen_duel_launch';
 
-const seen = () => { try { return Storage.getItemSync(SEEN_KEY) === '1'; } catch { return true; } };
+export const duelLaunchSeen = () => { try { return Storage.getItemSync(SEEN_KEY) === '1'; } catch { return true; } };
+const seen = duelLaunchSeen;
 const markSeen = () => { try { Storage.setItemSync(SEEN_KEY, '1'); } catch { /* shows again next time */ } };
 
 const STEPS = [

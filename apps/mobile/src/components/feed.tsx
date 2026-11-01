@@ -1,4 +1,5 @@
 import { activityName, formatDistance, formatDuration, shortAgo } from '@jump/shared/format';
+import Svg, { Path } from 'react-native-svg';
 import { reactionEmoji, REACTIONS, type Reaction } from '@jump/shared/reactions';
 import type { AvatarStyle, Unit } from '@jump/shared/types';
 import { useMutation, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
@@ -36,6 +37,10 @@ export type FeedPost = {
   validatedSteps: number | null;
   distanceMetres: number | null;
   movingSeconds: number | null;
+  /** A day of Apple Health steps this post shares, posted by Jump at 9pm, with that day's latest totals. */
+  stepsDay?: string | null;
+  daySteps?: number | null;
+  dayMetres?: number | null;
   reactionCount: number;
   myReaction: Reaction | null;
   topReactions?: Reaction[];
@@ -82,6 +87,7 @@ export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; u
       {item.body ? <View style={{ marginTop: 4 }}><MentionText text={item.body} /></View> : null}
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" transition={150} /> : null}
       {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} /> : null}
+      {item.stepsDay && item.daySteps != null ? <StepsAttachment item={item} unit={unit} /> : null}
       {item.duel ? <View style={{ marginTop: 8 }}><DuelCard duel={item.duel} viewerId={viewerId} unit={unit} actions={false} /></View> : null}
       <ActionBar item={item} viewerId={viewerId} />
     </View>
@@ -162,6 +168,23 @@ export function ActivityAttachment({ item, unit }: { item: FeedPost; unit: Unit 
       <Text style={score(24)}>{formatDistance(item.distanceMetres ?? 0, unit)}</Text>
     </View>
   </Pressable>;
+}
+
+/** A day of steps from Apple Health, shared once in the evening instead of a post for every walk. */
+export function StepsAttachment({ item, unit }: { item: FeedPost; unit: Unit }) {
+  const day = new Date(`${item.stepsDay}T12:00:00`);
+  return <View style={styles.attachment}>
+    <View style={[styles.attachmentBadge, { paddingLeft: 0, width: 52, backgroundColor: '#FF2D55' }]}>
+      <Svg width={20} height={20} viewBox="0 0 24 24" fill="#FFFFFF"><Path d="M12 21.4 10.6 20.1C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.6L12 21.4Z" /></Svg>
+    </View>
+    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 12, paddingVertical: 10 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[wideLabel(10.5, 0.1), { color: colors.ink2 }]} numberOfLines={1}>{`${day.toLocaleDateString('en-GB', { weekday: 'long' })}'s steps`}</Text>
+        <Txt size={12} color="ink2" num numberOfLines={1}>{`${item.dayMetres != null ? `${formatDistance(item.dayMetres, unit)} walked · ` : ''}Apple Health`}</Txt>
+      </View>
+      <Text style={score(24)}>{(item.daySteps ?? 0).toLocaleString('en-GB')}</Text>
+    </View>
+  </View>;
 }
 
 /** A post photo; tap to see it full size. */

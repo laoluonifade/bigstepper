@@ -32,6 +32,9 @@
         "GHSA-hqq3-7jhf-c5jx",
         "GHSA-5x38-2vff-x55p"
       ]
+    },
+    "patchedDependencies": {
+      "expo-modules-jsi@58.0.21": "patches/expo-modules-jsi@58.0.21.patch"
     }
   },
   "engines": {

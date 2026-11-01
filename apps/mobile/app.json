@@ -64,7 +64,7 @@
         {
           "NSHealthShareUsageDescription": "Jump reads your walks, runs and rides (with their route, distance and steps) and your daily steps and walking distance from Apple Health, so they count in your competitions and on leaderboards.",
           "NSHealthUpdateUsageDescription": "Jump only reads your workouts and steps from Apple Health. It does not save or change any data in Apple Health.",
-          "background": false
+          "background": true
         }
       ],
       [

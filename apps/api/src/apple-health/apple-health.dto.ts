@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsUUID, Matches, Max, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsUUID, Matches, Max, MaxLength, Min, IsString, ValidateNested } from 'class-validator';
 
 export class AppleHealthWorkoutDto {
   @IsUUID()
@@ -72,4 +72,14 @@ export class DailyStepsSyncDto {
   @ValidateNested({ each: true })
   @Type(() => DailyStepsDto)
   days: DailyStepsDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timeZone?: string;
+}
+
+export class AppleHealthSettingsDto {
+  @IsBoolean()
+  shareSteps: boolean;
 }

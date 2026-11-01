@@ -3,10 +3,10 @@ import type { AppleHealthStatus, DailySteps, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { api, post } from '@/lib/api';
-import { appleHealthAvailable, requestAppleHealth, syncAppleHealth } from '@/lib/apple-health';
+import { api, patch, post } from '@/lib/api';
+import { appleHealthAvailable, requestAppleHealth, startBackgroundSync, stopBackgroundSync, syncAppleHealth } from '@/lib/apple-health';
 import { confirm } from '@/lib/dialog';
 import { keys } from '@/lib/queries';
 import { colors, fontFamily, radius, score } from '@/lib/theme';
@@ -14,6 +14,8 @@ import { ErrorNotice, Txt } from './ui';
 
 const HEALTH_RED = '#FF2D55';
 const STALE_AFTER_MS = 10 * 60 * 1000;
+
+export const HEALTH_PINK = HEALTH_RED;
 
 export function HealthMark({ size = 18, color = colors.white }: { size?: number; color?: string }) {
   return <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}><Path d="M12 21.4 10.6 20.1C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.6L12 21.4Z" /></Svg>;
@@ -23,7 +25,7 @@ function refreshProgress(queryClient: QueryClient) {
   for (const queryKey of [keys.activities, keys.tables, ['standings'], keys.leagues, ['club'], keys.profile, ['activity-calendar'], ['activity-summary']]) void queryClient.invalidateQueries({ queryKey });
 }
 
-function useAppleHealthStatus() {
+export function useAppleHealthStatus() {
   return useQuery({ queryKey: ['apple-health'], queryFn: () => api<AppleHealthStatus>('/apple-health'), enabled: appleHealthAvailable() });
 }
 
@@ -110,6 +112,33 @@ export function HealthDayRow({ day, unit, last }: { day: DailySteps; unit: Unit;
   </View>;
 }
 
+/** Connects Apple Health: Apple's permission sheet, then Jump's side, a first sync and background wake-ups. */
+export function useConnectAppleHealth(onConnected?: () => void) {
+  const queryClient = useQueryClient();
+  const sync = useAppleHealthSync();
+  const connect = useMutation({
+    mutationFn: async () => {
+      await requestAppleHealth();
+      return post<AppleHealthStatus>('/apple-health/connect');
+    },
+    onSuccess(next) {
+      queryClient.setQueryData(['apple-health'], next);
+      if (!next.connected) return;
+      sync.mutate(next);
+      void startBackgroundSync();
+      onConnected?.();
+    },
+  });
+  return { connect, sync };
+}
+
+/** Keeps the background wake-ups registered for anyone connected, every time Jump starts. */
+export function useAppleHealthBackground() {
+  const status = useAppleHealthStatus();
+  const connected = Boolean(status.data?.connected);
+  useEffect(() => { if (connected) void startBackgroundSync(); }, [connected]);
+}
+
 /** Pulls new Apple Health workouts when Jump opens or comes back to the front, with a thin bar while it works. */
 export function AppleHealthSyncBar({ hidden }: { hidden?: boolean }) {
   const status = useAppleHealthStatus();
@@ -147,30 +176,25 @@ export function AppleHealthSyncBar({ hidden }: { hidden?: boolean }) {
 export function AppleHealthConnection() {
   const queryClient = useQueryClient();
   const status = useAppleHealthStatus();
-  const sync = useAppleHealthSync();
-  const connect = useMutation({
-    mutationFn: async () => {
-      await requestAppleHealth();
-      return post<AppleHealthStatus>('/apple-health/connect');
-    },
-    onSuccess(next) {
-      queryClient.setQueryData(['apple-health'], next);
-      if (next.connected) sync.mutate(next);
-    },
-  });
+  const { connect, sync } = useConnectAppleHealth();
   const disconnect = useMutation({
     mutationFn: () => api<AppleHealthStatus>('/apple-health', { method: 'DELETE' }),
     onSuccess(next) {
       queryClient.setQueryData(['apple-health'], next);
       refreshProgress(queryClient);
+      void stopBackgroundSync();
     },
+  });
+  const share = useMutation({
+    mutationFn: (shareSteps: boolean) => patch<AppleHealthStatus>('/apple-health', { shareSteps }),
+    onSuccess: (next) => queryClient.setQueryData(['apple-health'], next),
   });
   const askDisconnect = async () => {
     if (await confirm({ title: 'Disconnect Apple Health?', message: 'Jump deletes the workouts and daily steps it imported from Apple Health, and they stop counting in competitions that are still running. Nothing in Apple Health itself changes.', confirmLabel: 'Disconnect', destructive: true })) disconnect.mutate();
   };
   if (!appleHealthAvailable() || status.isPending) return null;
   const data = status.data;
-  return <View style={styles.connection}>
+  return <View style={styles.connectionBlock}><View style={styles.connectionTop}>
     <View style={styles.badge}><HealthMark /></View>
     <View style={{ flex: 1, minWidth: 0 }}>
       <Txt size={14} weight="bold">Apple Health</Txt>
@@ -179,13 +203,21 @@ export function AppleHealthConnection() {
           : sync.isPending ? 'Syncing…'
             : data.lastSyncedAt ? `Synced ${formatRelative(data.lastSyncedAt)}` : 'Connected'}
       </Txt>
-      <ErrorNotice error={connect.error ?? sync.error ?? disconnect.error} />
+      <ErrorNotice error={connect.error ?? sync.error ?? disconnect.error ?? share.error} />
     </View>
     {!data?.connected
       ? <Pressable disabled={connect.isPending} onPress={() => connect.mutate()} style={[styles.connect, connect.isPending && { opacity: 0.6 }]} hitSlop={8}>
         <Text style={styles.connectText}>{connect.isPending ? 'Connecting…' : 'Connect'}</Text>
       </Pressable>
       : <Pressable disabled={disconnect.isPending} onPress={() => void askDisconnect()} hitSlop={8}><Txt size={13} weight="semibold" color="ink2">{disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}</Txt></Pressable>}
+  </View>
+    {data?.connected && <View style={styles.shareRow}>
+      <View style={{ flex: 1 }}>
+        <Txt size={13} weight="semibold">Post my daily steps to Rant</Txt>
+        <Txt size={12} color="ink2" leading={1.4}>Once a day at 9pm, for days with at least 500 steps. Your followers see it.</Txt>
+      </View>
+      <Switch value={data.shareSteps !== false} disabled={share.isPending} onValueChange={(on) => share.mutate(on)} trackColor={{ true: colors.track, false: colors.line }} thumbColor={colors.white} accessibilityLabel="Post my daily steps to Rant" />
+    </View>}
   </View>;
 }
 
@@ -202,7 +234,9 @@ const styles = StyleSheet.create({
   dayBadge: { width: 30, height: 30, borderRadius: 9, backgroundColor: HEALTH_RED, alignItems: 'center', justifyContent: 'center' },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: HEALTH_RED, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 16 },
   barText: { fontFamily: fontFamily('bold'), fontSize: 13, color: colors.white },
-  connection: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 16 },
+  connectionBlock: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 16, gap: 12 },
+  connectionTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  shareRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 48 },
   badge: { width: 36, height: 36, borderRadius: 10, backgroundColor: HEALTH_RED, alignItems: 'center', justifyContent: 'center' },
   connect: { height: 36, justifyContent: 'center', borderRadius: radius.base, backgroundColor: colors.ink, paddingHorizontal: 12 },
   connectText: { fontFamily: fontFamily('bold', 'wide'), fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.white },

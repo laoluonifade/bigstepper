@@ -1,7 +1,8 @@
 import type * as HealthKit from '@kingstinct/react-native-healthkit';
 import type { WorkoutActivityType, WorkoutProxyTyped } from '@kingstinct/react-native-healthkit';
 import { Platform, TurboModuleRegistry } from 'react-native';
-import { post } from './api';
+import type { AppleHealthStatus } from '@jump/shared/types';
+import { api, post } from './api';
 
 const LOOK_BACK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIRST_SYNC_MS = 30 * 24 * 60 * 60 * 1000;
@@ -114,7 +115,7 @@ async function syncDailySteps(connectedAt: string) {
           : { steps: await sumSince('steps', connected, dayEnd), metres: await sumSince('metres', connected, dayEnd) };
       return { day: date, steps: full.steps, ...(full.metres != null ? { distanceMetres: full.metres } : {}), countedSteps: counted.steps, countedMetres: counted.metres };
     }));
-  if (totals.length) await post('/apple-health/steps', { days: totals });
+  if (totals.length) await post('/apple-health/steps', { days: totals, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
 }
 
 /** Sends recent walks, runs and rides from Apple Health to Jump. The server skips anything it already has. */
@@ -131,4 +132,38 @@ export async function syncAppleHealth(since: string | null, connectedAt: string)
   await syncDailySteps(connectedAt);
   await post('/apple-health/synced');
   return imported;
+}
+
+const BACKGROUND_GAP_MS = 10 * 60 * 1000;
+let lastBackgroundSync = 0;
+let listening: Array<{ remove: () => void }> = [];
+
+async function syncNow() {
+  if (Date.now() - lastBackgroundSync < BACKGROUND_GAP_MS) return;
+  lastBackgroundSync = Date.now();
+  const status = await api<AppleHealthStatus>('/apple-health');
+  if (status.connected) await syncAppleHealth(status.lastSyncedAt, status.connectedAt);
+}
+
+/**
+ * Asks iOS to wake Jump when Apple Health gets new steps or a new workout, even with Jump closed, and
+ * syncs then (at most every 10 minutes). iOS decides the timing: usually within the hour for steps.
+ */
+export async function startBackgroundSync() {
+  const healthKit = loadHealthKit();
+  if (!healthKit || listening.length) return;
+  try {
+    await healthKit.configureBackgroundTypes(['HKQuantityTypeIdentifierStepCount', healthKit.WorkoutTypeIdentifier], healthKit.UpdateFrequency.hourly);
+    listening = (['HKQuantityTypeIdentifierStepCount', healthKit.WorkoutTypeIdentifier] as const).map((type) =>
+      healthKit.subscribeToChanges(type, () => { void syncNow().catch(() => undefined); }));
+  } catch {
+    listening = [];
+  }
+}
+
+/** Stops the background wake-ups, after disconnecting. */
+export async function stopBackgroundSync() {
+  for (const subscription of listening) subscription.remove();
+  listening = [];
+  await loadHealthKit()?.clearBackgroundTypes().catch(() => false);
 }

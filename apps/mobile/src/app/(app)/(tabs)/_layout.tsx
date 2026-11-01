@@ -1,6 +1,8 @@
 import { Tabs } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DuelLaunch } from '@/components/DuelLaunch';
+import { HealthLaunch } from '@/components/HealthLaunch';
+import { useAppleHealthBackground } from '@/components/apple-health';
 import { floatingTabInset, TabBar } from '@/components/TabBar';
 import { BottomBarInset } from '@/components/ui';
 import { colors } from '@/lib/theme';
@@ -12,11 +14,12 @@ import { colors } from '@/lib/theme';
 export default function TabsLayout() {
   // On iOS the bar floats over the screens; they leave this much room at the bottom.
   const inset = floatingTabInset(useSafeAreaInsets().bottom);
+  useAppleHealthBackground();
   return <BottomBarInset.Provider value={inset}><Tabs tabBar={(props) => <TabBar {...props} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.paper } }}>
     <Tabs.Screen name="dashboard" />
     <Tabs.Screen name="competitions" />
     <Tabs.Screen name="run" />
     <Tabs.Screen name="feed" />
     <Tabs.Screen name="you" />
-  </Tabs><DuelLaunch /></BottomBarInset.Provider>;
+  </Tabs><DuelLaunch /><HealthLaunch /></BottomBarInset.Provider>;
 }

@@ -37,7 +37,7 @@ export class FeedService {
       `SELECT f."id", f."body", f."imageUrl", f."createdAt", f."userId", f."activityId", ${duelJson('d')} "duel",
               p."username", p."displayName", p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
-              a."activityType", a."startedAt", a."validatedSteps",
+              a."activityType", a."startedAt", a."validatedSteps", to_char(f."stepsDay", 'YYYY-MM-DD') "stepsDay", ds."steps" "daySteps", ds."distanceMetres" "dayMetres",
               ${countedMetres()} "distanceMetres",
               a."movingSeconds",
               (SELECT COUNT(*)::integer FROM "feed_post_reactions" reactions WHERE reactions."postId"=f."id") "reactionCount",
@@ -49,11 +49,12 @@ export class FeedService {
        FROM "feed_posts" f
        JOIN "profiles" p ON p."userId"=f."userId"
        LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus" IN ('VERIFIED','FLAGGED','PENDING_VERIFICATION')
+       LEFT JOIN "daily_steps" ds ON ds."userId"=f."userId" AND ds."day"=f."stepsDay"
        LEFT JOIN "duels" d ON d."id"=f."duelId"
        WHERE ($2='explore' OR f."userId"=$1 OR d."opponentId"=$1 OR EXISTS (
            SELECT 1 FROM "follows" follow WHERE follow."followerId"=$1 AND (follow."followingId"=f."userId" OR follow."followingId"=d."opponentId")
          ))
-         AND (f."activityId" IS NULL OR a."id" IS NOT NULL)
+         AND (f."activityId" IS NULL OR a."id" IS NOT NULL) AND (f."stepsDay" IS NULL OR ds."day" IS NOT NULL)
          AND (d."id" IS NULL OR NOT ${blockedBetween('$1', 'd."opponentId"')})
          AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}
        ORDER BY f."createdAt" DESC, f."id" DESC LIMIT 20 OFFSET $3`,
@@ -66,7 +67,7 @@ export class FeedService {
       `SELECT f."id",f."body",f."imageUrl",f."createdAt",f."userId",f."activityId",${duelJson('d')} "duel",
               p."username",p."displayName",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
-              a."activityType",a."startedAt",a."validatedSteps",
+              a."activityType",a."startedAt",a."validatedSteps",to_char(f."stepsDay", 'YYYY-MM-DD') "stepsDay",ds."steps" "daySteps",ds."distanceMetres" "dayMetres",
               ${countedMetres()} "distanceMetres",a."movingSeconds",
               (SELECT COUNT(*)::integer FROM "feed_post_reactions" r WHERE r."postId"=f."id") "reactionCount",
               (SELECT r."reaction" FROM "feed_post_reactions" r WHERE r."postId"=f."id" AND r."userId"=$1) "myReaction",
@@ -76,8 +77,9 @@ export class FeedService {
                 GROUP BY r."reaction" ORDER BY COUNT(*) DESC, r."reaction" LIMIT 3) top) "topReactions"
        FROM "feed_posts" f JOIN "profiles" p ON p."userId"=f."userId"
        LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus" IN ('VERIFIED','FLAGGED','PENDING_VERIFICATION')
+       LEFT JOIN "daily_steps" ds ON ds."userId"=f."userId" AND ds."day"=f."stepsDay"
        LEFT JOIN "duels" d ON d."id"=f."duelId"
-       WHERE f."id"=$2 AND (f."activityId" IS NULL OR a."id" IS NOT NULL)
+       WHERE f."id"=$2 AND (f."activityId" IS NULL OR a."id" IS NOT NULL) AND (f."stepsDay" IS NULL OR ds."day" IS NOT NULL)
          AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}`,
       [viewerId, postId],
     ) as Array<Record<string, unknown>>;

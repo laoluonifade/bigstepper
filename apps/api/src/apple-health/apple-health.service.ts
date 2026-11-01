@@ -9,6 +9,7 @@ import { stravaStepTotals } from '../strava/strava-steps';
 import { routeMetres, spreadSteps } from './apple-health-steps';
 import { AppleHealthLink } from './apple-health-link.entity';
 import { AppleHealthWorkoutDto, DailyStepsDto } from './apple-health.dto';
+import { validZone } from '../notifications/engagement-policy';
 import { refreshLeagueDistance } from '../leagues/league-credits';
 import { HEALTH_ELIGIBLE, retotal, uncreditActivity } from '../tables/competition-credits';
 
@@ -17,6 +18,8 @@ const ROUTE_SLACK_SECONDS = 120;
 const MAX_STEPS_PER_SECOND = 4;
 const MAX_DAILY_STEPS = 100_000;
 const MAX_DAYS_BACK = 40;
+const POST_HOUR = 21;
+const MIN_POSTED_STEPS = 500;
 const MAX_DAILY_METRES = 150_000;
 
 @Injectable()
@@ -30,7 +33,7 @@ export class AppleHealthService {
   async status(userId: string) {
     const link = await this.links.findOne({ where: { userId } });
     if (!link) return { connected: false as const };
-    return { connected: true as const, connectedAt: link.connectedAt, lastSyncedAt: link.lastSyncedAt };
+    return { connected: true as const, connectedAt: link.connectedAt, lastSyncedAt: link.lastSyncedAt, shareSteps: link.shareSteps };
   }
 
   async connect(userId: string) {
@@ -59,6 +62,7 @@ export class AppleHealthService {
         ) as Array<{ id: string }>;
         if (tables.length) await retotal(manager, tables.map((table) => table.id));
       }
+      await manager.query(`DELETE FROM "feed_posts" WHERE "userId" = $1 AND "stepsDay" IS NOT NULL`, [userId]);
       await manager.query(`DELETE FROM "apple_health_links" WHERE "userId" = $1`, [userId]);
     });
     return { connected: false as const };
@@ -77,8 +81,31 @@ export class AppleHealthService {
     return this.status(userId);
   }
 
-  async saveDailySteps(userId: string, days: DailyStepsDto[]) {
+  async settings(userId: string, shareSteps: boolean) {
     if (!(await this.links.exist({ where: { userId } }))) throw new BadRequestException('Connect Apple Health first');
+    await this.links.update({ userId }, { shareSteps });
+    if (!shareSteps) await this.dataSource.query(`DELETE FROM "feed_posts" WHERE "userId" = $1 AND "stepsDay" IS NOT NULL`, [userId]);
+    return this.status(userId);
+  }
+
+  async postDailySteps() {
+    const posted = await this.dataSource.query(
+      `INSERT INTO "feed_posts" ("userId", "body", "stepsDay")
+       SELECT l."userId", '', d."day"
+       FROM "apple_health_links" l
+       CROSS JOIN LATERAL (SELECT (now() AT TIME ZONE COALESCE(l."timeZone", 'Africa/Lagos')) AS local) z
+       JOIN "daily_steps" d ON d."userId" = l."userId"
+         AND (d."day" = z.local::date - 1 OR (d."day" = z.local::date AND extract(hour FROM z.local) >= ${POST_HOUR}))
+       WHERE l."shareSteps" AND d."steps" >= ${MIN_POSTED_STEPS} AND d."day" >= (l."connectedAt" AT TIME ZONE COALESCE(l."timeZone", 'Africa/Lagos'))::date
+       ON CONFLICT ("userId", "stepsDay") WHERE "stepsDay" IS NOT NULL DO NOTHING
+       RETURNING "id"`,
+    ) as Array<{ id: string }>;
+    return posted.length;
+  }
+
+  async saveDailySteps(userId: string, days: DailyStepsDto[], timeZone?: string) {
+    if (!(await this.links.exist({ where: { userId } }))) throw new BadRequestException('Connect Apple Health first');
+    if (timeZone && validZone(timeZone)) await this.links.update({ userId }, { timeZone });
     const today = Date.now();
     const valid = days.filter(({ day }) => {
       const time = Date.parse(`${day}T00:00:00Z`);

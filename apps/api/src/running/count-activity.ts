@@ -9,7 +9,8 @@ export async function countActivity(manager: EntityManager, activity: Counted) {
   if (activity.activityType !== 'cycle') await refreshLeagueDistance(manager, activity.userId);
   await manager.query(
     `INSERT INTO "feed_posts" ("userId","body","activityId") SELECT $1,'',$2
-     WHERE NOT EXISTS (SELECT 1 FROM "feed_posts" WHERE "activityId"=$2)`,
+     WHERE NOT EXISTS (SELECT 1 FROM "feed_posts" WHERE "activityId"=$2)
+       AND NOT EXISTS (SELECT 1 FROM "activities" WHERE "id"=$2 AND "source"='apple_health')`,
     [activity.userId, activity.id],
   );
   return tableIds;
