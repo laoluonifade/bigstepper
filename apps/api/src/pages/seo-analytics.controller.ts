@@ -5,10 +5,13 @@ import { PagesService } from './pages.service';
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { IsIn, IsString, IsUUID, MaxLength } from 'class-validator';
-import { SeoAnalyticsService } from './seo-analytics.service';
+import {
+  ACQUISITION_SOURCES,
+  SeoAnalyticsService,
+} from './seo-analytics.service';
 class LandingDto {
   @IsUUID('4') session: string;
-  @IsIn(['google', 'bing', 'duckduckgo', 'yahoo']) source: string;
+  @IsIn(ACQUISITION_SOURCES) source: string;
   @IsString() @MaxLength(240) landing: string;
 }
 class ActionDto {
@@ -56,6 +59,7 @@ export class SeoReportingController {
       notes: [
         'Eligible public records are not confirmed indexed pages. Connect Search Console and Bing reports for index coverage and search performance.',
         'Business contact clicks measure intent, not confirmed delivered inquiries.',
+        'AI referrer hosts identify visits, not verified citations or model endorsements. Google and Bing referrals may combine traditional and AI search.',
       ],
     };
   }

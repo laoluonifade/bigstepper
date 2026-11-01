@@ -9,7 +9,17 @@ type Attribution = {
   landing: string;
   expires: number;
 };
-const SOURCES = ['google', 'bing', 'duckduckgo', 'yahoo'];
+export const ACQUISITION_SOURCES = [
+  'google',
+  'bing',
+  'duckduckgo',
+  'yahoo',
+  'chatgpt',
+  'perplexity',
+  'gemini',
+  'copilot',
+  'claude',
+];
 @Injectable()
 export class SeoAnalyticsService {
   private lastCleanup = 0;
@@ -47,7 +57,7 @@ export class SeoAnalyticsService {
         Buffer.from(body, 'base64url').toString(),
       ) as Attribution;
       return value.expires > Date.now() &&
-        SOURCES.includes(value.source) &&
+        ACQUISITION_SOURCES.includes(value.source) &&
         /^[0-9a-f-]{36}$/i.test(value.session)
         ? value
         : null;
@@ -58,7 +68,7 @@ export class SeoAnalyticsService {
   async landing(session: string, source: string, landing: string) {
     if (!this.enabled()) return { enabled: false };
     if (
-      !SOURCES.includes(source) ||
+      !ACQUISITION_SOURCES.includes(source) ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         session,
       ) ||

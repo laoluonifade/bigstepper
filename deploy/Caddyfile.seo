@@ -38,7 +38,7 @@ startajump.com {
   rewrite * /index.html
   file_server
  }
- @public path_regexp public ^/($|business/?$|brands/?$|events/?$|competitions/?$|events/[A-Za-z0-9_-]+/?$|clubs/[A-Za-z0-9_-]+/?$|competitions/[A-Za-z0-9_-]+/?$|running-events(/in/[a-z0-9-]+)?/?$|running-clubs(/in/[a-z0-9-]+)?/?$|step-challenges/?$|virtual-fitness-challenges/?$|workplace-step-challenges/?$|corporate-wellness-competitions/?$)
+ @public path_regexp public ^/($|about/?$|learn(/[a-z0-9-]+)?/?$|business/?$|brands/?$|events/?$|competitions/?$|events/[A-Za-z0-9_-]+/?$|clubs/[A-Za-z0-9_-]+/?$|competitions/[A-Za-z0-9_-]+/?$|running-events(/in/[a-z0-9-]+)?/?$|running-clubs(/in/[a-z0-9-]+)?/?$|step-challenges/?$|virtual-fitness-challenges/?$|workplace-step-challenges/?$|corporate-wellness-competitions/?$)
  handle @public {
   rewrite * /v1/pages/html?path={path}
   reverse_proxy 127.0.0.1:6311

@@ -89,6 +89,8 @@ function PublicShell() {
           </div>
           <nav aria-label="Explore Jump" className="mb-6 mt-6 flex flex-wrap gap-x-5 gap-y-3 text-[13px] sm:mt-0">
             <Link to="/running-events" className="font-medium text-ink-2 hover:text-ink">Running events</Link>
+            <Link to="/learn" className="font-medium text-ink-2 hover:text-ink">Guides</Link>
+            <Link to="/about" className="font-medium text-ink-2 hover:text-ink">About Jump</Link>
             <Link to="/running-clubs" className="font-medium text-ink-2 hover:text-ink">Running clubs</Link>
             <Link to="/step-challenges" className="font-medium text-ink-2 hover:text-ink">Step challenges</Link>
             <Link to="/virtual-fitness-challenges" className="font-medium text-ink-2 hover:text-ink">Virtual challenges</Link>

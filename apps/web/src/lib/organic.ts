@@ -17,7 +17,22 @@ export function storeOrganicToken(token: string) {
 }
 export function organicSource(referrer: string) {
   try {
-    const host = new URL(referrer).hostname.toLowerCase();
+    const url = new URL(referrer);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    const host = url.hostname.toLowerCase();
+    const aiHosts = {
+      'chatgpt.com': 'chatgpt',
+      'chat.openai.com': 'chatgpt',
+      'perplexity.ai': 'perplexity',
+      'gemini.google.com': 'gemini',
+      'copilot.microsoft.com': 'copilot',
+      'copilot.com': 'copilot',
+      'copilot.cloud.microsoft': 'copilot',
+      'm365.cloud.microsoft': 'copilot',
+      'claude.ai': 'claude',
+    };
+    for (const [domain, source] of Object.entries(aiHosts))
+      if (host === domain || host.endsWith('.' + domain)) return source;
     if (/(^|\.)google\.[a-z.]+$/.test(host)) return 'google';
     if (host === 'bing.com' || host.endsWith('.bing.com')) return 'bing';
     if (host === 'duckduckgo.com' || host.endsWith('.duckduckgo.com'))

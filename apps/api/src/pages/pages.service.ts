@@ -1,3 +1,4 @@
+import { GUIDES, knowledgePage } from './knowledge';
 import { dailyMeasure } from '../tables/competition-rules';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -96,6 +97,8 @@ export class PagesService {
         status: 308,
         redirect: '/business',
       };
+    const knowledge = knowledgePage(path, this.origin());
+    if (knowledge) return knowledge;
     if (path in SEO_STATIC)
       return this.staticPage(path as keyof typeof SEO_STATIC);
     if (path in SEO_HUBS) return this.hub(path as keyof typeof SEO_HUBS);
@@ -158,7 +161,7 @@ export class PagesService {
               : 'Discover events',
         );
     const discovery =
-      '<nav aria-label="Explore Jump" class="mt-10 flex flex-wrap gap-4"><a href="/running-events">Running events</a><a href="/running-clubs">Running clubs</a><a href="/step-challenges">Walking and step challenges</a><a href="/virtual-fitness-challenges">Virtual fitness challenges</a><a href="/business">Workplace challenges</a></nav>';
+      '<nav aria-label="Explore Jump" class="mt-10 flex flex-wrap gap-4"><a href="/running-events">Running events</a><a href="/running-clubs">Running clubs</a><a href="/step-challenges">Walking and step challenges</a><a href="/virtual-fitness-challenges">Virtual fitness challenges</a><a href="/business">Workplace challenges</a><a href="/learn">Guides</a><a href="/about">About Jump</a></nav>';
     const schema: Record<string, unknown>[] = [
       this.trail(
         path === '/'
@@ -624,7 +627,12 @@ export class PagesService {
   async sitemapShard(name: string): Promise<string | null> {
     let rows: Array<{ path: string; updated?: Date }> = [];
     if (name === 'static.xml') {
-      rows = Object.keys(SEO_STATIC).map((path) => ({ path }));
+      rows = [
+        ...Object.keys(SEO_STATIC),
+        '/about',
+        '/learn',
+        ...GUIDES.map((g) => '/learn/' + g.slug),
+      ].map((path) => ({ path }));
       for (const path of Object.keys(SEO_HUBS) as Array<
         keyof typeof SEO_HUBS
       >) {
@@ -693,7 +701,9 @@ export class PagesService {
       .join('')}</urlset>`;
   }
   robots() {
-    return `User-agent: *
+    return `# Search crawlers (OAI-SearchBot, Googlebot, bingbot, PerplexityBot) inherit this public policy.
+# GPTBot training access is separate; this preserves the existing wildcard policy.
+User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /assets/*.map
