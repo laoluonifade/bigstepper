@@ -12,6 +12,8 @@ export function isSeoPath(path: string) {
     [
       '/',
       '/business',
+      '/about',
+      '/learn',
       '/brands',
       '/competitions',
       '/events',
@@ -22,6 +24,7 @@ export function isSeoPath(path: string) {
     ].includes(path) ||
     (/^\/(events|clubs|competitions)\/[a-zA-Z0-9_-]+$/.test(path) &&
       path !== '/competitions/new') ||
+    /^\/learn\/[a-z0-9-]+$/.test(path) ||
     /^\/running-(clubs|events)\/in\/[a-z0-9-]+$/.test(path)
   );
 }

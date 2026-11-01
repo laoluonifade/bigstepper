@@ -133,7 +133,10 @@ const discovery2=createRoute({getParentRoute:()=>root,path:'/step-challenges',co
 const discovery3=createRoute({getParentRoute:()=>root,path:'/virtual-fitness-challenges',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
 const discovery4=createRoute({getParentRoute:()=>root,path:'/running-events/in/$location',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
 const discovery5=createRoute({getParentRoute:()=>root,path:'/running-clubs/in/$location',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
-const discoveryRoutes=[discovery0,discovery1,discovery2,discovery3,discovery4,discovery5] as const;
+const aboutJump=createRoute({getParentRoute:()=>root,path:'/about',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const knowledgeIndex=createRoute({getParentRoute:()=>root,path:'/learn',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const knowledgeGuide=createRoute({getParentRoute:()=>root,path:'/learn/$slug',component:page(()=>import('./pages/Discover'),'DiscoverPage')});
+const discoveryRoutes=[aboutJump,knowledgeIndex,knowledgeGuide,discovery0,discovery1,discovery2,discovery3,discovery4,discovery5] as const;
 const workplaceAlias=createRoute({getParentRoute:()=>root,path:'/workplace-step-challenges',beforeLoad:()=>{throw redirect({to:'/business',replace:true});}});
 const corporateAlias=createRoute({getParentRoute:()=>root,path:'/corporate-wellness-competitions',beforeLoad:()=>{throw redirect({to:'/business',replace:true});}});
 const routeTree = root.addChildren([
