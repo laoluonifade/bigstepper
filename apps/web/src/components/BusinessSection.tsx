@@ -29,12 +29,6 @@ const benefits = [
   },
 ];
 
-const challengeIdeas = [
-  { tag: 'FIRST TO THE FINISH', title: 'First to 100,000 steps', detail: 'A shared target for every participant', value: '100k', fill: 'w-[72%]', color: 'bg-track' },
-  { tag: 'DAILY GOAL', title: 'Eight thousand a day', detail: 'Keep the streak alive this week', value: '8,000', fill: 'w-[58%]', color: 'bg-volt' },
-  { tag: 'WEEKLY LEADERBOARD', title: 'Most steps this week', detail: 'A little friendly competition', value: '7 days', fill: 'w-[84%]', color: 'bg-[#95B8FF]' },
-];
-
 const leaderboard = [
   { name: 'Amara Okafor', steps: '42,860', avatar: 'AO', color: 'bg-[#F5B89B]' },
   { name: 'Tunde Bello', steps: '38,420', avatar: 'TB', color: 'bg-[#B9D3FF]' },
@@ -107,7 +101,7 @@ export function BusinessSection() {
       </div>
 
       {/* Benefits */}
-      <div className="mt-20 sm:mt-28">
+      <div className="mt-16 sm:mt-20">
         <SectionIntro eyebrow="Why teams pick Jump" title="Move more. Connect more." />
         <div className="mt-7 grid gap-3 sm:grid-cols-3">
           {benefits.map((item) => <article key={item.number} className="flex min-h-[180px] flex-col rounded-md border-[1.5px] border-ink bg-card p-4 transition-transform duration-150 hover:-translate-y-1 sm:p-5">
@@ -121,50 +115,24 @@ export function BusinessSection() {
         </div>
       </div>
 
-      {/* Competition showcase */}
-      <div className="relative mt-20 overflow-hidden rounded-md border-2 border-ink bg-ink px-5 py-8 text-paper shadow-hard sm:mt-28 sm:px-9 sm:py-11">
-        <div className="absolute -right-24 -top-28 h-72 w-72 rounded-full border-[36px] border-white/[0.06]" aria-hidden="true" />
-        <div className="relative grid gap-8">
-          <div className="flex flex-col items-center text-center">
-            <h3 className="display mt-3 max-w-3xl text-[clamp(24px,6.8vw,58px)] leading-[0.9] tracking-[-0.045em]">A challenge worth joining.</h3>
-            <span className="mt-5 inline-flex rounded-sm border border-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-paper/60">Example challenge setups · illustrative</span>
-          </div>
-          <div className="grid gap-2.5 sm:grid-cols-3">
-            {challengeIdeas.map((idea) => <article key={idea.title} className="rounded-md border border-white/15 bg-white/[0.08] p-3.5 backdrop-blur-sm">
-              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-paper/50">{idea.tag}</p>
-              <h4 className="mt-3 min-h-[42px] text-[15px] font-extrabold leading-tight">{idea.title}</h4>
-              <div className="mt-4 flex items-end justify-between gap-2">
-                <span className="text-[10px] text-paper/50">Progress</span>
-                <span className="num text-[12px] font-extrabold">{idea.value}</span>
-              </div>
-              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/15"><div className={`h-full rounded-full ${idea.color} ${idea.fill}`} /></div>
-            </article>)}
-          </div>
-        </div>
-      </div>
-
       {/* How it works */}
-      <div id="business-how" className="scroll-mt-8 mt-20 sm:mt-28">
+      <div id="business-how" className="scroll-mt-8 relative mt-12 rounded-md border-2 border-ink bg-ink px-5 py-7 text-paper shadow-hard sm:mt-16 sm:px-8 sm:py-9 [&_.eyebrow]:text-paper/55">
         <SectionIntro eyebrow="No complicated onboarding" title="Start in three steps." />
         <ol className="mt-8 grid gap-3 sm:grid-cols-3">
           {[
             ['01', 'Create your club', 'Add your workplace and invite colleagues.'],
             ['02', 'Connect Apple Health', 'On iPhone, allow access to sync daily steps.'],
             ['03', 'Start a challenge', 'Choose a supported free challenge and follow the leaderboard.'],
-          ].map(([n, title, body]) => <li key={n} className="relative rounded-md border-[1.5px] border-ink bg-card p-4 sm:p-5">
-            <span className="score text-[30px] text-track">{n}</span>
+          ].map(([n, title, body]) => <li key={n} className="relative rounded-md border border-white/20 bg-white/[0.06] p-4 sm:p-5">
+            <span className="score text-[30px] text-volt">{n}</span>
             <h3 className="wide mt-5 text-[18px] font-extrabold uppercase leading-tight">{title}</h3>
-            <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{body}</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-paper/70">{body}</p>
           </li>)}
         </ol>
-        <details className="mt-4 text-[12px] leading-relaxed text-ink-3">
-          <summary className="cursor-pointer font-semibold">Tracking details</summary>
-          <p className="mt-2 max-w-2xl">Apple Health requires the latest iPhone app and permission. Daily steps and walking distance count in supported free challenges from the time you connect. iOS controls sync timing. Android users can record walks and runs in Jump.</p>
-        </details>
       </div>
 
       {/* Final CTA */}
-      <div className="relative mt-20 overflow-hidden rounded-md border-2 border-ink bg-volt px-5 py-9 shadow-hard sm:mt-28 sm:px-10 sm:py-12">
+      <div className="relative mt-12 overflow-hidden rounded-md border-2 border-ink bg-volt px-5 py-9 shadow-hard sm:mt-16 sm:px-10 sm:py-12">
         <span className="absolute -right-7 -top-16 rotate-12 text-[180px] font-black leading-none text-ink/[0.06]" aria-hidden="true">J</span>
         <div className="relative flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
           <div className="max-w-2xl">
