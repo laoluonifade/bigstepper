@@ -1,8 +1,11 @@
 import { EntityManager } from 'typeorm';
-import { ChallengeType, dailyMeasure, ScoringMethod } from './competition-rules';
+import { ChallengeType, countsAppleHealth, DAILY_HEALTH_METHODS, dailyMeasure, ScoringMethod } from './competition-rules';
 import { daysBetween, ScoredActivity, scoreEntrants } from './scoring-engine';
 import { timeEfforts } from './best-effort';
 import { COUNTED_STATUSES, countedMetres, countedSteps } from '../running/counted';
+
+export const HEALTH_ELIGIBLE = (alias: string) =>
+  `(${alias}."type" = 'free' AND ${alias}."challengeType" IN ('STEP', 'WALK', 'DISTANCE') AND ${alias}."scoringMethod" IN (${DAILY_HEALTH_METHODS.map((method) => `'${method}'`).join(', ')}))`;
 
 export async function creditActivities(manager: EntityManager, scope: { activityId: string } | { tableId: string; userId: string }) {
   const [filter, params] = 'activityId' in scope
@@ -58,15 +61,28 @@ export async function uncreditActivity(manager: EntityManager, activityId: strin
 export async function retotal(manager: EntityManager, tableIds: string[]) {
   await manager.query(
     `UPDATE "table_registrations" r
-     SET "creditedDistanceMetres" = COALESCE(totals.distance, 0), "creditedSteps" = COALESCE(days.steps, totals.steps, 0), "completionTimeSeconds" = totals.best_time
+     SET "creditedDistanceMetres" = COALESCE(merged.metres, totals.distance, 0), "creditedSteps" = COALESCE(merged.steps, totals.steps, 0), "completionTimeSeconds" = totals.best_time
      FROM "table_registrations" own
      JOIN "competition_tables" t ON t."id" = own."tableId"
      LEFT JOIN LATERAL (
-       SELECT SUM(d."steps")::integer AS steps FROM "daily_steps" d
-       WHERE t."allDaySteps" AND d."userId" = own."userId"
-         AND d."day" BETWEEN (COALESCE(t."startsAt", t."createdAt") AT TIME ZONE t."timeZone")::date
-                         AND (LEAST(now(), COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)) AT TIME ZONE t."timeZone")::date
-     ) days ON true
+       SELECT SUM(GREATEST(COALESCE(a.steps, 0), COALESCE(h.steps, 0)))::integer AS steps,
+              SUM(GREATEST(COALESCE(a.metres, 0), COALESCE(h.metres, 0)))::integer AS metres
+       FROM (
+         SELECT (act."startedAt" AT TIME ZONE t."timeZone")::date AS day, SUM(c."creditedSteps") AS steps, SUM(c."creditedDistanceMetres") AS metres
+         FROM "table_activity_credits" c JOIN "activities" act ON act."id" = c."activityId"
+         WHERE c."registrationId" = own."id" GROUP BY 1
+       ) a
+       FULL OUTER JOIN (
+         SELECT d."day", d."countedSteps" AS steps, d."countedMetres" AS metres FROM "daily_steps" d
+         WHERE d."userId" = own."userId" AND (d."countedSteps" > 0 OR d."countedMetres" > 0)
+           AND d."day" BETWEEN (COALESCE(t."startsAt", t."createdAt") AT TIME ZONE t."timeZone")::date
+                           AND (LEAST(now(), COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)) AT TIME ZONE t."timeZone")::date
+       ) h ON h."day" = a.day
+       WHERE ${HEALTH_ELIGIBLE('t')} AND EXISTS (
+         SELECT 1 FROM "daily_steps" d WHERE d."userId" = own."userId" AND (d."countedSteps" > 0 OR d."countedMetres" > 0)
+           AND d."day" BETWEEN (COALESCE(t."startsAt", t."createdAt") AT TIME ZONE t."timeZone")::date
+                           AND (LEAST(now(), COALESCE(t."scoringClosesAt", 'infinity'::timestamptz)) AT TIME ZONE t."timeZone")::date)
+     ) merged ON true
      LEFT JOIN (
        SELECT c."registrationId", SUM(c."creditedDistanceMetres")::integer AS distance,
               SUM(c."creditedSteps")::integer AS steps, MIN(c."completionTimeSeconds")::integer AS best_time
@@ -92,7 +108,7 @@ interface TableRules {
   dailyTarget: number | null;
   minSessions: number | null;
   timeZone: string;
-  allDaySteps: boolean;
+  type: string;
   startDay: string;
   endDay: string;
 }
@@ -101,7 +117,7 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
   for (const tableId of tableIds) {
     const [table] = await manager.query(
       `SELECT "id", "challengeType", "scoringMethod", "rulesVersion", "targetDistanceMetres", "targetSteps", "targetSeconds",
-              "targetSessions", "dailyTarget", "minSessions", "timeZone", "allDaySteps",
+              "targetSessions", "dailyTarget", "minSessions", "timeZone", "type",
               to_char((COALESCE("startsAt", "createdAt") AT TIME ZONE "timeZone")::date, 'YYYY-MM-DD') AS "startDay",
               to_char((LEAST(now(), COALESCE("scoringClosesAt", 'infinity'::timestamptz)) AT TIME ZONE "timeZone")::date, 'YYYY-MM-DD') AS "endDay"
        FROM "competition_tables" WHERE "id" = $1`,
@@ -119,9 +135,7 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
        WHERE c."tableId" = $1`,
       [tableId, table.timeZone],
     ) as ScoredActivity[];
-    const days = table.allDaySteps ? await allDayRows(manager, table) : [];
-    const daily = new Set(days.map((row) => row.registrationId));
-    const scored = [...rows.filter((row) => !daily.has(row.registrationId)), ...days];
+    const scored = countsAppleHealth(table) ? withHealthDays(rows, await healthRows(manager, table)) : rows;
     const scores = scoreEntrants({
       method: table.scoringMethod,
       rulesVersion: table.rulesVersion,
@@ -146,15 +160,28 @@ export async function rescore(manager: EntityManager, tableIds: string[]) {
   }
 }
 
-function allDayRows(manager: EntityManager, table: TableRules) {
+function healthRows(manager: EntityManager, table: TableRules) {
   return manager.query(
     `SELECT r."id" AS "registrationId", 'day:' || to_char(d."day", 'YYYY-MM-DD') AS "activityId",
             d."day"::timestamp AT TIME ZONE $2 AS "startedAt",
             LEAST(d."updatedAt", (d."day" + 1)::timestamp AT TIME ZONE $2) AS "finishedAt",
-            to_char(d."day", 'YYYY-MM-DD') AS "day", 0 AS "distance", d."steps", 0 AS "movingSeconds", 0 AS "elapsedSeconds",
+            to_char(d."day", 'YYYY-MM-DD') AS "day", d."countedMetres" AS "distance", d."countedSteps" AS "steps", 0 AS "movingSeconds", 0 AS "elapsedSeconds",
             NULL AS "elevation", NULL AS "completionSeconds"
      FROM "table_registrations" r JOIN "daily_steps" d ON d."userId" = r."userId"
-     WHERE r."tableId" = $1 AND d."day" BETWEEN $3::date AND $4::date`,
+     WHERE r."tableId" = $1 AND d."day" BETWEEN $3::date AND $4::date AND (d."countedSteps" > 0 OR d."countedMetres" > 0)`,
     [table.id, table.timeZone, table.startDay, table.endDay],
   ) as Promise<ScoredActivity[]>;
+}
+
+export function withHealthDays(activities: ScoredActivity[], days: ScoredActivity[]) {
+  const healthDays = new Set(days.map((day) => `${day.registrationId}:${day.day}`));
+  const kept = activities.filter((activity) => !healthDays.has(`${activity.registrationId}:${activity.day}`));
+  const merged = days.map((day) => {
+    const same = activities.filter((activity) => activity.registrationId === day.registrationId && activity.day === day.day);
+    const steps = same.reduce((sum, activity) => sum + activity.steps, 0);
+    const distance = same.reduce((sum, activity) => sum + activity.distance, 0);
+    const finished = same.reduce((latest, activity) => (activity.finishedAt > latest ? activity.finishedAt : latest), day.finishedAt);
+    return { ...day, steps: Math.max(steps, day.steps), distance: Math.max(distance, day.distance), finishedAt: finished };
+  });
+  return [...kept, ...merged];
 }

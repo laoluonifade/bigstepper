@@ -25,6 +25,11 @@ export function shownMetres(activity: Activity) {
   return Math.max(activity.validatedDistanceMetres, activity.stepDistanceMetres ?? 0);
 }
 
+/** Steps an activity shows: what was recorded until it's checked, then what verification kept. */
+export function shownSteps(activity: Activity) {
+  return activity.verificationStatus === 'PENDING_VERIFICATION' ? activity.recordedSteps : activity.validatedSteps;
+}
+
 /** True when a verified activity's distance came from steps (indoors) rather than GPS. */
 export function fromSteps(activity: Activity) {
   return (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED') && (activity.stepDistanceMetres ?? 0) > activity.validatedDistanceMetres;

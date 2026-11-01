@@ -6,7 +6,7 @@ import type { Unit } from '../lib/types';
 import { ChevronLeftIcon, ChevronRightIcon } from './icons';
 import { cx, ErrorNotice, Segmented, Skeleton } from './ui';
 
-type DayTotal = { day: string; activities: number; steps: number; distanceMetres: string };
+type DayTotal = { day: string; activities: number; steps: number; distanceMetres: string; healthSteps?: number };
 type Metric = 'steps' | 'distance';
 
 export function ActivityCalendar({ unit }: { unit: Unit }) {
@@ -35,7 +35,10 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="wide text-[16px] font-extrabold uppercase sm:text-[18px]">Every day counts</h2>
-          <p className="mt-0.5 text-[12px] text-ink-2">Orange days are days you moved.</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-2">
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-track" />Activity</span>
+            {totals.data?.some((day) => !day.activities && (day.healthSteps ?? 0) > 0) && <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-[#FF2D55]" />Apple Health steps</span>}
+          </p>
         </div>
         <div className="shrink-0"><Segmented<Metric> size="sm" label="Calendar measure" value={metric} onChange={setMetric} options={[{ value: 'distance', label: 'Km' }, { value: 'steps', label: 'Steps' }]} /></div>
       </div>
@@ -55,7 +58,9 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
           {Array.from({ length: daysInMonth }, (_, index) => {
             const date = `${monthKey}-${String(index + 1).padStart(2, '0')}`;
             const day = days.get(date);
-            const moved = (day?.activities ?? 0) > 0;
+            const recorded = (day?.activities ?? 0) > 0;
+            const health = !recorded && (day?.healthSteps ?? 0) > 0;
+            const moved = recorded || health;
             const isToday = date === todayKey;
             const value = metric === 'steps' ? (day?.steps ?? 0) : Number(day?.distanceMetres ?? 0);
             const label = metric === 'steps' ? `${value.toLocaleString('en-GB')} steps` : formatDistance(value, unit);
@@ -64,10 +69,10 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
                 key={date}
                 className={cx(
                   'flex aspect-square min-w-0 flex-col items-center justify-center rounded-lg px-0.5',
-                  moved ? 'bg-track text-paper' : 'bg-ink/[0.035]',
+                  recorded ? 'bg-track text-paper' : health ? 'bg-[#FF2D55] text-white' : 'bg-ink/[0.035]',
                   isToday && 'ring-2 ring-ink ring-offset-1 ring-offset-card',
                 )}
-                title={moved ? `${date}: ${day!.activities} ${day!.activities === 1 ? 'activity' : 'activities'}, ${label}` : `${date}: rest day`}
+                title={recorded ? `${date}: ${day!.activities} ${day!.activities === 1 ? 'activity' : 'activities'}, ${label}` : health ? `${date}: steps from Apple Health, ${label}` : `${date}: rest day`}
               >
                 <span className={cx('num block text-[12px] font-bold', !moved && 'font-medium text-ink-3')}>{index + 1}</span>
                 {moved && (

@@ -66,8 +66,8 @@ export default function DashboardScreen() {
     <View style={{ gap: 12 }}>
       <RaceHero unit={unit} now={now} />
       <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
-      <HealthToday unit={unit} />
       <View ref={leaderboardRef} collapsable={false}><LeaderboardPeek unit={unit} /></View>
+      <HealthToday unit={unit} />
     </View>
     <View style={{ gap: 32, marginTop: 32 }}>
       <MyCompetitions unit={unit} now={now} />

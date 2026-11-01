@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { formatDistanceNumber, formatDuration, formatPace, formatSpeed, formatTime } from '../lib/format';
-import { shownMetres } from '@jump/shared/progress';
+import { shownMetres, shownSteps } from '@jump/shared/progress';
 import type { Activity, Unit } from '../lib/types';
 import { ChevronRightIcon } from './icons';
 import { cx, VerificationTag } from './ui';
@@ -10,6 +10,8 @@ export { fromSteps, shownMetres } from '@jump/shared/progress';
 export function ActivityRow({ activity, unit }: { activity: Activity; unit: Unit }) {
   const started = new Date(activity.startedAt);
   const metres = shownMetres(activity);
+  const steps = activity.activityType === 'cycle' ? 0 : shownSteps(activity);
+  const stepsOnly = metres < 10 && steps > 0;
   const pace = activity.activityType === 'cycle' ? formatSpeed(metres, activity.movingSeconds || activity.elapsedSeconds, unit) : formatPace(metres, activity.movingSeconds || activity.elapsedSeconds, unit);
   const rejected = activity.verificationStatus === 'REJECTED';
   return (
@@ -27,13 +29,14 @@ export function ActivityRow({ activity, unit }: { activity: Activity; unit: Unit
       <div className="min-w-0 flex-1">
         <p className="flex items-baseline gap-1">
           <span className={cx('score num text-[26px]', rejected && 'text-ink-3 line-through decoration-2')}>
-            {formatDistanceNumber(metres, unit)}
+            {stepsOnly ? steps.toLocaleString('en-GB') : formatDistanceNumber(metres, unit)}
           </span>
-          <span className="text-[12px] font-semibold text-ink-2">{unit}</span>
+          <span className="text-[12px] font-semibold text-ink-2">{stepsOnly ? 'steps' : unit}</span>
+          {!stepsOnly && steps > 0 && <span className="num text-[12px] text-ink-3">· {steps.toLocaleString('en-GB')} steps</span>}
         </p>
         <p className="num mt-0.5 text-[12px] text-ink-2">
           <span className="font-bold capitalize text-ink">{activity.activityType === 'cycle' ? 'Ride' : activity.activityType}</span> · {formatTime(activity.startedAt)} · {formatDuration(activity.movingSeconds || activity.elapsedSeconds)}
-          {pace && ` · ${pace}${activity.activityType === 'cycle' ? '' : ` /${unit}`}`}
+          {pace && !stepsOnly && ` · ${pace}${activity.activityType === 'cycle' ? '' : ` /${unit}`}`}
           {activity.source === 'strava' && <span className="font-bold text-[#FC5200]"> · Strava</span>}
           {activity.source === 'apple_health' && <span className="font-bold text-[#FF2D55]"> · Apple Health</span>}
         </p>

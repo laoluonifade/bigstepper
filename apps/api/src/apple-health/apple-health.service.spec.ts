@@ -3,7 +3,7 @@ import { alreadyImported, saveImportedActivity } from '../running/import-activit
 import { spreadSteps } from './apple-health-steps';
 import { AppleHealthService } from './apple-health.service';
 
-jest.mock('../tables/competition-credits', () => ({ retotal: jest.fn() }));
+jest.mock('../tables/competition-credits', () => ({ retotal: jest.fn(), uncreditActivity: jest.fn(), HEALTH_ELIGIBLE: () => 'true' }));
 
 jest.mock('../running/import-activity', () => ({
   alreadyImported: jest.fn(),
@@ -83,11 +83,12 @@ describe('AppleHealthService daily steps', () => {
   }
   const today = new Date().toISOString().slice(0, 10);
 
-  it('saves recent days only and rescores all-day step competitions the runner is in', async () => {
+  it('saves recent days only and rescores the competitions Apple Health counts in', async () => {
     const { service, query, dataSource } = stepsSetup([{ day: today }], [{ id: 'table' }]);
     await expect(service.saveDailySteps('runner', [{ day: today, steps: 12_000 }, { day: '2001-01-01', steps: 5 }])).resolves.toEqual({ saved: 1 });
     expect(JSON.parse(query.mock.calls[0][1][1])).toEqual([{ day: today, steps: 12_000 }]);
     expect(query.mock.calls[0][0]).toContain('LEAST(x."steps", 100000)');
+    expect(query.mock.calls[0][0]).toContain('LEAST(COALESCE(x."countedSteps", 0), s.steps)');
     expect(dataSource.transaction).toHaveBeenCalled();
   });
 

@@ -91,9 +91,9 @@ On iPhone, you can choose to connect Jump to Apple Health from You → Connectio
 If you connect Apple Health, Jump reads:
 
 * Workouts: walks, hikes, runs, and rides, with their start and end times, distance, route, and the steps counted during them.
-* Daily step counts from your iPhone and Apple Watch. Steps entered by hand in Apple Health are not used.
+* Daily step counts and walking distance from your iPhone and Apple Watch. Anything entered by hand in Apple Health is not used.
 
-We use this information only to add your workouts to your Jump activity history, count your steps and activities in competitions and on leaderboards, and check that results are fair. Imported workouts go through the same checks as activities recorded in Jump.
+We use this information only to add your workouts to your Jump activity history, count your steps, distance, and activities in competitions and on leaderboards (from the time you connect Apple Health), and check that results are fair. Imported workouts go through the same checks as activities recorded in Jump.
 
 Jump only reads from Apple Health. It does not write, change, or delete anything in Apple Health.
 

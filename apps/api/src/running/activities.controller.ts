@@ -19,6 +19,11 @@ export class ActivitiesController {
     return this.activitiesService.calendar(user.id, month, timeZone);
   }
 
+  @Get('summary')
+  summary(@CurrentUser() user: AuthenticatedUser, @Query('tz') timeZone?: string) {
+    return this.activitiesService.summary(user.id, timeZone);
+  }
+
   @Get(':id/credits')
   credits(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.activitiesService.credits(user.id, id);

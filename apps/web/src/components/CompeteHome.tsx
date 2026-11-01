@@ -258,7 +258,7 @@ function RaceLine({ progress, marks }: { progress: number; marks: Array<{ key: s
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink/[0.07]">
       <div className="h-full rounded-full bg-ink transition-[width] duration-[1200ms] ease-out" style={{ width: `${(shown ? progress : 0) * 100}%` }} />
     </div>
-    {marks.map((mark) => <span key={mark.key} className={cx('absolute top-0 rounded-full border-2', mark.me ? 'z-10 border-track' : 'border-card')}
+    {marks.map((mark) => <span key={mark.key} className={cx('absolute top-0 flex h-[30px] w-[30px] items-center justify-center overflow-hidden rounded-full border-2', mark.me ? 'z-10 border-track' : 'border-card')}
       style={{ left: `clamp(0px, calc(${mark.at * 100}% - 15px), calc(100% - 30px))` }}>{mark.avatar}</span>)}
   </div>;
 }

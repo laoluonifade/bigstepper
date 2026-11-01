@@ -1,14 +1,15 @@
 import { formatDistanceNumber, formatDuration } from '@jump/shared/format';
 import { lifetimeStats, ofKind, type ActivityKind } from '@jump/shared/progress';
 import type { Activity } from '@jump/shared/types';
+import { useQuery } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ActivityCalendar } from '@/components/ActivityCalendar';
 import { ActivityRow } from '@/components/ActivityRow';
-import { DailyStepsList } from '@/components/apple-health';
 import { RunIcon } from '@/components/icons';
 import { Button, Card, EmptyState, ErrorNotice, Eyebrow, Screen, Segmented, Skeleton, Stat, Txt } from '@/components/ui';
+import { api } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { storageKeys, useStored } from '@/lib/local';
 import { useActivities, useUnit } from '@/lib/queries';
@@ -24,6 +25,11 @@ export default function ActivitiesScreen() {
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const list = useMemo(() => ofKind(activities.data ?? [], kind), [activities.data, kind]);
   const stats = useMemo(() => lifetimeStats(list), [list]);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const summary = useQuery({
+    queryKey: ['activity-summary', timeZone],
+    queryFn: () => api<{ totalSteps: number; activeDays: number }>(`/activities/summary?tz=${encodeURIComponent(timeZone)}`),
+  });
   const attention = list.filter((a) => a.verificationStatus === 'REJECTED').length;
   const filtered = list.filter((activity) => filter === 'verified' ? (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED')
     : filter === 'attention' ? activity.verificationStatus === 'REJECTED' : true);
@@ -36,7 +42,7 @@ export default function ActivitiesScreen() {
     return [...map.entries()];
   }, [filtered]);
 
-  return <Screen refreshing={activities.isRefetching} onRefresh={() => void activities.refetch()}>
+  return <Screen refreshing={activities.isRefetching} onRefresh={() => { void activities.refetch(); void summary.refetch(); }}>
     <Stack.Screen options={{ title: 'Your activities' }} />
     <View style={{ marginBottom: 16 }}>
       <Segmented<ActivityKind> label="Show runs, walks or both" value={kind} onChange={setKind} options={[{ value: 'all', label: 'All' }, { value: 'run', label: 'Runs' }, { value: 'walk', label: 'Walks' }]} />
@@ -46,11 +52,11 @@ export default function ActivitiesScreen() {
       <Stat style={styles.stat} label={kind === 'run' ? 'Verified runs' : kind === 'walk' ? 'Verified walks' : 'Verified activities'} value={activities.isLoading ? '–' : stats.verifiedRuns} />
       <Stat style={styles.stat} label="Longest" value={activities.isLoading ? '–' : formatDistanceNumber(stats.longestMetres, unit)} unit={unit} />
       <Stat style={styles.stat} label="Moving time" value={activities.isLoading ? '–' : formatDuration(stats.movingSeconds)} />
+      <Stat style={styles.stat} label="Total steps" value={summary.data ? summary.data.totalSteps.toLocaleString('en-GB') : '–'} />
+      <Stat style={styles.stat} label="Active days" value={summary.data ? summary.data.activeDays : '–'} />
     </Card>
 
     <ActivityCalendar unit={unit} />
-
-    <DailyStepsList unit={unit} />
 
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
       <Text style={wideLabel(16, 0)}>History</Text>

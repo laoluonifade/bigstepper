@@ -1,5 +1,5 @@
 import { activityName, formatDistance, formatDistanceNumber, formatDuration, formatPace, formatSpeed, formatTime } from '@jump/shared/format';
-import { shownMetres } from '@jump/shared/progress';
+import { shownMetres, shownSteps } from '@jump/shared/progress';
 import type { Activity, Unit } from '@jump/shared/types';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -18,6 +18,8 @@ export function ActivityBadge({ type, size = 36 }: { type: 'walk' | 'run' | 'cyc
 export function ActivityRow({ activity, unit, last }: { activity: Activity; unit: Unit; last?: boolean }) {
   const started = new Date(activity.startedAt);
   const metres = shownMetres(activity);
+  const steps = activity.activityType === 'cycle' ? 0 : shownSteps(activity);
+  const stepsOnly = metres < 10 && steps > 0;
   const seconds = activity.movingSeconds || activity.elapsedSeconds;
   const pace = activity.activityType === 'cycle' ? formatSpeed(metres, seconds, unit) : formatPace(metres, seconds, unit);
   const rejected = activity.verificationStatus === 'REJECTED';
@@ -29,12 +31,13 @@ export function ActivityRow({ activity, unit, last }: { activity: Activity; unit
     </View>
     <View style={{ flex: 1, minWidth: 0 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-        <Text style={[score(26), rejected && { color: colors.ink3, textDecorationLine: 'line-through' }]}>{formatDistanceNumber(metres, unit)}</Text>
-        <Txt size={12} weight="semibold" color="ink2">{unit}</Txt>
+        <Text style={[score(26), rejected && { color: colors.ink3, textDecorationLine: 'line-through' }]}>{stepsOnly ? steps.toLocaleString('en-GB') : formatDistanceNumber(metres, unit)}</Text>
+        <Txt size={12} weight="semibold" color="ink2">{stepsOnly ? 'steps' : unit}</Txt>
+        {!stepsOnly && steps > 0 ? <Txt size={12} color="ink3" num>{` · ${steps.toLocaleString('en-GB')} steps`}</Txt> : null}
       </View>
       <Txt size={12} color="ink2" num numberOfLines={1} style={{ marginTop: 2 }}>
         <Txt size={12} weight="bold">{activity.activityType === 'cycle' ? 'Ride' : activity.activityType === 'run' ? 'Run' : 'Walk'}</Txt>
-        {` · ${formatTime(activity.startedAt)} · ${formatDuration(seconds)}${pace ? ` · ${pace}${activity.activityType === 'cycle' ? '' : ` /${unit}`}` : ''}`}
+        {` · ${formatTime(activity.startedAt)} · ${formatDuration(seconds)}${pace && !stepsOnly ? ` · ${pace}${activity.activityType === 'cycle' ? '' : ` /${unit}`}` : ''}`}
         {activity.source === 'strava' ? <Txt size={12} weight="bold" style={{ color: '#FC5200' }}> · Strava</Txt> : null}
         {activity.source === 'apple_health' ? <Txt size={12} weight="bold" style={{ color: '#FF2D55' }}> · Apple Health</Txt> : null}
       </Txt>

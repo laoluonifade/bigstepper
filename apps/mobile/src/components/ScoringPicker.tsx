@@ -2,7 +2,7 @@ import { ACTIVITY_RULES, dailyMeasure, METRICS, scoringOption, type ActivityType
 import { draftFor, type ScoringDraft } from '@jump/shared/scoring-draft';
 import type { Unit } from '@jump/shared/types';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { colors, radius } from '@/lib/theme';
 import { ChallengeMark } from './competition';
 import { ChevronDownIcon } from './icons';
@@ -42,14 +42,6 @@ export function ScoringPicker({ draft, onChange, unit, prizes, error }: { draft:
       label={`${metric.daily === 'optional' ? 'Count a day from' : metric.aggregate === 'dailyVariation' ? 'Minimum daily average' : 'Daily target'} (${daily === 'distance' ? distanceUnit : daily === 'steps' ? 'steps' : 'minutes'})`}
       hint={metric.daily === 'optional' ? `Leave empty and any day with a ${activity.sessions.replace(/s$/, '')} counts.` : metric.aggregate === 'streak' ? 'Every day in a row has to reach this.' : undefined} />}
 
-    {draft.challengeType === 'STEP' && !prizes && <Pressable onPress={() => { haptic(); set({ allDaySteps: !draft.allDaySteps }); }} accessibilityRole="checkbox" accessibilityState={{ checked: draft.allDaySteps }} style={styles.allDay}>
-      <View style={{ flex: 1 }}>
-        <Txt size={14} weight="semibold">Count all-day steps</Txt>
-        <Txt size={13} color="ink2" leading={1.4} style={{ marginTop: 2 }}>Every step from Apple Health counts, not just steps on recorded walks and runs. iPhone only for now: anyone else scores from their recorded walks and runs. Free competitions only.</Txt>
-      </View>
-      <Switch value={draft.allDaySteps} onValueChange={(allDaySteps) => { haptic(); set({ allDaySteps }); }} trackColor={{ true: colors.track, false: colors.line }} thumbColor={colors.white} accessibilityLabel="Count all-day steps" />
-    </Pressable>}
-
     {draft.challengeType === 'TIMED' && <View>
       <Txt size={13} weight="semibold" style={{ marginBottom: 6 }}>What counts</Txt>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -81,6 +73,5 @@ export function ScoringPicker({ draft, onChange, unit, prizes, error }: { draft:
 
 const styles = StyleSheet.create({
   toggle: { height: 36, justifyContent: 'center', borderRadius: radius.base, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingHorizontal: 12 },
-  allDay: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12 },
   qualifying: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12 },
 });

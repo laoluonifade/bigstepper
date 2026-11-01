@@ -6,11 +6,11 @@ import { DataSource, Repository } from 'typeorm';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 import { alreadyImported, saveImportedActivity } from '../running/import-activity';
 import { stravaStepTotals } from '../strava/strava-steps';
-import { spreadSteps } from './apple-health-steps';
+import { routeMetres, spreadSteps } from './apple-health-steps';
 import { AppleHealthLink } from './apple-health-link.entity';
 import { AppleHealthWorkoutDto, DailyStepsDto } from './apple-health.dto';
 import { refreshLeagueDistance } from '../leagues/league-credits';
-import { retotal, uncreditActivity } from '../tables/competition-credits';
+import { HEALTH_ELIGIBLE, retotal, uncreditActivity } from '../tables/competition-credits';
 
 const MAX_WORKOUT_SECONDS = 24 * 60 * 60;
 const ROUTE_SLACK_SECONDS = 120;
@@ -54,7 +54,7 @@ export class AppleHealthService {
       if (days.length) {
         const tables = await manager.query(
           `SELECT t."id" FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
-           WHERE r."userId" = $1 AND t."allDaySteps" AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
+           WHERE r."userId" = $1 AND ${HEALTH_ELIGIBLE('t')} AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
           [userId],
         ) as Array<{ id: string }>;
         if (tables.length) await retotal(manager, tables.map((table) => table.id));
@@ -86,18 +86,22 @@ export class AppleHealthService {
     });
     if (!valid.length) return { saved: 0 };
     const changed = await this.dataSource.query(
-      `INSERT INTO "daily_steps" ("userId", "day", "steps", "distanceMetres")
-       SELECT $1, x."day", LEAST(x."steps", ${MAX_DAILY_STEPS}), CASE WHEN x."distanceMetres" IS NULL THEN NULL ELSE LEAST(x."distanceMetres", ${MAX_DAILY_METRES}) END
-       FROM jsonb_to_recordset($2::jsonb) AS x("day" date, "steps" integer, "distanceMetres" integer)
-       ON CONFLICT ("userId", "day") DO UPDATE SET "steps" = EXCLUDED."steps", "distanceMetres" = COALESCE(EXCLUDED."distanceMetres", "daily_steps"."distanceMetres"), "updatedAt" = now()
-       WHERE "daily_steps"."steps" IS DISTINCT FROM EXCLUDED."steps" OR "daily_steps"."distanceMetres" IS DISTINCT FROM COALESCE(EXCLUDED."distanceMetres", "daily_steps"."distanceMetres")
+      `INSERT INTO "daily_steps" ("userId", "day", "steps", "distanceMetres", "countedSteps", "countedMetres")
+       SELECT $1, x."day", s.steps, s.metres, LEAST(COALESCE(x."countedSteps", 0), s.steps), LEAST(COALESCE(x."countedMetres", 0), COALESCE(s.metres, 0))
+       FROM jsonb_to_recordset($2::jsonb) AS x("day" date, "steps" integer, "distanceMetres" integer, "countedSteps" integer, "countedMetres" integer)
+       CROSS JOIN LATERAL (SELECT LEAST(x."steps", ${MAX_DAILY_STEPS}) AS steps,
+                                  CASE WHEN x."distanceMetres" IS NULL THEN NULL ELSE LEAST(x."distanceMetres", ${MAX_DAILY_METRES}) END AS metres) s
+       ON CONFLICT ("userId", "day") DO UPDATE SET "steps" = EXCLUDED."steps", "distanceMetres" = COALESCE(EXCLUDED."distanceMetres", "daily_steps"."distanceMetres"),
+         "countedSteps" = EXCLUDED."countedSteps", "countedMetres" = EXCLUDED."countedMetres", "updatedAt" = now()
+       WHERE ("daily_steps"."steps", "daily_steps"."distanceMetres", "daily_steps"."countedSteps", "daily_steps"."countedMetres")
+         IS DISTINCT FROM (EXCLUDED."steps", COALESCE(EXCLUDED."distanceMetres", "daily_steps"."distanceMetres"), EXCLUDED."countedSteps", EXCLUDED."countedMetres")
        RETURNING "day"`,
       [userId, JSON.stringify(valid)],
     ) as Array<{ day: string }>;
     if (changed.length) {
       const tables = await this.dataSource.query(
         `SELECT t."id" FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
-         WHERE r."userId" = $1 AND t."allDaySteps" AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
+         WHERE r."userId" = $1 AND ${HEALTH_ELIGIBLE('t')} AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
         [userId],
       ) as Array<{ id: string }>;
       if (tables.length) await this.dataSource.transaction((manager) => retotal(manager, tables.map((table) => table.id)));
@@ -126,6 +130,7 @@ export class AppleHealthService {
     if (await alreadyImported(this.dataSource, userId, externalId, startedAt, finishedAt)) return false;
 
     const points = route.map(([latitude, longitude]) => [latitude, longitude] as [number, number]);
+    const distanceMetres = workout.distanceMetres >= 1 ? workout.distanceMetres : routeMetres(points);
     const offsets = route.map(([, , offset]) => Math.max(0, offset));
     const sensorSteps = workout.activityType === 'cycle' || !workout.steps ? null : Math.min(workout.steps, elapsedSeconds * MAX_STEPS_PER_SECOND);
     const stepTotals = sensorSteps ? spreadSteps(points, sensorSteps) : stravaStepTotals(workout.activityType, offsets, points);
@@ -137,7 +142,7 @@ export class AppleHealthService {
       externalId,
       startedAt,
       finishedAt,
-      distanceMetres: workout.distanceMetres,
+      distanceMetres,
       elapsedSeconds,
       movingSeconds: elapsedSeconds,
       elevationGainMetres: workout.elevationGainMetres == null ? null : Math.round(workout.elevationGainMetres),

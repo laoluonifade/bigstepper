@@ -57,7 +57,9 @@ async function upload(workout: WorkoutProxyTyped, activityType: 'walk' | 'run' |
   if (locations.length < 2) return false;
   const route = sample([...locations].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()), MAX_ROUTE_POINTS)
     .map((point) => [point.latitude, point.longitude, Math.round((new Date(point.date).getTime() - startedAt.getTime()) / 100) / 10]);
-  const distance = workout.totalDistance ? workout.totalDistance.quantity * (METRES[workout.totalDistance.unit] ?? 1) : 0;
+  const total = workout.totalDistance ? workout.totalDistance.quantity * (METRES[workout.totalDistance.unit] ?? 1) : 0;
+  const distance = total > 0 ? total : await workout.getStatistic(activityType === 'cycle' ? 'HKQuantityTypeIdentifierDistanceCycling' : 'HKQuantityTypeIdentifierDistanceWalkingRunning', 'm')
+    .then((stats) => stats?.sumQuantity?.quantity ?? 0).catch(() => 0);
   const steps = activityType === 'cycle' ? undefined : await requireHealthKit().queryStatisticsForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], {
     filter: { date: { startDate: startedAt, endDate: finishedAt } },
     unit: 'count',
@@ -78,8 +80,16 @@ function localDay(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-/** Each day's steps and walking distance from iPhone and Apple Watch, leaving out anything typed in by hand. */
-async function syncDailySteps(since: string | null) {
+/** Each day's steps and walking distance from iPhone and Apple Watch, leaving out anything typed in by hand. Competitions only count what came after connecting. */
+async function sumSince(measure: 'steps' | 'metres', from: Date, to: Date) {
+  const filter = { date: { startDate: from, endDate: to }, NOT: [{ metadata: { withMetadataKey: 'HKWasUserEntered' } }] };
+  const stats = await (measure === 'steps'
+    ? requireHealthKit().queryStatisticsForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], { filter, unit: 'count' })
+    : requireHealthKit().queryStatisticsForQuantity('HKQuantityTypeIdentifierDistanceWalkingRunning', ['cumulativeSum'], { filter, unit: 'm' })).catch(() => null);
+  return Math.round(stats?.sumQuantity?.quantity ?? 0);
+}
+
+async function syncDailySteps(since: string | null, connectedAt: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const start = new Date(today);
@@ -97,12 +107,20 @@ async function syncDailySteps(since: string | null) {
     healthKit.queryStatisticsCollectionForQuantity('HKQuantityTypeIdentifierDistanceWalkingRunning', ['cumulativeSum'], start, { day: 1 }, { ...options, unit: 'm' }).catch(() => []),
   ]);
   const metres = new Map(distance.filter((day) => day.startDate && day.sumQuantity).map((day) => [localDay(new Date(day.startDate!)), Math.round(day.sumQuantity!.quantity)]));
-  const totals = steps
+  const connected = new Date(connectedAt);
+  const totals = await Promise.all(steps
     .filter((day) => day.startDate && day.sumQuantity)
-    .map((day) => {
-      const date = localDay(new Date(day.startDate!));
-      return { day: date, steps: Math.round(day.sumQuantity!.quantity), ...(metres.has(date) ? { distanceMetres: metres.get(date) } : {}) };
-    });
+    .map(async (day) => {
+      const dayStart = new Date(day.startDate!);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const date = localDay(dayStart);
+      const full = { steps: Math.round(day.sumQuantity!.quantity), metres: metres.get(date) };
+      const counted = dayEnd <= connected ? { steps: 0, metres: 0 }
+        : dayStart >= connected ? { steps: full.steps, metres: full.metres ?? 0 }
+          : { steps: await sumSince('steps', connected, dayEnd), metres: await sumSince('metres', connected, dayEnd) };
+      return { day: date, steps: full.steps, ...(full.metres != null ? { distanceMetres: full.metres } : {}), countedSteps: counted.steps, countedMetres: counted.metres };
+    }));
   if (totals.length) await post('/apple-health/steps', { days: totals });
 }
 
@@ -117,7 +135,7 @@ export async function syncAppleHealth(since: string | null, connectedAt: string)
     if (!activityType || metadata?.HKWasUserEntered || metadata?.HKIndoorWorkout) continue;
     if (await upload(workout, activityType)) imported += 1;
   }
-  await syncDailySteps(since);
+  await syncDailySteps(since, connectedAt);
   await post('/apple-health/synced');
   return imported;
 }

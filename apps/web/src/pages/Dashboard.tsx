@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
 import { ChallengeSomeone, LeaderboardPeek, MiniRing, MyCompetitions, RaceHero, SUMMARY_CARD } from '../components/CompeteHome';
+import { HealthToday } from '../components/HealthToday';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { RunIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon } from '../components/icons';
 import { EmojiPopover } from '../components/EmojiPopover';
@@ -71,6 +72,7 @@ export function DashboardPage() {
           <RaceHero unit={unit} now={now} />
           <SummaryTiles week={summaryWeek} streak={streak} unit={unit} loading={activities.isLoading} />
           <LeaderboardPeek unit={unit} />
+          <HealthToday unit={unit} />
         </div>
         <div className="mt-8 space-y-8">
           <MyCompetitions unit={unit} now={now} />

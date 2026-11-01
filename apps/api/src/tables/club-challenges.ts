@@ -99,7 +99,7 @@ export async function openTable(manager: EntityManager, table: CompetitionTable)
 
 const TEMPLATE_FIELDS = [
   'title', 'description', 'venue', 'address', 'latitude', 'longitude', 'type', 'challengeType', 'scoringMethod', 'targetDistanceMetres', 'targetSteps', 'targetSeconds', 'targetSessions',
-  'dailyTarget', 'allDaySteps', 'minSessions', 'minActivityMetres', 'minActivitySeconds', 'eligibleActivities', 'format', 'timeZone', 'rulesVersion',
+  'dailyTarget', 'minSessions', 'minActivityMetres', 'minActivitySeconds', 'eligibleActivities', 'format', 'timeZone', 'rulesVersion',
   'reminderTime', 'reminderTimeZone', 'capacity', 'distanceCapMetres', 'visibility', 'eligibleCountries', 'platformFeeBps', 'creatorCommissionBps',
   'prizeSplitBps', 'minimumEntrants', 'fundingDestination', 'prizeDeliveryCountries', 'prizeFulfilment', 'prizeShipping', 'prizeShippingNote',
   'prizeEligibilityNote', 'prizeClaimDays', 'prizeSelection', 'autoEnrolClub',

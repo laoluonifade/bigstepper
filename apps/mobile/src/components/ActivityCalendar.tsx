@@ -8,12 +8,14 @@ import { colors, fontFamily, radius, wideLabel } from '@/lib/theme';
 import { ChevronLeftIcon, ChevronRightIcon } from './icons';
 import { Card, ErrorNotice, Eyebrow, haptic, HardShadow, Segmented, Skeleton, Txt } from './ui';
 
-type DayTotal = { day: string; activities: number; steps: number; distanceMetres: string };
+type DayTotal = { day: string; activities: number; steps: number; distanceMetres: string; healthSteps?: number };
+
+const HEALTH_PINK = '#FF2D55';
 type Metric = 'steps' | 'distance';
 
 const compact = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}K` : String(value));
 
-/** A month of days, orange where you moved, with that day's distance or steps. */
+/** A month of days: orange where you recorded an activity, pink where Apple Health counted steps, with that day's distance or steps. */
 export function ActivityCalendar({ unit }: { unit: Unit }) {
   const today = new Date();
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -30,6 +32,7 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const monthSteps = totals.data?.reduce((sum, day) => sum + day.steps, 0) ?? 0;
   const monthMetres = totals.data?.reduce((sum, day) => sum + Number(day.distanceMetres), 0) ?? 0;
+  const healthDays = totals.data?.some((day) => !day.activities && (day.healthSteps ?? 0) > 0) ?? false;
   const cells = [...Array.from({ length: firstWeekday }, () => null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
   const changeMonth = (amount: number) => { haptic(); setMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1)); };
 
@@ -37,7 +40,10 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
       <View style={{ flex: 1 }}>
         <Text style={wideLabel(16, 0)}>Every day counts</Text>
-        <Txt size={12} color="ink2" style={{ marginTop: 2 }}>Orange days are days you moved.</Txt>
+        <View style={styles.legend}>
+          <View style={[styles.swatch, { backgroundColor: colors.track }]} /><Txt size={12} color="ink2">Activity</Txt>
+          {healthDays && <><View style={[styles.swatch, { backgroundColor: HEALTH_PINK, marginLeft: 8 }]} /><Txt size={12} color="ink2">Apple Health steps</Txt></>}
+        </View>
       </View>
       <Segmented<Metric> size="sm" label="Calendar measure" value={metric} onChange={setMetric} options={[{ value: 'distance', label: unit === 'km' ? 'Km' : 'Mi' }, { value: 'steps', label: 'Steps' }]} />
     </View>
@@ -57,13 +63,16 @@ export function ActivityCalendar({ unit }: { unit: Unit }) {
           if (dayNumber === null) return <View key={`blank-${index}`} style={styles.cell} />;
           const date = `${monthKey}-${String(dayNumber).padStart(2, '0')}`;
           const day = days.get(date);
-          const moved = (day?.activities ?? 0) > 0;
+          const recorded = (day?.activities ?? 0) > 0;
+          const health = !recorded && (day?.healthSteps ?? 0) > 0;
+          const moved = recorded || health;
           const value = metric === 'steps' ? (day?.steps ?? 0) : Number(day?.distanceMetres ?? 0);
+          const what = recorded ? `${day!.activities} ${day!.activities === 1 ? 'activity' : 'activities'}` : 'steps from Apple Health';
           return <View key={date} style={styles.cell}>
-            <View style={[styles.day, moved ? { backgroundColor: colors.track } : { backgroundColor: 'rgba(18,18,18,0.035)' }, date === todayKey && { borderWidth: 2, borderColor: colors.edge }]}
-              accessibilityLabel={moved ? `${date}: ${day!.activities} ${day!.activities === 1 ? 'activity' : 'activities'}, ${metric === 'steps' ? `${value} steps` : formatDistance(value, unit)}` : `${date}: rest day`}>
-              <Text style={[styles.dayNumber, moved ? { color: colors.paper } : { color: colors.ink3, fontFamily: fontFamily('medium') }]}>{dayNumber}</Text>
-              {moved && <Text numberOfLines={1} style={styles.dayValue}>{value > 0 ? (metric === 'steps' ? compact(value) : formatDistanceNumber(value, unit)) : '•'}</Text>}
+            <View style={[styles.day, recorded ? { backgroundColor: colors.track } : health ? { backgroundColor: HEALTH_PINK } : { backgroundColor: 'rgba(18,18,18,0.035)' }, date === todayKey && { borderWidth: 2, borderColor: colors.edge }]}
+              accessibilityLabel={moved ? `${date}: ${what}, ${metric === 'steps' ? `${value} steps` : formatDistance(value, unit)}` : `${date}: rest day`}>
+              <Text style={[styles.dayNumber, recorded ? { color: colors.paper } : health ? { color: '#FFFFFF' } : { color: colors.ink3, fontFamily: fontFamily('medium') }]}>{dayNumber}</Text>
+              {moved && <Text numberOfLines={1} style={[styles.dayValue, health && { color: '#FFFFFF' }]}>{value > 0 ? (metric === 'steps' ? compact(value) : formatDistanceNumber(value, unit)) : '•'}</Text>}
             </View>
           </View>;
         })}
@@ -85,6 +94,8 @@ const styles = StyleSheet.create({
   cell: { width: `${100 / 7}%`, padding: 3, alignItems: 'center' },
   day: { width: '100%', aspectRatio: 1, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 1 },
   dayNumber: { fontFamily: fontFamily('bold'), fontSize: 12, fontVariant: ['tabular-nums'] },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+  swatch: { width: 9, height: 9, borderRadius: 3 },
   dayValue: { fontFamily: fontFamily('semibold'), fontSize: 9.5, color: colors.paper, opacity: 0.9, fontVariant: ['tabular-nums'] },
   monthButton: { width: 36, height: 36, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
 });

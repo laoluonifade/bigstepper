@@ -187,8 +187,6 @@ export interface CompetitionTable {
   /** Daily bar or minimum daily average, in metres, steps or seconds (see dailyMeasure in competition-rules). */
   dailyTarget?: number | null;
   minSessions?: number | null;
-  /** Steps competitions only: count every step from Apple Health, not just steps on recorded walks and runs. */
-  allDaySteps?: boolean;
   minActivityMetres?: number | null;
   minActivitySeconds?: number | null;
   eligibleActivities?: ActivityType[] | null;

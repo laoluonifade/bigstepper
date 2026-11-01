@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useMemo, useState } from 'react';
 import { ActivityRow, fromSteps, shownMetres } from '../components/ActivityRow';
 import { ActivityCalendar } from '../components/ActivityCalendar';
-import { DailyStepsList } from '../components/DailySteps';
 import { SendActivityButton } from '../components/SendActivitySheet';
 import { ShareRun } from '../components/ShareRun';
 import { CheckIcon, FeedIcon, RunIcon, SendIcon } from '../components/icons';
@@ -30,6 +29,11 @@ export function ActivitiesPage() {
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const list = useMemo(() => ofKind(activities.data ?? [], kind), [activities.data, kind]);
   const stats = useMemo(() => lifetimeStats(list), [list]);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const summary = useQuery({
+    queryKey: ['activity-summary', timeZone],
+    queryFn: () => api<{ totalSteps: number; activeDays: number }>(`/activities/summary?tz=${encodeURIComponent(timeZone)}`),
+  });
   const attention = list.filter((a) => a.verificationStatus === 'REJECTED').length;
   const filtered = list.filter((activity) =>
     filter === 'verified'
@@ -64,16 +68,16 @@ export function ActivitiesPage() {
         <KindFilter value={kind} onChange={setKind} />
       </div>
 
-      <div key={kind} className="panel-strong mb-6 grid animate-rise grid-cols-2 gap-x-4 gap-y-5 p-5 sm:grid-cols-4">
+      <div key={kind} className="panel-strong mb-6 grid animate-rise grid-cols-2 gap-x-4 gap-y-5 p-5 sm:grid-cols-3">
         <Stat label={kind === 'run' ? 'Run distance' : kind === 'walk' ? 'Walk distance' : 'Verified distance'} value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
         <Stat label={kind === 'run' ? 'Verified runs' : kind === 'walk' ? 'Verified walks' : 'Verified activities'} value={activities.isLoading ? '–' : stats.verifiedRuns} />
         <Stat label="Longest" value={activities.isLoading ? '–' : formatDistanceNumber(stats.longestMetres, unit)} unit={unit} />
         <Stat label="Moving time" value={activities.isLoading ? '–' : formatDuration(stats.movingSeconds)} />
+        <Stat label="Total steps" value={summary.data ? summary.data.totalSteps.toLocaleString('en-GB') : '–'} />
+        <Stat label="Active days" value={summary.data ? summary.data.activeDays : '–'} />
       </div>
 
       <ActivityCalendar unit={unit} />
-
-      <DailyStepsList unit={unit} />
 
       <div className="mb-4">
         <div className="flex items-end justify-between gap-3">

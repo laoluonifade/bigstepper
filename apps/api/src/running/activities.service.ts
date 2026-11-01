@@ -44,17 +44,46 @@ export class ActivitiesService {
     try { new Intl.DateTimeFormat('en', { timeZone }); }
     catch { throw new BadRequestException('Invalid time zone'); }
     return this.activities.query(
-      `SELECT (a."startedAt" AT TIME ZONE $3)::date::text AS day,
-              COUNT(*)::integer AS "activities",
-              COALESCE(SUM(${countedSteps()}) FILTER (WHERE a."verificationStatus" IN ${COUNTED_STATUSES}), 0)::integer AS steps,
-              COALESCE(SUM(${countedMetres()}) FILTER (WHERE a."verificationStatus" IN ${COUNTED_STATUSES}), 0)::bigint AS "distanceMetres"
-       FROM "activities" a
-       WHERE a."userId"=$1 AND a."verificationStatus"<>'REJECTED'
-         AND (a."startedAt" AT TIME ZONE $3)::date >= ($2 || '-01')::date
-         AND (a."startedAt" AT TIME ZONE $3)::date < (($2 || '-01')::date + INTERVAL '1 month')
-       GROUP BY day ORDER BY day`,
+      `WITH moved AS (
+         SELECT (a."startedAt" AT TIME ZONE $3)::date AS day,
+                COUNT(*)::integer AS "activities",
+                COALESCE(SUM(${countedSteps()}) FILTER (WHERE a."verificationStatus" IN ${COUNTED_STATUSES}), 0)::integer AS steps,
+                COALESCE(SUM(${countedMetres()}) FILTER (WHERE a."verificationStatus" IN ${COUNTED_STATUSES}), 0)::bigint AS metres
+         FROM "activities" a
+         WHERE a."userId"=$1 AND a."verificationStatus"<>'REJECTED'
+           AND (a."startedAt" AT TIME ZONE $3)::date >= ($2 || '-01')::date
+           AND (a."startedAt" AT TIME ZONE $3)::date < (($2 || '-01')::date + INTERVAL '1 month')
+         GROUP BY 1
+       ), health AS (
+         SELECT d."day", d."steps", d."distanceMetres" FROM "daily_steps" d
+         WHERE d."userId"=$1 AND d."day" >= ($2 || '-01')::date AND d."day" < (($2 || '-01')::date + INTERVAL '1 month')
+       )
+       SELECT COALESCE(m.day, h."day")::text AS day,
+              COALESCE(m."activities", 0) AS "activities",
+              GREATEST(COALESCE(m.steps, 0), COALESCE(h."steps", 0))::integer AS steps,
+              GREATEST(COALESCE(m.metres, 0), COALESCE(h."distanceMetres", 0))::bigint AS "distanceMetres",
+              COALESCE(h."steps", 0) AS "healthSteps"
+       FROM moved m FULL OUTER JOIN health h ON h."day" = m.day
+       ORDER BY 1`,
       [userId, selected, timeZone],
     );
+  }
+
+  async summary(userId: string, timeZone = 'UTC') {
+    try { new Intl.DateTimeFormat('en', { timeZone }); }
+    catch { throw new BadRequestException('Invalid time zone'); }
+    const [row] = await this.activities.query(
+      `WITH moved AS (
+         SELECT (a."startedAt" AT TIME ZONE $2)::date AS day, SUM(${countedSteps()})::bigint AS steps
+         FROM "activities" a WHERE a."userId"=$1 AND a."verificationStatus" IN ${COUNTED_STATUSES} GROUP BY 1
+       ), days AS (
+         SELECT GREATEST(COALESCE(m.steps, 0), COALESCE(h."steps", 0)) AS steps
+         FROM moved m FULL OUTER JOIN (SELECT "day", "steps" FROM "daily_steps" WHERE "userId"=$1) h ON h."day" = m.day
+       )
+       SELECT COALESCE(SUM(steps), 0)::bigint AS "totalSteps", COUNT(*) FILTER (WHERE steps > 0)::integer AS "activeDays" FROM days`,
+      [userId, timeZone],
+    ) as Array<{ totalSteps: string; activeDays: number }>;
+    return { totalSteps: Number(row?.totalSteps ?? 0), activeDays: row?.activeDays ?? 0 };
   }
 
   async credits(viewerId: string, activityId: string) {

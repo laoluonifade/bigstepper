@@ -191,7 +191,6 @@ export interface ScoringSettings {
   dailyTarget?: number | null;
   minSessions?: number | null;
   eligibleActivities?: ActivityType[] | null;
-  allDaySteps?: boolean;
   prizes?: boolean;
 }
 
@@ -214,8 +213,6 @@ export function scoringProblem(settings: ScoringSettings): string | null {
     if (!between(settings.dailyTarget, min, max)) return 'That daily amount is out of range';
   }
   if (settings.minSessions != null && !between(settings.minSessions, 1, 100)) return 'Minimum sessions must be between 1 and 100';
-  if (settings.allDaySteps && settings.challengeType !== 'STEP') return 'All-day steps are only for step competitions';
-  if (settings.allDaySteps && settings.prizes) return 'All-day steps are for free competitions. Prize competitions count GPS-checked walks and runs.';
   if (settings.eligibleActivities) {
     if (!settings.eligibleActivities.length || settings.eligibleActivities.some((kind) => !activity.kinds.includes(kind))) return `Choose which ${activity.sessions} count`;
   }
@@ -224,4 +221,15 @@ export function scoringProblem(settings: ScoringSettings): string | null {
 
 export function eligibleKinds(challengeType: ChallengeType, chosen?: ActivityType[] | null): ActivityType[] {
   return chosen?.length ? chosen : ACTIVITY_RULES[challengeType]?.kinds ?? [];
+}
+
+/** Ways of winning that work off daily totals, so Apple Health's all-day steps and walking distance can count. */
+export const DAILY_HEALTH_METHODS: ScoringMethod[] = [
+  'FARTHEST_DISTANCE', 'FIRST_TO_DISTANCE', 'MOST_ACTIVE_DAYS', 'TARGET_DAYS', 'LONGEST_STREAK', 'DAILY_CONSISTENCY',
+  'MOST_STEPS', 'FIRST_TO_STEPS', 'MOST_STEPS_ONE_DAY', 'AVERAGE_DAILY_STEPS',
+];
+
+/** Free step, walking and combined-distance competitions count Apple Health from when someone connects it. Prize competitions don't. */
+export function countsAppleHealth(table: { type?: string | null; challengeType: ChallengeType | string; scoringMethod: ScoringMethod | string }) {
+  return (table.type ?? 'free') === 'free' && ['STEP', 'WALK', 'DISTANCE'].includes(table.challengeType) && DAILY_HEALTH_METHODS.includes(table.scoringMethod as ScoringMethod);
 }

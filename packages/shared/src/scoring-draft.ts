@@ -15,8 +15,6 @@ export interface ScoringDraft {
   minActivityMinutes: string;
   /** Timed competitions only: which activities count. */
   kinds: ActivityType[];
-  /** Steps competitions only: every step from Apple Health counts, not just recorded walks and runs. */
-  allDaySteps: boolean;
 }
 
 const TARGET_DEFAULTS = { distance: '5', steps: '100000', time: '10', sessions: '10' } as const;
@@ -36,7 +34,6 @@ export function draftFor(challengeType: ChallengeType, scoringMethod: ScoringMet
     minActivityDistance: previous?.minActivityDistance ?? '',
     minActivityMinutes: previous?.minActivityMinutes ?? '',
     kinds: previous?.challengeType === challengeType ? previous.kinds : ACTIVITY_RULES[challengeType].kinds,
-    allDaySteps: challengeType === 'STEP' && Boolean(previous?.allDaySteps),
   };
 }
 
@@ -62,7 +59,6 @@ export function scoringPayload(draft: ScoringDraft, unit: Unit, prizes: boolean)
     minActivityMetres: round(number(draft.minActivityDistance) === undefined ? undefined : toMetres(Number(draft.minActivityDistance), unit)),
     minActivitySeconds: round(number(draft.minActivityMinutes) === undefined ? undefined : Number(draft.minActivityMinutes) * 60),
     eligibleActivities: draft.challengeType === 'TIMED' ? draft.kinds : undefined,
-    allDaySteps: draft.challengeType === 'STEP' && draft.allDaySteps && !prizes ? true : undefined,
   };
   const problem = scoringProblem({ ...payload, prizes })
     ?? (payload.minActivityMetres !== undefined && (payload.minActivityMetres < 100 || payload.minActivityMetres > 100_000) ? 'Minimum activity distance is out of range' : null)
