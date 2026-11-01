@@ -4,7 +4,7 @@ import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
-import { ArrowLeftIcon, BellIcon, CheckIcon, ChevronRightIcon, InstagramIcon, JumpLogo, LockIcon, LogoutIcon, RunIcon, XLogoIcon } from '../components/icons';
+import { ActivityIcon, ArrowLeftIcon, BellIcon, CheckIcon, ChevronRightIcon, CrownIcon, InstagramIcon, JumpLogo, LadderIcon, LinkIcon, LockIcon, LogoutIcon, RunIcon, UserIcon, UsersIcon, WalletIcon, XLogoIcon } from '../components/icons';
 import { AvatarEditor, ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '../components/Profile';
 import { BankPicker } from '../components/BankPicker';
 import { KycPanel, useKyc } from '../components/KycPanel';
@@ -47,22 +47,24 @@ export function YouBack() {
 /** Everything under You, as a list of links on your profile, like the app's You tab. */
 function YouLinks() {
   return <nav aria-label="You" className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border-[1.5px] border-line bg-card md:hidden">
-    {YOU_NAV.filter((item) => item.to !== '/settings/profile').map((item) => <Link key={item.to} to={item.to} className="flex items-center justify-between px-4 py-3.5 text-[15px] font-semibold hover:bg-ink/[0.03]">
-      {item.label}<ChevronRightIcon size={16} className="text-ink-3" />
+    {YOU_NAV.filter((item) => item.to !== '/settings/profile').map((item) => <Link key={item.to} to={item.to} className="flex items-center gap-3 px-4 py-3.5 text-[15px] font-semibold hover:bg-ink/[0.03]">
+      <span className="flex w-6 justify-center text-ink" aria-hidden="true">{item.icon}</span>
+      <span className="flex-1">{item.label}</span>
+      <ChevronRightIcon size={16} className="text-ink-3" />
     </Link>)}
   </nav>;
 }
 
 export const YOU_NAV = [
-  { to: '/settings/profile', label: 'Profile' },
-  { to: '/activities', label: 'Activity' },
-  { to: '/settings/connections', label: 'Connections' },
-  { to: '/runners', label: 'Find runners' },
-  { to: '/leagues', label: 'League' },
-  { to: '/rewards', label: 'Rewards' },
-  { to: '/prizes', label: 'Prizes' },
-  { to: '/creator', label: 'Creator' },
-  { to: '/notifications', label: 'Notifications' },
+  { to: '/settings/profile', label: 'Profile', icon: <UserIcon size={18} /> },
+  { to: '/activities', label: 'Your activity', icon: <ActivityIcon size={18} /> },
+  { to: '/settings/connections', label: 'Connections', icon: <LinkIcon size={18} /> },
+  { to: '/runners', label: 'Find runners', icon: <UsersIcon size={18} /> },
+  { to: '/leagues', label: 'My league', icon: <LadderIcon size={18} /> },
+  { to: '/rewards', label: 'Rewards', icon: <WalletIcon size={18} /> },
+  { to: '/prizes', label: 'Prizes', icon: <CrownIcon size={18} /> },
+  { to: '/creator', label: 'Creator', icon: <UserIcon size={18} /> },
+  { to: '/notifications', label: 'Notifications', icon: <BellIcon size={18} /> },
 ] as const;
 
 
@@ -118,17 +120,17 @@ export function ProfileSettingsPage() {
               <Segmented<Unit> label="Distance units" value={me.preferredUnit} onChange={(value) => save.mutate({ preferredUnit: value })} options={[{ value: 'km', label: 'km' }, { value: 'mi', label: 'miles' }]} />
             </div>
           </div>
-          <div className={ROW}>
+          <div className={cx(ROW, 'flex-wrap')}>
             <span className="min-w-0 flex-1">
               <span className="block text-[14px] font-semibold">Who can message me</span>
               <span className="block text-[13px] text-ink-3">{me.messagesFrom === 'following' ? 'Only runners you follow' : 'Any runner'}</span>
             </span>
-            <div className="w-52">
+            <div className="w-full sm:w-52">
               <Segmented<'everyone' | 'following'> label="Who can message me" value={me.messagesFrom ?? 'everyone'} onChange={(value) => save.mutate({ messagesFrom: value })}
                 options={[{ value: 'everyone', label: 'Everyone' }, { value: 'following', label: 'I follow' }]} />
             </div>
           </div>
-          <Link to="/settings/connections" className={ROW}>
+          <Link to="/settings/connections" className={cx(ROW, 'hidden md:flex')}>
             <span className="flex-1 text-[14px] font-semibold">Connections</span>
             <span className="text-[13px] text-ink-3">Strava, Apple Health</span>
             <ChevronRightIcon size={16} className="text-ink-3" />
