@@ -1,3 +1,4 @@
+import { ProductAnalytics } from './ProductAnalytics';
 import { OrganicAttribution } from './OrganicAttribution';
 import { SeoHead } from './SeoHead';
 import { SafetyHost } from './Safety';
@@ -40,7 +41,7 @@ export function Private({ children }: { children: ReactNode }) {
 const AUTH_PATHS = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/brands/preview'];
 
 export function AppShell() {
-  return <><OrganicAttribution /><SeoHead /><NavigationProgress /><Shell /></>;
+  return <><ProductAnalytics /><OrganicAttribution /><SeoHead /><NavigationProgress /><Shell /></>;
 }
 
 function Shell() {

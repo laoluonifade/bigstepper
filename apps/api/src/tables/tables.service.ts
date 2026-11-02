@@ -1,5 +1,6 @@
+import { ProductAnalyticsService } from '../product-analytics/product-analytics.service';
 import { recordShare, recordView } from '../clubs/engagement';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Optional, BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { creditActivities, retotal } from './competition-credits';
 import { enrolClubMembers } from './club-competitions';
 import { AmlService } from '../aml/aml.service';
@@ -40,6 +41,7 @@ export class TablesService {
     private readonly cloudinary: CloudinaryService,
     private readonly aml: AmlService,
     private readonly repo: TablesRepository,
+    @Optional() private readonly productAnalytics?: ProductAnalyticsService,
   ) {}
 
   async list(sort = 'popular', type = 'all', activity = 'all') {
@@ -320,7 +322,7 @@ export class TablesService {
 
   async registerFree(tableId: string, userId: string) {
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      const result=await this.dataSource.transaction(async (manager) => {
         const table = await manager.findOne(CompetitionTable, {
           where: { id: tableId },
           lock: { mode: 'pessimistic_write' },
@@ -342,6 +344,8 @@ export class TablesService {
         await this.repo.acceptPendingInvitation(manager, tableId, userId);
         return registration;
       });
+      this.productAnalytics?.track(userId,'Competition Joined',result.id,result.joinedAt);
+      return result;
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
         throw new ConflictException('You already joined this competition');

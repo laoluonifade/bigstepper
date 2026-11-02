@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, ConflictException, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { ProductAnalyticsService } from '../product-analytics/product-analytics.service';
+import { Optional, BadRequestException, Injectable, ConflictException, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { MailService } from '../mail/mail.service';
 import { passwordResetEmail, verificationEmail, welcomeEmail } from '../mail/templates';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    @Optional() private readonly productAnalytics?: ProductAnalyticsService,
   ) {}
 
   async register(email: string, password: string, countryCode: string, displayName?: string, whatsappNumber?: string, gender?: Profile['gender'], username?: string) {
@@ -152,6 +154,7 @@ export class AuthService {
       }
       throw error;
     }
+    this.productAnalytics?.track(user.id,'Account Created',user.id,user.createdAt);
     return user;
   }
 

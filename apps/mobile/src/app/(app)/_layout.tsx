@@ -1,3 +1,4 @@
+import { ProductAnalytics } from '@/components/ProductAnalytics';
 import { useQuery } from '@tanstack/react-query';
 import { router, Stack, usePathname, type Href } from 'expo-router';
 import { useEffect } from 'react';
@@ -44,7 +45,7 @@ export default function AppLayout() {
   // The app icon's badge follows the unread count as notifications are read here.
   const unread = useNotifications().data?.filter((item) => !item.readAt).length;
   useEffect(() => { if (unread !== undefined) setAppBadge(unread); }, [unread]);
-  return <>
+  return <><ProductAnalytics />
   <Stack screenOptions={{
     headerStyle: { backgroundColor: colors.paper },
     headerShadowVisible: false,

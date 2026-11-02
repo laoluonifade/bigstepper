@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { ProductAnalyticsService } from '../product-analytics/product-analytics.service';
+import { Optional, BadRequestException, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
@@ -28,6 +29,7 @@ export class AppleHealthService {
     @InjectRepository(AppleHealthLink) private readonly links: Repository<AppleHealthLink>,
     private readonly dataSource: DataSource,
     @InjectQueue(ACTIVITY_VERIFICATION_QUEUE) private readonly verificationQueue: Queue,
+    @Optional() private readonly productAnalytics?: ProductAnalyticsService,
   ) {}
 
   async status(userId: string) {
@@ -38,7 +40,9 @@ export class AppleHealthService {
 
   async connect(userId: string) {
     await this.links.createQueryBuilder().insert().values({ userId }).orIgnore().execute();
-    return this.status(userId);
+    const status=await this.status(userId);
+    if(status.connected)this.productAnalytics?.track(userId,'Apple Health Connected',userId+':'+new Date(status.connectedAt).toISOString(),new Date(status.connectedAt));
+    return status;
   }
 
   async disconnect(userId: string) {
@@ -78,7 +82,9 @@ export class AppleHealthService {
 
   async synced(userId: string) {
     await this.links.update({ userId }, { lastSyncedAt: new Date() });
-    return this.status(userId);
+    const status=await this.status(userId);
+    if(status.connected && status.lastSyncedAt)this.productAnalytics?.track(userId,'Apple Health Sync Succeeded',userId+':'+new Date(status.lastSyncedAt).toISOString(),new Date(status.lastSyncedAt));
+    return status;
   }
 
   async settings(userId: string, shareSteps: boolean) {

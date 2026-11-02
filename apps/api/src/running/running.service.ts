@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ProductAnalyticsService } from '../product-analytics/product-analytics.service';
+import { Optional, BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
@@ -33,6 +34,7 @@ export class RunningService {
     private readonly dataSource: DataSource,
     @InjectQueue(ACTIVITY_VERIFICATION_QUEUE)
     private readonly verificationQueue: Queue,
+    @Optional() private readonly productAnalytics?: ProductAnalyticsService,
   ) {}
 
   async start(userId: string, activityType: 'walk' | 'run' | 'cycle', phone: { id?: string; startedAt?: string } = {}) {
@@ -209,7 +211,7 @@ export class RunningService {
           }),
       );
       await announceCounted(manager, saved, await countActivity(manager, saved));
-      return { waiting, activity: saved };
+      return { waiting, activity: saved, newlySaved: true };
     });
     runEvents.inc({ event: 'retry' in outcome && outcome.retry ? 'finish_asked_resend' : !outcome.activity ? 'finish_empty' : outcome.waiting ? 'finish_waiting_for_points' : 'finish_complete' });
     if ('retry' in outcome && outcome.retry) {
@@ -223,6 +225,7 @@ export class RunningService {
     } else {
       await this.verificationQueue.add('verify-activity', { activityId: activity.id }, { jobId: `activity-${activity.id}`, ...VERIFY_JOB });
     }
+    if('newlySaved' in outcome && outcome.newlySaved)this.productAnalytics?.track(userId,'Activity Saved',activity.id,activity.createdAt);
     return activity;
   }
 

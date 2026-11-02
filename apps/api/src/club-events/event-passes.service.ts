@@ -1,3 +1,4 @@
+import { ProductAnalyticsService } from '../product-analytics/product-analytics.service';
 import { SeoAnalyticsService } from '../pages/seo-analytics.service';
 import { BadRequestException, ConflictException, Injectable, Optional, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -44,6 +45,7 @@ export class EventPassesService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     @Optional() private readonly seoAnalytics?: SeoAnalyticsService,
+    @Optional() private readonly productAnalytics?: ProductAnalyticsService,
   ) {}
 
   private web(path: string) {
@@ -124,6 +126,7 @@ export class EventPassesService {
     if (created) this.welcome(event, pass, Boolean(input.marketing));
     const sentTo = maskEmail(pass.sentTo);
     if (!issued) return { status: 'existing' as const, sentTo };
+    this.productAnalytics?.track(userId,'Pass Issued',issued.id);
     await this.seoAnalytics?.conversion(attribution,'event_registration',issued.id).catch(()=>undefined);
     return {
       status: 'issued' as const,

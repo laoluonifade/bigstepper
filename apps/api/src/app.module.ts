@@ -1,3 +1,4 @@
+import { ProductAnalyticsModule } from './product-analytics/product-analytics.module';
 import { EngagementModule } from './notifications/engagement.module';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -40,6 +41,7 @@ import { PagesModule } from './pages/pages.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     PagesModule,
+    ProductAnalyticsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
