@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../../jobs/jobs.module';
 import { Activity } from '../activity.entity';
 import { GpsSample } from '../gps-sample.entity';
-import { measureTrack, type TrackMeasure } from '../track';
+import { measureTrack, withFinalSteps, type TrackMeasure } from '../track';
 import { RunningSession } from '../running-session.entity';
 import { countActivity } from '../count-activity';
 
@@ -79,13 +79,13 @@ export class ActivityVerificationProcessor extends WorkerHost {
       where: { sessionId: activity.runningSessionId },
       order: { sequence: 'ASC' },
     });
-    const track = measureTrack(samples, { trailing: true, activityType: activity.activityType });
+    const track = measureTrack(withFinalSteps(samples, activity.recordedSteps, activity.finishedAt), { trailing: true, activityType: activity.activityType });
     const judged = judgeActivity(track, samples, activity.activityType);
     const { reasons } = judged;
     const phone = activity.measuredOnPhone;
     const status = phone ? judgePhoneMeasured(activity.recordedDistanceMetres, track.distanceMetres, reasons) : judged.status;
     const validatedSteps = phone ? activity.recordedSteps : judged.validatedSteps;
-    const validatedDistance = phone ? activity.recordedDistanceMetres : track.distanceMetres;
+    const validatedDistance = phone ? Math.max(activity.recordedDistanceMetres, track.distanceMetres) : track.distanceMetres;
     const movingSeconds = phone ? activity.movingSeconds : track.movingSeconds;
     const confidence = track.confidence;
     const stepDistance = 0;

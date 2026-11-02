@@ -41,6 +41,13 @@ export function backfillSteps<T extends { recordedAt: Date; stepCount?: number |
   return out;
 }
 
+export function withFinalSteps<T extends TrackPoint>(points: T[], steps: number, at: Date): TrackPoint[] {
+  const known = points.filter((point) => point.stepCount !== null && point.stepCount !== undefined);
+  const last = points.at(-1);
+  if (!last || !known.length || steps <= Math.max(...known.map((point) => point.stepCount!))) return points;
+  return [...points, { ...last, stepCount: steps, recordedAt: new Date(Math.max(at.getTime(), last.recordedAt.getTime() + 1)) }];
+}
+
 export interface TrackPoint {
   latitude: number;
   longitude: number;

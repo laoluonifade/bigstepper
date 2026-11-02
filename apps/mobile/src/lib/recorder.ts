@@ -37,6 +37,8 @@ const TASK = 'jump-track';
 export const FOREGROUND_ONLY = isRunningInExpoGo();
 const FLUSH_INTERVAL_MS = 8_000;
 const FLUSH_THRESHOLD = 20;
+/** How often to read the step total from the motion chip while Jump is in the background (iOS). */
+const STEP_READ_MS = 10_000;
 const WAITING_FOR_GPS = 'Waiting for GPS to lock on. Head outdoors with a clear view of the sky.';
 
 interface State {
@@ -93,6 +95,9 @@ let stepsBefore = 0;
 let stepsNow = 0;
 let motionAllowed = false;
 let pedometer: { remove: () => void } | null = null;
+/** When the live step count last restarted (start or resume); `stepsNow` counts from here. */
+let stepsSince: Date | null = null;
+let stepsReadAt = 0;
 let foregroundWatch: Location.LocationSubscription | null = null;
 let flushJob: Promise<boolean> | null = null;
 let flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -105,6 +110,7 @@ function onFixes(locations: Location.LocationObject[]) {
   if (!runId || state.phase !== 'recording') return;
   const fresh = locations.filter((fix) => fix.timestamp > lastFixTime).sort((a, b) => a.timestamp - b.timestamp);
   if (fresh.length === 0) return;
+  if (AppState.currentState !== 'active' && Date.now() - stepsReadAt > STEP_READ_MS) void readSteps();
   const samples = [];
   const route = [...state.route];
   let gpsError: string | null = null;
@@ -175,6 +181,7 @@ async function stopLocation() {
 function startSteps() {
   if (activityType === 'cycle' || !motionAllowed || pedometer) return;
   stepsNow = 0;
+  stepsSince = new Date();
   pedometer = Pedometer.watchStepCount((result) => {
     stepsNow = result.steps;
     set({ steps: totalSteps() });
@@ -186,6 +193,21 @@ function stopSteps() {
   pedometer = null;
   stepsBefore = totalSteps();
   stepsNow = 0;
+  stepsSince = null;
+}
+
+/**
+ * Live step updates stop while Jump is in the background, so a locked phone's steps would look frozen and
+ * the GPS distance walked meanwhile wouldn't count. On iOS the motion chip's own total fills them in.
+ */
+async function readSteps() {
+  const since = stepsSince;
+  if (Platform.OS !== 'ios' || !pedometer || !since) return;
+  stepsReadAt = Date.now();
+  const { steps } = await Pedometer.getStepCountAsync(since, new Date()).catch(() => ({ steps: 0 }));
+  if (since !== stepsSince || steps <= stepsNow) return;
+  stepsNow = steps;
+  set({ steps: totalSteps() });
 }
 
 async function requestMotion() {
@@ -218,10 +240,17 @@ async function stopWatching() {
   await stopLocation();
 }
 
-/** Record the latest step total now, so steps taken since the last GPS fix aren't lost on pause/finish. */
-function checkpointSteps() {
+/**
+ * Record the latest step total now, so steps taken since the last GPS fix aren't lost on pause/finish, and
+ * measure again with it: steps that arrived late let the distance walked before them count.
+ */
+async function checkpointSteps() {
+  await readSteps();
   if (!runId || !lastFix || !motionAllowed) return;
-  appendSamples(runId, [{ ...lastFix, stepCount: totalSteps(), recordedAt: new Date().toISOString() }]);
+  const recordedAt = new Date();
+  appendSamples(runId, [{ ...lastFix, stepCount: totalSteps(), recordedAt: recordedAt.toISOString() }]);
+  const localMetres = measureTrack([...fixes, { ...lastFix, stepCount: totalSteps(), recordedAt }], { trailing: true, activityType }).distanceMetres;
+  set({ localMetres: Math.max(state.localMetres, localMetres) });
 }
 
 /* ───────────────────────── No signal ───────────────────────── */
@@ -605,7 +634,7 @@ async function pause() {
   if (!id) return;
   set({ error: null, phase: 'paused' });
   const at = new Date().toISOString();
-  checkpointSteps();
+  await checkpointSteps();
   await stopWatching();
   // Only straight to the server when nothing's waiting to be replayed first (order matters).
   if (queuedMoments(id).length === 0) {
@@ -657,9 +686,9 @@ async function resume() {
 async function finish(): Promise<Activity | null> {
   const id = runId;
   if (!id) return null;
-  const shown = shownNumbers();
   set({ error: null, phase: 'finishing' });
-  checkpointSteps();
+  await checkpointSteps();
+  const shown = shownNumbers();
   await stopWatching();
   const at = new Date().toISOString();
   // With earlier offline moments still to replay, this one joins the queue behind them.

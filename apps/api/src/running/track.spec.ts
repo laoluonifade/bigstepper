@@ -1,4 +1,4 @@
-import { measureTrack, TrackPoint } from './track';
+import { measureTrack, TrackPoint, withFinalSteps } from './track';
 
 const LAT = 6.4281;
 const LON = 3.4219;
@@ -192,5 +192,28 @@ describe('measureTrack', () => {
       expect(result.reasons.has('GPS_GAP')).toBe(false);
       expect(result.distanceMetres).toBeGreaterThan(300);
     });
+  });
+});
+
+describe('withFinalSteps', () => {
+  const start = new Date('2026-11-02T06:00:00Z').getTime();
+  const run: TrackPoint[] = Array.from({ length: 1441 }, (_, i) => ({
+    latitude: LAT + (i * 3 * 2.6) / M_PER_DEG_LAT,
+    longitude: LON,
+    accuracy: 6,
+    recordedAt: new Date(start + i * 3000),
+    stepCount: i < 14 ? i * 7 : 96,
+  }));
+
+  it('recovers a run whose step count froze while the screen was locked', () => {
+    expect(measureTrack(run, { trailing: true, activityType: 'run' }).distanceMetres).toBeLessThan(200);
+    const finished = withFinalSteps(run, 10193, new Date(start + 72 * 60_000 + 2000));
+    expect(measureTrack(finished, { trailing: true, activityType: 'run' }).distanceMetres).toBeGreaterThan(10_000);
+  });
+
+  it('leaves the track alone when the final total adds nothing or steps were never counted', () => {
+    expect(withFinalSteps(run, 50, new Date())).toBe(run);
+    const stepless = run.map((point) => ({ ...point, stepCount: null }));
+    expect(withFinalSteps(stepless, 10193, new Date())).toBe(stepless);
   });
 });
