@@ -56,6 +56,10 @@ export function validateEnvironment(env: Environment) {
     'REDIS_URL',
     nodeEnv === 'development' ? 'redis://localhost:6379' : undefined,
   );
+  const mixpanelEnabled = env.MIXPANEL_ENABLED?.trim().toLowerCase() === 'true';
+  const mixpanelRegion = env.MIXPANEL_REGION?.trim().toUpperCase() || 'EU';
+  if (!['EU','US'].includes(mixpanelRegion)) throw new Error('MIXPANEL_REGION must be EU or US');
+  if (mixpanelEnabled && (!env.MIXPANEL_PROJECT_TOKEN?.trim() || (env.MIXPANEL_ID_SALT?.trim().length ?? 0) < 32)) throw new Error('Mixpanel requires a project token and an identity salt of at least 32 characters');
   const paystackSecretKey = env.PAYSTACK_SECRET_KEY?.trim() || '';
   const paymentsMode = paymentMode(env.PAYMENTS_MODE);
   if (paymentsMode === 'test') {
@@ -71,6 +75,10 @@ export function validateEnvironment(env: Environment) {
   return {
     ...env,
     NODE_ENV: nodeEnv,
+    MIXPANEL_ENABLED: mixpanelEnabled,
+    MIXPANEL_REGION: mixpanelRegion,
+    MIXPANEL_PROJECT_TOKEN: env.MIXPANEL_PROJECT_TOKEN?.trim() || '',
+    MIXPANEL_ID_SALT: env.MIXPANEL_ID_SALT?.trim() || '',
     PORT: integer(env.PORT, 3000, 'PORT'),
     WEB_ORIGIN: required(env, 'WEB_ORIGIN', 'http://localhost:5177'),
     COMMUNITY_CLUB_SLUG: env.COMMUNITY_CLUB_SLUG?.trim().toLowerCase() || 'jump-community-club',

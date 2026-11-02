@@ -1,3 +1,4 @@
+import { ProductAnalyticsService } from '../product-analytics/product-analytics.service';
 import { SeoAnalyticsService } from '../pages/seo-analytics.service';
 import { recordShare, recordView } from './engagement';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
@@ -36,6 +37,7 @@ export class ClubsService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     @Optional() private readonly seoAnalytics?: SeoAnalyticsService,
+    @Optional() private readonly productAnalytics?: ProductAnalyticsService,
   ) {}
 
   async create(userId: string, input: CreateClubDto) {
@@ -324,6 +326,7 @@ export class ClubsService {
       await this.notifyManagers(manager, club, userId, 'joined');
       return { joined: true, competitions: enrolled.length };
     });
+    if(newlyJoined)this.productAnalytics?.track(userId,'Club Joined',club.id+':'+userId+':'+Date.now());
     if(newlyJoined)await this.seoAnalytics?.conversion(attribution,'club_join',club.id).catch(()=>undefined);
     return result;
   }

@@ -13,8 +13,9 @@ function setup(received: number, distanceMetres: number) {
   };
   const dataSource = { transaction: jest.fn(async (work: (value: typeof manager) => Promise<unknown>) => work(manager)) };
   const queue = { add: jest.fn() };
-  const service = new RunningService({} as never, dataSource as never, queue as never);
-  return { service, manager, queue, session };
+  const analytics = { track: jest.fn() };
+  const service = new RunningService({} as never, dataSource as never, queue as never, analytics as never);
+  return { service, manager, queue, session, analytics };
 }
 
 describe('finishing a run', () => {
@@ -54,16 +55,18 @@ describe('finishing a run', () => {
   });
 
   it('saves once every point has arrived, with the distance from all of them', async () => {
-    const { service, queue } = setup(400, 4000);
+    const { service, queue, analytics } = setup(400, 4000);
     await expect(service.finish('runner', 'session', undefined, 400)).resolves.toMatchObject({ recordedDistanceMetres: 4000, verificationStatus: 'PENDING_VERIFICATION' });
     expect(queue.add).toHaveBeenCalledTimes(1);
+    expect(analytics.track).toHaveBeenCalledWith('runner', 'Activity Saved', 'activity', undefined);
   });
 
   it('keeps nothing when GPS measured 0.00 km', async () => {
-    const { service, manager, queue } = setup(30, 2);
+    const { service, manager, queue, analytics } = setup(30, 2);
     await expect(service.finish('runner', 'session', undefined, 30)).rejects.toBeInstanceOf(UnprocessableEntityException);
     expect(manager.delete).toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
+    expect(analytics.track).not.toHaveBeenCalled();
   });
 
   it('still finishes for older apps that send no point count', async () => {
