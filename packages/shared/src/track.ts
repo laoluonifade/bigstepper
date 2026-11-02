@@ -101,9 +101,9 @@ interface Smoothed {
  */
 export function smoothTrack(points: TrackPoint[], trailing = false): Smoothed[] {
   const windowMs = SMOOTHING_SECONDS * 1000;
-  let steps: number | null = null;
   return points.map((point, index) => {
-    if (point.stepCount !== undefined && point.stepCount !== null) steps = point.stepCount;
+    // A point saved without a step total (Jump reopened by the phone after being closed) isn't held to the stride rule.
+    const steps = point.stepCount ?? null;
     const at = point.recordedAt.getTime();
     let lat = 0;
     let lon = 0;

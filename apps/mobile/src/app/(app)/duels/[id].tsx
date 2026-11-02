@@ -12,6 +12,7 @@ import { useUser } from '@/lib/auth';
 import { DUEL_VERB, duelKey, duelLine, duelPhase, sides, standing, type DuelPerson, type DuelView } from '@/lib/duels';
 import { useUnit } from '@/lib/queries';
 import { useRecorder, type ActivityKind } from '@/lib/recorder';
+import { readyToRecord } from '@/lib/run-readiness';
 import { brand, colors, display, GUTTER, radius, score, wideLabel } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
@@ -66,8 +67,8 @@ export default function DuelScreen() {
   const endsIn = data.endsAt ? new Date(data.endsAt).getTime() - serverNow : 0;
 
   async function startRecording(kind: ActivityKind) {
-    const problem = await recorder.start(kind);
-    if (problem === 'background-denied') toast({ tone: 'warn', message: 'Allow location “Always” so your duel keeps counting with the screen off.' });
+    if (!(await readyToRecord(kind))) return;
+    await recorder.start(kind);
     router.push('/run');
   }
 

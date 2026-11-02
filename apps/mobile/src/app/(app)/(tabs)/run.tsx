@@ -22,6 +22,7 @@ import { playSound } from '@/lib/sounds';
 import { usePlaceName } from '@/lib/place';
 import { useUnit } from '@/lib/queries';
 import { movingSeconds, useRecorder, type ActivityKind } from '@/lib/recorder';
+import { readyToRecord } from '@/lib/run-readiness';
 import { brand, colors, fontFamily, GUTTER, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
@@ -121,7 +122,6 @@ function ReadyScreen() {
   const [activityType, setActivityType] = useState<ActivityKind>('run');
   const [starting, setStarting] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
-  const [backgroundDenied, setBackgroundDenied] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(240);
   const preview = usePreviewPosition();
   // Clear of the floating tab bar on iOS.
@@ -137,10 +137,16 @@ function ReadyScreen() {
 
   function begin() {
     setStarting(false);
-    void recorder.start(activityType).then((problem) => { if (problem === 'background-denied') setBackgroundDenied(true); });
+    void recorder.start(activityType);
+  }
+  // Location, Precise Location, "Always" and Motion & Fitness are sorted out before the countdown.
+  const kindRef = useRef(activityType);
+  kindRef.current = activityType;
+  async function prepare(kind: ActivityKind) {
+    if (await readyToRecord(kind)) setStarting(true);
   }
   // The tab bar's centre button is Start here: it opens the full-screen countdown.
-  useEffect(() => onStartPressed(() => setStarting(true)), []);
+  useEffect(() => onStartPressed(() => void prepare(kindRef.current)), []);
 
   if (recorder.phase === 'blocked') {
     return <Screen>
@@ -166,7 +172,7 @@ function ReadyScreen() {
         const active = activityType === value;
         // Glass circles: the picked one is tinted in its colour; on iOS 26 they also react to your touch.
         // Tapping one starts it: it becomes the activity and the countdown opens, like the tab bar's Start.
-        return <Pressable key={value} style={{ alignItems: 'center', gap: 12 }} onPress={() => { haptic('medium'); setActivityType(value); setStarting(true); }}
+        return <Pressable key={value} style={{ alignItems: 'center', gap: 12 }} onPress={() => { haptic('medium'); setActivityType(value); void prepare(value); }}
           accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={`Start a ${nounFor(value)}`}>
           {({ pressed }) => <>
             <Glass interactive tint={active ? fill : undefined} solid={active ? fill : colors.inkWash} style={[styles.choice, pressed && !LIQUID_GLASS && { transform: [{ scale: 0.95 }] }]}>
@@ -200,10 +206,7 @@ function ReadyScreen() {
 
     <DragSheet initiallyOpen={false} onVisibleHeight={setSheetHeight} header={picker} style={[styles.floating, { bottom: 10 + barInset }]}>
       {/* What it counts toward shows in the countdown; the sheet only carries a problem worth knowing about. */}
-      {(backgroundDenied || recorder.error) && <View style={{ gap: 12, paddingBottom: 20 }}>
-        {backgroundDenied && <Notice tone="warn" title="Keep Jump open while you move" action={<Button size="sm" variant="secondary" title="Open Settings" onPress={() => void Linking.openSettings()} />}>
-          Without “Always” location access, Jump only measures while it’s on screen. Allow it in Settings to keep counting with the screen locked.
-        </Notice>}
+      {recorder.error && <View style={{ gap: 12, paddingBottom: 20 }}>
         <ErrorNotice error={recorder.error ? new Error(recorder.error) : null} />
       </View>}
     </DragSheet>

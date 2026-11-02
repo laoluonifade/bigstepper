@@ -76,9 +76,8 @@ interface Smoothed {
 
 export function smoothTrack(points: TrackPoint[], trailing = false): Smoothed[] {
   const windowMs = SMOOTHING_SECONDS * 1000;
-  let steps: number | null = null;
   return points.map((point, index) => {
-    if (point.stepCount !== undefined && point.stepCount !== null) steps = point.stepCount;
+    const steps = point.stepCount ?? null;
     const at = point.recordedAt.getTime();
     let lat = 0;
     let lon = 0;

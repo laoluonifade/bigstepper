@@ -18,7 +18,6 @@ import { useSyncExternalStore } from 'react';
 import { router } from 'expo-router';
 import { AppState, Platform } from 'react-native';
 import { api, isApiError, post } from './api';
-import { confirm } from './dialog';
 import { syncLiveActivity } from './liveActivity';
 import { keys } from './queries';
 import { acknowledge, appendSamples, clearActiveRun, clearRun, countPending, countRecorded, getActiveRun, pendingSamples, recordedPoints, setActiveRun } from './run-buffer';
@@ -143,8 +142,37 @@ function onFixes(locations: Location.LocationObject[]) {
 // Must be defined at module load, not in a component, so the OS can wake the app with fixes.
 if (!FOREGROUND_ONLY && !TaskManager.isTaskDefined(TASK)) {
   TaskManager.defineTask<{ locations: Location.LocationObject[] }>(TASK, async ({ data, error }) => {
-    if (!error && data) onFixes(data.locations);
+    if (error || !data) return;
+    if (runId) onFixes(data.locations);
+    else await keepWhileClosed(data.locations);
   });
+}
+
+let closedAfter: number | null = null;
+
+/**
+ * Swiped away mid-activity, Jump is woken again by the phone (Android's recording service never stops; iOS
+ * relaunches it when you move, with "Always" location) before the run is loaded. Its points go straight
+ * into the run's buffer, so they're measured and sent when Jump opens; on iPhone with the step total
+ * from the motion chip, so the stride rule sees real steps.
+ */
+async function keepWhileClosed(locations: Location.LocationObject[]) {
+  const active = getActiveRun();
+  if (!active) return;
+  closedAfter ??= recordedPoints(active.runId).at(-1)?.recordedAt.getTime() ?? 0;
+  const fresh = locations.filter((fix) => fix.timestamp > closedAfter!).sort((a, b) => a.timestamp - b.timestamp);
+  if (!fresh.length) return;
+  closedAfter = fresh[fresh.length - 1].timestamp;
+  const steps = Platform.OS === 'ios' && active.activityType !== 'cycle'
+    ? await Pedometer.getStepCountAsync(new Date(active.startedAt), new Date()).then((result) => result.steps).catch(() => null)
+    : null;
+  appendSamples(active.runId, fresh.map((fix) => ({
+    latitude: fix.coords.latitude,
+    longitude: fix.coords.longitude,
+    accuracy: Math.round((fix.coords.accuracy ?? 999) * 10) / 10,
+    ...(steps !== null ? { stepCount: steps } : {}),
+    recordedAt: new Date(fix.timestamp).toISOString(),
+  })));
 }
 
 async function watchInApp() {
@@ -154,8 +182,6 @@ async function watchInApp() {
 async function startLocation() {
   if (FOREGROUND_ONLY) return watchInApp();
   if (await Location.hasStartedLocationUpdatesAsync(TASK).catch(() => false)) return;
-  // Android refuses background updates without "Allow all the time": record while Jump is open instead.
-  if (Platform.OS === 'android' && (await Location.getBackgroundPermissionsAsync().catch(() => null))?.status !== 'granted') return watchInApp();
   await Location.startLocationUpdatesAsync(TASK, {
     accuracy: Location.Accuracy.BestForNavigation,
     distanceInterval: 3,
@@ -558,23 +584,7 @@ export async function detachRecorder() {
   listeners.forEach((listener) => listener());
 }
 
-export type StartProblem = 'foreground-denied' | 'background-denied' | null;
-
-/**
- * Google Play requires a clear explanation in the app before Android's "Allow all the time" prompt, so
- * Android asks first in our own words. Saying no still records, just only while Jump is open.
- */
-async function requestBackground() {
-  const current = await Location.getBackgroundPermissionsAsync();
-  if (current.status === 'granted' || Platform.OS !== 'android') return Location.requestBackgroundPermissionsAsync();
-  const ok = await confirm({
-    title: 'Keep recording with the screen off',
-    message: 'Jump collects your location to record your walk, run or ride (its route and distance) even when the app is closed or not in use, for example with your phone locked in your pocket. Location is only collected while an activity you started is recording, and stops when you finish.\n\nOn the next screen, choose “Allow all the time”.',
-    confirmLabel: 'Continue',
-    cancelLabel: 'Not now',
-  });
-  return ok ? Location.requestBackgroundPermissionsAsync() : current;
-}
+export type StartProblem = 'foreground-denied' | null;
 
 async function start(kind: ActivityKind = 'run'): Promise<StartProblem> {
   if (!userId) return null;
@@ -584,9 +594,8 @@ async function start(kind: ActivityKind = 'run'): Promise<StartProblem> {
     set({ phase: 'idle', gpsError: 'Jump needs your location to measure distance. Allow it in Settings.' });
     return 'foreground-denied';
   }
-  // Background permission can only be asked for after foreground is granted. Without it, recording still
-  // works while Jump is open.
-  const background = FOREGROUND_ONLY ? null : await requestBackground();
+  // No "Always" needed: an activity started in Jump keeps recording with the screen locked on both
+  // platforms (iOS's blue location pill, Android's recording notification) with "While using" access.
   const motion = kind === 'cycle' ? false : await requestMotion();
   // Starting needs permission, not a precise fix: weak fixes are filtered out when measuring.
   const first = await Location.getLastKnownPositionAsync({ maxAge: 30_000 }).catch(() => null);
@@ -626,7 +635,7 @@ async function start(kind: ActivityKind = 'run'): Promise<StartProblem> {
     }
     return null;
   }
-  return background && background.status !== 'granted' ? 'background-denied' : null;
+  return null;
 }
 
 async function pause() {

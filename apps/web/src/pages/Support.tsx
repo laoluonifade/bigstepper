@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 const EMAIL = 'start@startajump.com';
 
 const QUESTIONS: Array<{ q: string; a: string }> = [
-  { q: 'My walk, run or ride didn’t count', a: 'Jump counts distance from GPS, after checking the route. Record outdoors with location set to “Always” (or keep Jump open), and keep moving: distance counts once GPS sees you leave the spot you started. An activity can be flagged if it looks like it wasn’t done on foot or by bike; open it in Jump to see why.' },
+  { q: 'My walk, run or ride didn’t count', a: 'Jump counts distance from GPS, after checking the route. Record outdoors with location allowed and Precise Location on (on iPhone, “Always” lets Jump carry on even if it gets closed), and keep moving: distance counts once GPS sees you leave the spot you started. An activity can be flagged if it looks like it wasn’t done on foot or by bike; open it in Jump to see why.' },
   { q: 'Steps aren’t adding distance', a: 'Steps count as steps (for step competitions), not as distance. That keeps it fair: a phone can count steps without anyone moving.' },
   { q: 'Payments, entry fees and payouts', a: 'Card payments go through Paystack. A pending payment shows on your dashboard until it’s confirmed. Winnings are paid to the bank account you add in Rewards once the competition is settled.' },
   { q: 'Claiming a prize', a: 'Winners get a claim form under You → Prizes. Fill it in before the date shown, and the club will be in touch about delivery.' },
