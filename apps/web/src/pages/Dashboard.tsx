@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityRow } from '../components/ActivityRow';
@@ -11,11 +11,11 @@ import { DivisionBadge, divisionRank, leagueZone, ZoneTag } from '../components/
 import { MilestoneBadge } from '../components/Milestones';
 import { WeekChart } from '../components/WeekChart';
 import { CountUp, cx, EmptyState, ErrorNotice, Meter, Notice, SectionTitle, Segmented, Skeleton, Stat, useNow } from '../components/ui';
-import { patch } from '../lib/api';
+import { api, patch } from '../lib/api';
 import { useUser } from '../lib/auth';
-import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, ordinal, toMetres } from '../lib/format';
+import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, formatSpeed, ordinal, toMetres } from '../lib/format';
 import { storageKeys, useStored } from '../lib/local';
-import { ActivityKind, computeMilestones, computeStreaks, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
+import { ActivityKind, computeMilestones, computeStreaks, creditedMetres, isVerified, KIND_OPTIONS, kindNoun, nextMilestone, ofKind, summariseWeek } from '../lib/progress';
 import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useUnit } from '../lib/queries';
 import { useRecorder } from '../lib/recorder';
 import type { Activity, Profile, Unit } from '../lib/types';
@@ -38,8 +38,9 @@ export function DashboardPage() {
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const all = useMemo(() => activities.data ?? [], [activities.data]);
   const list = useMemo(() => ofKind(all, kind), [all, kind]);
-  const footActivities = useMemo(() => list.filter((activity) => activity.activityType !== 'cycle'), [list]);
-  const week = useMemo(() => summariseWeek(footActivities, new Date(now)), [footActivities, now]);
+  // This week and its goal count walks and runs (or just rides on Rides); the month and all-time totals count every kind.
+  const trained = useMemo(() => (kind === 'cycle' ? list : list.filter((activity) => activity.activityType !== 'cycle')), [list, kind]);
+  const week = useMemo(() => summariseWeek(trained, new Date(now)), [trained, now]);
   // Any walk, run or ride keeps the streak, whatever the filter above shows.
   const streak = useMemo(() => computeStreaks(all, new Date(now)), [all, now]);
   // The summary tile counts every walk and run, whatever the training filter below shows.
@@ -88,7 +89,7 @@ export function DashboardPage() {
       </div>
 
       <div className="stagger grid gap-4 lg:grid-cols-3">
-        <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} activities={footActivities} now={now} loading={activities.isLoading || profile.isLoading} />
+        <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} activities={list} now={now} loading={activities.isLoading || profile.isLoading} />
 
         <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
           <section className="panel p-5" aria-labelledby="next-title">
@@ -126,7 +127,7 @@ export function DashboardPage() {
             </Link>
           }
         >
-          {kind === 'walk' ? 'Recent walks' : kind === 'run' ? 'Recent runs' : 'Recent activity'}
+          {kind === 'all' ? 'Recent activity' : `Recent ${kindNoun(kind)}`}
         </SectionTitle>
         {activities.isLoading ? (
           <div className="space-y-3 py-2">
@@ -134,8 +135,8 @@ export function DashboardPage() {
             <Skeleton className="h-14" />
           </div>
         ) : list.length === 0 && kind !== 'all' ? (
-          <EmptyState title={kind === 'walk' ? 'No walks yet' : 'No runs yet'}>
-            Switch to All to see everything, or record a {kind}. Pick Walk or Run before you start.
+          <EmptyState title={`No ${kindNoun(kind)} yet`}>
+            Switch to All to see everything, or record a {kindNoun(kind, 1)}. Pick {kind === 'cycle' ? 'Ride' : kind === 'walk' ? 'Walk' : 'Run'} before you start.
           </EmptyState>
         ) : list.length === 0 ? (
           <EmptyState
@@ -237,14 +238,10 @@ const GOAL_OPTIONS: Record<Unit, number[]> = { km: [10, 20, 30, 50], mi: [5, 10,
 export function KindFilter({ value, onChange }: { value: ActivityKind; onChange: (kind: ActivityKind) => void }) {
   return (
     <Segmented<ActivityKind>
-      label="Show runs, walks or both"
+      label="Show runs, walks, rides or everything"
       value={value}
       onChange={onChange}
-      options={[
-        { value: 'all', label: 'All' },
-        { value: 'run', label: 'Runs' },
-        { value: 'walk', label: 'Walks' },
-      ]}
+      options={KIND_OPTIONS}
     />
   );
 }
@@ -318,7 +315,7 @@ function WeekPanel({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p id="week-title" className="eyebrow flex items-center gap-1">
-            <PeriodPicker period={period} onChange={setPeriod} now={now} /> · {kind === 'run' ? 'runs' : kind === 'walk' ? 'walks' : 'verified'}
+            <PeriodPicker period={period} onChange={setPeriod} now={now} /> · {kind === 'all' ? 'walks & runs' : kindNoun(kind)}
           </p>
           <p className="mt-2 flex items-baseline gap-2">
             <span className="score text-[64px] sm:text-[76px]">{loading ? '–' : <CountUp value={week.verifiedMetres} format={(m) => formatDistanceNumber(m, unit)} />}</span>
@@ -329,7 +326,7 @@ function WeekPanel({
         </div>
         <div className="text-right">
           <p className="num text-[13px] font-semibold">
-            {week.runs} {kind === 'all' ? (week.runs === 1 ? 'activity' : 'activities') : kind === 'walk' ? (week.runs === 1 ? 'walk' : 'walks') : week.runs === 1 ? 'run' : 'runs'}
+            {week.runs} {kindNoun(kind, week.runs)}
           </p>
           {goal !== null && (
             <button type="button" className="mt-1 text-[12px] font-semibold text-ink-2 underline underline-offset-4 hover:text-ink" onClick={() => setEditing(!editingGoal)}>
@@ -415,11 +412,18 @@ function PeriodTotals({ id, period, onPeriod, activities, kind, unit, now, loadi
     const metres = counted.reduce((sum, activity) => sum + creditedMetres(activity), 0);
     const seconds = counted.reduce((sum, activity) => sum + (activity.movingSeconds || activity.elapsedSeconds), 0);
     const longest = counted.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0);
+    const steps = counted.reduce((sum, activity) => sum + activity.validatedSteps, 0);
+    const foot = counted.filter((activity) => activity.activityType !== 'cycle');
+    const footPace = { metres: foot.reduce((sum, activity) => sum + creditedMetres(activity), 0), seconds: foot.reduce((sum, activity) => sum + (activity.movingSeconds || activity.elapsedSeconds), 0) };
     const first = counted.reduce<string | null>((earliest, activity) => (!earliest || activity.startedAt < earliest ? activity.startedAt : earliest), null);
-    return { metres, seconds, longest, count: counted.length, first };
+    return { metres, seconds, longest, steps, footPace, count: counted.length, first };
   }, [activities, period, now]);
-  const noun = kind === 'walk' ? 'walks' : kind === 'run' ? 'runs' : 'activities';
-  const pace = formatPace(totals.metres, totals.seconds, unit);
+  const noun = kindNoun(kind);
+  const pace = kind === 'cycle' ? formatSpeed(totals.metres, totals.seconds, unit) : formatPace(totals.footPace.metres, totals.footPace.seconds, unit);
+  const healthSteps = useStepTotal(period, now, kind === 'all');
+  const steps = Math.max(totals.steps, healthSteps ?? 0);
+  const since = period === 'all' && totals.first ? `Since ${new Date(totals.first).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}` : null;
+  const detail = [kind !== 'cycle' && !loading ? `${steps.toLocaleString('en-GB')} ${steps === 1 ? 'step' : 'steps'}` : null, since].filter(Boolean).join(' · ');
 
   return <>
     <p id={id} className="eyebrow flex items-center gap-1"><PeriodPicker period={period} onChange={onPeriod} now={now} /> · {kind === 'all' ? 'verified' : noun}</p>
@@ -427,14 +431,33 @@ function PeriodTotals({ id, period, onPeriod, activities, kind, unit, now, loadi
       <span className="score text-[64px] sm:text-[76px]">{loading ? '–' : <CountUp value={totals.metres} format={(m) => formatDistanceNumber(m, unit)} />}</span>
       <span className="text-[15px] font-semibold text-ink-2">{unit}</span>
     </p>
-    {period === 'all' && totals.first && <p className="text-[13px] text-ink-2">Since {new Date(totals.first).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
+    {detail && <p className="text-[13px] text-ink-2 tabular-nums">{detail}</p>}
     <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 sm:grid-cols-4">
       <Stat label={noun.charAt(0).toUpperCase() + noun.slice(1)} value={totals.count.toLocaleString('en-GB')} />
       <Stat label="Time moving" value={formatDuration(totals.seconds)} />
       <Stat label="Longest" value={formatDistanceNumber(totals.longest, unit)} unit={unit} />
-      <Stat label={`Avg pace /${unit}`} value={pace ?? '–'} />
+      <Stat label={kind === 'cycle' ? 'Avg speed' : `Avg pace /${unit}`} value={pace ?? '–'} />
     </div>
   </>;
+}
+
+/** Steps for the month or all time with Apple Health's days merged in, the higher of Jump or Health each day, so nothing counts twice. */
+function useStepTotal(period: Exclude<Period, 'week'>, now: number, enabled: boolean) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = new Date(now);
+  const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const month = useQuery({
+    queryKey: ['activity-calendar', monthKey, timeZone],
+    queryFn: () => api<Array<{ steps: number }>>(`/activities/calendar?month=${monthKey}&tz=${encodeURIComponent(timeZone)}`),
+    enabled: enabled && period === 'month',
+  });
+  const all = useQuery({
+    queryKey: ['activity-summary', timeZone],
+    queryFn: () => api<{ totalSteps: number; activeDays: number }>(`/activities/summary?tz=${encodeURIComponent(timeZone)}`),
+    enabled: enabled && period === 'all',
+  });
+  if (!enabled) return null;
+  return period === 'month' ? month.data?.reduce((sum, day) => sum + day.steps, 0) ?? null : all.data?.totalSteps ?? null;
 }
 
 function LeagueSummary({ unit }: { unit: Unit }) {

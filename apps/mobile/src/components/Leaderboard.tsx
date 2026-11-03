@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { ReactNode, useId } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { brand, colors, fontFamily, radius, score } from '@/lib/theme';
+import { brand, colors, fontFamily, radius, scheme, score, voltWash } from '@/lib/theme';
 import { Avatar, Tag, Txt, VerifiedTick } from './ui';
 import { AccentSurface } from '@/lib/surface';
 
@@ -77,6 +77,9 @@ export function Leaderboard({ rows, currentUserId, unit, limit = 50, empty, metr
 }
 
 function Row({ row, isMe, unit, formatScore, last }: { row: LeaderboardRow; isMe: boolean; unit: Unit; formatScore?: (row: LeaderboardRow, onAccent: boolean) => ReactNode; last: boolean }) {
+  // Your row is solid volt with dark text on a light page. On a dark one a block of volt glares and
+  // swallows the cream rank, so it's a volt tint with a volt edge and the text stays cream.
+  const solid = isMe && scheme === 'light';
   const body = <>
     <View style={{ width: 56, paddingLeft: 16 }}><RankBadge rank={row.rank} /></View>
     <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12, paddingRight: 8 }}>
@@ -85,19 +88,18 @@ function Row({ row, isMe, unit, formatScore, last }: { row: LeaderboardRow; isMe
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Txt size={15} weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>{row.name}</Txt>
           {row.verified ? <VerifiedTick /> : null}
-          {isMe ? <Tag color={brand.volt} background={brand.ink} border={brand.ink} style={{ height: 20, paddingHorizontal: 6 }}>You</Tag> : null}
+          {isMe ? <Tag color={solid ? brand.volt : brand.ink} background={solid ? brand.ink : brand.volt} border={solid ? brand.ink : brand.volt} style={{ height: 20, paddingHorizontal: 6 }}>You</Tag> : null}
           {row.host ? <Tag background={colors.paper} border={colors.line} style={{ height: 20, paddingHorizontal: 6 }}>Host</Tag> : null}
         </View>
         {row.detail ? <Txt size={12} color="ink3" num numberOfLines={1}>{row.detail}</Txt> : null}
       </View>
     </View>
     <View style={{ paddingRight: 16, alignItems: 'flex-end' }}>
-      {formatScore ? formatScore(row, isMe) : <Text style={[score(20), isMe && { color: colors.onAccent }]}>{formatDistanceNumber(row.metres, unit)}<Text style={[styles.unit, isMe && { color: colors.onAccent }]}> {unit}</Text></Text>}
+      {formatScore ? formatScore(row, solid) : <Text style={[score(20), solid && { color: colors.onAccent }]}>{formatDistanceNumber(row.metres, unit)}<Text style={[styles.unit, solid && { color: colors.onAccent }]}> {unit}</Text></Text>}
     </View>
   </>;
-  const style = [styles.row, !last && styles.rowLine, isMe && { backgroundColor: colors.volt }];
-  // Your row is volt: its text stays dark in both themes.
-  const content = isMe ? <AccentSurface.Provider value>{body}</AccentSurface.Provider> : body;
+  const style = [styles.row, !last && styles.rowLine, solid && { backgroundColor: colors.volt }, isMe && !solid && styles.meDark];
+  const content = solid ? <AccentSurface.Provider value>{body}</AccentSurface.Provider> : body;
   return row.username
     ? <Pressable onPress={() => router.push(`/runners/${row.username}`)} style={({ pressed }) => [...style, pressed && !isMe && { backgroundColor: colors.inkWash }]} accessibilityRole="button" accessibilityLabel={`${ordinal(row.rank)}, ${row.name}`}>{content}</Pressable>
     : <View style={style}>{content}</View>;
@@ -109,5 +111,6 @@ const styles = StyleSheet.create({
   headText: { fontFamily: fontFamily('bold'), fontSize: 10.5, letterSpacing: 1.26, textTransform: 'uppercase', color: colors.ink2 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   rowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  meDark: { backgroundColor: voltWash(0.12), borderLeftWidth: 3, borderLeftColor: colors.volt },
   unit: { fontFamily: fontFamily('semibold'), fontSize: 11, color: colors.ink2, letterSpacing: 0 },
 });

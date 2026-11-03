@@ -1,8 +1,8 @@
-import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, ordinal, toMetres } from '@jump/shared/format';
+import { distanceValue, formatDistance, formatDistanceNumber, formatDuration, formatPace, formatSpeed, ordinal, toMetres } from '@jump/shared/format';
 import { divisionRank, leagueZone } from '@jump/shared/league';
-import { computeMilestones, computeStreaks, creditedMetres, isVerified, nextMilestone, ofKind, summariseWeek, type ActivityKind } from '@jump/shared/progress';
+import { computeMilestones, computeStreaks, creditedMetres, isVerified, KIND_OPTIONS, kindNoun, nextMilestone, ofKind, summariseWeek, type ActivityKind } from '@jump/shared/progress';
 import type { Activity, Profile, Unit } from '@jump/shared/types';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { ComponentRef, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -16,7 +16,7 @@ import { MilestoneBadge } from '@/components/Milestones';
 import { TabScreen } from '@/components/Shell';
 import { OptionSheet } from '@/components/Sheet';
 import { Button, Card, CountUp, EmptyState, Eyebrow, ErrorNotice, haptic, HardShadow, Meter, Notice, Score, SectionTitle, Segmented, Skeleton, Stat, TextLink, Txt, useNow } from '@/components/ui';
-import { patch, post } from '@/lib/api';
+import { api, patch, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { storageKeys, useStored } from '@/lib/local';
 import { keys, useActivities, useLeagues, useLeagueStandings, useMyLeagues, useProfile, useUnit } from '@/lib/queries';
@@ -38,8 +38,9 @@ export default function DashboardScreen() {
   const [kind, setKind] = useStored<ActivityKind>(storageKeys.activityKind(user.id), 'all');
   const all = useMemo(() => activities.data ?? [], [activities.data]);
   const list = useMemo(() => ofKind(all, kind), [all, kind]);
-  const footActivities = useMemo(() => list.filter((activity) => activity.activityType !== 'cycle'), [list]);
-  const week = useMemo(() => summariseWeek(footActivities, new Date(now)), [footActivities, now]);
+  // This week and its goal count walks and runs (or just rides on Rides); the month and all-time totals count every kind.
+  const trained = useMemo(() => (kind === 'cycle' ? list : list.filter((activity) => activity.activityType !== 'cycle')), [list, kind]);
+  const week = useMemo(() => summariseWeek(trained, new Date(now)), [trained, now]);
   // Any walk, run or ride keeps the streak, whatever the filter above shows.
   const streak = useMemo(() => computeStreaks(all, new Date(now)), [all, now]);
   // The summary tile counts every walk and run, whatever the training filter below shows.
@@ -76,11 +77,11 @@ export default function DashboardScreen() {
 
     <View style={styles.trainingHead}>
       <Txt size={15} weight="bold" accessibilityRole="header">Your training</Txt>
-      <Segmented<ActivityKind> label="Show runs, walks or both" value={kind} onChange={setKind} size="sm" options={[{ value: 'all', label: 'All' }, { value: 'run', label: 'Runs' }, { value: 'walk', label: 'Walks' }]} />
+      <Segmented<ActivityKind> label="Show runs, walks, rides or everything" value={kind} onChange={setKind} size="sm" options={KIND_OPTIONS} />
     </View>
 
     <View style={{ gap: 16 }}>
-      <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} activities={footActivities} now={now} loading={activities.isLoading || profile.isLoading} />
+      <WeekPanel userId={user.id} unit={unit} week={week} kind={kind} activities={list} now={now} loading={activities.isLoading || profile.isLoading} />
 
       <Card style={{ padding: 20 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -100,12 +101,12 @@ export default function DashboardScreen() {
 
     <View style={{ marginTop: 40 }}>
       <SectionTitle aside={<TextLink title="All runs" size={13} onPress={() => router.push('/activities')} />}>
-        {kind === 'walk' ? 'Recent walks' : kind === 'run' ? 'Recent runs' : 'Recent activity'}
+        {kind === 'all' ? 'Recent activity' : `Recent ${kindNoun(kind)}`}
       </SectionTitle>
       {activities.isLoading
         ? <View style={{ gap: 12, paddingVertical: 8 }}><Skeleton style={{ height: 56 }} /><Skeleton style={{ height: 56 }} /></View>
         : list.length === 0 && kind !== 'all'
-          ? <EmptyState title={kind === 'walk' ? 'No walks yet' : 'No runs yet'}>{`Switch to All to see everything, or record a ${kind}. Pick Walk or Run before you start.`}</EmptyState>
+          ? <EmptyState title={`No ${kindNoun(kind)} yet`}>{`Switch to All to see everything, or record a ${kindNoun(kind, 1)}. Pick ${kind === 'cycle' ? 'Ride' : kind === 'walk' ? 'Walk' : 'Run'} before you start.`}</EmptyState>
           : list.length === 0
             ? <EmptyState mark="0.00" title="No runs yet" action={<Button title="Record your first run" icon={<RunIcon size={16} />} onPress={() => router.navigate('/run')} />}>Your first verified run unlocks your first milestone.</EmptyState>
             : <View>{list.slice(0, 4).map((activity, index, shown) => <ActivityRow key={activity.id} activity={activity} unit={unit} last={index === shown.length - 1} />)}</View>}
@@ -171,7 +172,7 @@ function WeekPanel({ userId, unit, week, kind, activities, now, loading }: { use
   const editing = kind === 'all' && !loading && (editingGoal || goal === null);
   const reached = goal !== null && week.verifiedMetres >= goal;
   const remaining = goal === null ? 0 : Math.max(0, goal - week.verifiedMetres);
-  const noun = kind === 'run' ? 'runs' : kind === 'walk' ? 'walks' : 'verified';
+  const noun = kind === 'all' ? 'walks & runs' : kindNoun(kind);
 
   if (period !== 'week') return <Card variant="strong" style={{ padding: 20 }}><PeriodTotals period={period} onPeriod={setPeriod} activities={activities} kind={kind} unit={unit} now={now} loading={loading} /></Card>;
 
@@ -185,7 +186,7 @@ function WeekPanel({ userId, unit, week, kind, activities, now, loading }: { use
         </View>
       </View>
       <View style={{ alignItems: 'flex-end' }}>
-        <Txt size={13} weight="semibold" num>{`${week.runs} ${kind === 'all' ? (week.runs === 1 ? 'activity' : 'activities') : kind === 'walk' ? (week.runs === 1 ? 'walk' : 'walks') : week.runs === 1 ? 'run' : 'runs'}`}</Txt>
+        <Txt size={13} weight="semibold" num>{`${week.runs} ${kindNoun(kind, week.runs)}`}</Txt>
         {goal !== null && <TextLink size={12} color="ink2" title={editingGoal ? 'Done' : 'Change goal'} onPress={() => setEditing(!editingGoal)} />}
       </View>
     </View>
@@ -223,26 +224,52 @@ function PeriodTotals({ period, onPeriod, activities, kind, unit, now, loading }
     return {
       metres: counted.reduce((sum, activity) => sum + creditedMetres(activity), 0),
       seconds: counted.reduce((sum, activity) => sum + (activity.movingSeconds || activity.elapsedSeconds), 0),
+      foot: counted.filter((activity) => activity.activityType !== 'cycle'),
       longest: counted.reduce((max, activity) => Math.max(max, creditedMetres(activity)), 0),
+      steps: counted.reduce((sum, activity) => sum + activity.validatedSteps, 0),
       count: counted.length,
       first: counted.reduce<string | null>((earliest, activity) => (!earliest || activity.startedAt < earliest ? activity.startedAt : earliest), null),
     };
   }, [activities, period, now]);
-  const noun = kind === 'walk' ? 'walks' : kind === 'run' ? 'runs' : 'activities';
+  const noun = kindNoun(kind);
+  const healthSteps = useStepTotal(period, now, kind === 'all');
+  const steps = Math.max(totals.steps, healthSteps ?? 0);
+  const since = period === 'all' && totals.first ? `Since ${new Date(totals.first).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}` : null;
   return <>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><PeriodPicker period={period} onChange={onPeriod} now={now} /><Eyebrow>· {kind === 'all' ? 'verified' : noun}</Eyebrow></View>
     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
       <Score size={64}>{loading ? '–' : <CountUp value={totals.metres} format={(m) => formatDistanceNumber(m, unit)} />}</Score>
       <Txt size={15} weight="semibold" color="ink2">{unit}</Txt>
     </View>
-    {period === 'all' && totals.first ? <Txt size={13} color="ink2">Since {new Date(totals.first).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</Txt> : null}
+    {kind !== 'cycle' || since ? <Txt size={13} color="ink2" num>{[kind !== 'cycle' && !loading ? `${steps.toLocaleString('en-GB')} ${steps === 1 ? 'step' : 'steps'}` : null, since].filter(Boolean).join(' · ')}</Txt> : null}
     <View style={styles.totals}>
       <Stat style={styles.total} label={noun.charAt(0).toUpperCase() + noun.slice(1)} value={totals.count.toLocaleString('en-GB')} />
       <Stat style={styles.total} label="Time moving" value={formatDuration(totals.seconds)} />
       <Stat style={styles.total} label="Longest" value={formatDistanceNumber(totals.longest, unit)} unit={unit} />
-      <Stat style={styles.total} label={`Avg pace /${unit}`} value={formatPace(totals.metres, totals.seconds, unit) ?? '–'} />
+      {kind === 'cycle'
+        ? <Stat style={styles.total} label="Avg speed" value={formatSpeed(totals.metres, totals.seconds, unit) ?? '–'} />
+        : <Stat style={styles.total} label={`Avg pace /${unit}`} value={formatPace(totals.foot.reduce((sum, activity) => sum + creditedMetres(activity), 0), totals.foot.reduce((sum, activity) => sum + (activity.movingSeconds || activity.elapsedSeconds), 0), unit) ?? '–'} />}
     </View>
   </>;
+}
+
+/** Steps for the month or all time with Apple Health's days merged in, the higher of Jump or Health each day, so nothing counts twice. */
+function useStepTotal(period: Exclude<Period, 'week'>, now: number, enabled: boolean) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = new Date(now);
+  const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const month = useQuery({
+    queryKey: ['activity-calendar', monthKey, timeZone],
+    queryFn: () => api<Array<{ steps: number }>>(`/activities/calendar?month=${monthKey}&tz=${encodeURIComponent(timeZone)}`),
+    enabled: enabled && period === 'month',
+  });
+  const all = useQuery({
+    queryKey: ['activity-summary', timeZone],
+    queryFn: () => api<{ totalSteps: number; activeDays: number }>(`/activities/summary?tz=${encodeURIComponent(timeZone)}`),
+    enabled: enabled && period === 'all',
+  });
+  if (!enabled) return null;
+  return period === 'month' ? month.data?.reduce((sum, day) => sum + day.steps, 0) ?? null : all.data?.totalSteps ?? null;
 }
 
 /** This week's distance with a bar per day, and the streak as a ring: the two tiles under the race. */

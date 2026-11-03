@@ -38,7 +38,7 @@ function RowLink({ row, style, children }: { row: BoardRow; style: object; child
 }
 
 function BoardRowView({ row, unit, leader, showFlag }: { row: BoardRow; unit: Unit; leader: number; showFlag: boolean }) {
-  return <RowLink row={row} style={[styles.row, row.isMe && { backgroundColor: ME_WASH }]}>
+  return <RowLink row={row} style={[styles.row, row.isMe && { backgroundColor: ME_WASH }, row.isMe && scheme === 'dark' && { borderLeftWidth: 3, borderLeftColor: colors.volt }]}>
     <Txt size={15} weight="bold" color="ink3" num style={{ width: 28 }}>{row.rank}</Txt>
     <Runner row={row} size={36} showFlag={showFlag} />
     <View style={{ flex: 1, minWidth: 0 }}>

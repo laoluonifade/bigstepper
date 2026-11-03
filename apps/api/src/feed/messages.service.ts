@@ -179,7 +179,7 @@ export class MessagesService {
        )
        , unread AS (
          SELECT "senderId",COUNT(*)::integer "count" FROM "direct_messages"
-         WHERE "recipientId"=$1 AND "readAt" IS NULL GROUP BY "senderId"
+         WHERE "recipientId"=$1 AND "readAt" IS NULL AND "clubId" IS NULL AND "groupId" IS NULL GROUP BY "senderId"
        )
        SELECT l."body",l."kind",l."createdAt",l."senderId",l."readAt",p."username",p."displayName",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
@@ -193,7 +193,8 @@ export class MessagesService {
 
   async unreadCount(userId: string) {
     const [row] = await this.dataSource.query(
-      `SELECT (SELECT COUNT(*) FROM "direct_messages" WHERE "recipientId"=$1 AND "readAt" IS NULL)
+      `SELECT (SELECT COUNT(*) FROM "direct_messages" d WHERE d."recipientId"=$1 AND d."readAt" IS NULL AND d."clubId" IS NULL AND d."groupId" IS NULL
+                 AND EXISTS (SELECT 1 FROM "profiles" p WHERE p."userId"=d."senderId") AND NOT ${blockedBetween('$1', 'd."senderId"')})
             + (SELECT COUNT(*) FROM "club_memberships" m
                JOIN "direct_messages" d ON d."clubId" = m."clubId" AND d."senderId" <> $1
                LEFT JOIN "club_chat_reads" r ON r."clubId" = m."clubId" AND r."userId" = $1

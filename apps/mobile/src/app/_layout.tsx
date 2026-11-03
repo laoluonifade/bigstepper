@@ -3,7 +3,6 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { reloadAppAsync } from 'expo';
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,7 +14,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import { detachRecorder, restoreRecorder, useRecorder } from '@/lib/recorder';
 import { listenForPush, registerForPush } from '@/lib/push';
 import { syncMoveNudge } from '@/lib/move-nudge';
-import { colors, FONT_FILES, scheme, systemSchemeChanged } from '@/lib/theme';
+import { colors, FONT_FILES, restartForTheme, scheme, systemSchemeChanged } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -54,7 +53,7 @@ function Routes({ fontsReady }: { fontsReady: boolean }) {
   live.current = phase === 'recording' || phase === 'paused' || phase === 'finishing' || phase === 'locating';
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'active' && systemSchemeChanged() && !live.current) void reloadAppAsync('System theme changed');
+      if (next === 'active' && systemSchemeChanged() && !live.current) void restartForTheme('System theme changed');
     });
     return () => subscription.remove();
   }, []);

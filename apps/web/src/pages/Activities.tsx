@@ -12,7 +12,7 @@ import { api, isApiError, post } from '../lib/api';
 import { estimatedCalories } from '../lib/calories';
 import { describeReason } from '../lib/copy';
 import { activityName, formatDateTime, formatDistance, formatDistanceNumber, formatDuration, formatPace, formatSpeed } from '../lib/format';
-import { ActivityKind, lifetimeStats, ofKind } from '../lib/progress';
+import { ActivityKind, kindNoun, lifetimeStats, ofKind } from '../lib/progress';
 import { storageKeys, useStored } from '../lib/local';
 import { useUser } from '../lib/auth';
 import { KindFilter } from './Dashboard';
@@ -52,7 +52,7 @@ export function ActivitiesPage() {
 
   const healthDays = useHealthDays();
   const groups = useMemo(() => {
-    const showHealth = filter === 'all' && kind !== 'run';
+    const showHealth = filter === 'all' && (kind === 'all' || kind === 'walk');
     const entries: Array<{ at: number; activity?: Activity; day?: DailySteps }> = [
       ...filtered.map((activity) => ({ at: new Date(activity.startedAt).getTime(), activity })),
       ...(showHealth ? (healthDays.data ?? []).filter((day) => day.steps > 0).map((day) => ({ at: new Date(`${day.day}T23:59:00`).getTime(), day })) : []),
@@ -82,8 +82,8 @@ export function ActivitiesPage() {
       </div>
 
       <div key={kind} className="panel-strong mb-6 grid animate-rise grid-cols-2 gap-x-4 gap-y-5 p-5 sm:grid-cols-3">
-        <Stat label={kind === 'run' ? 'Run distance' : kind === 'walk' ? 'Walk distance' : 'Verified distance'} value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
-        <Stat label={kind === 'run' ? 'Verified runs' : kind === 'walk' ? 'Verified walks' : 'Verified activities'} value={activities.isLoading ? '–' : stats.verifiedRuns} />
+        <Stat label={kind === 'run' ? 'Run distance' : kind === 'walk' ? 'Walk distance' : kind === 'cycle' ? 'Ride distance' : 'Verified distance'} value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
+        <Stat label={`Verified ${kindNoun(kind)}`} value={activities.isLoading ? '–' : stats.verifiedRuns} />
         <Stat label="Longest" value={activities.isLoading ? '–' : formatDistanceNumber(stats.longestMetres, unit)} unit={unit} />
         <Stat label="Moving time" value={activities.isLoading ? '–' : formatDuration(stats.movingSeconds)} />
         <Stat label="Total steps" value={summary.data ? summary.data.totalSteps.toLocaleString('en-GB') : '–'} />
@@ -134,7 +134,7 @@ export function ActivitiesPage() {
             : filter === 'verified'
               ? 'Verified activities will appear here.'
               : kind !== 'all'
-                ? `No ${kind}s recorded yet.`
+                ? `No ${kindNoun(kind)} recorded yet.`
                 : 'Record a walk, run or ride and it’ll show up here.'}
         </EmptyState>
       ) : (

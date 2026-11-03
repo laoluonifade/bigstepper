@@ -35,7 +35,20 @@ export function fromSteps(activity: Activity) {
   return (activity.verificationStatus === 'VERIFIED' || activity.verificationStatus === 'FLAGGED') && (activity.stepDistanceMetres ?? 0) > activity.validatedDistanceMetres;
 }
 
-export type ActivityKind = 'all' | 'run' | 'walk';
+export type ActivityKind = 'all' | 'run' | 'walk' | 'cycle';
+
+export const KIND_OPTIONS: Array<{ value: ActivityKind; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'run', label: 'Runs' },
+  { value: 'walk', label: 'Walks' },
+  { value: 'cycle', label: 'Rides' },
+];
+
+/** "run" / "runs", "ride" / "rides", and "activity" / "activities" for All. */
+export function kindNoun(kind: ActivityKind, count = 2) {
+  const [one, many] = { all: ['activity', 'activities'], run: ['run', 'runs'], walk: ['walk', 'walks'], cycle: ['ride', 'rides'] }[kind];
+  return count === 1 ? one : many;
+}
 
 export function ofKind(activities: Activity[], kind: ActivityKind) {
   return kind === 'all' ? activities : activities.filter((activity) => activity.activityType === kind);

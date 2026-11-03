@@ -126,24 +126,41 @@ if (themePreference !== 'system') {
  */
 export const brand: Palette = LIGHT;
 
+let restarting = false;
+
 /**
- * Saves the choice and restarts into it (behind the boot animation), since every style is built at
- * launch. Resolves false if the app couldn't restart itself (some Android dev setups), so the screen
- * can ask the runner to reopen Jump; the choice is saved either way.
+ * Restarts into the current preference, once, however many taps or app switches ask for it. It waits
+ * for the sheet that asked to finish closing (iOS can crash tearing down JS under a modal that's still
+ * animating) and for the native scheme to settle, so the new launch reads the right one. Resolves false
+ * if the app couldn't restart itself (some Android dev setups).
  */
-export async function setThemePreference(next: ThemePreference): Promise<boolean> {
-  try { Storage.setItemSync(THEME_KEY, next); } catch { return false; }
+export async function restartForTheme(reason: string): Promise<boolean> {
+  if (restarting) return true;
+  restarting = true;
+  await new Promise((resolve) => setTimeout(resolve, 450));
   try {
-    await reloadAppAsync('Theme changed');
+    await reloadAppAsync(reason);
     return true;
   } catch {
     try {
-      DevSettings.reload('Theme changed');
+      DevSettings.reload(reason);
       return true;
     } catch {
+      restarting = false;
       return false;
     }
   }
+}
+
+/**
+ * Saves the choice and restarts into it (behind the boot animation), since every style is built at
+ * launch. The native side switches first, so "System default" boots straight into the phone's scheme
+ * rather than a stale override. The choice is saved even if the restart fails.
+ */
+export async function setThemePreference(next: ThemePreference): Promise<boolean> {
+  try { Storage.setItemSync(THEME_KEY, next); } catch { return false; }
+  try { Appearance.setColorScheme(next === 'system' ? 'unspecified' : next); } catch { /* the launch applies it */ }
+  return restartForTheme('Theme changed');
 }
 
 /** Whether the phone's own setting now disagrees with this launch, for "Use system setting". */

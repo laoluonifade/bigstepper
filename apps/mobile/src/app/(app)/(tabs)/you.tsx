@@ -24,6 +24,7 @@ import { moveNudgeEnabled, moveNudgeSupported, setMoveNudge } from '@/lib/move-n
 import { keys, useActivities, useNotifications, useProfile, useUnit } from '@/lib/queries';
 import { colors, GUTTER, radius, setThemePreference, themePreference, type ThemePreference } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { useRecorder } from '@/lib/recorder';
 
 const THEME_LABEL: Record<ThemePreference, string> = { system: 'System default', light: 'Light', dark: 'Dark' };
 
@@ -48,6 +49,8 @@ export default function YouScreen() {
   const [nudgeOn, setNudgeOn] = useState(moveNudgeEnabled);
   // What's picked shows straight away, even before the restart that applies it.
   const [chosenTheme, setChosenTheme] = useState<ThemePreference>(themePreference);
+  const phase = useRecorder().phase;
+  const recording = phase === 'recording' || phase === 'paused' || phase === 'finishing' || phase === 'locating';
   const save = useSaveProfile();
 
   if (profile.isLoading) return <TabScreen banners={false}><Loading /></TabScreen>;
@@ -216,6 +219,10 @@ export default function YouScreen() {
       onChange={(value) => {
         setSheet(null);
         if (value === chosenTheme) return;
+        if (recording) {
+          toast({ tone: 'info', title: 'Finish your activity first', message: 'Switching appearance restarts Jump, so it waits until you’ve stopped recording.' });
+          return;
+        }
         setChosenTheme(value);
         void setThemePreference(value).then((restarted) => {
           if (!restarted) toast({ tone: 'info', title: 'Saved', message: 'Close and reopen Jump to switch.' });

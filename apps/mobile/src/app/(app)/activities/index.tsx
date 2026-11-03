@@ -1,5 +1,5 @@
 import { formatDistanceNumber, formatDuration } from '@jump/shared/format';
-import { lifetimeStats, ofKind, type ActivityKind } from '@jump/shared/progress';
+import { KIND_OPTIONS, kindNoun, lifetimeStats, ofKind, type ActivityKind } from '@jump/shared/progress';
 import type { Activity, DailySteps } from '@jump/shared/types';
 import { useQuery } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
@@ -36,7 +36,7 @@ export default function ActivitiesScreen() {
     : filter === 'attention' ? activity.verificationStatus === 'REJECTED' : true);
   const healthDays = useDailySteps();
   const groups = useMemo(() => {
-    const showHealth = filter === 'all' && kind !== 'run';
+    const showHealth = filter === 'all' && (kind === 'all' || kind === 'walk');
     const entries: Array<{ at: number; activity?: Activity; day?: DailySteps }> = [
       ...filtered.map((activity) => ({ at: new Date(activity.startedAt).getTime(), activity })),
       ...(showHealth ? (healthDays.data ?? []).filter((day) => day.steps > 0).map((day) => ({ at: new Date(`${day.day}T23:59:00`).getTime(), day })) : []),
@@ -52,11 +52,11 @@ export default function ActivitiesScreen() {
   return <Screen refreshing={activities.isRefetching} onRefresh={() => { void activities.refetch(); void summary.refetch(); }}>
     <Stack.Screen options={{ title: 'Your activities' }} />
     <View style={{ marginBottom: 16 }}>
-      <Segmented<ActivityKind> label="Show runs, walks or both" value={kind} onChange={setKind} options={[{ value: 'all', label: 'All' }, { value: 'run', label: 'Runs' }, { value: 'walk', label: 'Walks' }]} />
+      <Segmented<ActivityKind> label="Show runs, walks, rides or everything" value={kind} onChange={setKind} options={KIND_OPTIONS} />
     </View>
     <Card variant="strong" style={styles.stats}>
-      <Stat style={styles.stat} label={kind === 'run' ? 'Run distance' : kind === 'walk' ? 'Walk distance' : 'Verified distance'} value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
-      <Stat style={styles.stat} label={kind === 'run' ? 'Verified runs' : kind === 'walk' ? 'Verified walks' : 'Verified activities'} value={activities.isLoading ? '–' : stats.verifiedRuns} />
+      <Stat style={styles.stat} label={kind === 'run' ? 'Run distance' : kind === 'walk' ? 'Walk distance' : kind === 'cycle' ? 'Ride distance' : 'Verified distance'} value={activities.isLoading ? '–' : formatDistanceNumber(stats.totalMetres, unit)} unit={unit} />
+      <Stat style={styles.stat} label={`Verified ${kindNoun(kind)}`} value={activities.isLoading ? '–' : stats.verifiedRuns} />
       <Stat style={styles.stat} label="Longest" value={activities.isLoading ? '–' : formatDistanceNumber(stats.longestMetres, unit)} unit={unit} />
       <Stat style={styles.stat} label="Moving time" value={activities.isLoading ? '–' : formatDuration(stats.movingSeconds)} />
       <Stat style={styles.stat} label="Total steps" value={summary.data ? summary.data.totalSteps.toLocaleString('en-GB') : '–'} />
@@ -77,7 +77,7 @@ export default function ActivitiesScreen() {
     {activities.isLoading ? <View style={{ gap: 12 }}>{[0, 1, 2].map((i) => <Skeleton key={i} style={{ height: 64 }} />)}</View>
       : groups.length === 0 ? <EmptyState title={filter === 'all' && kind === 'all' ? 'No activities yet' : 'Nothing here'}
         action={filter === 'all' && kind === 'all' ? <Button title="Start an activity" icon={<RunIcon size={16} />} onPress={() => router.navigate('/run')} /> : undefined}>
-        {filter === 'attention' ? 'None of these need attention.' : filter === 'verified' ? 'Verified activities will appear here.' : kind !== 'all' ? `No ${kind}s recorded yet.` : 'Record a walk, run or ride and it’ll show up here.'}
+        {filter === 'attention' ? 'None of these need attention.' : filter === 'verified' ? 'Verified activities will appear here.' : kind !== 'all' ? `No ${kindNoun(kind)} recorded yet.` : 'Record a walk, run or ride and it’ll show up here.'}
       </EmptyState>
         : groups.map(([month, items]) => <View key={month} style={{ marginBottom: 24 }}>
           <View style={styles.month}>

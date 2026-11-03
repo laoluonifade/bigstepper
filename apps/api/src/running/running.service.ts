@@ -10,6 +10,8 @@ import { RunningSession } from './running-session.entity';
 import { Activity } from './activity.entity';
 import { ACTIVITY_VERIFICATION_QUEUE } from '../jobs/jobs.module';
 import { announceCounted, countActivity } from './count-activity';
+import { dropOverlappingImports } from './import-activity';
+import { refreshLeagueDistance } from '../leagues/league-credits';
 import { gpsPoints, runEvents } from '../metrics/metrics';
 
 export function momentOf(at: string | undefined, floor: Date, now = new Date()) {
@@ -190,6 +192,7 @@ export class RunningService {
       session.finishedAt = finishedAt;
       session.pausedAt = null;
       await manager.save(session);
+      if (await dropOverlappingImports(manager, userId, session.startedAt, finishedAt)) await refreshLeagueDistance(manager, userId);
 
       const elapsedSeconds = Math.max(0, Math.floor((finishedAt.getTime() - session.startedAt.getTime()) / 1000));
       const saved = await manager.save(

@@ -118,6 +118,7 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
 
   const read = useMutation({
     mutationFn: () => post(`${path}/read`),
+    retry: 3,
     onSuccess() {
       void queryClient.invalidateQueries({ queryKey: keys.messagesUnread });
       void queryClient.invalidateQueries({ queryKey: ['messages', 'inbox'] });
@@ -128,6 +129,9 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
   const newestIncomingId = [...(conversation.data?.messages ?? [])].reverse().find((message) => message.senderId !== user.id)?.id;
   const markRead = read.mutate;
   useEffect(() => { if (newestIncomingId) markRead(); }, [newestIncomingId, markRead]);
+  // Coming back to a chat that's still open underneath (Android keeps it mounted) reads it again too.
+  const hasIncoming = Boolean(newestIncomingId);
+  useFocusEffect(useCallback(() => { if (hasIncoming) markRead(); }, [hasIncoming, markRead]));
 
   const send = useMutation({
     async mutationFn({ text, reply, activityId, voice }: SendDraft) {
