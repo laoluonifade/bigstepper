@@ -1,3 +1,4 @@
+import { STRIDE_METRES } from '../running/track';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -114,7 +115,9 @@ export class AppleHealthService {
     if (!valid.length) return { saved: 0 };
     const changed = await this.dataSource.query(
       `INSERT INTO "daily_steps" ("userId", "day", "steps", "distanceMetres", "countedSteps", "countedMetres")
-       SELECT $1, x."day", s.steps, s.metres, LEAST(COALESCE(x."countedSteps", 0), s.steps), LEAST(COALESCE(x."countedMetres", 0), COALESCE(s.metres, 0))
+       SELECT $1, x."day", s.steps, s.metres, LEAST(COALESCE(x."countedSteps", 0), s.steps),
+              CASE WHEN s.metres IS NULL THEN round(LEAST(COALESCE(x."countedSteps", 0), s.steps) * ${STRIDE_METRES.walk})::integer
+                   ELSE LEAST(COALESCE(x."countedMetres", 0), s.metres) END
        FROM jsonb_to_recordset($2::jsonb) AS x("day" date, "steps" integer, "distanceMetres" integer, "countedSteps" integer, "countedMetres" integer)
        CROSS JOIN LATERAL (SELECT LEAST(x."steps", ${MAX_DAILY_STEPS}) AS steps,
                                   CASE WHEN x."distanceMetres" IS NULL THEN NULL ELSE LEAST(x."distanceMetres", ${MAX_DAILY_METRES}) END AS metres) s
