@@ -1,15 +1,16 @@
 import type { ConfigService } from '@nestjs/config';
 import type { Job, Queue } from 'bullmq';
 import type { DataSource } from 'typeorm';
-import { PushNotificationsProcessor } from './push-notifications.processor';
+import { messagePush, PushNotificationsProcessor, roundAvatar } from './push-notifications.processor';
 
 const job = { name: 'send-push' } as Job;
 
-function setup(pending: Array<Record<string, unknown>>, tokens: Array<{ token: string; userId: string }>) {
+function setup(pending: Array<Record<string, unknown>>, tokens: Array<{ token: string; userId: string; richMessages?: boolean }>) {
   const query = jest.fn(async (sql: string, _params?: unknown[]) => {
     if (sql.includes('"pushClaimedAt"=now()')) return pending;
     if (sql.includes('FROM "push_tokens"')) return tokens;
     if (sql.includes('COUNT(*)')) return [{ userId: 'u1', count: 3 }];
+    if (sql.includes('FROM "profiles"')) return [{ key: 'ada', url: 'https://res.cloudinary.com/x/image/upload/v1/ada.jpg' }];
     return [];
   });
   const processor = new PushNotificationsProcessor({ query } as unknown as DataSource, { get: () => undefined } as unknown as ConfigService, {} as Queue, { reserve: jest.fn().mockResolvedValue({allowed:true}), finish: jest.fn(), event: jest.fn() } as never, {} as never);
@@ -38,7 +39,7 @@ describe('PushNotificationsProcessor', () => {
     await processor.process(job);
     const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
     expect(sent.map((message: { to: string }) => message.to)).toEqual(['ExponentPushToken[a]', 'ExponentPushToken[b]']);
-    expect(sent[0]).toMatchObject({ title: 'Ada sent you a message', badge: 3, channelId: 'messages', sound: 'default', data: { link: '/messages/ada' } });
+    expect(sent[0]).toMatchObject({ title: 'Ada sent you a message', badge: 3, channelId: 'messages', sound: 'default', priority: 'high', data: { link: '/messages/ada' } });
     expect(query.mock.calls.some(([sql]) => String(sql).includes('"pushProcessedAt"=now()'))).toBe(true);
   });
 
@@ -128,4 +129,22 @@ describe('PushNotificationsProcessor', () => {
     expect(policy.finish).not.toHaveBeenCalledWith('delivery','delivered');
   });
 
+
+  it('gives a direct message the sender’s photo, the Reply button and, on phones that have it, the message sound', async () => {
+    const { processor } = setup([{ id: 'n1', userId: 'u1', type: 'DIRECT_MESSAGE', title: 'Ada', body: 'Run tonight?', link: '/messages/ada', createdAt: now() }],
+      [{ token: 'ExponentPushToken[new]', userId: 'u1', richMessages: true }, { token: 'ExponentPushToken[old]', userId: 'u1', richMessages: false }]);
+    const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ data: [{ status: 'ok' }, { status: 'ok' }] }) }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await processor.process(job);
+    const [fresh, old] = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+    const image = 'https://res.cloudinary.com/x/image/upload/c_fill,g_face,w_256,h_256,r_max,f_png/v1/ada.jpg';
+    expect(fresh).toMatchObject({ channelId: 'chat', sound: 'message.wav', categoryId: 'message', threadId: '/messages/ada', richContent: { image }, mutableContent: true });
+    expect(old).toMatchObject({ channelId: 'messages', sound: 'default', categoryId: 'message', richContent: { image } });
+  });
+
+  it('leaves other notifications as they were', () => {
+    expect(messagePush({ type: 'FOLLOW', link: '/u/ada' }, { token: 't', userId: 'u', platform: 'ios', richMessages: true }, null)).toEqual({});
+    expect(messagePush({ type: 'DIRECT_MESSAGE', link: '/messages/groups/runners' }, { token: 't', userId: 'u', platform: 'ios', richMessages: false }, null)).toEqual({ threadId: '/messages/groups/runners' });
+    expect(roundAvatar('https://cdn.example.com/a.jpg')).toBe('https://cdn.example.com/a.jpg');
+  });
 });

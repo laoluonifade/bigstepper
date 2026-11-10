@@ -112,6 +112,7 @@ const eventGuests = createRoute({ getParentRoute: () => root, path: '/events/$id
 const prizes = createRoute({ getParentRoute: () => root, path: '/prizes', component: protectedPage(() => import('./pages/Prizes'), 'PrizesPage') });
 const rewards = createRoute({ getParentRoute: () => root, path: '/rewards', component: protectedPage(() => import('./pages/You'), 'RewardsPage') });
 const identity = createRoute({ getParentRoute: () => root, path: '/identity', component: protectedPage(() => import('./pages/You'), 'IdentityPage') });
+const health = createRoute({ getParentRoute: () => root, path: '/health', beforeLoad: () => { throw redirect({ to: '/dashboard' }); } });
 const wallet = createRoute({ getParentRoute: () => root, path: '/wallet', beforeLoad: () => { throw redirect({ to: '/rewards', hash: window.location.hash.slice(1) || undefined }); } });
 const creator = createRoute({ getParentRoute: () => root, path: '/creator', component: protectedPage(() => import('./pages/You'), 'CreatorPage') });
 const notifications = createRoute({ getParentRoute: () => root, path: '/notifications', component: protectedPage(() => import('./pages/You'), 'NotificationsPage') });
@@ -131,7 +132,7 @@ const routeTree = root.addChildren([
   home, business, competitions, competition, runners, runner, terms, privacy, deleteAccount, safety, support, brands, brandsPreview,
   authLayout.addChildren([login, register, verify, forgot, reset, stravaSignup]),
   stravaCallback,
-  dashboard, setup, interests, welcome, leaderboard, feed, feedPost, messages, groupChat, conversation, duel, newCompetition, run, runSession, activities, activity,
+  dashboard, health, setup, interests, welcome, leaderboard, feed, feedPost, messages, groupChat, conversation, duel, newCompetition, run, runSession, activities, activity,
   leagues, league, clubs, club, clubChat, clubDashboard, events, clubEvent, eventGuests, eventPass, prizes, rewards, identity, wallet, creator, notifications, connections, profile, paymentReturn,
 ]);
 

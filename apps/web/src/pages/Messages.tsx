@@ -21,9 +21,9 @@ import { formatClock, useVoiceRecorder, VOICE_NOTE_MAX_SECONDS, type VoiceRecord
 import type { Duel } from '../lib/duels';
 import type { Activity, AvatarStyle, CheckoutResponse, Unit } from '../lib/types';
 
-type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; senderId: string; unreadCount: number };
-type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
-type GroupRow = { type: 'group'; groupSlug: string; groupName: string; description: string | null; memberCount: number; senderName: string; senderId: string | null; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
+type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel' | 'deleted'; createdAt: string; senderId: string; unreadCount: number };
+type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel' | 'deleted'; createdAt: string; unreadCount: number };
+type GroupRow = { type: 'group'; groupSlug: string; groupName: string; description: string | null; memberCount: number; senderName: string; senderId: string | null; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel' | 'deleted'; createdAt: string; unreadCount: number };
 type InboxRow = DirectRow | ClubRow | GroupRow;
 type GroupConversation = Thread & {
   group: { id: string; slug: string; name: string; description: string | null; memberCount: number; faces: Person[] };
@@ -33,7 +33,7 @@ type GroupConversation = Thread & {
 type Person = { displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; username?: string | null };
 type MessageReaction = Reaction;
 type SharedActivity = { id: string; activityType: 'walk' | 'run' | 'cycle'; startedAt: string; verificationStatus: string; distanceMetres: number; movingSeconds: number; steps: number };
-type Message = { id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null; reactions: Array<{ userId: string; reaction: MessageReaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null; tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean; duel?: Duel | null };
+type Message = { id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; deletedAt?: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null; reactions: Array<{ userId: string; reaction: MessageReaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null; tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean; duel?: Duel | null };
 type Thread = { canMessage: boolean; lockedReason?: string | null; messages: Message[] };
 type Conversation = Thread & { runner: Person & { username: string }; blockedByMe?: boolean };
 type ClubConversation = Thread & {
@@ -411,6 +411,18 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
     },
     onSettled() { void queryClient.invalidateQueries({ queryKey }); },
   });
+  const deleted = Boolean(message.deletedAt);
+  const remove = useMutation({
+    mutationFn: () => api(`/messages/${message.id}`, { method: 'DELETE' }),
+    onMutate() {
+      setShowReactions(false);
+      const deletedAt = new Date().toISOString();
+      queryClient.setQueryData<Thread>(queryKey, (current) => current && {
+        ...current, messages: current.messages.map((item) => item.id === message.id ? { ...item, body: '', audioUrl: null, activity: null, reactions: [], deletedAt } : item),
+      });
+    },
+    onSettled() { void queryClient.invalidateQueries({ queryKey }); },
+  });
   const counts = REACTIONS.map((choice) => ({ ...choice, count: message.reactions.filter((item) => item.reaction === choice.value).length })).filter((choice) => choice.count);
   const inviteCode = /^Join .+ on Jump: https?:\/\/[^\s]+\/competitions\/([A-F0-9]{8})$/.exec(message.body)?.[1];
   function clearHold() { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); holdTimer.current = null; }
@@ -423,7 +435,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
 
   return <div className={cx('flex items-end gap-2', mine ? 'justify-end' : 'justify-start')}>
     {!mine && <span className="w-7 shrink-0">{lastInGroup && <Avatar name={sender.displayName} src={sender.avatarUrl} avatarStyle={sender.avatarStyle} size={28} className="rounded-full" />}</span>}
-    <div className={cx('relative max-w-[80%] select-none sm:max-w-[72%]', message.pending && 'pointer-events-none', counts.length > 0 && 'mb-3')} style={{ transform: `translateX(${dragX}px)`, touchAction: 'pan-y', WebkitTouchCallout: 'none' }}
+    <div className={cx('relative max-w-[80%] select-none sm:max-w-[72%]', (message.pending || deleted) && 'pointer-events-none', counts.length > 0 && 'mb-3')} style={{ transform: `translateX(${dragX}px)`, touchAction: 'pan-y', WebkitTouchCallout: 'none' }}
       onDragStart={(event) => event.preventDefault()}
       onPointerDown={(event) => { suppressClick.current = false; if ((event.target as HTMLElement).closest('a,button,input,select,textarea')) return; pointerStart.current = { x: event.clientX, y: event.clientY }; clearHold(); if (event.pointerType === 'touch') holdTimer.current = window.setTimeout(() => { if (pointerStart.current) { suppressClick.current = true; setShowReactions(true); } }, 450); }}
       onPointerMove={(event) => { if (!pointerStart.current) return; const dx = event.clientX - pointerStart.current.x; const dy = event.clientY - pointerStart.current.y; if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearHold(); if (Math.abs(dx) > Math.abs(dy) && dx > 0) { dragDistance.current = Math.min(dx, 72); setDragX(dragDistance.current); } }}
@@ -447,9 +459,9 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
           {message.audioUrl && <VoiceNotePlayer id={message.id} src={message.audioUrl} seconds={message.audioSeconds ?? 0} dark={dark} sending={Boolean(message.pending)} />}
           {/* A duel with nothing typed alongside it shows just the time, not an empty line. */}
           <p className={cx('whitespace-pre-wrap break-words text-[15px] leading-snug', (message.activity || message.duel) && message.body && 'mt-1.5', message.duel && !message.body && 'flow-root px-2', message.duel && message.body && 'px-2 pb-1')}>
-            {message.body}
+            {deleted ? <span className={cx('italic', dark ? 'text-paper/60' : 'text-ink-3')}>{mine ? 'You deleted this message' : 'This message was deleted'}</span> : message.body}
             {/* Time sits inline at the end of the text, like most chat apps. */}
-            <span className={cx('float-right ml-2 mt-1.5 text-[10.5px] leading-none', dark ? 'text-paper/55' : 'text-ink-3', message.duel && !message.body && 'mb-1')}>{message.pending ? (message.audioUrl ? null : <><ClockIcon size={11} className="mr-0.5 inline align-[-1px]" />Sending</>) : <>{message.editedAt && 'Edited · '}{time}{mine && !message.pending && <CheckIcon size={11} className="ml-0.5 inline align-[-1px]" />}</>}</span>
+            <span className={cx('float-right ml-2 mt-1.5 text-[10.5px] leading-none', dark ? 'text-paper/55' : 'text-ink-3', message.duel && !message.body && 'mb-1')}>{message.pending ? (message.audioUrl ? null : <><ClockIcon size={11} className="mr-0.5 inline align-[-1px]" />Sending</>) : <>{message.editedAt && !deleted && 'Edited · '}{time}{mine && !message.pending && <CheckIcon size={11} className="ml-0.5 inline align-[-1px]" />}</>}</span>
           </p>
         </div>
         {message.invitationId ? <InvitationActions message={message} received={message.recipientId === viewerId} queryKey={queryKey} /> : inviteCode && <Link to="/competitions/$code" params={{ code: inviteCode }} className="mt-2 inline-block text-[12px] font-bold underline">View competition</Link>}
@@ -465,7 +477,8 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
       {showReactions && <ReactionBar anchor={reactionAnchor} current={ownReaction} onPick={(reaction) => react.mutate(reaction)} onClose={() => setShowReactions(false)} menu={[
         { label: 'Reply', icon: <ReplyIcon size={16} />, onSelect: () => { setShowReactions(false); onReply(); } },
         ...(message.body ? [{ label: 'Copy', icon: <CopyIcon size={16} />, onSelect: () => { setShowReactions(false); void navigator.clipboard?.writeText(message.body); } }] : []),
-        ...(dark && !message.activity && !message.audioUrl ? [{ label: 'Edit', icon: <EditIcon size={16} />, onSelect: () => { setShowReactions(false); onEdit(); } }] : []),
+        ...(dark && !deleted && !message.activity && !message.audioUrl ? [{ label: 'Edit', icon: <EditIcon size={16} />, onSelect: () => { setShowReactions(false); onEdit(); } }] : []),
+        ...(mine && !deleted && !message.invitationId && !message.duel ? [{ label: 'Delete', icon: <TrashIcon size={16} />, onSelect: () => { setShowReactions(false); if (window.confirm('Delete this message for everyone in this chat?')) remove.mutate(); } }] : []),
         ...(!mine && !message.pending ? [{ label: 'Report', icon: <FlagIcon size={16} />, onSelect: () => { setShowReactions(false); openReport({ targetType: 'message', target: message.id }); } }] : []),
       ]} />}
       <ErrorNotice error={react.error} className="mt-1" />
@@ -563,7 +576,7 @@ function onAccentColor(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#121212' : '#F2EFE8';
 }
 
-const inboxPreview = (row: InboxRow) => row.kind === 'voice' ? 'Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity';
+const inboxPreview = (row: InboxRow) => row.kind === 'deleted' ? 'Message deleted' : row.kind === 'voice' ? 'Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity';
 
 function UnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="num min-w-[20px] shrink-0 rounded-full bg-bad px-1.5 text-center text-[11px] font-bold leading-5 text-paper" aria-label={`${count} unread messages`}>{count > 9 ? '9+' : count}</span> : null;

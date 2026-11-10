@@ -17,14 +17,14 @@ export class NotificationsController {
   }
 
   @Post('push-token')
-  async registerPushToken(@CurrentUser() user: AuthenticatedUser, @Body() body: { token?: unknown; platform?: unknown }) {
+  async registerPushToken(@CurrentUser() user: AuthenticatedUser, @Body() body: { token?: unknown; platform?: unknown; richMessages?: unknown }) {
     const token = typeof body.token === 'string' ? body.token.trim() : '';
     const platform = body.platform === 'ios' || body.platform === 'android' ? body.platform : null;
     if (!/^ExponentPushToken\[[A-Za-z0-9_-]+\]$/.test(token) || !platform) throw new BadRequestException('Invalid push token');
     await this.dataSource.query(
-      `INSERT INTO "push_tokens" ("token","userId","platform") VALUES ($1,$2,$3)
-       ON CONFLICT ("token") DO UPDATE SET "userId"=EXCLUDED."userId","platform"=EXCLUDED."platform","lastSeenAt"=now()`,
-      [token, user.id, platform],
+      `INSERT INTO "push_tokens" ("token","userId","platform","richMessages") VALUES ($1,$2,$3,$4)
+       ON CONFLICT ("token") DO UPDATE SET "userId"=EXCLUDED."userId","platform"=EXCLUDED."platform","richMessages"=EXCLUDED."richMessages","lastSeenAt"=now()`,
+      [token, user.id, platform, body.richMessages === true],
     );
     return { registered: true };
   }

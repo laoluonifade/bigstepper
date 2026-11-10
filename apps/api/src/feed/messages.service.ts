@@ -61,7 +61,7 @@ export class MessagesService {
        LEFT JOIN "club_chat_reads" r ON r."clubId" = c."id" AND r."userId" = $1
        JOIN LATERAL (
          SELECT d."body", d."createdAt", d."senderId",
-                CASE WHEN d."audioUrl" IS NOT NULL THEN 'voice' WHEN d."activityId" IS NOT NULL THEN 'activity' ELSE 'text' END AS "kind"
+                CASE WHEN d."deletedAt" IS NOT NULL THEN 'deleted' WHEN d."audioUrl" IS NOT NULL THEN 'voice' WHEN d."activityId" IS NOT NULL THEN 'activity' ELSE 'text' END AS "kind"
          FROM "direct_messages" d WHERE d."clubId" = c."id" ORDER BY d."createdAt" DESC, d."id" DESC LIMIT 1
        ) last ON true
        JOIN "users" u ON u."id" = last."senderId" LEFT JOIN "profiles" p ON p."userId" = last."senderId"
@@ -82,7 +82,7 @@ export class MessagesService {
        JOIN "chat_groups" g ON g."id" = m."groupId"
        LEFT JOIN LATERAL (
          SELECT d."body", d."createdAt", d."senderId",
-                CASE WHEN d."audioUrl" IS NOT NULL THEN 'voice' WHEN d."activityId" IS NOT NULL THEN 'activity' ELSE 'text' END AS "kind"
+                CASE WHEN d."deletedAt" IS NOT NULL THEN 'deleted' WHEN d."audioUrl" IS NOT NULL THEN 'voice' WHEN d."activityId" IS NOT NULL THEN 'activity' ELSE 'text' END AS "kind"
          FROM "direct_messages" d WHERE d."groupId" = g."id" ORDER BY d."createdAt" DESC, d."id" DESC LIMIT 1
        ) last ON true
        LEFT JOIN "users" u ON u."id" = last."senderId" LEFT JOIN "profiles" p ON p."userId" = last."senderId"
@@ -173,7 +173,7 @@ export class MessagesService {
          FROM (
            SELECT CASE WHEN "senderId"=$1 THEN "recipientId" ELSE "senderId" END peer,
                   "body","createdAt","senderId","id","readAt",
-                  CASE WHEN "duelId" IS NOT NULL THEN 'duel' WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
+                  CASE WHEN "deletedAt" IS NOT NULL THEN 'deleted' WHEN "duelId" IS NOT NULL THEN 'duel' WHEN "audioUrl" IS NOT NULL THEN 'voice' WHEN "activityId" IS NOT NULL THEN 'activity' ELSE 'text' END "kind"
            FROM "direct_messages" WHERE ("senderId"=$1 OR "recipientId"=$1) AND "clubId" IS NULL AND "groupId" IS NULL
          ) m ORDER BY peer,"createdAt" DESC,"id" DESC
        )
@@ -243,10 +243,10 @@ export class MessagesService {
 
   private async thread(where: string, params: unknown[]) {
     const messages = await this.dataSource.query(
-      `SELECT m."id",m."senderId",m."recipientId",m."clubId",m."body",m."createdAt",m."editedAt",m."readAt",m."audioUrl",m."audioSeconds",
+      `SELECT m."id",m."senderId",m."recipientId",m."clubId",m."body",m."createdAt",m."editedAt",m."deletedAt",m."readAt",m."audioUrl",m."audioSeconds",
               i."id" "invitationId",i."status" "invitationStatus",t."id" "tableId",t."code" "tableCode",
               t."title" "tableTitle",t."type" "tableType",t."status" "tableStatus",
-              t."guaranteedPrizeKobo",t."entryFeeKobo",m."replyToId",reply."body" "replyToBody",
+              t."guaranteedPrizeKobo",t."entryFeeKobo",m."replyToId",CASE WHEN reply."deletedAt" IS NOT NULL THEN 'Message deleted' ELSE reply."body" END "replyToBody",
               reply."senderId" "replyToSenderId",
               CASE WHEN a."id" IS NULL THEN NULL ELSE json_build_object(
                 'id', a."id", 'activityType', a."activityType", 'startedAt', a."startedAt", 'verificationStatus', a."verificationStatus",
@@ -411,7 +411,7 @@ export class MessagesService {
     if (!trimmed) throw new BadRequestException('Write a message');
     const [message] = await this.dataSource.query(
       `UPDATE "direct_messages" SET "body"=$3,"editedAt"=now()
-       WHERE "id"=$1 AND "senderId"=$2 AND "invitationId" IS NULL AND "duelId" IS NULL
+       WHERE "id"=$1 AND "senderId"=$2 AND "invitationId" IS NULL AND "duelId" IS NULL AND "deletedAt" IS NULL
        RETURNING "id","body","editedAt"`,
       [messageId, userId, trimmed],
     ) as Array<{ id: string; body: string; editedAt: string }>;
@@ -419,9 +419,23 @@ export class MessagesService {
     return message;
   }
 
+  async remove(userId: string, messageId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const [message] = await manager.query(
+        `UPDATE "direct_messages" SET "body"='',"audioUrl"=NULL,"audioSeconds"=NULL,"activityId"=NULL,"deletedAt"=now()
+         WHERE "id"=$1 AND "senderId"=$2 AND "invitationId" IS NULL AND "duelId" IS NULL AND "deletedAt" IS NULL
+         RETURNING "id","deletedAt"`,
+        [messageId, userId],
+      ) as Array<{ id: string; deletedAt: string }>;
+      if (!message) throw new NotFoundException('Message not found or cannot be deleted');
+      await manager.query(`DELETE FROM "direct_message_reactions" WHERE "messageId"=$1`, [messageId]);
+      return message;
+    });
+  }
+
   async react(userId: string, messageId: string, reaction: string | null) {
     const allowed = await this.dataSource.query(
-      `SELECT 1 FROM "direct_messages" m WHERE m."id"=$1 AND (m."senderId"=$2 OR m."recipientId"=$2
+      `SELECT 1 FROM "direct_messages" m WHERE m."id"=$1 AND m."deletedAt" IS NULL AND (m."senderId"=$2 OR m."recipientId"=$2
          OR EXISTS (SELECT 1 FROM "club_memberships" c WHERE c."clubId"=m."clubId" AND c."userId"=$2)
          OR EXISTS (SELECT 1 FROM "chat_group_members" g WHERE g."groupId"=m."groupId" AND g."userId"=$2))`,
       [messageId, userId],

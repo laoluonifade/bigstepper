@@ -14,6 +14,8 @@ const SOURCES = {
   finish: require('../../assets/sounds/finish.wav'),
   /** A message on its way. */
   send: require('../../assets/sounds/send.wav'),
+  /** A new message arriving in the chat you have open. */
+  receive: require('../../assets/sounds/receive.wav'),
 } as const;
 
 export type Sound = keyof typeof SOURCES;
@@ -36,18 +38,31 @@ async function prepare() {
   await setAudioModeAsync({ playsInSilentMode: false, interruptionMode: 'mixWithOthers' }).catch(() => undefined);
 }
 
+function playerFor(name: Sound) {
+  let player = players.get(name);
+  if (!player) {
+    player = createAudioPlayer(SOURCES[name]);
+    player.volume = 0.8;
+    players.set(name, player);
+  }
+  return player;
+}
+
+/** Loads the sounds ahead of time, so the first one plays straight away instead of being dropped while it loads. */
+export function preloadSounds() {
+  if (!enabled) return;
+  void prepare();
+  try { (Object.keys(SOURCES) as Sound[]).forEach(playerFor); } catch { /* loads on first play instead */ }
+}
+
 export function playSound(name: Sound) {
   if (!enabled) return;
   void prepare();
   try {
-    let player = players.get(name);
-    if (!player) {
-      player = createAudioPlayer(SOURCES[name]);
-      player.volume = 0.8;
-      players.set(name, player);
-    }
-    void player.seekTo(0);
-    player.play();
+    const player = playerFor(name);
+    // Rewind first, then play: playing before the rewind lands starts from the end, so a second send was silent.
+    if (player.playing) player.pause();
+    player.seekTo(0).then(() => player.play(), () => player.play());
   } catch { /* a sound is never worth an error */ }
 }
 

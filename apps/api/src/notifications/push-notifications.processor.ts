@@ -11,7 +11,11 @@ import { claimPodiumsToAnnounce } from '../tables/trophies';
 import { announceNewCompetitions, joinCommunityClub, syncHostsGroup } from './community';
 
 type Pending = { id: string; userId: string; type: string; title: string; body: string; link: string | null; createdAt: Date; readAt?: Date | null; engagementKey?: string; engagementExpiresAt?: Date; engagementChannel?: Channel };
-type ExpoMessage = { to: string; title: string; body: string; sound: 'default'; badge: number; channelId: string; data: { id: string; link: string | null; type: string } };
+type ExpoMessage = {
+  to: string; title: string; body: string; sound: string; badge: number; channelId: string; priority: 'high'; data: { id: string; link: string | null; type: string };
+  categoryId?: string; threadId?: string; richContent?: { image: string }; mutableContent?: boolean;
+};
+type Token = { token: string; userId: string; platform: string; richMessages: boolean };
 type ExpoTicket = { status: 'ok' | 'error'; id?: string; message?: string; details?: { error?: string } };
 
 type Outgoing = { row: Pending; deliveryId?: string; messages: ExpoMessage[] };
@@ -24,6 +28,23 @@ const EXPO_PROJECT = '@startajump/jump';
 const STALE_MINUTES = 30;
 const EXPO_BATCH = 100;
 const CHANNEL_FOR: Record<string, string> = { DIRECT_MESSAGE: 'messages', MESSAGE_REACTION: 'messages', CLUB_MESSAGE: 'messages' };
+const MESSAGE_SOUND = 'message.wav';
+
+export function messagePush(row: { type: string; link: string | null }, token: Token, image: string | null) {
+  if (!CHANNEL_FOR[row.type]) return {};
+  const directChat = row.type === 'DIRECT_MESSAGE' && /^\/messages\/(?!groups\/)[^/]+$/.test(row.link ?? '');
+  return {
+    ...(token.richMessages ? { channelId: 'chat', sound: MESSAGE_SOUND } : {}),
+    ...(row.link ? { threadId: row.link } : {}),
+    ...(directChat ? { categoryId: 'message' } : {}),
+    ...(image ? { richContent: { image }, mutableContent: true } : {}),
+  };
+}
+
+export function roundAvatar(url: string | null) {
+  if (!url) return null;
+  return url.includes('res.cloudinary.com') && url.includes('/upload/') ? url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256,r_max,f_png/') : url;
+}
 
 @Injectable()
 @Processor(PUSH_NOTIFICATIONS_QUEUE)
@@ -118,19 +139,21 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     const fresh = rows.filter((row) => !row.readAt && Date.now() - new Date(row.createdAt).getTime() < STALE_MINUTES * 60_000);
     const userIds = [...new Set(fresh.map((row) => row.userId))];
     const [tokens, unread] = userIds.length ? await Promise.all([
-      this.dataSource.query(`SELECT "token","userId" FROM "push_tokens" WHERE "userId"=ANY($1::uuid[])`, [userIds]) as Promise<Array<{ token: string; userId: string }>>,
+      this.dataSource.query(`SELECT "token","userId","platform","richMessages" FROM "push_tokens" WHERE "userId"=ANY($1::uuid[])`, [userIds]) as Promise<Token[]>,
       this.dataSource.query(`SELECT "userId",COUNT(*)::integer "count" FROM "notifications" WHERE "userId"=ANY($1::uuid[]) AND "readAt" IS NULL AND "inappAllowed"=true GROUP BY "userId"`, [userIds]) as Promise<Array<{ userId: string; count: number }>>,
     ]) : [[], []];
     const badge = new Map(unread.map((row) => [row.userId, row.count]));
-    const byUser = new Map<string, string[]>();
-    for (const { token, userId } of tokens) byUser.set(userId, [...(byUser.get(userId) ?? []), token]);
+    const byUser = new Map<string, Token[]>();
+    for (const token of tokens) byUser.set(token.userId, [...(byUser.get(token.userId) ?? []), token]);
+    const images = await this.pictures(fresh);
 
     let batch: Outgoing[] = [];
     let size = 0;
     for (const row of fresh) {
-      const messages: ExpoMessage[] = (byUser.get(row.userId) ?? []).map(to => ({
-        to, title: row.title, body: row.body, sound: 'default', badge: badge.get(row.userId) ?? 0,
+      const messages: ExpoMessage[] = (byUser.get(row.userId) ?? []).map(token => ({
+        to: token.token, title: row.title, body: row.body, sound: 'default', badge: badge.get(row.userId) ?? 0, priority: 'high',
         channelId: CHANNEL_FOR[row.type] ?? 'default', data: { id: row.id, link: row.link, type: row.type },
+        ...messagePush(row, token, images.get(row.id) ?? null),
       }));
       if (batch.length && size + messages.length > EXPO_BATCH) {
         if (!await this.flush(batch)) { batch = []; break; }
@@ -152,6 +175,28 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     if (skipped.length) await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`,[skipped.map(r=>r.id)]);
     const suppressed = fresh.filter(row => !(byUser.get(row.userId)?.length));
     if (suppressed.length) await this.dataSource.query(`UPDATE "notifications" SET "pushProcessedAt"=now() WHERE "id"=ANY($1::uuid[])`,[suppressed.map(r=>r.id)]);
+  }
+
+  private async pictures(rows: Pending[]) {
+    const people = new Map<string, string>();
+    const clubs = new Map<string, string>();
+    for (const row of rows) {
+      if (!CHANNEL_FOR[row.type] || !row.link) continue;
+      const person = /^\/messages\/(?!groups\/)([^/]+)$/.exec(row.link)?.[1];
+      const club = /^\/clubs\/([^/]+)\/chat$/.exec(row.link)?.[1];
+      if (person) people.set(row.id, person.toLowerCase());
+      else if (club) clubs.set(row.id, club.toLowerCase());
+    }
+    const [avatars, logos] = await Promise.all([
+      people.size ? this.dataSource.query(`SELECT lower("username") "key","avatarUrl" "url" FROM "profiles" WHERE lower("username")=ANY($1::text[]) AND "avatarUrl" IS NOT NULL`, [[...new Set(people.values())]]) as Promise<Array<{ key: string; url: string }>> : [],
+      clubs.size ? this.dataSource.query(`SELECT lower("slug") "key","logoUrl" "url" FROM "clubs" WHERE lower("slug")=ANY($1::text[]) AND "logoUrl" IS NOT NULL`, [[...new Set(clubs.values())]]) as Promise<Array<{ key: string; url: string }>> : [],
+    ]);
+    const avatar = new Map(avatars.map((item) => [item.key, item.url]));
+    const logo = new Map(logos.map((item) => [item.key, item.url]));
+    const images = new Map<string, string>();
+    for (const [id, key] of people) { const url = roundAvatar(avatar.get(key) ?? null); if (url) images.set(id, url); }
+    for (const [id, key] of clubs) { const url = roundAvatar(logo.get(key) ?? null); if (url) images.set(id, url); }
+    return images;
   }
 
   private async processInbox() {

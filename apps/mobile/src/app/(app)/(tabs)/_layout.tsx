@@ -1,7 +1,6 @@
 import { Tabs } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DuelLaunch } from '@/components/DuelLaunch';
-import { HealthLaunch } from '@/components/HealthLaunch';
 import { useAppleHealthBackground } from '@/components/apple-health';
 import { floatingTabInset, TabBar } from '@/components/TabBar';
 import { BottomBarInset } from '@/components/ui';
@@ -21,5 +20,5 @@ export default function TabsLayout() {
     <Tabs.Screen name="run" />
     <Tabs.Screen name="feed" />
     <Tabs.Screen name="you" />
-  </Tabs><DuelLaunch /><HealthLaunch /></BottomBarInset.Provider>;
+  </Tabs><DuelLaunch /></BottomBarInset.Provider>;
 }

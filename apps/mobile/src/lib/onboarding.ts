@@ -9,6 +9,17 @@ export function onboardingSkipped() {
   return skipped;
 }
 
+let healthSkipped = false;
+
+/** "Not now" on connecting Apple Health: let through until the app next opens, then asked again. */
+export function skipHealth() {
+  healthSkipped = true;
+}
+
+export function healthWasSkipped() {
+  return healthSkipped;
+}
+
 let interestsSkipped = false;
 
 /** "Skip for now" on the interests question: not asked again until the app restarts. */

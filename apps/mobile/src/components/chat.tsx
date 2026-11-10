@@ -19,8 +19,9 @@ import { openReport } from './Safety';
 import { api, patch, post } from '@/lib/api';
 import { useUser } from '@/lib/auth';
 import { confirmCheckout, openCheckout } from '@/lib/checkout';
+import { confirm } from '@/lib/dialog';
 import { savePayment } from '@/lib/payments';
-import { playSound } from '@/lib/sounds';
+import { playSound, preloadSounds } from '@/lib/sounds';
 import { keys, useActivities, useUnit } from '@/lib/queries';
 import { brand, colors, fontFamily, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
@@ -35,7 +36,7 @@ import { Avatar, Button, ErrorNotice, haptic, LiveDot, Skeleton, TextField, Txt,
 export type Person = { displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; username?: string | null };
 type SharedActivity = { id: string; activityType: 'walk' | 'run' | 'cycle'; startedAt: string; verificationStatus: string; distanceMetres: number; movingSeconds: number; steps: number };
 export type Message = {
-  id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null;
+  id: string; senderId: string; recipientId: string | null; body: string; createdAt: string; editedAt: string | null; deletedAt?: string | null; replyToId: string | null; replyToBody: string | null; replyToSenderId: string | null;
   reactions: Array<{ userId: string; reaction: Reaction }>; invitationId: string | null; invitationStatus: 'PENDING' | 'ACCEPTED' | 'DECLINED' | null; tableId: string | null; tableCode: string | null; tableTitle: string | null;
   tableType: 'free' | 'sponsored' | 'paid' | null; tableStatus: string | null; guaranteedPrizeKobo: string | null; entryFeeKobo: number | null; activity?: SharedActivity | null; audioUrl?: string | null; audioSeconds?: number | null; pending?: boolean;
   duel?: Duel | null;
@@ -129,6 +130,14 @@ export function ChatThread<T extends Thread>({ queryKey, path, empty, senderOf, 
   const newestIncomingId = [...(conversation.data?.messages ?? [])].reverse().find((message) => message.senderId !== user.id)?.id;
   const markRead = read.mutate;
   useEffect(() => { if (newestIncomingId) markRead(); }, [newestIncomingId, markRead]);
+  useEffect(() => { preloadSounds(); }, []);
+  // A chime for each new message that lands while you're reading, not for the history on opening.
+  const heardIncoming = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!newestIncomingId) return;
+    if (heardIncoming.current && heardIncoming.current !== newestIncomingId) playSound('receive');
+    heardIncoming.current = newestIncomingId;
+  }, [newestIncomingId]);
   // Coming back to a chat that's still open underneath (Android keeps it mounted) reads it again too.
   const hasIncoming = Boolean(newestIncomingId);
   useFocusEffect(useCallback(() => { if (hasIncoming) markRead(); }, [hasIncoming, markRead]));
@@ -396,13 +405,31 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
     },
     onSettled() { void queryClient.invalidateQueries({ queryKey }); },
   });
+  const deleted = Boolean(message.deletedAt);
+  const editable = mine && !deleted && !message.invitationId && !message.duel && !message.activity && !message.audioUrl;
+  const deletable = mine && !deleted && !message.pending && !message.invitationId && !message.duel;
+  const remove = useMutation({
+    mutationFn: () => api(`/messages/${message.id}`, { method: 'DELETE' }),
+    onMutate() {
+      const deletedAt = new Date().toISOString();
+      queryClient.setQueryData<Thread>(queryKey, (current) => current && { ...current, messages: current.messages.map((item) => (item.id === message.id ? { ...item, body: '', audioUrl: null, activity: null, reactions: [], deletedAt } : item)) });
+    },
+    onError() { toast({ tone: 'bad', message: 'Couldn’t delete that message. Try again.' }); },
+    onSettled() { void queryClient.invalidateQueries({ queryKey }); },
+  });
+  async function confirmDelete() {
+    if (await confirm({ title: 'Delete this message?', message: 'It will be removed for everyone in this chat.', confirmLabel: 'Delete', cancelLabel: 'Keep', destructive: true })) {
+      haptic('medium');
+      remove.mutate();
+    }
+  }
   const counts = REACTIONS.map((choice) => ({ ...choice, count: message.reactions.filter((item) => item.reaction === choice.value).length })).filter((choice) => choice.count);
   const inviteCode = /^Join .+ on Jump: https?:\/\/[^\s]+\/competitions\/([A-F0-9]{8})$/.exec(message.body)?.[1];
   const time = new Date(message.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
   // Swipe right to reply: the bubble follows the finger, and past 56pt it replies.
   const dragX = useSharedValue(0);
-  const swipe = Gesture.Pan().activeOffsetX(12).failOffsetY([-12, 12]).enabled(!message.pending)
+  const swipe = Gesture.Pan().activeOffsetX(12).failOffsetY([-12, 12]).enabled(!message.pending && !message.deletedAt)
     .onChange((event) => { dragX.value = Math.max(0, Math.min(72, event.translationX)); })
     .onEnd(() => {
       if (dragX.value >= 56) runOnJS(onReply)();
@@ -427,11 +454,12 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
     {message.duel && <DuelCard duel={message.duel} viewerId={viewerId} unit={unit} />}
     {message.activity && <SharedActivityCard activity={message.activity} unit={unit} dark={dark} raised={raised} mine={mine} />}
     {message.audioUrl && <VoiceNotePlayer id={message.id} src={message.audioUrl} seconds={message.audioSeconds ?? 0} dark={dark} sending={Boolean(message.pending)} />}
+    {deleted ? <Txt size={15} leading={1.35} style={{ fontStyle: 'italic', color: dark ? colors.onInkMuted : colors.ink3 }}>{mine ? 'You deleted this message' : 'This message was deleted'}</Txt> : null}
     {message.body ? <Txt size={16} leading={1.35} color={dark ? 'paper' : 'ink'} style={message.activity ? { marginTop: 6 } : undefined}>{message.body}</Txt> : null}
     {/* Time, edited and the ticks tucked into the bottom corner. */}
     <View style={styles.meta}>
       <Txt size={11} num style={{ color: dark ? colors.onInkMuted : colors.ink3 }}>
-        {message.pending ? (message.audioUrl ? '' : 'Sending…') : `${message.editedAt ? 'Edited · ' : ''}${time}`}
+        {message.pending ? (message.audioUrl ? '' : 'Sending…') : `${message.editedAt && !deleted ? 'Edited · ' : ''}${time}`}
       </Txt>
       {mine && !group && !message.pending ? <Ticks read={Boolean(message.readAt)} dark={dark} /> : null}
     </View>
@@ -444,7 +472,7 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
     <GestureDetector gesture={swipe}>
       <Animated.View style={[{ maxWidth: '80%', marginTop: counts.length ? 16 : 0, opacity: message.pending ? 0.75 : 1 }, swiped]}>
         {showName && <Txt size={12} weight="bold" color="ink2" style={{ marginBottom: 4, marginLeft: 4 }}>{sender.displayName}{sender.verified ? ' ✓' : ''}</Txt>}
-        <Pressable disabled={message.pending} delayLongPress={300} onLongPress={openMenu}
+        <Pressable disabled={message.pending || deleted} delayLongPress={300} onLongPress={openMenu}
           onPress={() => {
             // Double-tap to love, like most chat apps.
             const now = Date.now();
@@ -465,7 +493,8 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
     <MessageMenu frame={menu} mine={mine} current={ownReaction} onPick={(reaction) => react.mutate(reaction)} onClose={() => setMenu(null)} actions={[
       { label: 'Reply', icon: <ReplyIcon size={18} color={colors.ink} />, onSelect: onReply },
       ...(message.body ? [{ label: 'Copy', icon: <CopyIcon size={18} color={colors.ink} />, onSelect: () => void Clipboard.setStringAsync(message.body).then(() => toast({ tone: 'ok', message: 'Copied.' })) }] : []),
-      ...(dark && !message.activity && !message.audioUrl ? [{ label: 'Edit', icon: <EditIcon size={18} color={colors.ink} />, onSelect: onEdit }] : []),
+      ...(editable ? [{ label: 'Edit', icon: <EditIcon size={18} color={colors.ink} />, onSelect: onEdit }] : []),
+      ...(deletable ? [{ label: 'Delete', icon: <TrashIcon size={18} color={colors.bad} />, danger: true, onSelect: () => void confirmDelete() }] : []),
       ...(!mine && !message.pending ? [{ label: 'Report', icon: <FlagIcon size={18} color={colors.bad} />, danger: true, onSelect: () => openReport({ targetType: 'message', target: message.id }) }] : []),
     ]}>{body}</MessageMenu>
   </View>;

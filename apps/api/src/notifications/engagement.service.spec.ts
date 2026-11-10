@@ -40,7 +40,7 @@ describe('EngagementService reservations', () => {
     expect(query.mock.calls[0][0]).toContain('pg_advisory_xact_lock');
   });
   it.each([
-    { push: 2, channel: 'push' },
+    { push: 3, channel: 'push' },
     { email: 3, hasPush: false, channel: 'email' },
   ])('enforces shared channel caps: %s', async (input) => {
     const { service } = setup(input);

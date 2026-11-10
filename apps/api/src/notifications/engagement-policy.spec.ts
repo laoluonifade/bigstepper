@@ -15,8 +15,11 @@ const candidate: Candidate = { userId: 'runner', type: 'MILESTONE', key: 'event'
 const preferences = { ...DEFAULT_PREFERENCES, timeZone: 'Africa/Lagos' };
 describe('shared notification policy', () => {
   it('defaults all new triggers off with conservative channel limits', () => {
-    expect(DEFAULT_SETTINGS).toMatchObject({ newTriggersEnabled: false, pushDaily: 2, emailWeekly: 3 });
-    expect(DEFAULT_SETTINGS.triggers).toEqual({ weeklyRecap: false, weeklyGoal: false, deadlines: false, proximity: false, streak: true, digest: true });
+    expect(DEFAULT_SETTINGS).toMatchObject({ newTriggersEnabled: false, pushDaily: 3, emailWeekly: 3 });
+    expect(DEFAULT_SETTINGS.triggers).toEqual({
+      weeklyRecap: false, weeklyGoal: false, deadlines: false, proximity: false, streak: true, digest: true,
+      stepsBoard: true, stepMilestones: true, stepNudges: true, healthConnect: true,
+    });
     expect(reasonFor({ ...candidate, newTrigger: true }, 'push', preferences, DEFAULT_SETTINGS, now)).toBe(
       'feature_disabled',
     );
@@ -136,5 +139,15 @@ describe('shared notification policy', () => {
     expect(() => validateSettings({ pushDaily: -1 }, DEFAULT_SETTINGS)).toThrow();
     expect(() => validateSettings({ triggers: { proximity: true } }, DEFAULT_SETTINGS)).toThrow();
     expect(validateSettings({ pushDaily: 1 }, DEFAULT_SETTINGS).pushDaily).toBe(1);
+  });
+
+  it.each([
+    ['STEPS_BOARD', 'stepsBoard'],
+    ['STEPS_MILESTONE', 'stepMilestones'],
+    ['STEPS_NUDGE', 'stepNudges'],
+    ['HEALTH_CONNECT', 'healthConnect'],
+  ])('lets the admin switch off %s', (type, trigger) => {
+    const settings = { ...DEFAULT_SETTINGS, newTriggersEnabled: true, rolloutPercent: 100, triggers: { ...DEFAULT_SETTINGS.triggers, [trigger]: false } };
+    expect(reasonFor({ ...candidate, type, newTrigger: true }, 'push', preferences, settings, now)).toBe('trigger_disabled');
   });
 });

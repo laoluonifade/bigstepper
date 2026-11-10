@@ -7,6 +7,7 @@ import { Storage } from './kv';
 import { api, post } from './api';
 import { openLink } from './links';
 import { colors } from './theme';
+import { toast } from './toast';
 
 const TOKEN_KEY = 'jump_push_token';
 
@@ -49,8 +50,32 @@ async function createChannels(notifications: typeof NotificationsModule) {
     name: 'Activity and competitions', importance: notifications.AndroidImportance.HIGH, vibrationPattern: [0, 200, 120, 200], lightColor: colors.track, sound: 'default',
   });
   await notifications.setNotificationChannelAsync('messages', {
-    name: 'Messages', importance: notifications.AndroidImportance.MAX, vibrationPattern: [0, 120, 80, 120], lightColor: colors.track, sound: 'default',
+    name: 'Messages (old)', importance: notifications.AndroidImportance.MAX, vibrationPattern: [0, 120, 80, 120], lightColor: colors.track, sound: 'default',
   });
+  // A channel's sound can't change once it exists, so Jump's own message sound needs a new one.
+  await notifications.setNotificationChannelAsync('chat', {
+    name: 'Messages', importance: notifications.AndroidImportance.MAX, vibrationPattern: [0, 90, 70, 90], lightColor: colors.track, sound: 'message.wav',
+  });
+}
+
+/** Messages get a Reply button: type into the notification, it's sent, and the chat opens on it. */
+async function createCategories(notifications: typeof NotificationsModule) {
+  await notifications.setNotificationCategoryAsync('message', [
+    { identifier: 'reply', buttonTitle: 'Reply', textInput: { submitButtonTitle: 'Send', placeholder: 'Write a reply…' }, options: { opensAppToForeground: true } },
+  ]);
+}
+
+/** A reply typed into a message notification: sent to that runner's chat, which is "/messages/<username>". */
+async function sendReply(link: unknown, text: string | undefined) {
+  const username = typeof link === 'string' ? /^\/messages\/(?!groups\/)([^/]+)$/.exec(link)?.[1] : undefined;
+  const body = text?.trim();
+  if (!username || !body) return false;
+  try {
+    await post(`/messages/${encodeURIComponent(username)}`, { body });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -62,12 +87,13 @@ export async function registerForPush() {
   if (!Notifications) return;
   try {
     await createChannels(Notifications);
+    await createCategories(Notifications).catch(() => undefined);
     let { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
     if (status !== 'granted') return;
     const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
     const { data: token } = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-    await post('/notifications/push-token', { token, platform: Platform.OS });
+    await post('/notifications/push-token', { token, platform: Platform.OS, richMessages: true });
     Storage.setItemSync(TOKEN_KEY, token);
   } catch { /* pushes are a bonus; the in-app inbox still has everything */ }
 }
@@ -113,6 +139,15 @@ export function listenForPush(queryClient: QueryClient) {
     const notificationId=response.notification.request.content.data?.id;
     if(typeof notificationId==='string') void post(`/notifications/${notificationId}/click`).catch(()=>undefined);
     const link = response.notification.request.content.data?.link;
+    if (response.actionIdentifier === 'reply') {
+      void sendReply(link, response.userText).then((sent) => {
+        void queryClient.invalidateQueries({ queryKey: ['messages'] });
+        if (!sent) toast({ tone: 'bad', message: 'Your reply didn’t send. Try again here.' });
+      });
+      void notifications.dismissNotificationAsync(id).catch(() => undefined);
+      if (typeof link === 'string' && link) openWhenReady(link);
+      return;
+    }
     if (typeof link === 'string' && link) openWhenReady(link);
   };
   try {

@@ -64,6 +64,12 @@ export class MessagesController {
     return this.messages.edit(user.id, id, input.body);
   }
 
+  @Delete(':id')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.messages.remove(user.id, id);
+  }
+
   @Get(':username')
   conversation(@CurrentUser() user: AuthenticatedUser, @Param('username') username: string) {
     return this.messages.conversation(user.id, username);

@@ -22,11 +22,22 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   deliveryEnabled: true,
   newTriggersEnabled: false,
-  pushDaily: 2,
+  pushDaily: 3,
   emailWeekly: 3,
   rolloutPercent: 0,
   holdoutPercent: 10,
-  triggers: { weeklyRecap: false, weeklyGoal: false, deadlines: false, proximity: false, streak: true, digest: true },
+  triggers: {
+    weeklyRecap: false,
+    weeklyGoal: false,
+    deadlines: false,
+    proximity: false,
+    streak: true,
+    digest: true,
+    stepsBoard: true,
+    stepMilestones: true,
+    stepNudges: true,
+    healthConnect: true,
+  },
 };
 export const DEFAULT_PREFERENCES: Preferences = { timeZone: null, quietStart: 21, quietEnd: 8, categories: {} };
 export const ESSENTIAL_TYPES = new Set([
@@ -138,6 +149,10 @@ export function reasonFor(
     COMPETITION_ENDING: 'deadlines',
     STREAK_REMINDER: 'streak',
     COMPETITION_DIGEST: 'digest',
+    STEPS_BOARD: 'stepsBoard',
+    STEPS_MILESTONE: 'stepMilestones',
+    STEPS_NUDGE: 'stepNudges',
+    HEALTH_CONNECT: 'healthConnect',
   };
   if (trigger[c.type] && !s.triggers[trigger[c.type]]) return 'trigger_disabled';
   if (channel === 'inapp') return p.categories[category(c.type)]?.inapp === false ? 'preference' : null;

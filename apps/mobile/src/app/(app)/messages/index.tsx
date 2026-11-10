@@ -14,12 +14,12 @@ import { useUser } from '@/lib/auth';
 import { useUnreadMessages } from '@/lib/queries';
 import { colors, fontFamily, GUTTER, radius } from '@/lib/theme';
 
-type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; senderId: string; unreadCount: number; readAt?: string | null };
-type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
-type GroupRow = { type: 'group'; groupSlug: string; groupName: string; description: string | null; memberCount: number; senderName: string; senderId: string | null; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel'; createdAt: string; unreadCount: number };
+type DirectRow = { type: 'direct'; username: string; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle; verified?: boolean; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel' | 'deleted'; createdAt: string; senderId: string; unreadCount: number; readAt?: string | null };
+type ClubRow = { type: 'club'; clubSlug: string; clubName: string; logoUrl: string | null; accentColor: string; verified?: boolean; memberCount?: number; senderName: string; senderId: string; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel' | 'deleted'; createdAt: string; unreadCount: number };
+type GroupRow = { type: 'group'; groupSlug: string; groupName: string; description: string | null; memberCount: number; senderName: string; senderId: string | null; body: string; kind?: 'text' | 'voice' | 'activity' | 'duel' | 'deleted'; createdAt: string; unreadCount: number };
 type InboxRow = DirectRow | ClubRow | GroupRow;
 
-const preview = (row: InboxRow) => (row.kind === 'voice' ? 'Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity');
+const preview = (row: InboxRow) => (row.kind === 'deleted' ? 'Message deleted' : row.kind === 'voice' ? 'Voice note' : row.kind === 'duel' ? 'Duel challenge' : row.body || 'Shared an activity');
 const when = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 export default function MessagesScreen() {

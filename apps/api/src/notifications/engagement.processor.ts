@@ -4,6 +4,7 @@ import { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { PUSH_NOTIFICATIONS_QUEUE } from '../jobs/jobs.module';
 import { EngagementService } from './engagement.service';
+import { healthConnectReminders, stepMilestones, stepNudges, stepsBoard } from './steps-engagement';
 
 @Injectable()
 export class EngagementProcessor implements OnModuleInit {
@@ -26,6 +27,10 @@ export class EngagementProcessor implements OnModuleInit {
     if (settings.triggers.weeklyRecap) await this.weeklyRecaps();
     if (settings.triggers.weeklyGoal) await this.weeklyGoals();
     if (settings.triggers.deadlines) await this.deadlines();
+    if (settings.triggers.stepsBoard) await stepsBoard(this.db);
+    if (settings.triggers.stepMilestones) await stepMilestones(this.db);
+    if (settings.triggers.stepNudges) await stepNudges(this.db);
+    if (settings.triggers.healthConnect) await healthConnectReminders(this.db);
   }
   async weeklyRecaps() {
     await this.db.query(`WITH due AS (
