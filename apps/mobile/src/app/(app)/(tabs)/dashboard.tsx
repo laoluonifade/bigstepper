@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { ComponentRef, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActivityRow } from '@/components/ActivityRow';
-import { HealthToday } from '@/components/apple-health';
+import { HealthToday, useDailySteps } from '@/components/apple-health';
 import { GuideTour } from '@/components/GuideTour';
 import { ChallengeSomeone, LeaderboardPeek, MiniRing, MyCompetitions, RaceHero, SUMMARY } from '@/components/CompeteHome';
 import { ArrowRightIcon, ChevronDownIcon, RunIcon } from '@/components/icons';
@@ -41,10 +41,13 @@ export default function DashboardScreen() {
   // This week and its goal count walks and runs (or just rides on Rides); the month and all-time totals count every kind.
   const trained = useMemo(() => (kind === 'cycle' ? list : list.filter((activity) => activity.activityType !== 'cycle')), [list, kind]);
   const week = useMemo(() => summariseWeek(trained, new Date(now)), [trained, now]);
-  // Any walk, run or ride keeps the streak, whatever the filter above shows.
-  const streak = useMemo(() => computeStreaks(all, new Date(now)), [all, now]);
-  // The summary tile counts every walk and run, whatever the training filter below shows.
-  const summaryWeek = useMemo(() => summariseWeek(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
+  // Apple Health days count too, so walkers who don't record on Jump still see their week and streak.
+  const healthDays = useDailySteps();
+  const health = useMemo(() => healthDays.data ?? [], [healthDays.data]);
+  // Any walk, run or ride, or a day of 3,000 steps, keeps the streak, whatever the filter above shows.
+  const streak = useMemo(() => computeStreaks(all, new Date(now), health), [all, now, health]);
+  // The summary tile counts every walk and run plus Health steps, whatever the training filter below shows.
+  const summaryWeek = useMemo(() => summariseWeek(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now), health), [all, now, health]);
   const milestones = useMemo(() => computeMilestones(all.filter((activity) => activity.activityType !== 'cycle'), new Date(now)), [all, now]);
   const next = nextMilestone(milestones);
   const earned = milestones.filter((m) => m.earned).length;

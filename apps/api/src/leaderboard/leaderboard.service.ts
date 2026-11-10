@@ -17,15 +17,30 @@ export class LeaderboardService {
     if (!types || !PERIODS.includes(period as (typeof PERIODS)[number]) || !['global', 'country'].includes(scope) || !Number.isInteger(size) || size < 1 || size > 100) {
       throw new BadRequestException('Invalid leaderboard filter');
     }
-    const since = period === 'all' ? null : `date_trunc('${period}', now() AT TIME ZONE '${STREAK_TIME_ZONE}') AT TIME ZONE '${STREAK_TIME_ZONE}'`;
+    const zone = `'${STREAK_TIME_ZONE}'`;
+    const since = period === 'all' ? null : `date_trunc('${period}', now() AT TIME ZONE ${zone}) AT TIME ZONE ${zone}`;
+    const health = activity === 'walk' || activity === 'foot';
     const rows = (await this.dataSource.query(
-      `WITH totals AS (
-         SELECT a."userId", SUM(${countedMetres()})::bigint AS "metres", COUNT(*)::integer AS "activities"
+      `WITH acts AS (
+         SELECT a."userId", (a."startedAt" AT TIME ZONE ${zone})::date AS "day", SUM(${countedMetres()})::bigint AS "metres", COUNT(*)::integer AS "activities"
          FROM "activities" a
-         ${scope === 'country' ? `JOIN "profiles" pc ON pc."userId" = a."userId" AND pc."countryCode" = (SELECT "countryCode" FROM "profiles" WHERE "userId" = $2)` : ''}
          WHERE a."verificationStatus" IN ${COUNTED_STATUSES} AND a."activityType" = ANY($1::text[]) ${since ? `AND a."startedAt" >= ${since}` : ''}
-         GROUP BY a."userId"
-         HAVING SUM(${countedMetres()}) > 0
+         GROUP BY 1, 2
+       ),
+       health AS (
+         SELECT d."userId", d."day", d."countedMetres"::bigint AS "metres" FROM "daily_steps" d
+         WHERE ${health ? 'd."countedMetres" > 0' : 'false'} ${since ? `AND d."day" >= (${since} AT TIME ZONE ${zone})::date` : ''}
+       ),
+       days AS (
+         SELECT COALESCE(a."userId", h."userId") AS "userId", GREATEST(COALESCE(a."metres", 0), COALESCE(h."metres", 0)) AS "metres", COALESCE(a."activities", 0) AS "activities"
+         FROM acts a FULL JOIN health h ON h."userId" = a."userId" AND h."day" = a."day"
+       ),
+       totals AS (
+         SELECT d."userId", SUM(d."metres")::bigint AS "metres", SUM(d."activities")::integer AS "activities"
+         FROM days d
+         ${scope === 'country' ? `JOIN "profiles" pc ON pc."userId" = d."userId" AND pc."countryCode" = (SELECT "countryCode" FROM "profiles" WHERE "userId" = $2)` : ''}
+         GROUP BY d."userId"
+         HAVING SUM(d."metres") > 0
        ),
        ranked AS (SELECT t.*, rank() OVER (ORDER BY t."metres" DESC)::integer AS "rank" FROM totals t)
        SELECT r."rank", r."userId", r."metres", r."activities",

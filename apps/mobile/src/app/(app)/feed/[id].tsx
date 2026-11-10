@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActionMenu } from '@/components/ActionMenu';
 import { DuelCard } from '@/components/Duel';
-import { ActionBar, ActivityAttachment, PostImage, StepsAttachment, PostMenu, updatePost, type FeedComment, type FeedPost } from '@/components/feed';
+import { ActionBar, ActivityAttachment, LinkPreview, PostImage, useLinkedCompetition, StepsAttachment, PostMenu, updatePost, type FeedComment, type FeedPost } from '@/components/feed';
 import { blockRunner, openReport } from '@/components/Safety';
 import { SendIcon, TrashIcon } from '@/components/icons';
 import { MentionInput, MentionText } from '@/components/social';
@@ -25,6 +25,7 @@ export default function FeedPostScreen() {
   const replyField = useRef<TextFieldRef>(null);
   const [body, setBody] = useState('');
   const postQuery = useQuery({ queryKey: ['feed-post', id], queryFn: () => api<FeedPost>(`/feed/${encodeURIComponent(id)}`) });
+  const linked = useLinkedCompetition(postQuery.data);
   const comments = useQuery({ queryKey: ['feed-comments', id], queryFn: () => api<FeedComment[]>(`/feed/${id}/comments`) });
   const loaded = Boolean(postQuery.data);
   useEffect(() => { if (loaded && reply === '1') setTimeout(() => replyField.current?.focus(), 300); }, [loaded, reply]);
@@ -91,8 +92,9 @@ export default function FeedPostScreen() {
           {item.userId !== user.id && <Pressable onPress={() => router.push(`/messages/${item.username}`)} style={styles.message}><Txt size={13} weight="bold">Message</Txt></Pressable>}
           {item.userId !== user.id && <PostMenu item={item} />}
         </View>
-        {item.body ? <View style={{ marginTop: 16 }}><MentionText text={item.body} size={19} /></View> : null}
+        {item.body ? <View style={{ marginTop: 16 }}><MentionText text={item.body} size={19} hide={linked?.url} /></View> : null}
         {item.imageUrl ? <PostImage uri={item.imageUrl} /> : null}
+        {linked ? <LinkPreview table={linked.table} unit={unit} /> : null}
         {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} /> : null}
         {item.stepsDay && item.daySteps != null ? <StepsAttachment item={item} unit={unit} /> : null}
         {item.duel ? <View style={{ marginTop: 8 }}><DuelCard duel={item.duel} viewerId={user.id} unit={unit} actions={false} /></View> : null}

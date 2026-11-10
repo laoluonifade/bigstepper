@@ -30,6 +30,25 @@ describe('scoring engine', () => {
     expect(scores.get('ben')!.score).toBe(0);
   });
 
+  it('breaks a tie on days by who moved more those days, not by who synced last', () => {
+    const scores = score({ method: 'TARGET_DAYS', dailyTarget: 1000, dailyMeasure: 'steps' }, [
+      activity('amy', '2026-10-01', 9, { steps: 1194 }),
+      activity('ben', '2026-10-01', 15, { steps: 2494 }),
+    ]);
+    expect(scores.get('amy')!.score).toBe(1);
+    expect(scores.get('ben')!.score).toBe(1);
+    expect(scores.get('ben')!.rankScore!).toBeGreaterThan(scores.get('amy')!.rankScore!);
+  });
+
+  it('still ranks more days above more steps', () => {
+    const scores = score({ method: 'TARGET_DAYS', dailyTarget: 1000, dailyMeasure: 'steps' }, [
+      activity('amy', '2026-10-01', 9, { steps: 1200 }),
+      activity('amy', '2026-10-02', 9, { steps: 1200 }),
+      activity('ben', '2026-10-01', 9, { steps: 90_000 }),
+    ]);
+    expect(scores.get('amy')!.rankScore!).toBeGreaterThan(scores.get('ben')!.rankScore!);
+  });
+
   it('ranks first-to formats by when the target was crossed', () => {
     const scores = score({ method: 'FIRST_TO_DISTANCE', targetDistanceMetres: 10_000 }, [
       activity('amy', '2026-10-01', 7, { distance: 6000 }),

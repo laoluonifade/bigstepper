@@ -87,7 +87,30 @@ export interface WeekSummary {
   runs: number;
 }
 
-export function summariseWeek(activities: Activity[], now = new Date()): WeekSummary {
+/** A day of Apple Health steps: the walking and running a phone or watch counted, whether or not it was recorded on Jump. */
+export interface HealthDay {
+  day: string;
+  steps: number;
+  distanceMetres: number | null;
+}
+
+/** About 0.72 m a step, for days Health gave steps but no distance. */
+const HEALTH_STRIDE_METRES = 0.72;
+
+/** Steps on a Health day that count as having moved, for the streak. */
+export const STREAK_MIN_STEPS = 3000;
+
+function healthDate(day: string) {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(year, month - 1, date);
+}
+
+function healthMetres(day: HealthDay) {
+  return day.distanceMetres ?? Math.round(day.steps * HEALTH_STRIDE_METRES);
+}
+
+/** Each day's distance is the larger of what was recorded on Jump and what Health counted, so a recorded walk isn't counted twice. */
+export function summariseWeek(activities: Activity[], now = new Date(), health: HealthDay[] = []): WeekSummary {
   const start = startOfWeek(now);
   const todayKey = dayKey(now);
   const days: WeekDay[] = Array.from({ length: 7 }, (_, index) => {
@@ -116,6 +139,10 @@ export function summariseWeek(activities: Activity[], now = new Date()): WeekSum
       pendingMetres += activity.recordedDistanceMetres;
     }
   }
+  for (const entry of health) {
+    const day = byKey.get(dayKey(healthDate(entry.day)));
+    if (day && !day.isFuture) day.metres = Math.max(day.metres, healthMetres(entry));
+  }
   return {
     days,
     verifiedMetres: days.reduce((total, day) => total + day.metres, 0),
@@ -134,13 +161,14 @@ export function countsForStreak(activity: Activity) {
 }
 
 /**
- * The current streak survives until the end of today, so a runner who moved yesterday still sees
+ * A day counts with a walk, run or ride, or 3,000 Apple Health steps. The current streak survives until the end of today, so a runner who moved yesterday still sees
  * their streak alive this morning (`atRisk` until they move again).
  */
-export function computeStreaks(activities: Activity[], now = new Date()) {
-  const days = new Set(
-    activities.filter(countsForStreak).map((activity) => startOfDay(new Date(activity.startedAt)).getTime()),
-  );
+export function computeStreaks(activities: Activity[], now = new Date(), health: HealthDay[] = []) {
+  const days = new Set([
+    ...activities.filter(countsForStreak).map((activity) => startOfDay(new Date(activity.startedAt)).getTime()),
+    ...health.filter((day) => day.steps >= STREAK_MIN_STEPS).map((day) => healthDate(day.day).getTime()),
+  ]);
   const sorted = [...days].sort((a, b) => a - b);
 
   let best = 0;

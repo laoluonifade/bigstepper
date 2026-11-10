@@ -2,7 +2,7 @@ import { activityName, formatDistance, formatDuration, shortAgo } from '@jump/sh
 import Svg, { Path } from 'react-native-svg';
 import { reactionEmoji, REACTIONS, type Reaction } from '@jump/shared/reactions';
 import type { AvatarStyle, Unit } from '@jump/shared/types';
-import { useMutation, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -17,7 +17,10 @@ import { DuelCard } from './Duel';
 import type { Duel } from '@/lib/duels';
 import { CommentIcon, HeartIcon, SendIcon, ShareIcon, TrashIcon } from './icons';
 import { blockRunner, openReport } from './Safety';
-import { PhotoViewer, MentionText, ReactionPicker } from './social';
+import { competitionLink, PhotoViewer, MentionText, ReactionPicker } from './social';
+import { CompetitionCard } from './competition';
+import { keys } from '@/lib/queries';
+import type { CompetitionTable } from '@jump/shared/types';
 import { Avatar, haptic, Txt, VerifiedTick } from './ui';
 
 export type FeedPost = {
@@ -70,6 +73,7 @@ export function PostMenu({ item }: { item: Pick<FeedPost, 'id' | 'username' | 'd
 }
 
 export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; unit: Unit; viewerId: string; onDelete: () => void }) {
+  const linked = useLinkedCompetition(item);
   return <Pressable onPress={() => router.push(`/feed/${item.id}`)} style={({ pressed }) => [styles.post, pressed && { backgroundColor: 'rgba(18,18,18,0.02)' }]} accessibilityLabel={`Post by ${item.displayName}`}>
     <Pressable onPress={() => openRunner(item.username)} accessibilityLabel={`View ${item.displayName}'s profile`}>
       <Avatar name={item.displayName} src={item.avatarUrl} avatarStyle={item.avatarStyle} size={42} round />
@@ -84,14 +88,35 @@ export function PostCard({ item, unit, viewerId, onDelete }: { item: FeedPost; u
           hitSlop={8} style={{ marginLeft: 'auto', padding: 4 }} accessibilityLabel="Delete post"><TrashIcon size={15} color={colors.ink3} /></Pressable>
           : <View style={{ marginLeft: 'auto' }}><PostMenu item={item} /></View>}
       </View>
-      {item.body ? <View style={{ marginTop: 4 }}><MentionText text={item.body} /></View> : null}
+      {item.body ? <View style={{ marginTop: 4 }}><MentionText text={item.body} hide={linked?.url} /></View> : null}
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" transition={150} /> : null}
+      {linked ? <LinkPreview table={linked.table} unit={unit} /> : null}
       {item.activityId && item.activityType ? <ActivityAttachment item={item} unit={unit} /> : null}
       {item.stepsDay && item.daySteps != null ? <StepsAttachment item={item} unit={unit} /> : null}
       {item.duel ? <View style={{ marginTop: 8 }}><DuelCard duel={item.duel} viewerId={viewerId} unit={unit} actions={false} /></View> : null}
       <ActionBar item={item} viewerId={viewerId} />
     </View>
   </Pressable>;
+}
+
+/**
+ * A Jump competition linked in a post with nothing else attached: its table, to show as a card in place
+ * of the bare URL. Nothing changes if it can't be opened (a private one, say).
+ */
+export function useLinkedCompetition(item: FeedPost | undefined) {
+  const link = !item || item.activityId || item.stepsDay || item.duel || item.imageUrl ? null : competitionLink(item.body);
+  const table = useQuery({
+    queryKey: keys.table(link?.code ?? ''),
+    queryFn: () => api<CompetitionTable>(`/tables/${encodeURIComponent(link!.code)}`),
+    enabled: Boolean(link),
+    staleTime: 60_000,
+    retry: false,
+  });
+  return link && table.data ? { url: link.url, table: table.data } : null;
+}
+
+export function LinkPreview({ table, unit }: { table: CompetitionTable; unit: Unit }) {
+  return <View style={{ marginTop: 10 }}><CompetitionCard table={table} unit={unit} now={Date.now()} /></View>;
 }
 
 /** React, comment, message and share, each a quiet round button. */

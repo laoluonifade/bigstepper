@@ -176,7 +176,7 @@ function scoreDays(
     case 'activeDays':
     case 'targetDays': {
       const hit = sortedDays.filter((key) => meets(days.get(key)));
-      return result(hit.length, lastAt(hit));
+      return byEffort(result(hit.length, lastAt(hit)), hit.length, hit.reduce((sum, key) => sum + days.get(key)!.total, 0));
     }
     case 'streak': {
       let best = 0;
@@ -189,7 +189,8 @@ function scoreDays(
         previous = key;
         if (run > best) { best = run; bestEnd = key; }
       }
-      return result(best, bestEnd ? days.get(bestEnd)!.at : null);
+      const effort = sortedDays.filter((key) => meets(days.get(key))).reduce((sum, key) => sum + days.get(key)!.total, 0);
+      return byEffort(result(best, bestEnd ? days.get(bestEnd)!.at : null), best, effort);
     }
     case 'bestDay': {
       let best: { total: number; at: Date } | null = null;
@@ -225,6 +226,12 @@ function scoreDays(
     default:
       throw new Error(`No scoring for ${aggregate}`);
   }
+}
+
+const EFFORT_SCALE = 1e9;
+
+function byEffort(score: EntrantScore, days: number, effort: number): EntrantScore {
+  return { ...score, rankScore: days * EFFORT_SCALE + Math.min(EFFORT_SCALE - 1, Math.max(0, Math.round(effort))) };
 }
 
 function variation(values: number[]) {

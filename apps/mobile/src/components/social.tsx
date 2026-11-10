@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type TextInputProps } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type TextInputProps } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/lib/api';
@@ -32,19 +32,53 @@ type Person = { username: string; displayName: string; avatarUrl: string | null;
 /** Same rule as the API: @ at a word start, 2–30 of a–z, 0–9 or _. */
 const MENTION = /(^|[^a-z0-9_@])@([a-z0-9_]{2,30})\b/gi;
 
-/** Text with @handles turned into profile links. Renders inside a parent <Text>. */
-export function MentionText({ text, size = 15 }: { text: string; size?: number }) {
-  const parts: Array<string | { username: string }> = [];
+const LINK = /\bhttps?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]'’”]/gi;
+const COMPETITION_LINK = /\bhttps?:\/\/(?:www\.)?startajump\.com\/competitions\/([a-z0-9]{4,16})\b\/?/i;
+
+/** The first Jump competition link in a post, so it can show as a card instead of a bare URL. */
+export function competitionLink(text: string) {
+  const match = COMPETITION_LINK.exec(text);
+  return match ? { url: match[0], code: match[1].toUpperCase() } : null;
+}
+
+/** Jump links open in the app; anything else in the browser. */
+export function openLink(url: string) {
+  const competition = competitionLink(url);
+  if (competition) return router.push(`/competitions/${competition.code}`);
+  void Linking.openURL(url);
+}
+
+function shortUrl(url: string) {
+  const bare = url.replace(/^https?:\/\/(www\.)?/i, '');
+  return bare.length > 32 ? `${bare.slice(0, 31)}…` : bare;
+}
+
+function withMentions(text: string, key: string) {
+  const parts: ReactNode[] = [];
   let last = 0;
   for (const match of text.matchAll(MENTION)) {
     const start = match.index! + match[1].length;
-    parts.push(text.slice(last, start), { username: match[2] });
-    last = start + match[2].length + 1;
+    const username = match[2];
+    parts.push(text.slice(last, start), <Text key={`${key}-${start}`} suppressHighlighting onPress={() => router.push(`/runners/${username.toLowerCase()}`)} style={{ fontFamily: fontFamily('semibold'), color: colors.trackDeep }}>@{username}</Text>);
+    last = start + username.length + 1;
   }
   parts.push(text.slice(last));
-  return <Txt size={size} leading={1.4}>{parts.map((part, index) => typeof part === 'string'
-    ? part
-    : <Text key={index} suppressHighlighting onPress={() => router.push(`/runners/${part.username.toLowerCase()}`)} style={{ fontFamily: fontFamily('semibold'), color: colors.trackDeep }}>@{part.username}</Text>)}</Txt>;
+  return parts;
+}
+
+/** Text with @handles turned into profile links and URLs made tappable. `hide` drops a link shown as a card below. Renders inside a parent <Text>. */
+export function MentionText({ text, size = 15, hide }: { text: string; size?: number; hide?: string }) {
+  const shown = hide ? text.replace(hide, '').replace(/[ \t]+$/gm, '').trim() : text;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const match of shown.matchAll(LINK)) {
+    const url = match[0];
+    parts.push(...withMentions(shown.slice(last, match.index), `t${last}`),
+      <Text key={`l${match.index}`} suppressHighlighting onPress={() => openLink(url)} accessibilityRole="link" style={{ fontFamily: fontFamily('semibold'), color: colors.trackDeep }}>{shortUrl(url)}</Text>);
+    last = match.index! + url.length;
+  }
+  parts.push(...withMentions(shown.slice(last), `t${last}`));
+  return <Txt size={size} leading={1.4}>{parts}</Txt>;
 }
 
 /** The "@partial" being typed just before the caret, if any. */
