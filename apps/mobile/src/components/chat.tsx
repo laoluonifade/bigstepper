@@ -467,11 +467,15 @@ function MessageBubble({ unit, message, viewerId, queryKey, sender, nameOf, show
       : inviteCode ? <Pressable onPress={() => router.push(`/competitions/${inviteCode}`)} style={{ marginTop: 8 }}><Txt size={12} weight="bold" color={dark ? 'paper' : 'ink'} style={{ textDecorationLine: 'underline' }}>View competition</Txt></Pressable> : null}
   </View>;
 
+  const openSender = () => { if (sender.username) router.push(`/runners/${sender.username}`); };
+
   return <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-    {!mine && <View style={{ width: 28 }}>{lastInGroup && <Avatar name={sender.displayName} src={sender.avatarUrl} avatarStyle={sender.avatarStyle} size={28} round />}</View>}
+    {!mine && <View style={{ width: 28 }}>{lastInGroup && <Pressable onPress={openSender} disabled={!sender.username} hitSlop={6} accessibilityRole="link" accessibilityLabel={`View ${sender.displayName}'s profile`}>
+      <Avatar name={sender.displayName} src={sender.avatarUrl} avatarStyle={sender.avatarStyle} size={28} round />
+    </Pressable>}</View>}
     <GestureDetector gesture={swipe}>
       <Animated.View style={[{ maxWidth: '80%', marginTop: counts.length ? 16 : 0, opacity: message.pending ? 0.75 : 1 }, swiped]}>
-        {showName && <Txt size={12} weight="bold" color="ink2" style={{ marginBottom: 4, marginLeft: 4 }}>{sender.displayName}{sender.verified ? ' ✓' : ''}</Txt>}
+        {showName && <Txt size={12} weight="bold" color="ink2" onPress={sender.username ? openSender : undefined} suppressHighlighting style={{ marginBottom: 4, marginLeft: 4, alignSelf: 'flex-start' }}>{sender.displayName}{sender.verified ? ' ✓' : ''}</Txt>}
         <Pressable disabled={message.pending || deleted} delayLongPress={300} onLongPress={openMenu}
           onPress={() => {
             // Double-tap to love, like most chat apps.

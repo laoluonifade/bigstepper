@@ -30,8 +30,9 @@ export class FeedService {
     );
   }
 
-  async list(viewerId: string, scope = 'following', page = '0') {
-    if (scope !== 'following' && scope !== 'explore') throw new BadRequestException('Invalid feed scope');
+  async list(viewerId: string, scope = 'following', page = '0', username?: string) {
+    if (scope !== 'following' && scope !== 'explore' && scope !== 'runner') throw new BadRequestException('Invalid feed scope');
+    if (scope === 'runner' && !/^[a-z0-9_]{2,30}$/i.test(username ?? '')) throw new BadRequestException('Invalid username');
     if (!/^(0|[1-9]\d{0,3})$/.test(page)) throw new BadRequestException('Invalid feed page');
     return this.dataSource.query(
       `SELECT f."id", f."body", f."imageUrl", f."createdAt", f."userId", f."activityId", ${duelJson('d')} "duel",
@@ -51,14 +52,14 @@ export class FeedService {
        LEFT JOIN "activities" a ON a."id"=f."activityId" AND a."verificationStatus" IN ('VERIFIED','FLAGGED','PENDING_VERIFICATION')
        LEFT JOIN "daily_steps" ds ON ds."userId"=f."userId" AND ds."day"=f."stepsDay"
        LEFT JOIN "duels" d ON d."id"=f."duelId"
-       WHERE ($2='explore' OR f."userId"=$1 OR d."opponentId"=$1 OR EXISTS (
+       WHERE ($2='explore' OR ($2='runner' AND lower(p."username")=lower($4)) OR ($2='following' AND (f."userId"=$1 OR d."opponentId"=$1 OR EXISTS (
            SELECT 1 FROM "follows" follow WHERE follow."followerId"=$1 AND (follow."followingId"=f."userId" OR follow."followingId"=d."opponentId")
-         ))
+         ))))
          AND (f."activityId" IS NULL OR a."id" IS NOT NULL) AND (f."stepsDay" IS NULL OR ds."day" IS NOT NULL)
          AND (d."id" IS NULL OR NOT ${blockedBetween('$1', 'd."opponentId"')})
          AND NOT ${blockedBetween('$1', 'f."userId"')} AND NOT ${reportedBy('$1', 'rant', 'f."id"')}
        ORDER BY f."createdAt" DESC, f."id" DESC LIMIT 20 OFFSET $3`,
-      [viewerId, scope, Number(page) * 20],
+      [viewerId, scope, Number(page) * 20, username ?? null],
     );
   }
 

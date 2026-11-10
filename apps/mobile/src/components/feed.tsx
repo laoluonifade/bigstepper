@@ -57,7 +57,7 @@ export type FeedComment = { id: string; postId: string; userId: string; body: st
 
 /** Applies a change to a post wherever it's cached: the feed pages and its own page. */
 export function updatePost(queryClient: QueryClient, id: string, change: (item: FeedPost) => FeedPost) {
-  queryClient.setQueryData<InfiniteData<FeedPost[]>>(['feed', 'explore'], (data) => data && { ...data, pages: data.pages.map((page) => page.map((item) => (item.id === id ? change(item) : item))) });
+  queryClient.setQueriesData<InfiniteData<FeedPost[]>>({ queryKey: ['feed'] }, (data) => data && 'pages' in data ? { ...data, pages: data.pages.map((page) => page.map((item) => (item.id === id ? change(item) : item))) } : data);
   queryClient.setQueryData<FeedPost>(['feed-post', id], (item) => item && change(item));
 }
 

@@ -1,12 +1,13 @@
 import { countryName } from '@jump/shared/countries';
 import { activityName, formatDate, formatDistanceNumber, formatDuration, formatPace, formatRelative, formatSpeed } from '@jump/shared/format';
 import type { PublicProfile } from '@jump/shared/types';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActionMenu } from '@/components/ActionMenu';
 import { ActivityBadge } from '@/components/ActivityRow';
+import { PostCard, type FeedPost } from '@/components/feed';
 import { LockIcon } from '@/components/icons';
 import { OptionSheet } from '@/components/Sheet';
 import { ConnectionList, FollowButton, ProfileHero, ProfileStats, ProfileTabs, ShareProfileButton } from '@/components/Profile';
@@ -16,10 +17,10 @@ import { Avatar, Button, EmptyState, ErrorNotice, Loading, Notice, Screen, Txt }
 import { api, isApiError, post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useUnit } from '@/lib/queries';
-import { colors, radius, score } from '@/lib/theme';
+import { colors, GUTTER, radius, score } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 
-type Tab = 'activity' | 'followers' | 'following';
+type Tab = 'activity' | 'rants' | 'followers' | 'following';
 
 export default function RunnerScreen() {
   const params = useLocalSearchParams<{ username: string; tab?: Tab }>();
@@ -27,7 +28,7 @@ export default function RunnerScreen() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const unit = useUnit();
-  const [tab, setTab] = useState<Tab>(params.tab === 'followers' || params.tab === 'following' ? params.tab : 'activity');
+  const [tab, setTab] = useState<Tab>(params.tab === 'rants' || params.tab === 'followers' || params.tab === 'following' ? params.tab : 'activity');
   const runner = useQuery({ queryKey: ['runner', username.toLowerCase()], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(username)}`) });
   if (runner.isLoading) return <Screen><Stack.Screen options={{ title: `@${username}` }} /><Loading /></Screen>;
   if (runner.error || !runner.data) {
@@ -83,10 +84,11 @@ export default function RunnerScreen() {
     <View style={{ marginTop: 24 }}><TrophyCabinet username={data.username} own={isMe} /></View>
 
     <View style={{ marginTop: 24, marginBottom: 20 }}>
-      <ProfileTabs<Tab> value={tab} onChange={setTab} tabs={[{ value: 'activity', label: 'Activity' }, { value: 'followers', label: 'Followers' }, { value: 'following', label: 'Following' }]} />
+      <ProfileTabs<Tab> value={tab} onChange={setTab} tabs={[{ value: 'activity', label: 'Activity' }, { value: 'rants', label: 'Rants' }, { value: 'followers', label: 'Followers' }, { value: 'following', label: 'Following' }]} />
     </View>
 
-    {tab !== 'activity' ? <ConnectionList key={tab} username={data.username} direction={tab} />
+    {tab === 'rants' ? <RunnerRants username={data.username} name={data.displayName.split(' ')[0]} blocked={data.blockedByMe} />
+      : tab !== 'activity' ? <ConnectionList key={tab} username={data.username} direction={tab} />
       : !data.runsVisible ? <EmptyState mark={<LockIcon size={36} color={colors.ink3} />} title="Activity is private">
         {data.followedByMe ? `${data.displayName.split(' ')[0]} hasn’t shared individual walks and runs.` : 'Their verified totals are public, but individual walks and runs are not shared with you.'}
       </EmptyState>
@@ -107,6 +109,35 @@ export default function RunnerScreen() {
             </Pressable>;
           })}</View>)}
   </Screen>;
+}
+
+/** Their Rants, newest first, twenty at a time. */
+function RunnerRants({ username, name, blocked }: { username: string; name: string; blocked?: boolean }) {
+  const { user } = useAuth();
+  const unit = useUnit();
+  const queryClient = useQueryClient();
+  const rants = useInfiniteQuery({
+    queryKey: ['feed', 'runner', username.toLowerCase()],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api<FeedPost[]>(`/feed?scope=runner&username=${encodeURIComponent(username)}&page=${pageParam}`),
+    getNextPageParam: (last, pages) => (last.length === 20 ? pages.length : undefined),
+    enabled: !blocked,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/feed/${id}`, { method: 'DELETE' }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['feed'] }),
+    onError: (error) => toast({ tone: 'bad', message: error.message }),
+  });
+  if (blocked) return <EmptyState title="Rants hidden">Unblock them to see their Rants.</EmptyState>;
+  if (rants.isLoading) return <Loading />;
+  if (rants.error) return <ErrorNotice error={rants.error} onRetry={() => void rants.refetch()} />;
+  const posts = rants.data?.pages.flat() ?? [];
+  if (!posts.length) return <EmptyState title="No Rants yet">{`When ${name} posts on the Rant, it shows here.`}</EmptyState>;
+  return <View style={{ marginHorizontal: -GUTTER }}>
+    {posts.map((item) => <PostCard key={item.id} item={item} unit={unit} viewerId={user?.id ?? ''} onDelete={() => remove.mutate(item.id)} />)}
+    {rants.hasNextPage ? <Button variant="secondary" title={rants.isFetchingNextPage ? 'Loading…' : 'Show more'} disabled={rants.isFetchingNextPage}
+      onPress={() => void rants.fetchNextPage()} style={{ marginTop: 16, marginHorizontal: GUTTER }} /> : null}
+  </View>;
 }
 
 /** Invite this runner to one of the open competitions you host. */

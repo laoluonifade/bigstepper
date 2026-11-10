@@ -14,8 +14,8 @@ export class FeedController {
   constructor(private readonly feed: FeedService) {}
 
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser, @Query('scope') scope?: string, @Query('page') page?: string) {
-    return this.feed.list(user.id, scope, page);
+  list(@CurrentUser() user: AuthenticatedUser, @Query('scope') scope?: string, @Query('page') page?: string, @Query('username') username?: string) {
+    return this.feed.list(user.id, scope, page, username);
   }
 
   @Post()
