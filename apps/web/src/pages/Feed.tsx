@@ -7,19 +7,20 @@ import { ActivityIcon, ArrowLeftIcon, CameraIcon, CloseIcon, CommentIcon, CycleI
 import { ReactionBar } from '../components/ReactionBar';
 import { ActivityBadge, activityMetres, ActivityPicker } from '../components/ActivityPicker';
 import { DuelCard } from '../components/Duel';
-import { MentionText, MentionTextarea } from '../components/Mentions';
+import { competitionLink, MentionText, MentionTextarea } from '../components/Mentions';
+import { CompetitionCard } from '../components/competition';
 import { RantTabs } from '../components/RantTabs';
 import { Avatar, cx, EmptyState, ErrorNotice, Loading, Skeleton, VerifiedTick } from '../components/ui';
 import { api, post } from '../lib/api';
 import { avatarStyleForGender } from '../lib/avatars';
 import { useUser } from '../lib/auth';
 import { activityName, formatDistance, formatDuration, shortAgo } from '../lib/format';
-import type { AvatarStyle, Unit } from '../lib/types';
-import { useActivities, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
+import type { AvatarStyle, CompetitionTable, Unit } from '../lib/types';
+import { keys, useActivities, useProfile, useUnit, useUnreadMessages } from '../lib/queries';
 import type { Duel } from '../lib/duels';
 import { reactionEmoji as symbolFor, REACTIONS, type Reaction } from '../lib/reactions';
 
-type FeedPost = {
+export type FeedPost = {
   id: string;
   /** Blue tick from a Jump admin. */
   verified?: boolean;
@@ -53,10 +54,10 @@ type FeedComment = { id: string; postId: string; userId: string; body: string; c
 
 /** Applies a change to a post wherever it's cached: the feed pages and its own page. */
 function updatePost(queryClient: QueryClient, id: string, change: (post: FeedPost) => FeedPost) {
-  queryClient.setQueryData<InfiniteData<FeedPost[]>>(['feed', 'explore'], (data) => data && {
+  queryClient.setQueriesData<InfiniteData<FeedPost[]>>({ queryKey: ['feed'] }, (data) => data && 'pages' in data ? {
     ...data,
     pages: data.pages.map((page) => page.map((item) => (item.id === id ? change(item) : item))),
-  });
+  } : data);
   queryClient.setQueryData<FeedPost>(['feed-post', id], (item) => item && change(item));
 }
 
@@ -223,9 +224,26 @@ function PostMenu({ item, className }: { item: Pick<FeedPost, 'id' | 'username' 
   ]} />;
 }
 
-function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCancelDelete, onDelete, deleting }: {
+/**
+ * A Jump competition linked in a post with nothing else attached: its table, to show as a card in place
+ * of the bare URL. Nothing changes if it can't be opened (a private one, say).
+ */
+function useLinkedCompetition(item: FeedPost | undefined) {
+  const link = !item || item.activityId || item.stepsDay || item.duel || item.imageUrl ? null : competitionLink(item.body);
+  const table = useQuery({
+    queryKey: keys.table(link?.code ?? ''),
+    queryFn: () => api<CompetitionTable>(`/tables/${encodeURIComponent(link!.code)}`),
+    enabled: Boolean(link),
+    staleTime: 60_000,
+    retry: false,
+  });
+  return link && table.data ? { url: link.url, table: table.data } : null;
+}
+
+export function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCancelDelete, onDelete, deleting }: {
   item: FeedPost; unit: Unit; viewerId: string; confirmingDelete: boolean; onAskDelete: () => void; onCancelDelete: () => void; onDelete: () => void; deleting: boolean;
 }) {
+  const linked = useLinkedCompetition(item);
   return <article className="relative flex gap-3 px-4 py-3.5 transition-colors hover:bg-ink/[0.02]">
     <Link to="/runners/$username" params={{ username: item.username }} search={{}} aria-label={`View ${item.displayName}'s profile`} className="relative z-[1] h-fit shrink-0 self-start rounded-full">
       <Avatar name={item.displayName} src={item.avatarUrl} avatarStyle={item.avatarStyle} size={42} className="rounded-full" />
@@ -242,7 +260,8 @@ function PostCard({ item, unit, viewerId, confirmingDelete, onAskDelete, onCance
       </p>
       {/* The whole card opens the post; links and buttons inside sit above this overlay. */}
       <Link to="/feed/$id" params={{ id: item.id }} className="absolute inset-0" aria-label={`Open post by ${item.displayName}`} />
-      {item.body && <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-snug"><MentionText text={item.body} /></p>}
+      {item.body && <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-snug"><MentionText text={item.body} hide={linked?.url} /></p>}
+      {linked && <div className="relative z-[1] mt-2.5"><CompetitionCard table={linked.table} unit={unit} now={Date.now()} /></div>}
       {/* In the list these are part of the card, so a tap anywhere opens the post. */}
       {item.imageUrl && <img src={item.imageUrl} alt="" loading="lazy" className="mt-2.5 max-h-[420px] w-full rounded-2xl border border-line object-cover" />}
       {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={false} />}
@@ -360,6 +379,7 @@ export function FeedPostPage() {
   const location = useLocation();
   const replyField = useRef<HTMLTextAreaElement | null>(null);
   const post = useQuery({ queryKey: ['feed-post', id], queryFn: () => api<FeedPost>(`/feed/${encodeURIComponent(id)}`) });
+  const linked = useLinkedCompetition(post.data);
   const loaded = Boolean(post.data);
   useEffect(() => {
     if (loaded && location.hash === 'reply') replyField.current?.focus();
@@ -386,7 +406,8 @@ export function FeedPostPage() {
           {item.userId !== user.id && <Link to="/messages/$username" params={{ username: item.username }} className="h-9 shrink-0 rounded-full border border-line px-4 text-[13px] font-bold leading-9 hover:border-ink">Message</Link>}
           {item.userId !== user.id && <PostMenu item={item} className="shrink-0" />}
         </div>
-        {item.body && <p className="mt-4 whitespace-pre-wrap break-words text-[19px] leading-relaxed"><MentionText text={item.body} /></p>}
+        {item.body && <p className="mt-4 whitespace-pre-wrap break-words text-[19px] leading-relaxed"><MentionText text={item.body} hide={linked?.url} /></p>}
+        {linked && <div className="mt-3"><CompetitionCard table={linked.table} unit={unit} now={Date.now()} /></div>}
         {item.imageUrl && <PostImage src={item.imageUrl} className="mt-3 max-h-[560px]" />}
         {item.activityId && item.activityType && <ActivityAttachment item={item} unit={unit} mine={item.userId === user.id} />}
         {item.stepsDay && item.daySteps != null && <StepsAttachment item={item} unit={unit} />}

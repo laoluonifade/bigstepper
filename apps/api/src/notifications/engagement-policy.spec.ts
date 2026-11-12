@@ -18,7 +18,7 @@ describe('shared notification policy', () => {
     expect(DEFAULT_SETTINGS).toMatchObject({ newTriggersEnabled: false, pushDaily: 3, emailWeekly: 3 });
     expect(DEFAULT_SETTINGS.triggers).toEqual({
       weeklyRecap: false, weeklyGoal: false, deadlines: false, proximity: false, streak: true, digest: true,
-      stepsBoard: true, stepMilestones: true, stepNudges: true, healthConnect: true,
+      stepsBoard: true, stepMilestones: true, stepNudges: true, healthConnect: true, friendsMoving: true, competitionCheckins: true,
     });
     expect(reasonFor({ ...candidate, newTrigger: true }, 'push', preferences, DEFAULT_SETTINGS, now)).toBe(
       'feature_disabled',
@@ -139,12 +139,16 @@ describe('shared notification policy', () => {
     expect(() => validateSettings({ pushDaily: -1 }, DEFAULT_SETTINGS)).toThrow();
     expect(() => validateSettings({ triggers: { proximity: true } }, DEFAULT_SETTINGS)).toThrow();
     expect(validateSettings({ pushDaily: 1 }, DEFAULT_SETTINGS).pushDaily).toBe(1);
+    expect(validateSettings({ pushDaily: 20, emailWeekly: 20 }, DEFAULT_SETTINGS)).toMatchObject({ pushDaily: 20, emailWeekly: 20 });
+    expect(() => validateSettings({ pushDaily: 21 }, DEFAULT_SETTINGS)).toThrow();
   });
 
   it.each([
     ['STEPS_BOARD', 'stepsBoard'],
     ['STEPS_MILESTONE', 'stepMilestones'],
     ['STEPS_NUDGE', 'stepNudges'],
+    ['FRIENDS_MOVING', 'friendsMoving'],
+    ['COMPETITION_STANDING', 'competitionCheckins'],
     ['HEALTH_CONNECT', 'healthConnect'],
   ])('lets the admin switch off %s', (type, trigger) => {
     const settings = { ...DEFAULT_SETTINGS, newTriggersEnabled: true, rolloutPercent: 100, triggers: { ...DEFAULT_SETTINGS.triggers, [trigger]: false } };

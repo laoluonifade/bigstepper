@@ -1,7 +1,7 @@
 import { NotificationPreferences } from '../components/NotificationPreferences';
 import { MoreMenu, openBlock, openReport, unblockRunner } from '../components/Safety';
 import { LEGAL_LINKS, SOCIAL_LINKS } from '../legal/links';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
 import { ActivityIcon, ArrowLeftIcon, BellIcon, CheckIcon, ChevronRightIcon, CrownIcon, InstagramIcon, JumpLogo, LadderIcon, LinkIcon, LockIcon, LogoutIcon, RunIcon, UserIcon, UsersIcon, WalletIcon, XLogoIcon } from '../components/icons';
@@ -38,6 +38,7 @@ import { toast } from '../lib/toast';
 import { CountryPicker, PhoneField } from '../components/CountryPicker';
 import { GenderSelect } from '../components/GenderSelect';
 import { PasswordInput } from '../components/PasswordInput';
+import { PostCard, type FeedPost } from './Feed';
 
 /** On phones, the way back to You from its pages (the You tab opens your profile, which lists them). */
 export function YouBack() {
@@ -809,11 +810,45 @@ export function NotificationsPage() {
   );
 }
 
+/** Their Rants, newest first, twenty at a time. */
+function RunnerRants({ username, name, blocked }: { username: string; name: string; blocked?: boolean }) {
+  const { user } = useAuth();
+  const unit = useUnit();
+  const queryClient = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const rants = useInfiniteQuery({
+    queryKey: ['feed', 'runner', username.toLowerCase()],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api<FeedPost[]>(`/feed?scope=runner&username=${encodeURIComponent(username)}&page=${pageParam}`),
+    getNextPageParam: (last, pages) => (last.length === 20 ? pages.length : undefined),
+    enabled: !blocked && Boolean(user),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/feed/${id}`, { method: 'DELETE' }),
+    onSuccess() { setConfirmDelete(null); void queryClient.invalidateQueries({ queryKey: ['feed'] }); },
+  });
+  if (!user) return <EmptyState title="Sign in to see Rants">Rants are for people on Jump. <Link to="/login" className="link">Sign in</Link> to see what {name} has been saying.</EmptyState>;
+  if (blocked) return <EmptyState title="Rants hidden">Unblock them to see their Rants.</EmptyState>;
+  if (rants.isLoading) return <Loading />;
+  if (rants.error) return <ErrorNotice error={rants.error} onRetry={() => void rants.refetch()} />;
+  const posts = rants.data?.pages.flat() ?? [];
+  if (!posts.length) return <EmptyState title="No Rants yet">When {name} posts on the Rant, it shows here.</EmptyState>;
+  return <div className="mx-auto max-w-[600px]">
+    <div className="-mx-4 divide-y divide-line border-y border-line sm:mx-0">
+      {posts.map((item) => <PostCard key={item.id} item={item} unit={unit} viewerId={user.id}
+        confirmingDelete={confirmDelete === item.id} onAskDelete={() => setConfirmDelete(item.id)} onCancelDelete={() => setConfirmDelete(null)}
+        onDelete={() => remove.mutate(item.id)} deleting={remove.isPending} />)}
+    </div>
+    <ErrorNotice error={remove.error} className="mt-3" />
+    {rants.hasNextPage && <button type="button" className="btn-quiet mt-3 w-full" onClick={() => void rants.fetchNextPage()} disabled={rants.isFetchingNextPage}>{rants.isFetchingNextPage ? 'Loading…' : 'Show older Rants'}</button>}
+  </div>;
+}
+
 export function RunnerPage() {
   const { username } = useParams({ strict: false }) as { username: string };
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { tab = 'activity' } = useSearch({ strict: false }) as { tab?: 'followers' | 'following' | 'activity' };
+  const { tab = 'activity' } = useSearch({ strict: false }) as { tab?: 'rants' | 'followers' | 'following' | 'activity' };
   const navigate = useNavigate();
   const unit = useUnit();
   const runner = useQuery({ queryKey: ['runner', username.toLowerCase()], queryFn: () => api<PublicProfile>(`/users/${encodeURIComponent(username)}`) });
@@ -876,18 +911,21 @@ export function RunnerPage() {
       </ProfileHero>
 
       <div className="mb-5 mt-6">
-        <ProfileTabs<'activity' | 'followers' | 'following'>
+        <ProfileTabs<'activity' | 'rants' | 'followers' | 'following'>
           value={tab}
           onChange={(next) => void navigate({ to: '/runners/$username', params: { username: data.username }, search: next === 'activity' ? {} : { tab: next }, replace: true })}
           tabs={[
             { value: 'activity', label: 'Activity' },
+            { value: 'rants', label: 'Rants' },
             { value: 'followers', label: 'Followers' },
             { value: 'following', label: 'Following' },
           ]}
         />
       </div>
 
-      {tab !== 'activity' ? (
+      {tab === 'rants' ? (
+        <RunnerRants username={data.username} name={data.displayName.split(' ')[0]} blocked={data.blockedByMe} />
+      ) : tab !== 'activity' ? (
         <ConnectionList key={tab} username={data.username} direction={tab} />
       ) : !data.runsVisible ? (
         <EmptyState mark={<LockIcon size={36} className="mx-auto" />} title="Activity is private">

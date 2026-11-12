@@ -25,10 +25,12 @@ const TRIGGERS: Record<string, { name: string; detail: string; group: 'Steps' | 
   stepMilestones: { group: 'Steps', name: 'Step milestones', detail: 'The moment someone passes 10,000 steps or sets a personal best.' },
   stepNudges: { group: 'Steps', name: 'Evening nudge', detail: '6–7pm when they’re under 5,000 steps, naming a friend just ahead.' },
   healthConnect: { group: 'Steps', name: 'Connect Health reminder', detail: 'iPhone users without Apple Health. Every 3 days, at most 4 times.' },
-  streak: { group: 'Training', name: 'Streak reminders', detail: 'When a streak is about to break.' },
+  friendsMoving: { group: 'Steps', name: 'Friends are moving', detail: '12–2pm: who they follow is already out, if they haven’t moved yet. Everyone, with or without Health.' },
+  streak: { group: 'Training', name: 'Streak reminders', detail: '6–8pm push (plus the email) when they moved yesterday but not yet today. Counts 3,000 Health steps as moving.' },
   weeklyRecap: { group: 'Training', name: 'Weekly recap', detail: 'Last week’s walks, runs and club totals.' },
   weeklyGoal: { group: 'Training', name: 'Weekly goal', detail: 'When someone hits their weekly distance goal.' },
   digest: { group: 'Competitions', name: 'Competition digest', detail: 'New competitions worth joining.' },
+  competitionCheckins: { group: 'Competitions', name: 'Daily standing', detail: '4–6pm: their place in the competition where a move matters most, and the gap to the next person.' },
   deadlines: { group: 'Competitions', name: 'Starting and ending soon', detail: 'Competitions they’re in that open or close shortly.' },
   proximity: { group: 'Competitions', name: 'Close races', detail: 'Unavailable until step sync is reliable enough to call a race close.' },
 };
@@ -112,10 +114,10 @@ export function NotificationsPage() {
             {(props) => <div className="relative"><input {...props} className="field pr-10" type="number" min={0} max={100} value={value.holdoutPercent} onChange={(e) => number('holdoutPercent', 100)(e.target.value)} /><span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-3">%</span></div>}
           </Field>
           <Field label="Pushes a day" hint="Optional pushes per person per day. DMs and payouts don’t count.">
-            {(props) => <input {...props} className="field" type="number" min={0} max={10} value={value.pushDaily} onChange={(e) => number('pushDaily', 10)(e.target.value)} />}
+            {(props) => <input {...props} className="field" type="number" min={0} max={20} value={value.pushDaily} onChange={(e) => number('pushDaily', 20)(e.target.value)} />}
           </Field>
           <Field label="Emails a week" hint="Engagement emails per person per week.">
-            {(props) => <input {...props} className="field" type="number" min={0} max={10} value={value.emailWeekly} onChange={(e) => number('emailWeekly', 10)(e.target.value)} />}
+            {(props) => <input {...props} className="field" type="number" min={0} max={20} value={value.emailWeekly} onChange={(e) => number('emailWeekly', 20)(e.target.value)} />}
           </Field>
         </div>
       </Section>

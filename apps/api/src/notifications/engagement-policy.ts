@@ -37,6 +37,8 @@ export const DEFAULT_SETTINGS: Settings = {
     stepMilestones: true,
     stepNudges: true,
     healthConnect: true,
+    friendsMoving: true,
+    competitionCheckins: true,
   },
 };
 export const DEFAULT_PREFERENCES: Preferences = { timeZone: null, quietStart: 21, quietEnd: 8, categories: {} };
@@ -153,6 +155,8 @@ export function reasonFor(
     STEPS_MILESTONE: 'stepMilestones',
     STEPS_NUDGE: 'stepNudges',
     HEALTH_CONNECT: 'healthConnect',
+    FRIENDS_MOVING: 'friendsMoving',
+    COMPETITION_STANDING: 'competitionCheckins',
   };
   if (trigger[c.type] && !s.triggers[trigger[c.type]]) return 'trigger_disabled';
   if (channel === 'inapp') return p.categories[category(c.type)]?.inapp === false ? 'preference' : null;

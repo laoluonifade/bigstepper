@@ -1,6 +1,6 @@
 import type { DataSource } from 'typeorm';
 
-const LOCAL = `
+export const LOCAL = `
   SELECT u.id AS "userId", z.zone, (now() AT TIME ZONE z.zone) AS local
   FROM users u
   LEFT JOIN notification_preferences np ON np."userId"=u.id

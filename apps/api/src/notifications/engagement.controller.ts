@@ -35,8 +35,8 @@ export function validateSettings(input: unknown, current: Settings): Settings {
   for (const key of ['deliveryEnabled', 'newTriggersEnabled'] as const)
     if (typeof merged[key] !== 'boolean') throw new BadRequestException('Expected a boolean');
   for (const [key, max] of [
-    ['pushDaily', 10],
-    ['emailWeekly', 10],
+    ['pushDaily', 20],
+    ['emailWeekly', 20],
     ['holdoutPercent', 100],
     ['rolloutPercent', 100],
   ] as const)

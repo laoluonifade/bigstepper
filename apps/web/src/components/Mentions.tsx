@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { forwardRef, KeyboardEvent, RefObject, TextareaHTMLAttributes, useEffect, useMemo, useState } from 'react';
+import { forwardRef, KeyboardEvent, ReactNode, RefObject, TextareaHTMLAttributes, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import type { AvatarStyle } from '../lib/types';
 import { useProfile } from '../lib/queries';
@@ -11,19 +11,48 @@ type Person = { username: string; displayName: string; avatarUrl: string | null;
 /** Same rule as the API: @ at a word start, 2–30 of a–z, 0–9 or _. */
 const MENTION = /(^|[^a-z0-9_@])@([a-z0-9_]{2,30})\b/gi;
 
-/** Text with @handles turned into profile links. */
-export function MentionText({ text }: { text: string }) {
-  const parts: Array<string | { username: string }> = [];
+const LINK = /\bhttps?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]'’”]/gi;
+const COMPETITION_LINK = /\bhttps?:\/\/(?:www\.)?startajump\.com\/competitions\/([a-z0-9]{4,16})\b\/?/i;
+
+/** The first Jump competition link in a post, so it can show as a card instead of a bare URL. */
+export function competitionLink(text: string) {
+  const match = COMPETITION_LINK.exec(text);
+  return match ? { url: match[0], code: match[1].toUpperCase() } : null;
+}
+
+function shortUrl(url: string) {
+  const bare = url.replace(/^https?:\/\/(www\.)?/i, '');
+  return bare.length > 40 ? `${bare.slice(0, 39)}…` : bare;
+}
+
+function withMentions(text: string, key: string): ReactNode[] {
+  const parts: ReactNode[] = [];
   let last = 0;
   for (const match of text.matchAll(MENTION)) {
     const start = match.index! + match[1].length;
-    parts.push(text.slice(last, start), { username: match[2] });
-    last = start + match[2].length + 1;
+    const username = match[2];
+    parts.push(text.slice(last, start), <Link key={`${key}-${start}`} to="/runners/$username" params={{ username: username.toLowerCase() }} search={{}} className="relative z-[1] font-semibold text-track-deep hover:underline" onClick={(event) => event.stopPropagation()}>@{username}</Link>);
+    last = start + username.length + 1;
   }
   parts.push(text.slice(last));
-  return <>{parts.map((part, index) => typeof part === 'string'
-    ? part
-    : <Link key={index} to="/runners/$username" params={{ username: part.username.toLowerCase() }} search={{}} className="relative z-[1] font-semibold text-track-deep hover:underline" onClick={(event) => event.stopPropagation()}>@{part.username}</Link>)}</>;
+  return parts;
+}
+
+/** Text with @handles turned into profile links and URLs made clickable. `hide` drops a link shown as a card below. */
+export function MentionText({ text, hide }: { text: string; hide?: string }) {
+  const shown = hide ? text.replace(hide, '').replace(/[ \t]+$/gm, '').trim() : text;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const match of shown.matchAll(LINK)) {
+    const url = match[0];
+    const competition = competitionLink(url);
+    parts.push(...withMentions(shown.slice(last, match.index), `t${last}`), competition
+      ? <Link key={`l${match.index}`} to="/competitions/$code" params={{ code: competition.code }} className="relative z-[1] font-semibold text-track-deep hover:underline" onClick={(event) => event.stopPropagation()}>{shortUrl(url)}</Link>
+      : <a key={`l${match.index}`} href={url} target="_blank" rel="noopener noreferrer nofollow" className="relative z-[1] font-semibold text-track-deep hover:underline" onClick={(event) => event.stopPropagation()}>{shortUrl(url)}</a>);
+    last = match.index! + url.length;
+  }
+  parts.push(...withMentions(shown.slice(last), `t${last}`));
+  return <>{parts}</>;
 }
 
 /** The "@partial" being typed just before the caret, if any. */

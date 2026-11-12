@@ -47,8 +47,8 @@ const competition = createRoute({
 const runner = createRoute({
   getParentRoute: () => root,
   path: '/runners/$username',
-  validateSearch: (search: Record<string, unknown>): { tab?: 'followers' | 'following' } =>
-    search.tab === 'followers' || search.tab === 'following' ? { tab: search.tab } : {},
+  validateSearch: (search: Record<string, unknown>): { tab?: 'rants' | 'followers' | 'following' } =>
+    search.tab === 'rants' || search.tab === 'followers' || search.tab === 'following' ? { tab: search.tab } : {},
   component: page(() => import('./pages/You'), 'RunnerPage'),
 });
 const runners = createRoute({ getParentRoute: () => root, path: '/runners', component: protectedPage(() => import('./pages/Runners'), 'RunnersPage') });
