@@ -55,14 +55,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        // 401s are handled centrally. If the API is unreachable we can't confirm either way, so wait for a retry.
-        if (isApiError(error, 0)) setStatus('unreachable');
-        else if (getToken()) signOutLocally();
+        // Only a 401 ends the session, and that's handled centrally. A dropped connection, a 502 while the API
+        // restarts for a deploy or a rate limit says nothing about the session, so keep the token and offer a retry.
+        if (!isApiError(error, 401)) setStatus('unreachable');
       });
     return () => {
       cancelled = true;
     };
-  }, [attempt, signOutLocally]);
+  }, [attempt]);
+
+  // The API was down or restarting: keep checking quietly, and straight away when the tab comes back into focus.
+  useEffect(() => {
+    if (status !== 'unreachable') return;
+    const again = () => setAttempt((n) => n + 1);
+    const timer = window.setTimeout(again, 5_000);
+    window.addEventListener('focus', again);
+    return () => { window.clearTimeout(timer); window.removeEventListener('focus', again); };
+  }, [status]);
 
   const value = useMemo<AuthState>(
     () => ({

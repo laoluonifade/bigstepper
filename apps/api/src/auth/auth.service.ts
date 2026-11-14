@@ -7,6 +7,7 @@ import { User } from '../users/user.entity';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { AuthSession } from './auth-session.entity';
+import { APP_SESSION_DAYS } from './jwt.strategy';
 import { Profile } from '../profiles/profile.entity';
 import { createHash, randomBytes } from 'node:crypto';
 import { AuthActionToken } from './auth-action-token.entity';
@@ -370,7 +371,7 @@ export class AuthService {
     const session = await this.sessionsRepo.save(
       this.sessionsRepo.create({
         userId: user.id,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + APP_SESSION_DAYS * 86_400_000),
         revokedAt: null,
       }),
     );

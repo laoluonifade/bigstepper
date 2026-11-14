@@ -4,7 +4,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { AppState } from 'react-native';
 import { api, isApiError, onUnauthorized, post } from './api';
 import { unregisterForPush } from './push';
-import { clearToken, getToken, loadToken, setToken } from './token';
+import { clearToken, loadToken, setToken } from './token';
 
 type AuthStatus = 'checking' | 'signed-in' | 'signed-out' | 'unreachable';
 
@@ -46,10 +46,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // A stored token is not proof of a session — always confirm with the API on startup.
   useEffect(() => {
     let cancelled = false;
+    let cleanup = () => {};
     setStatus('checking');
     (async () => {
-      if (!(await loadToken())) {
-        if (!cancelled) setStatus('signed-out');
+      const stored = await loadToken();
+      if (cancelled) return;
+      // iOS woke Jump in the background with the phone locked: the token is there but can't be read yet.
+      // Stay on 'checking' and try again when the app comes to the front, rather than showing the login screen.
+      if (stored === 'unreadable') {
+        const subscription = AppState.addEventListener('change', (state) => {
+          if (state !== 'active') return;
+          subscription.remove();
+          setAttempt((n) => n + 1);
+        });
+        cleanup = () => subscription.remove();
+        return;
+      }
+      if (!stored) {
+        setStatus('signed-out');
         return;
       }
       try {
@@ -59,15 +73,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus('signed-in');
       } catch (error) {
         if (cancelled) return;
-        // 401s are handled centrally. If the API is unreachable we can't confirm either way, so wait for a retry.
-        if (isApiError(error, 0)) setStatus('unreachable');
-        else if (getToken()) signOutLocally();
+        // Only a 401 ends the session, and that's handled centrally. A dropped connection, a 502 while the API
+        // restarts for a deploy or a rate limit says nothing about the session, so keep the token and offer a retry.
+        if (!isApiError(error, 401)) setStatus('unreachable');
       }
     })();
     return () => {
       cancelled = true;
+      cleanup();
     };
-  }, [attempt, signOutLocally]);
+  }, [attempt]);
+
+  // Couldn't reach the API on startup: try again whenever Jump comes back to the front.
+  useEffect(() => {
+    if (status !== 'unreachable') return;
+    const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') setAttempt((n) => n + 1); });
+    return () => subscription.remove();
+  }, [status]);
 
   // The verification link opens in the browser, so check again whenever Jump comes back on screen, and every
   // few seconds while it's open, until the email is verified. The banner then clears without a restart.

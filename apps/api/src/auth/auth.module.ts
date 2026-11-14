@@ -17,7 +17,7 @@ import { AuthActionToken } from './auth-action-token.entity';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '7d' },
+        signOptions: { expiresIn: '400d' },
       }),
     }),
   ],
