@@ -11,7 +11,7 @@ import { ReactNode, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 import { CheckIcon, FeedIcon, SendIcon, ShareIcon } from '@/components/icons';
-import { RouteMap } from '@/components/RunMap';
+import { RouteMap, RouteSketch } from '@/components/RunMap';
 import { SendActivitySheet } from '@/components/SendActivity';
 import { StatStickers, Sticker } from '@/components/Stickers';
 import { ShareRunSheet } from '@/components/ShareRun';
@@ -35,7 +35,7 @@ export default function ActivityDetailScreen() {
     queryFn: () => api<Activity>(`/activities/${id}`),
     refetchInterval: (query) => (query.state.data?.verificationStatus === 'PENDING_VERIFICATION' ? (uploading ? 15_000 : 2500) : false),
   });
-  const track = useQuery({ queryKey: ['activity-track', id, uploading], queryFn: () => api<{ points: Array<[number, number]> }>(`/activities/${id}/track`), staleTime: Infinity });
+  const track = useQuery({ queryKey: ['activity-track', id, uploading], queryFn: () => api<{ points: Array<[number, number]>; exact?: boolean }>(`/activities/${id}/track`), staleTime: Infinity });
 
   if (activity.isLoading) return <Screen><Stack.Screen options={{ title: '' }} /><Loading /></Screen>;
   if (activity.error || !activity.data) return <Screen><Stack.Screen options={{ title: 'Not found' }} /><ErrorNotice error={activity.error ?? new Error('This activity doesn’t exist.')} /></Screen>;
@@ -73,7 +73,8 @@ export default function ActivityDetailScreen() {
 
     {/* The activity as a pile of stickers: the route on top, the numbers underneath. */}
     {route.length >= 2 && <Sticker p={colors} bg={colors.card} tilt={-1.5} padded={false} style={{ marginTop: 20, marginHorizontal: 4 }}>
-      <View style={{ padding: 8 }}><RouteMap route={route} style={styles.map} /></View>
+      {/* Only the owner sees where it was. Everyone else gets the route's shape, without the streets around it. */}
+      <View style={{ padding: 8 }}>{mine && track.data?.exact !== false ? <RouteMap route={route} style={styles.map} /> : <RouteSketch route={route} style={styles.map} />}</View>
     </Sticker>}
     <View style={{ marginTop: route.length >= 2 ? 8 : 20, marginHorizontal: 4 }}><StatStickers activity={a} unit={unit} p={colors} /></View>
 

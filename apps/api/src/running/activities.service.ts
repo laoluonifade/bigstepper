@@ -23,6 +23,17 @@ export function hideEnds<T extends { lat: number; lon: number }>(points: T[], me
   return points.filter((_, index) => along[index] >= metres && along[index] <= total - metres);
 }
 
+export function shapeOnly<T extends { lat: number; lon: number }>(points: T[]): Array<{ lat: number; lon: number }> {
+  if (!points.length) return [];
+  const cos = Math.cos((points[0].lat * Math.PI) / 180);
+  const flat = points.map((point) => ({ x: point.lon * 111_320 * cos, y: point.lat * 110_540 }));
+  const xs = flat.map((point) => point.x);
+  const ys = flat.map((point) => point.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  return flat.map((point) => ({ lat: (point.y - cy) / 110_540, lon: (point.x - cx) / 111_320 }));
+}
+
 @Injectable()
 export class ActivitiesService {
   constructor(
@@ -118,10 +129,11 @@ export class ActivitiesService {
   async track(viewerId: string, activityId: string) {
     const activity = await this.viewable(viewerId, activityId);
     const route = await this.route(activity);
-    const smoothed = activity.userId === viewerId ? route : hideEnds(route, PRIVATE_ENDS_METRES);
+    const exact = activity.userId === viewerId;
+    const smoothed = exact ? route : shapeOnly(hideEnds(route, PRIVATE_ENDS_METRES));
     const step = Math.max(1, Math.ceil(smoothed.length / 400));
     const points = smoothed.filter((_, index) => index % step === 0 || index === smoothed.length - 1);
-    return { points: points.map((point) => [Number(point.lat.toFixed(6)), Number(point.lon.toFixed(6))]) };
+    return { exact, points: points.map((point) => [Number(point.lat.toFixed(6)), Number(point.lon.toFixed(6))]) };
   }
 
   private async route(activity: { id: string; runningSessionId: string; verificationStatus: string }): Promise<Array<{ lat: number; lon: number }>> {

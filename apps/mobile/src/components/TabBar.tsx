@@ -18,6 +18,13 @@ export function onStartPressed(listener: () => void) {
   return () => void startListeners.delete(listener);
 }
 
+/** Tapping the tab you're already on takes its page back to the top; the focused tab's screen listens. */
+const reselectListeners = new Set<() => void>();
+export function onTabReselected(listener: () => void) {
+  reselectListeners.add(listener);
+  return () => void reselectListeners.delete(listener);
+}
+
 /** The active tab's pill: ink with a volt icon in light mode; in dark mode ink is cream, so volt with a dark icon. */
 const PILL = scheme === 'dark' ? colors.volt : colors.ink;
 const PILL_ICON = scheme === 'dark' ? colors.onAccent : colors.volt;
@@ -104,6 +111,7 @@ function FloatingTabBar({ state, navigateToTab, bottom, onRun, live, locating }:
       return;
     }
     if (index !== state.index) navigateToTab(route.key);
+    else reselectListeners.forEach((listener) => listener());
   }
   function hovering(index: number) {
     haptic('select');
@@ -206,7 +214,7 @@ export function TabBar({ state, navigateToTab, insets }: BottomTabBarProps) {
     {Platform.OS === 'ios' ? <BlurView intensity={80} tint={scheme === 'dark' ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} style={styles.glass} /> : null}
     {state.routes.map((route, index) => {
       const active = state.index === index;
-      const go = () => { haptic(); navigateToTab(route.key); };
+      const go = () => { haptic(); if (active) reselectListeners.forEach((listener) => listener()); else navigateToTab(route.key); };
       if (route.name === 'run') {
         const start = onRun && !live;
         return <Pressable

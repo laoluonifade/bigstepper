@@ -1,7 +1,7 @@
 import { formatDistanceNumber, formatDuration } from '@jump/shared/format';
-import { router } from 'expo-router';
-import { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { ComponentRef, ReactNode, useCallback, useRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OPEN_PAYMENT_STATUSES, useSavedPayments } from '@/lib/payments';
 import { useNotifications, useUnit, useUnreadMessages } from '@/lib/queries';
@@ -10,6 +10,7 @@ import { brand, colors, GUTTER, radius, scheme, score } from '@/lib/theme';
 import { ArrowRightIcon, BellIcon, FeedIcon, JumpLogo, SearchIcon } from './icons';
 import { AppleHealthSyncBar } from './apple-health';
 import { StravaSyncBar } from './strava';
+import { onTabReselected } from './TabBar';
 import { IconButton, LiveDot, Screen, Txt, useNow } from './ui';
 
 /** The web's mobile top bar: the wordmark, then search, messages and notifications. */
@@ -32,9 +33,12 @@ export function TopBar({ right }: { right?: ReactNode }) {
 
 /** A tab's page: the top bar, the shell's status banners, then the content scrolling under them. */
 export function TabScreen({ children, refreshing, onRefresh, banners = true, overlay }: { children: ReactNode; refreshing?: boolean; onRefresh?: () => void; banners?: boolean; /** Floats over the scrolling content, e.g. a create button. */ overlay?: ReactNode }) {
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  // Only the tab on screen listens, so tapping it again scrolls this page and no other.
+  useFocusEffect(useCallback(() => onTabReselected(() => scroll.current?.scrollTo({ y: 0, animated: true })), []));
   return <View style={{ flex: 1, backgroundColor: colors.paper }}>
     <TopBar />
-    <Screen refreshing={refreshing} onRefresh={onRefresh} contentStyle={{ paddingTop: 20, paddingBottom: 40 }}>
+    <Screen ref={scroll} refreshing={refreshing} onRefresh={onRefresh} contentStyle={{ paddingTop: 20, paddingBottom: 40 }}>
       {banners && <>
         <LiveRunBar />
         <PendingPaymentsBar />
