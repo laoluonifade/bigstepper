@@ -118,7 +118,9 @@ function targetText(table: Scored, unit: Unit) {
 
 /** "Fastest 5 km", "First to 100,000 steps", "Longest streak · 3 km a day". */
 export function winsLabel(table: Scored, unit: Unit) {
-  const label = scoringOption(table.challengeType, table.scoringMethod)?.label ?? (metricOf(table.scoringMethod).aggregate === 'fastest' ? 'Fastest completion' : 'Farthest distance');
+  const label = scoringOption(table.challengeType, table.scoringMethod)?.label
+    ?? ({ PERSONAL_TARGET: 'Your own target', PERSONAL_DAYS: 'Your own daily target' } as Record<string, string>)[table.scoringMethod]
+    ?? (metricOf(table.scoringMethod).aggregate === 'fastest' ? 'Fastest completion' : 'Farthest distance');
   const target = targetText(table, unit);
   const daily = formatDaily(table, unit);
   const metric = metricOf(table.scoringMethod);
