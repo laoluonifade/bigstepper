@@ -1,4 +1,4 @@
-import { canEnter, challengeHeadline, competitionPhase, prizeSplit } from '@jump/shared/competition';
+import { cadenceLabel, canEnter, challengeHeadline, competitionPhase, personalTargetLine, prizeSplit } from '@jump/shared/competition';
 import { joinConflictCopy } from '@jump/shared/copy';
 import { countryName } from '@jump/shared/countries';
 import { formatCountdown, formatDate, formatDateTime, formatDistance, formatMoney, formatNairaInput, fromLocalInput, nairaInputToKobo, ordinal, toLocalInput } from '@jump/shared/format';
@@ -12,6 +12,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from '
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { PrizeTerms } from '@/components/ClubPrizes';
 import { PrizeAds } from '@/components/PrizeAd';
+import { EditionHistory, ResultsPending } from '@/components/Editions';
 import { ChallengeMark, PhaseTag, TypeTag, cardTheme } from '@/components/competition';
 import { ActionMenu, type MenuAction } from '@/components/ActionMenu';
 import { DateTimePicker } from '@/components/DateTimePicker';
@@ -207,7 +208,7 @@ export default function CompetitionDetailScreen() {
       {t.club.logoUrl ? <Image source={{ uri: t.club.logoUrl }} style={styles.clubLogo} /> : <View style={[styles.clubLogo, { backgroundColor: t.club.accentColor, alignItems: 'center', justifyContent: 'center' }]}><Txt size={13} weight="extrabold">{t.club.name.charAt(0)}</Txt></View>}
       <Txt size={13} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{t.club.name}</Txt>
       {t.club.verified ? <VerifiedTick size={13} /> : null}
-      <Txt size={13} numberOfLines={1} style={{ flexShrink: 1, marginLeft: -6 }}>{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</Txt>
+      <Txt size={13} numberOfLines={1} style={{ flexShrink: 1, marginLeft: -6 }}>{t.club.seriesTitle && t.edition ? ` · ${cadenceLabel(t.club.seriesCadence)} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</Txt>
     </Pressable>}
     {t.latitude != null && t.longitude != null && <Pressable onPress={() => { haptic(); openDirections({ latitude: t.latitude!, longitude: t.longitude!, venue: t.venue ?? null }); }}
       style={({ pressed }) => [styles.place, pressed && { opacity: 0.8 }]} accessibilityRole="link" accessibilityLabel={`Directions to ${t.venue ?? 'the location'}`}>
@@ -220,6 +221,7 @@ export default function CompetitionDetailScreen() {
     </Pressable>}
 
     {!unpublished && <View style={{ marginTop: 24 }}><EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} entrants={entrants} faces={rows} now={now} /></View>}
+    {registration.data?.joined && personalTargetLine(t, me, now) ? <Notice tone="info" title="Your own target" style={{ marginTop: 16 }}>{personalTargetLine(t, me, now)}</Notice> : null}
     {/* What's up for grabs, in one slim line like the Compete page's Strava note. */}
     {t.productPrizes?.prizes.length ? <View style={{ marginTop: 16 }}><PrizeAds terms={t.productPrizes} clubName={t.club?.name} website={t.club?.website} /></View> : null}
 
@@ -235,7 +237,9 @@ export default function CompetitionDetailScreen() {
               formatScore={metricOf(t.scoringMethod).display === 'distance' ? undefined : (row, onAccent) => <Text style={[score(20), onAccent && { color: colors.onAccent }]}>{hasScored(t.scoringMethod, row.score) ? formatScore(t, row.score, unit, { short: true }) : '-'}</Text>}
               empty={<EmptyState title="Nobody’s on the board yet">{`Join now and your first verified ${({ RUN: 'run', WALK: 'walk', CYCLING: 'ride', DISTANCE: 'run, walk or ride' } as Record<string, string>)[t.challengeType] ?? 'activity'} puts you on top.`}</EmptyState>} />}
         {rows.length > 10 && <Button full variant="quiet" style={{ marginTop: 12 }} title={showAll ? 'Show top 10' : `See all ${rows.length} runners`} onPress={() => setShowAll((value) => !value)} />}
+        <ResultsPending table={t} now={now} style={{ marginTop: 12 }} />
       </View>
+      <EditionHistory table={t} seriesTitle={t.club?.seriesTitle} unit={unit} />
       {!CLOSED_STATUSES.includes(t.status) && <ShareBox table={t} rows={standings.data ?? []} viewerId={user?.id} unit={unit} />}
       {t.productPrizes && <PrizeTerms terms={t.productPrizes} clubName={t.club?.name} />}
       {!me && !isHost && <HowItWorks table={t} unit={unit} />}

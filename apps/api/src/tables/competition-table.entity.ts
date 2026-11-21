@@ -1,3 +1,4 @@
+import type { PersonalRule } from './personal-targets';
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../users/user.entity';
 import { ChallengeType, ScoringMethod } from './challenge-types';
@@ -194,6 +195,21 @@ export class CompetitionTable {
 
   @Column({ type: 'timestamptz', nullable: true })
   promotedUntil: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  resultsFinalizedAt: Date | null;
+
+  @Column({ type: 'varchar', length: 10, default: 'podium' })
+  medalRule: 'podium' | 'completion';
+
+  @Column({ type: 'smallint', nullable: true })
+  hourFrom: number | null;
+
+  @Column({ type: 'smallint', nullable: true })
+  hourTo: number | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  personal: PersonalRule | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   archivedAt: Date | null;

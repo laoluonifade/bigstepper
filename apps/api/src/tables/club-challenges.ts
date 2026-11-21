@@ -102,7 +102,7 @@ const TEMPLATE_FIELDS = [
   'dailyTarget', 'minSessions', 'minActivityMetres', 'minActivitySeconds', 'eligibleActivities', 'format', 'timeZone', 'rulesVersion',
   'reminderTime', 'reminderTimeZone', 'capacity', 'distanceCapMetres', 'visibility', 'eligibleCountries', 'platformFeeBps', 'creatorCommissionBps',
   'prizeSplitBps', 'minimumEntrants', 'fundingDestination', 'prizeDeliveryCountries', 'prizeFulfilment', 'prizeShipping', 'prizeShippingNote',
-  'prizeEligibilityNote', 'prizeClaimDays', 'prizeSelection', 'autoEnrolClub',
+  'prizeEligibilityNote', 'prizeClaimDays', 'prizeSelection', 'autoEnrolClub', 'enrolAudience', 'medalRule', 'hourFrom', 'hourTo', 'personal',
 ] as const;
 
 export type ChallengeTemplate = Partial<Record<(typeof TEMPLATE_FIELDS)[number], unknown>> & {
@@ -134,9 +134,10 @@ export async function templateOf(manager: EntityManager, table: CompetitionTable
 
 export async function createFromTemplate(manager: EntityManager, template: ChallengeTemplate, values: {
   creatorId: string; communityId: string; startsAt: Date; status: 'DRAFT' | 'SCHEDULED' | 'OPEN_FOR_ENTRY'; publishAt?: Date | null;
-  seriesId?: string | null; edition?: number | null; title?: string;
+  seriesId?: string | null; edition?: number | null; title?: string; endsAt?: Date; joinHost?: boolean; quiet?: boolean;
 }) {
   const { durationMs, entryOffsetMs, prizes, ...fields } = template;
+  const scoringClosesAt = values.endsAt ?? new Date(values.startsAt.getTime() + durationMs);
   const table = await manager.save(CompetitionTable, manager.create(CompetitionTable, {
     ...(fields as Partial<CompetitionTable>),
     title: values.title ?? (fields.title as string),
@@ -146,8 +147,8 @@ export async function createFromTemplate(manager: EntityManager, template: Chall
     status: values.status === 'OPEN_FOR_ENTRY' ? 'DRAFT' : values.status,
     publishAt: values.publishAt ?? null,
     startsAt: values.startsAt,
-    scoringClosesAt: new Date(values.startsAt.getTime() + durationMs),
-    entryClosesAt: new Date(values.startsAt.getTime() + entryOffsetMs),
+    scoringClosesAt,
+    entryClosesAt: new Date(Math.min(scoringClosesAt.getTime(), values.startsAt.getTime() + entryOffsetMs)),
     seriesId: values.seriesId ?? null,
     edition: values.edition ?? null,
     entryFeeKobo: 0,
@@ -155,20 +156,90 @@ export async function createFromTemplate(manager: EntityManager, template: Chall
     charityName: null,
     archivedAt: null,
     prizesFinalizedAt: null,
+    resultsFinalizedAt: null,
     fundedAt: null,
     promotedUntil: null,
   }));
-  await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: table.id, userId: values.creatorId }));
-  await creditActivities(manager, { tableId: table.id, userId: values.creatorId });
+  if (values.quiet) await manager.query(`UPDATE "competition_tables" SET "announcedAt" = now() WHERE "id" = $1`, [table.id]);
+  if (values.joinHost !== false) {
+    await manager.save(TableRegistration, manager.create(TableRegistration, { tableId: table.id, userId: values.creatorId }));
+    await creditActivities(manager, { tableId: table.id, userId: values.creatorId });
+  }
   if (prizes.length) await savePrizes(manager, table.id, prizes);
   return values.status === 'OPEN_FOR_ENTRY' ? openTable(manager, table) : table;
 }
 
-export function nextStart(from: Date, cadence: 'weekly' | 'monthly') {
-  const next = new Date(from);
-  if (cadence === 'weekly') next.setUTCDate(next.getUTCDate() + 7);
-  else next.setUTCMonth(next.getUTCMonth() + 1);
-  return next;
+export type SeriesCadence = 'daily' | 'weekly' | 'monthly' | 'custom';
+
+export function defaultLeadDays(cadence: SeriesCadence, intervalDays?: number | null) {
+  if (cadence === 'daily') return 0;
+  if (cadence === 'custom') return Math.min(7, Math.max(0, (intervalDays ?? 7) - 1));
+  return 7;
+}
+
+function localParts(date: Date, timeZone: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+  }).formatToParts(date).map((part) => [part.type, Number(part.value)]));
+  return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour, minute: parts.minute, second: parts.second };
+}
+
+function fromLocal(local: { year: number; month: number; day: number; hour: number; minute: number; second: number }, timeZone: string) {
+  const wall = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
+  let guess = wall;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const seen = localParts(new Date(guess), timeZone);
+    guess += wall - Date.UTC(seen.year, seen.month - 1, seen.day, seen.hour, seen.minute, seen.second);
+  }
+  return new Date(guess);
+}
+
+export function nextStart(from: Date, cadence: SeriesCadence, timeZone = 'Africa/Lagos', intervalDays?: number | null) {
+  const local = localParts(from, timeZone);
+  if (cadence === 'monthly') {
+    const month = local.month === 12 ? 1 : local.month + 1;
+    const year = local.month === 12 ? local.year + 1 : local.year;
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return fromLocal({ ...local, year, month, day: Math.min(local.day, lastDay) }, timeZone);
+  }
+  const days = cadence === 'daily' ? 1 : cadence === 'weekly' ? 7 : Math.max(1, intervalDays ?? 7);
+  const shifted = new Date(Date.UTC(local.year, local.month - 1, local.day + days));
+  return fromLocal({ ...local, year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() }, timeZone);
+}
+
+export function editionLabel(startsAt: Date, endsAt: Date, cadence: SeriesCadence, timeZone = 'Africa/Lagos') {
+  const last = new Date(endsAt.getTime() - 1);
+  const format = (date: Date, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-GB', { timeZone, ...options }).format(date);
+  if (cadence === 'monthly' && format(startsAt, { day: 'numeric' }) === '1') return format(startsAt, { month: 'long', year: 'numeric' });
+  if (format(startsAt, { dateStyle: 'short' }) === format(last, { dateStyle: 'short' })) return format(startsAt, { weekday: 'short', day: 'numeric', month: 'short' });
+  const sameMonth = format(startsAt, { month: 'short', year: 'numeric' }) === format(last, { month: 'short', year: 'numeric' });
+  return sameMonth
+    ? `${format(startsAt, { day: 'numeric' })}–${format(last, { day: 'numeric', month: 'short' })}`
+    : `${format(startsAt, { day: 'numeric', month: 'short' })} – ${format(last, { day: 'numeric', month: 'short' })}`;
+}
+
+export async function carryOverEntrants(manager: EntityManager, table: Pick<CompetitionTable, 'id' | 'seriesId' | 'edition' | 'capacity' | 'startsAt'>) {
+  if (!table.seriesId || !table.edition) return [];
+  const carried = await manager.query(
+    `WITH previous AS (
+       SELECT t."id" FROM "competition_tables" t
+       WHERE t."seriesId" = $2 AND t."edition" < $3 AND t."status" <> 'CANCELLED' AND t."deletedAt" IS NULL
+       ORDER BY t."edition" DESC LIMIT 1
+     )
+     INSERT INTO "table_registrations" ("tableId", "userId")
+     SELECT $1, r."userId" FROM "table_registrations" r
+     JOIN previous p ON p."id" = r."tableId"
+     JOIN "users" u ON u."id" = r."userId" AND u."deletedAt" IS NULL
+     ORDER BY r."joinedAt"
+     LIMIT COALESCE($4::integer, 2147483647)
+     ON CONFLICT DO NOTHING
+     RETURNING "userId"`,
+    [table.id, table.seriesId, table.edition, table.capacity],
+  ) as Array<{ userId: string }>;
+  if (table.startsAt && table.startsAt <= new Date()) {
+    for (const { userId } of carried) await creditActivities(manager, { tableId: table.id, userId });
+  }
+  return carried.map((row) => row.userId);
 }
 
 export async function assertCountryEligible(manager: EntityManager, table: Pick<CompetitionTable, 'eligibleCountries'>, userId: string) {

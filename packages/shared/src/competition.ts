@@ -1,6 +1,6 @@
 import { formatCountdown, formatMoney } from './format';
 import { activityLabel, formatScore, hasScored, headline, winsLabel } from './scoring';
-import type { CompetitionTable, StandingRow, Unit } from './types';
+import type { CompetitionTable, SeriesCadence, StandingRow, Unit } from './types';
 
 export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' | 'scoring-closed' | 'final';
 
@@ -146,4 +146,59 @@ export function competitionCardData(table: CompetitionTable, rows: StandingRow[]
     me: mine ? { ...person(mine), scored: hasScored(table.scoringMethod, mine.score) } : null,
     accent: table.challengeType === 'WALK' || table.challengeType === 'STEP' ? '#E4FF3A' : '#FF5A1F',
   };
+}
+
+/** "Daily", "Weekly", "Monthly", "Every 90 days": how often a recurring competition starts again. */
+export function cadenceLabel(cadence: SeriesCadence | null | undefined, intervalDays?: number | null) {
+  if (cadence === 'daily') return 'Daily';
+  if (cadence === 'monthly') return 'Monthly';
+  if (cadence === 'custom') return intervalDays ? `Every ${intervalDays} days` : 'Repeating';
+  return 'Weekly';
+}
+
+/** An edition's own name, without the series in front: "Weekly Step Champion · 23–29 Nov" → "23–29 Nov". */
+export function editionName(title: string, seriesTitle?: string | null) {
+  if (seriesTitle && title.startsWith(`${seriesTitle} · `)) return title.slice(seriesTitle.length + 3);
+  const dot = title.lastIndexOf(' · ');
+  return dot > 0 ? title.slice(dot + 3) : title;
+}
+
+/** Results stay open this long after the end, so late Apple Health syncs still count, then they're final. */
+export const RESULTS_GRACE_HOURS = 12;
+
+/** Ended, but the board isn't final yet: late syncs can still move it until this time. */
+export function resultsPendingUntil(table: Pick<CompetitionTable, 'type' | 'scoringClosesAt' | 'resultsFinalizedAt' | 'status'>, now = Date.now()) {
+  if (table.type !== 'free' || table.resultsFinalizedAt || !table.scoringClosesAt || table.status === 'CANCELLED') return null;
+  const end = new Date(table.scoringClosesAt).getTime();
+  if (end > now) return null;
+  return new Date(end + RESULTS_GRACE_HOURS * 3_600_000);
+}
+
+/** "Your target: 42,000 steps this week, from your average of 5,000 a day." Null when it isn't a personal competition. */
+export function personalTargetLine(table: Pick<CompetitionTable, 'scoringMethod' | 'personal' | 'startsAt' | 'hourFrom' | 'hourTo'>, row: Pick<StandingRow, 'personalTarget' | 'baselineSteps'> | null | undefined, now = Date.now()) {
+  if (!table.personal || !table.scoringMethod.startsWith('PERSONAL_')) return null;
+  if (!row?.personalTarget) {
+    return table.startsAt && new Date(table.startsAt).getTime() > now
+      ? 'Your own target is set from your recent steps when it starts.'
+      : 'Your own target is being worked out from your recent steps. Check back in a few minutes.';
+  }
+  const steps = (value: number) => value.toLocaleString('en-GB');
+  const window = table.hourFrom != null && table.hourTo != null ? ` between ${hourLabel(table.hourFrom)} and ${hourLabel(table.hourTo)}` : '';
+  const from = row.baselineSteps == null ? ''
+    : table.personal.baseline === 'last_period_total' ? `, to beat last time’s ${steps(row.baselineSteps)}`
+      : table.personal.baseline === 'best_day' ? `, to beat your best day of ${steps(row.baselineSteps)}`
+        : table.personal.baseline === 'window_average' ? `, from your usual ${steps(row.baselineSteps)}`
+          : `, from your average of ${steps(row.baselineSteps)} a day`;
+  if (table.scoringMethod === 'PERSONAL_DAYS') {
+    return table.personal.ladder
+      ? `Your target starts at ${steps(row.personalTarget)} steps a day and climbs ${Math.round(table.personal.ladder * 100)}% each day${from}.`
+      : `Your target: ${steps(row.personalTarget)} steps a day${from}.`;
+  }
+  return `Your target: ${steps(row.personalTarget)} steps${window}${from}.`;
+}
+
+function hourLabel(hour: number) {
+  if (hour === 0 || hour === 24) return 'midnight';
+  if (hour === 12) return 'noon';
+  return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
 }

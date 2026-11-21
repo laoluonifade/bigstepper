@@ -64,6 +64,7 @@ export function formatScore(table: Pick<Scored, 'challengeType' | 'scoringMethod
     }
     case 'speed': return `${(unit === 'km' ? score : score / KM_PER_MILE).toFixed(1)} ${unit === 'km' ? 'km/h' : 'mph'}`;
     case 'variation': return `±${score.toFixed(1)}%`;
+    case 'percent': return short ? `${whole}%` : `${whole}% of target`;
   }
 }
 
@@ -72,7 +73,7 @@ export function scoreHeader(table: Pick<Scored, 'challengeType' | 'scoringMethod
   const display = metricOf(table.scoringMethod).display;
   return {
     distance: 'Distance', steps: 'Steps', duration: 'Time', sessions: ACTIVITY_RULES[table.challengeType]?.sessions.replace(/^./, (c) => c.toUpperCase()) ?? 'Sessions',
-    days: 'Days', elevation: 'Climb', pace: 'Pace', speed: 'Speed', variation: 'Spread',
+    days: 'Days', elevation: 'Climb', pace: 'Pace', speed: 'Speed', variation: 'Spread', percent: 'Of target',
   }[display];
 }
 
@@ -149,6 +150,8 @@ export function headline(table: Scored, unit: Unit): { big: string; small: strin
     case 'MOST_STEPS': return { big: 'Steps', small: 'most steps wins' };
     case 'MOST_STEPS_ONE_DAY': return { big: 'Big day', small: 'most steps in one day' };
     case 'AVERAGE_DAILY_STEPS': return { big: 'Daily', small: 'best daily step average' };
+    case 'PERSONAL_TARGET': return { big: 'You', small: 'beat your own target' };
+    case 'PERSONAL_DAYS': return { big: 'Your days', small: 'hit your own daily target' };
     case 'LONGEST_STREAK': return { big: 'Streak', small: daily ? `${daily} a day, every day` : 'most days in a row' };
     case 'TARGET_DAYS': return { big: 'Days', small: daily ? `days hitting ${daily}` : 'most target days' };
     case 'MOST_ACTIVE_DAYS': return { big: 'Days', small: 'most active days wins' };
@@ -185,6 +188,8 @@ export function rulesLines(table: Scored, unit: Unit): string[] {
     lines.push(`Your fastest ${target} inside any one ${ACTIVITY_RULES[table.challengeType]?.sessions.replace(/s$/, '') ?? 'activity'} counts, timed from its GPS track on the clock (pauses included). A longer ${table.challengeType === 'CYCLING' ? 'ride' : 'run'} counts its best ${target} stretch.`);
   }
   if (metric.aggregate === 'firstTo' && target) lines.push(`Whoever reaches ${target} first wins. If nobody does, the closest wins.`);
+  if (metric.aggregate === 'personalTotal') lines.push('Everyone gets their own target from their recent steps, so it’s as hard for a beginner as for a regular walker. The board ranks how far along your target you are, not raw steps.');
+  if (metric.aggregate === 'personalDays') lines.push('Everyone gets their own daily target from their recent steps. The board ranks the days you hit yours, then how far past it you went.');
   if (metric.display === 'pace' || metric.display === 'speed' || metric.measure === 'time' && metric.aggregate !== 'fastest') lines.push('Time is moving time, so stops and pauses don’t count against you.');
   if (metric.aggregate === 'dailyVariation') lines.push(`Ranked on how evenly your days spread, over every day so far.${daily ? ` You need an average of at least ${daily} a day to be ranked.` : ''}`);
   if (metric.aggregate === 'weeklyVariation') lines.push('Ranked on how evenly your weekly time spreads across full weeks.');

@@ -9,7 +9,7 @@ import { alreadyImported, saveImportedActivity } from '../running/import-activit
 import { stravaStepTotals } from '../strava/strava-steps';
 import { routeMetres, spreadSteps } from './apple-health-steps';
 import { AppleHealthLink } from './apple-health-link.entity';
-import { AppleHealthWorkoutDto, DailyStepsDto } from './apple-health.dto';
+import { AppleHealthWorkoutDto, DailyStepsDto, HourlyStepsDto } from './apple-health.dto';
 import { validZone } from '../notifications/engagement-policy';
 import { refreshLeagueDistance } from '../leagues/league-credits';
 import { HEALTH_ELIGIBLE, retotal, uncreditActivity } from '../tables/competition-credits';
@@ -22,6 +22,8 @@ const MAX_DAYS_BACK = 40;
 const POST_HOUR = 21;
 const MIN_POSTED_STEPS = 500;
 const MAX_DAILY_METRES = 150_000;
+const MAX_HOURLY_STEPS = 20_000;
+const MAX_HOURS_BACK = 8 * 24;
 
 @Injectable()
 export class AppleHealthService {
@@ -55,10 +57,11 @@ export class AppleHealthService {
       if (imported.length) await manager.query(`DELETE FROM "running_sessions" WHERE "id" = ANY($1::uuid[])`, [imported.map((activity) => activity.runningSessionId)]);
       if (imported.some((activity) => activity.activityType !== 'cycle')) await refreshLeagueDistance(manager, userId);
       const days = await manager.query(`DELETE FROM "daily_steps" WHERE "userId" = $1 RETURNING "day"`, [userId]) as Array<{ day: string }>;
-      if (days.length) {
+      const hours = await manager.query(`DELETE FROM "hourly_steps" WHERE "userId" = $1 RETURNING "hour"`, [userId]) as Array<{ hour: string }>;
+      if (days.length || hours.length) {
         const tables = await manager.query(
           `SELECT t."id" FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
-           WHERE r."userId" = $1 AND ${HEALTH_ELIGIBLE('t')} AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
+           WHERE r."userId" = $1 AND ${HEALTH_ELIGIBLE('t')} AND t."resultsFinalizedAt" IS NULL AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
           [userId],
         ) as Array<{ id: string }>;
         if (tables.length) await retotal(manager, tables.map((table) => table.id));
@@ -131,7 +134,37 @@ export class AppleHealthService {
     if (changed.length) {
       const tables = await this.dataSource.query(
         `SELECT t."id" FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
-         WHERE r."userId" = $1 AND ${HEALTH_ELIGIBLE('t')} AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
+         WHERE r."userId" = $1 AND ${HEALTH_ELIGIBLE('t')} AND t."hourFrom" IS NULL AND t."resultsFinalizedAt" IS NULL
+           AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
+        [userId],
+      ) as Array<{ id: string }>;
+      if (tables.length) await this.dataSource.transaction((manager) => retotal(manager, tables.map((table) => table.id)));
+    }
+    return { saved: changed.length };
+  }
+
+  async saveHourlySteps(userId: string, hours: HourlyStepsDto[]) {
+    if (!(await this.links.exist({ where: { userId } }))) throw new BadRequestException('Connect Apple Health first');
+    const now = Date.now();
+    const valid = hours.filter(({ hour }) => {
+      const time = Date.parse(hour);
+      return Number.isFinite(time) && time <= now + 60_000 && time >= now - MAX_HOURS_BACK * 3_600_000;
+    });
+    if (!valid.length) return { saved: 0 };
+    const changed = await this.dataSource.query(
+      `INSERT INTO "hourly_steps" ("userId", "hour", "steps", "countedSteps")
+       SELECT $1, x."hour", LEAST(x."steps", ${MAX_HOURLY_STEPS}), LEAST(x."countedSteps", x."steps", ${MAX_HOURLY_STEPS})
+       FROM jsonb_to_recordset($2::jsonb) AS x("hour" timestamptz, "steps" integer, "countedSteps" integer)
+       ON CONFLICT ("userId", "hour") DO UPDATE SET "steps" = EXCLUDED."steps", "countedSteps" = EXCLUDED."countedSteps", "updatedAt" = now()
+       WHERE ("hourly_steps"."steps", "hourly_steps"."countedSteps") IS DISTINCT FROM (EXCLUDED."steps", EXCLUDED."countedSteps")
+       RETURNING "hour"`,
+      [userId, JSON.stringify(valid)],
+    ) as Array<{ hour: string }>;
+    if (changed.length) {
+      const tables = await this.dataSource.query(
+        `SELECT t."id" FROM "table_registrations" r JOIN "competition_tables" t ON t."id" = r."tableId"
+         WHERE r."userId" = $1 AND ${HEALTH_ELIGIBLE('t')} AND t."hourFrom" IS NOT NULL AND t."resultsFinalizedAt" IS NULL
+           AND t."status" IN ('OPEN_FOR_ENTRY', 'ACTIVE', 'ENTRY_CLOSED')`,
         [userId],
       ) as Array<{ id: string }>;
       if (tables.length) await this.dataSource.transaction((manager) => retotal(manager, tables.map((table) => table.id)));

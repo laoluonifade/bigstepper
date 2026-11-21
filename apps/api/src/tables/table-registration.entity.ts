@@ -46,6 +46,12 @@ export class TableRegistration {
   @Column({ default: true })
   qualified: boolean;
 
+  @Column({ type: 'integer', nullable: true })
+  personalTarget: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  baselineSteps: number | null;
+
   @Column({ type: 'uuid', nullable: true, unique: true })
   paymentIntentId: string | null;
 

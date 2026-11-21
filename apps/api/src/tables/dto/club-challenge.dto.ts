@@ -39,8 +39,17 @@ export class CreateSeriesDto {
   @IsString()
   fromCode: string;
 
-  @IsIn(['weekly', 'monthly'])
-  cadence: 'weekly' | 'monthly';
+  @IsIn(['daily', 'weekly', 'monthly', 'custom'])
+  cadence: 'daily' | 'weekly' | 'monthly' | 'custom';
+
+  @ValidateIf((input: { cadence?: string }) => input.cadence === 'custom') @IsInt() @Min(1) @Max(365)
+  intervalDays?: number;
+
+  @IsOptional() @IsBoolean()
+  fillsPeriod?: boolean;
+
+  @IsOptional() @IsBoolean()
+  carryOver?: boolean;
 
   @IsBoolean()
   autoPublish: boolean;

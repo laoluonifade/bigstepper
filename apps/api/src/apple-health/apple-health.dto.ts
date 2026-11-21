@@ -83,3 +83,27 @@ export class AppleHealthSettingsDto {
   @IsBoolean()
   shareSteps: boolean;
 }
+
+export class HourlyStepsDto {
+  @IsISO8601()
+  hour: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(100_000)
+  steps: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(100_000)
+  countedSteps: number;
+}
+
+export class HourlyStepsSyncDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(24 * 8)
+  @ValidateNested({ each: true })
+  @Type(() => HourlyStepsDto)
+  hours: HourlyStepsDto[];
+}

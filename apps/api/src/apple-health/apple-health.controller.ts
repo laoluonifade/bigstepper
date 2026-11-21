@@ -2,7 +2,7 @@ import { Body, Controller, DefaultValuePipe, Delete, Get, ParseIntPipe, Patch, P
 import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AppleHealthSettingsDto, AppleHealthWorkoutDto, DailyStepsSyncDto } from './apple-health.dto';
+import { AppleHealthSettingsDto, AppleHealthWorkoutDto, DailyStepsSyncDto, HourlyStepsSyncDto } from './apple-health.dto';
 import { AppleHealthService } from './apple-health.service';
 
 @Controller('apple-health')
@@ -39,6 +39,12 @@ export class AppleHealthController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   dailySteps(@CurrentUser() user: AuthenticatedUser, @Body() body: DailyStepsSyncDto) {
     return this.appleHealth.saveDailySteps(user.id, body.days, body.timeZone);
+  }
+
+  @Post('hours')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  hourlySteps(@CurrentUser() user: AuthenticatedUser, @Body() body: HourlyStepsSyncDto) {
+    return this.appleHealth.saveHourlySteps(user.id, body.hours);
   }
 
   @Post('workouts')

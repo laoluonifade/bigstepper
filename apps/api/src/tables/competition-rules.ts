@@ -5,14 +5,16 @@ export type ScoringMethod =
   | 'FARTHEST_DISTANCE' | 'FIRST_TO_DISTANCE' | 'FASTEST_FIXED_DISTANCE' | 'FASTEST_TIME' | 'BEST_PACE' | 'BEST_AVERAGE_SPEED'
   | 'LONGEST_SINGLE' | 'MOST_ELEVATION' | 'MOST_SESSIONS' | 'FIRST_TO_SESSIONS' | 'MOST_ACTIVE_DAYS' | 'MOST_TIME'
   | 'FIRST_TO_TIME' | 'LONGEST_SESSION' | 'LONGEST_STREAK' | 'TARGET_DAYS' | 'PACE_CONSISTENCY' | 'DAILY_CONSISTENCY'
-  | 'WEEKLY_CONSISTENCY' | 'MOST_STEPS' | 'FIRST_TO_STEPS' | 'MOST_STEPS_ONE_DAY' | 'AVERAGE_DAILY_STEPS';
+  | 'WEEKLY_CONSISTENCY' | 'MOST_STEPS' | 'FIRST_TO_STEPS' | 'MOST_STEPS_ONE_DAY' | 'AVERAGE_DAILY_STEPS'
+  | 'PERSONAL_TARGET' | 'PERSONAL_DAYS';
 
 export type Measure = 'distance' | 'steps' | 'time' | 'elevation' | 'sessions';
-export type ScoreDisplay = 'distance' | 'steps' | 'duration' | 'sessions' | 'days' | 'elevation' | 'pace' | 'speed' | 'variation';
+export type ScoreDisplay = 'distance' | 'steps' | 'duration' | 'sessions' | 'days' | 'elevation' | 'pace' | 'speed' | 'variation' | 'percent';
 
 export type Aggregate =
   | 'total' | 'firstTo' | 'fastest' | 'longest' | 'activeDays' | 'streak' | 'targetDays' | 'bestDay' | 'dailyAverage'
-  | 'averagePace' | 'averageSpeed' | 'paceVariation' | 'dailyVariation' | 'weeklyVariation';
+  | 'averagePace' | 'averageSpeed' | 'paceVariation' | 'dailyVariation' | 'weeklyVariation'
+  | 'personalTotal' | 'personalDays';
 
 export interface MetricDefinition {
   aggregate: Aggregate;
@@ -53,6 +55,8 @@ export const METRICS: Record<ScoringMethod, MetricDefinition> = {
   FIRST_TO_STEPS: { aggregate: 'firstTo', measure: 'steps', display: 'steps', better: 'higher', target: 'steps', prizes: true, tieBreak: FIRST_TO_TIE },
   MOST_STEPS_ONE_DAY: { aggregate: 'bestDay', measure: 'steps', display: 'steps', better: 'higher', prizes: false, tieBreak: 'Whoever did it first.' },
   AVERAGE_DAILY_STEPS: { aggregate: 'dailyAverage', measure: 'steps', display: 'steps', better: 'higher', prizes: false, tieBreak: EARLIEST },
+  PERSONAL_TARGET: { aggregate: 'personalTotal', measure: 'steps', display: 'percent', better: 'higher', prizes: false, tieBreak: EARLIEST },
+  PERSONAL_DAYS: { aggregate: 'personalDays', measure: 'steps', display: 'days', better: 'higher', prizes: false, tieBreak: 'Whoever went furthest past their own targets.' },
 };
 
 export interface ScoringOption {
@@ -226,7 +230,7 @@ export function eligibleKinds(challengeType: ChallengeType, chosen?: ActivityTyp
 /** Ways of winning that work off daily totals, so Apple Health's all-day steps and walking distance can count. */
 export const DAILY_HEALTH_METHODS: ScoringMethod[] = [
   'FARTHEST_DISTANCE', 'FIRST_TO_DISTANCE', 'MOST_ACTIVE_DAYS', 'TARGET_DAYS', 'LONGEST_STREAK', 'DAILY_CONSISTENCY',
-  'MOST_STEPS', 'FIRST_TO_STEPS', 'MOST_STEPS_ONE_DAY', 'AVERAGE_DAILY_STEPS',
+  'MOST_STEPS', 'FIRST_TO_STEPS', 'MOST_STEPS_ONE_DAY', 'AVERAGE_DAILY_STEPS', 'PERSONAL_TARGET', 'PERSONAL_DAYS',
 ];
 
 /** Free step, walking and combined-distance competitions count Apple Health from when someone connects it. Prize competitions don't. */

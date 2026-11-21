@@ -13,7 +13,8 @@
     "migration:revert": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:revert",
     "admin:provision": "ts-node -P tsconfig.json src/scripts/provision-admin.ts",
     "activity:credit": "ts-node -P tsconfig.json src/scripts/credit-activity.ts",
-    "activity:remeasure": "ts-node -P tsconfig.json src/scripts/remeasure-activities.ts"
+    "activity:remeasure": "ts-node -P tsconfig.json src/scripts/remeasure-activities.ts",
+    "competitions:official": "ts-node -P tsconfig.json src/scripts/official-walking-series.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.2.3",

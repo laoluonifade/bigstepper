@@ -7,7 +7,7 @@ import { PUSH_NOTIFICATIONS_QUEUE } from '../jobs/jobs.module';
 import { EngagementProcessor } from './engagement.processor';
 import { EngagementService } from './engagement.service';
 import { Channel, notificationCandidate } from './engagement-policy';
-import { claimPodiumsToAnnounce } from '../tables/trophies';
+import { finalizeDue, medalMessages } from '../tables/trophies';
 import { announceNewCompetitions, joinCommunityClub, syncHostsGroup } from './community';
 
 type Pending = { id: string; userId: string; type: string; title: string; body: string; link: string | null; createdAt: Date; readAt?: Date | null; engagementKey?: string; engagementExpiresAt?: Date; engagementChannel?: Channel };
@@ -63,7 +63,7 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
     await this.queue.upsertJobScheduler('push-receipts', { every: 60_000 }, { name: 'push-receipts' });
     await this.queue.upsertJobScheduler('push-notifications', { every: 5_000 }, { name: 'send-push' });
     await this.queue.upsertJobScheduler('standing-boost', { every: 15 * 60_000 }, { name: 'standing-boost' });
-    await this.queue.upsertJobScheduler('podium-announce', { every: 10 * 60_000 }, { name: 'podium-announce' });
+    await this.queue.upsertJobScheduler('podium-announce', { every: 5 * 60_000 }, { name: 'podium-announce' });
     await this.queue.upsertJobScheduler('competition-announce', { every: 60_000 }, { name: 'competition-announce' });
     await this.queue.upsertJobScheduler('community-club', { every: 2 * 60_000 }, { name: 'community-club' });
     await this.queue.upsertJobScheduler('hosts-group', { every: 10 * 60_000 }, { name: 'hosts-group' });
@@ -81,21 +81,18 @@ export class PushNotificationsProcessor extends WorkerHost implements OnModuleIn
   }
 
   async announcePodiums() {
-    const podium = await claimPodiumsToAnnounce(this.dataSource.manager);
-    if (!podium.length) return 0;
-    const medal = ['🥇', '🥈', '🥉'];
-    const rows = podium.map((row) => ({
-      userId: row.userId,
-      title: row.rank === 1 ? `${medal[0]} You won ${row.title}` : `${medal[row.rank - 1]} ${row.rank === 2 ? '2nd' : '3rd'} in ${row.title}`,
-      body: row.rank === 1 ? 'First place. It’s in your trophy cabinet now. Tap to see the final board.' : 'You made the podium. It’s in your trophy cabinet now. Tap to see the final board.',
-      link: `/competitions/${row.code}`,
-    }));
-    await this.dataSource.query(
-      `INSERT INTO "notifications" ("userId","type","title","body","link")
-       SELECT x."userId", 'PODIUM', x."title", x."body", x."link" FROM jsonb_to_recordset($1::jsonb) AS x("userId" uuid, "title" text, "body" text, "link" text)`,
-      [JSON.stringify(rows)],
-    );
-    this.logger.log(`Announced ${rows.length} podium finishes`);
+    const { finalized, notices } = await finalizeDue(this.dataSource, (tableId, error) => {
+      this.logger.error(`Could not finalize the results of ${tableId}`, error instanceof Error ? error.stack : String(error));
+    });
+    const rows = medalMessages(notices);
+    if (rows.length) {
+      await this.dataSource.query(
+        `INSERT INTO "notifications" ("userId","type","title","body","link")
+         SELECT x."userId", 'PODIUM', x."title", x."body", x."link" FROM jsonb_to_recordset($1::jsonb) AS x("userId" uuid, "title" text, "body" text, "link" text)`,
+        [JSON.stringify(rows)],
+      );
+    }
+    if (finalized) this.logger.log(`Finalized ${finalized} competitions; ${notices.length} medals to ${rows.length} runners`);
     return rows.length;
   }
 

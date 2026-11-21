@@ -17,5 +17,6 @@ export class ClubChallengesProcessor extends WorkerHost implements OnModuleInit 
     if (job.name !== 'club-competitions') return;
     await this.studio.publishDue();
     await this.studio.generateDue();
+    await this.studio.assignPersonalDue();
   }
 }

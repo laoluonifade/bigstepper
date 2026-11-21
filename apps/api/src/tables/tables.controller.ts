@@ -167,6 +167,12 @@ export class TablesController {
     return this.tablesService.respondToInvitation(id, user.id, body.decision);
   }
 
+  @Get(':id/editions')
+  @UseGuards(OptionalJwtAuthGuard)
+  editions(@Param('id', ParseUUIDPipe) tableId: string, @CurrentUser() viewer: AuthenticatedUser | null) {
+    return this.tablesService.editions(tableId, viewer?.id ?? null);
+  }
+
   @Get(':code')
   @UseGuards(OptionalJwtAuthGuard)
   getByCode(@Param('code') code: string, @CurrentUser() viewer: AuthenticatedUser | null, @Req() req: ViewRequest) {

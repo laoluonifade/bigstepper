@@ -1,13 +1,22 @@
 import { ArrayMaxSize, IsBoolean, ArrayMinSize, IsArray, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CHALLENGE_TYPES, ChallengeType, SCORING_METHODS, ScoringMethod } from '../challenge-types';
 import { Type } from 'class-transformer';
-import { ValidateNested } from 'class-validator';
+import { ValidateIf, ValidateNested } from 'class-validator';
 import { ClubPrizesDto } from '../../prizes/dto/prizes.dto';
 import { ScoringFieldsDto } from './scoring-fields.dto';
 
 export class SeriesInputDto {
-  @IsIn(['weekly', 'monthly'])
-  cadence: 'weekly' | 'monthly';
+  @IsIn(['daily', 'weekly', 'monthly', 'custom'])
+  cadence: 'daily' | 'weekly' | 'monthly' | 'custom';
+
+  @ValidateIf((input: { cadence?: string }) => input.cadence === 'custom') @IsInt() @Min(1) @Max(365)
+  intervalDays?: number;
+
+  @IsOptional() @IsBoolean()
+  fillsPeriod?: boolean;
+
+  @IsOptional() @IsBoolean()
+  carryOver?: boolean;
 
   @IsBoolean()
   autoPublish: boolean;

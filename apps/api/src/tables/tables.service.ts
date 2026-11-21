@@ -219,9 +219,11 @@ export class TablesService {
       if (prizes) await savePrizes(manager, created.id, prizes.prizes);
       if (input.series && created.communityId) {
         const template = await templateOf(manager, created);
+        const intervalDays = input.series.cadence === 'custom' ? input.series.intervalDays ?? 7 : null;
         const seriesId = await this.repo.createSeries(manager, {
           clubId: created.communityId, title: created.title, cadence: input.series.cadence, template,
-          autoPublish: input.series.autoPublish, nextStartsAt: nextStart(created.startsAt!, input.series.cadence), createdByUserId: creatorId,
+          autoPublish: input.series.autoPublish, nextStartsAt: nextStart(created.startsAt!, input.series.cadence, created.timeZone, intervalDays), createdByUserId: creatorId,
+          intervalDays, fillsPeriod: input.series.fillsPeriod ?? false, carryOver: input.series.carryOver ?? true,
         });
         created.seriesId = seriesId;
         created.edition = 1;
@@ -340,6 +342,7 @@ export class TablesService {
         const registration = await manager.save(TableRegistration, manager.create(TableRegistration, { tableId, userId }));
         await creditActivities(manager, { tableId, userId });
         await this.repo.acceptPendingInvitation(manager, tableId, userId);
+        if (table.seriesId && table.edition) await this.joinLaterEditions(manager, table.seriesId, table.edition, userId);
         return registration;
       });
     } catch (error) {
@@ -348,6 +351,20 @@ export class TablesService {
       }
       throw error;
     }
+  }
+
+  private async joinLaterEditions(manager: EntityManager, seriesId: string, edition: number, userId: string) {
+    const later = await manager.query(
+      `INSERT INTO "table_registrations" ("tableId", "userId")
+       SELECT t."id", $3 FROM "competition_tables" t JOIN "challenge_series" s ON s."id" = t."seriesId" AND s."carryOver"
+       WHERE t."seriesId" = $1 AND t."edition" > $2 AND t."type" IN ('free','sponsored') AND t."status" = 'OPEN_FOR_ENTRY' AND t."deletedAt" IS NULL
+         AND (t."entryClosesAt" IS NULL OR t."entryClosesAt" > now())
+         AND (t."capacity" IS NULL OR (SELECT count(*) FROM "table_registrations" x WHERE x."tableId" = t."id") < t."capacity")
+       ON CONFLICT DO NOTHING
+       RETURNING "tableId"`,
+      [seriesId, edition, userId],
+    ) as Array<{ tableId: string }>;
+    for (const { tableId } of later) await creditActivities(manager, { tableId, userId });
   }
 
   async leave(tableId: string, userId: string) {
@@ -361,6 +378,14 @@ export class TablesService {
         throw new ConflictException('This competition has finished, so you can’t leave it now.');
       }
       await manager.delete(TableRegistration, { id: registration.id });
+      if (table.seriesId && table.edition) {
+        await manager.query(
+          `DELETE FROM "table_registrations" r USING "competition_tables" t
+           WHERE r."tableId" = t."id" AND r."userId" = $3 AND t."seriesId" = $1 AND t."edition" > $2 AND t."type" <> 'paid'
+             AND COALESCE(t."startsAt", t."createdAt") > now()`,
+          [table.seriesId, table.edition, userId],
+        );
+      }
       return { left: true };
     });
   }
@@ -530,6 +555,30 @@ export class TablesService {
       this.repo.host(table.creatorId),
     ]);
     return { ...presented, productPrizes, club: club ?? null, canManage: manageable, creator: presented.creator ? { ...presented.creator, username: host?.username ?? null, avatarUrl: host?.avatarUrl ?? null, avatarStyle: host?.avatarStyle ?? 'neutral', verified: host?.verified ?? false } : null };
+  }
+
+  async editions(tableId: string, viewerId: string | null) {
+    const [table] = await this.dataSource.query(`SELECT "seriesId" FROM "competition_tables" WHERE "id" = $1 AND "deletedAt" IS NULL`, [tableId]) as Array<{ seriesId: string | null }>;
+    if (!table) throw new NotFoundException('Competition not found');
+    if (!table.seriesId) return [];
+    return this.dataSource.query(
+      `SELECT t."id", t."code", t."title", t."edition", t."startsAt", t."scoringClosesAt", t."status", t."resultsFinalizedAt",
+              (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id")::integer AS "entrants",
+              CASE WHEN t."resultsFinalizedAt" IS NOT NULL THEN (SELECT count(*) FROM "competition_results" x WHERE x."tableId" = t."id" AND x."completed")
+                   ELSE (SELECT count(*) FROM "table_registrations" r WHERE r."tableId" = t."id" AND r."targetReachedAt" IS NOT NULL) END::integer AS "completed",
+              COALESCE((SELECT jsonb_agg(w ORDER BY w."rank") FROM (
+                SELECT x."rank", x."medal", COALESCE(p."displayName", u."displayName") AS "displayName", p."username", p."avatarUrl", x."score",
+                       CASE WHEN p."gender" = 'male' THEN 'masculine' WHEN p."gender" = 'female' THEN 'feminine' ELSE 'neutral' END AS "avatarStyle"
+                FROM "competition_results" x JOIN "users" u ON u."id" = x."userId" AND u."deletedAt" IS NULL LEFT JOIN "profiles" p ON p."userId" = x."userId"
+                WHERE x."tableId" = t."id" AND (x."medal" IN ('gold','silver','bronze') OR (t."medalRule" = 'completion' AND x."completed"))
+                ORDER BY x."rank" LIMIT 3) w), '[]'::jsonb) AS "podium",
+              (SELECT jsonb_build_object('rank', x."rank", 'medal', x."medal", 'score', x."score", 'completed', x."completed")
+                 FROM "competition_results" x WHERE x."tableId" = t."id" AND x."userId" = $2) AS "mine"
+       FROM "competition_tables" t
+       WHERE t."seriesId" = $1 AND t."deletedAt" IS NULL AND t."status" NOT IN ('CANCELLED','DRAFT','SCHEDULED','PENDING_FUNDING','PENDING_APPROVAL')
+       ORDER BY t."edition" DESC NULLS LAST LIMIT 60`,
+      [table.seriesId, viewerId],
+    );
   }
 
   private async clubPrizes(table: CompetitionTable, manageable: boolean) {

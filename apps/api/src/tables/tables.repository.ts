@@ -1,3 +1,4 @@
+import { defaultLeadDays, SeriesCadence } from './club-challenges';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { z } from 'zod';
@@ -25,7 +26,7 @@ const mineRow = z.object({
 const standingRow = z.object({
   rank: num, userId: id, displayName: text, username: text.nullable(), avatarUrl: text.nullable(), avatarStyle, verified: flag,
   creditedDistanceMetres: num, creditedSteps: num, completionTimeSeconds: num.nullable(), score: num.nullable(),
-  targetReachedAt: when.nullable(), qualified: flag.nullable(),
+  targetReachedAt: when.nullable(), qualified: flag.nullable(), personalTarget: num.nullable(), baselineSteps: num.nullable(),
 });
 
 const runner = z.object({ userId: id, username: text, email: text, displayName: text });
@@ -166,11 +167,15 @@ export class TablesRepository {
       [userId, activity]);
   }
 
-  async createSeries(db: Db, input: { clubId: string; title: string; cadence: string; template: unknown; autoPublish: boolean; nextStartsAt: Date; createdByUserId: string }) {
+  async createSeries(db: Db, input: {
+    clubId: string; title: string; cadence: string; template: unknown; autoPublish: boolean; nextStartsAt: Date; createdByUserId: string;
+    intervalDays: number | null; fillsPeriod: boolean; carryOver: boolean;
+  }) {
     const created = await row(db, z.object({ id }),
-      `INSERT INTO "challenge_series" ("clubId","title","cadence","template","autoPublish","nextStartsAt","lastEdition","createdByUserId")
-       VALUES ($1,$2,$3,$4,$5,$6,1,$7) RETURNING "id"`,
-      [input.clubId, input.title, input.cadence, JSON.stringify(input.template), input.autoPublish, input.nextStartsAt, input.createdByUserId]);
+      `INSERT INTO "challenge_series" ("clubId","title","cadence","template","autoPublish","nextStartsAt","lastEdition","createdByUserId","intervalDays","fillsPeriod","carryOver","leadDays")
+       VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10,$11) RETURNING "id"`,
+      [input.clubId, input.title, input.cadence, JSON.stringify(input.template), input.autoPublish, input.nextStartsAt, input.createdByUserId,
+        input.intervalDays, input.fillsPeriod, input.carryOver, defaultLeadDays(input.cadence as SeriesCadence, input.intervalDays)]);
     return created!.id;
   }
 
@@ -228,7 +233,7 @@ export class TablesRepository {
       `SELECT row_number() OVER (ORDER BY ${RANK_ORDER})::integer rank,
               r."userId",COALESCE(p."displayName",u."displayName",'Runner') "displayName",p."username",p."avatarUrl",
               CASE WHEN p."gender"='male' THEN 'masculine' WHEN p."gender"='female' THEN 'feminine' ELSE 'neutral' END "avatarStyle", p."verifiedAt" IS NOT NULL AS "verified",
-              r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds",r."score",r."targetReachedAt",r."qualified"
+              r."creditedDistanceMetres",r."creditedSteps",r."completionTimeSeconds",r."score",r."targetReachedAt",r."qualified",r."personalTarget",r."baselineSteps"
        FROM "table_registrations" r JOIN "users" u ON u."id"=r."userId" LEFT JOIN "profiles" p ON p."userId"=r."userId" WHERE r."tableId"=$1
        ORDER BY ${RANK_ORDER} LIMIT 500`,
       [tableId]);

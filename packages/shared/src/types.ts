@@ -219,11 +219,20 @@ export interface CompetitionTable {
   publishAt?: string | null;
   seriesId?: string | null;
   edition?: number | null;
+  /** Set once the final board is frozen and medals are given out, a while after it ends. */
+  resultsFinalizedAt?: string | null;
+  /** podium: gold, silver and bronze for the top three. completion: a medal for everyone who hits the target. */
+  medalRule?: MedalRule;
+  /** Personal competitions: how each entrant's own target is worked out from their recent steps. */
+  personal?: { baseline: 'daily_average' | 'last_period_total' | 'best_day' | 'window_average'; factor: number; perDay?: boolean; ladder?: number } | null;
+  /** Only steps between these local hours count (Apple Health, hour by hour), e.g. 18 and 24 for 6 PM to midnight. */
+  hourFrom?: number | null;
+  hourTo?: number | null;
   prizeSelection?: 'top' | 'draw';
   /** Detail page only: the club's prizes and terms, when it has them. */
   productPrizes?: ClubPrizeTerms | null;
   /** Detail page only: the hosting club. */
-  club?: { name: string; slug: string; logoUrl: string | null; accentColor: string; website?: string | null; verified: boolean; followerCount: number; seriesTitle: string | null; seriesCadence: 'weekly' | 'monthly' | null } | null;
+  club?: { name: string; slug: string; logoUrl: string | null; accentColor: string; website?: string | null; verified: boolean; followerCount: number; seriesTitle: string | null; seriesCadence: SeriesCadence | null } | null;
   /** Detail page only: the viewer is the host or one of the club's managers. */
   canManage?: boolean;
   /** Club page lists only. */
@@ -299,9 +308,29 @@ export interface ClubClaim {
   claim: { fullName: string; phone?: string | null; address?: string | null; city?: string | null; region?: string | null; country?: string | null; deliveryNotes?: string | null } | null;
 }
 
+export type SeriesCadence = 'daily' | 'weekly' | 'monthly' | 'custom';
+export type MedalRule = 'podium' | 'completion';
+export type MedalKind = 'gold' | 'silver' | 'bronze' | 'completion';
+
 export interface ClubSeries {
-  id: string; title: string; cadence: 'weekly' | 'monthly'; autoPublish: boolean; leadDays: number;
+  id: string; title: string; cadence: SeriesCadence; autoPublish: boolean; leadDays: number;
   nextStartsAt: string; lastEdition: number; active: boolean; createdAt: string;
+  /** Custom cadence only: days between editions. */
+  intervalDays?: number | null;
+  /** Each edition runs right up to the next one's start (a whole day, week or calendar month). */
+  fillsPeriod?: boolean;
+  /** Everyone in an edition is entered into the next one, unless they left. */
+  carryOver?: boolean;
+}
+
+/** One past or current edition of a recurring competition, for its history. */
+export interface CompetitionEdition {
+  id: string; code: string; title: string; edition: number | null; startsAt: string | null; scoringClosesAt: string | null;
+  status: string; resultsFinalizedAt: string | null; entrants: number; completed: number;
+  /** Gold, silver and bronze (or, for a target competition, the first finishers), once results are final. */
+  podium: Array<{ rank: number; medal: MedalKind | null; displayName: string; username: string | null; avatarUrl: string | null; avatarStyle?: AvatarStyle; score: number | null }>;
+  /** How the viewer did, when they took part. */
+  mine: { rank: number; medal: MedalKind | null; score: number | null; completed: boolean } | null;
 }
 
 export interface ClubDashboard {
@@ -337,6 +366,10 @@ export interface StandingRow {
   creditedDistanceMetres: number;
   creditedSteps: number;
   completionTimeSeconds: number | null;
+  /** Personal competitions: this entrant's own target (a total, or steps a day), set when it starts. */
+  personalTarget?: number | null;
+  /** What the target came from: their recent daily average, last period's total, best day or usual steps in the window. */
+  baselineSteps?: number | null;
   /** The ranked score in the metric's own unit (see METRICS[scoringMethod].display); null until there is one. */
   score: number | null;
   /** Reached the target, for first-to formats. */

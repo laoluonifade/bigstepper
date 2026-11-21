@@ -8,6 +8,7 @@ const LOOK_BACK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIRST_SYNC_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ROUTE_POINTS = 5000;
 const STEP_DAYS = 35;
+const HOUR_DAYS = 3;
 
 const ACTIVITY: Partial<Record<WorkoutActivityType, 'walk' | 'run' | 'cycle'>> = { 52: 'walk', 24: 'walk', 37: 'run', 13: 'cycle' };
 
@@ -118,19 +119,50 @@ async function syncDailySteps(connectedAt: string) {
   if (totals.length) await post('/apple-health/steps', { days: totals, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
 }
 
-/** Sends recent walks, runs and rides from Apple Health to Jump. The server skips anything it already has. */
+/**
+ * The last three days of steps, hour by hour, for competitions that only count part of the day (6 PM to
+ * midnight, 5 to 9 AM). Hours before connecting don't count, and typed-in steps are left out as for days.
+ */
+async function syncHourlySteps(connectedAt: string) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - HOUR_DAYS);
+  const options = { filter: { date: { startDate: start, endDate: new Date() }, NOT: [{ metadata: { withMetadataKey: 'HKWasUserEntered' } }] }, unit: 'count' as const };
+  const hours = await requireHealthKit().queryStatisticsCollectionForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], start, { hour: 1 }, options);
+  const connected = new Date(connectedAt).getTime();
+  const rows = hours
+    .filter((hour) => hour.startDate && hour.sumQuantity && hour.sumQuantity.quantity >= 1)
+    .map((hour) => {
+      const steps = Math.round(hour.sumQuantity!.quantity);
+      const at = new Date(hour.startDate!);
+      return { hour: at.toISOString(), steps, countedSteps: at.getTime() >= connected ? steps : 0 };
+    });
+  if (rows.length) await post('/apple-health/hours', { hours: rows });
+}
+
+/**
+ * Sends steps from Apple Health to Jump, then recent walks, runs and rides (the server skips anything it
+ * already has). Steps go first and each workout on its own, so one workout Jump can't read never holds up
+ * the steps that competitions count. Throws the first problem afterwards, so the app can say so.
+ */
 export async function syncAppleHealth(since: string | null, connectedAt: string) {
+  const problems: unknown[] = [];
+  const attempt = (work: Promise<unknown>) => work.catch((error: unknown) => { problems.push(error); });
+  await attempt(syncDailySteps(connectedAt));
+  await attempt(syncHourlySteps(connectedAt));
+  const stepsSynced = problems.length === 0;
   const from = new Date(since ? new Date(since).getTime() - LOOK_BACK_MS : new Date(connectedAt).getTime() - FIRST_SYNC_MS);
-  const workouts = await requireHealthKit().queryWorkoutSamples({ limit: 0, ascending: true, filter: { date: { startDate: from, endDate: new Date() } } });
   let imported = 0;
+  const workouts = await requireHealthKit().queryWorkoutSamples({ limit: 0, ascending: true, filter: { date: { startDate: from, endDate: new Date() } } })
+    .catch((error: unknown) => { problems.push(error); return []; });
   for (const workout of workouts) {
     const activityType = ACTIVITY[workout.workoutActivityType];
     const metadata = workout.metadata as { HKWasUserEntered?: boolean; HKIndoorWorkout?: boolean };
     if (!activityType || metadata?.HKWasUserEntered || metadata?.HKIndoorWorkout) continue;
-    if (await upload(workout, activityType)) imported += 1;
+    await attempt(upload(workout, activityType).then((done) => { if (done) imported += 1; }));
   }
-  await syncDailySteps(connectedAt);
-  await post('/apple-health/synced');
+  if (stepsSynced) await post('/apple-health/synced');
+  if (problems.length) throw problems[0];
   return imported;
 }
 

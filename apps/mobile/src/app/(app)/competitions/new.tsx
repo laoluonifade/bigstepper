@@ -1,11 +1,11 @@
-import { prizeSplit } from '@jump/shared/competition';
+import { cadenceLabel, prizeSplit } from '@jump/shared/competition';
 import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/shared/competition-rules';
 import { countryName } from '@jump/shared/countries';
 import { distanceValue, formatDateTime, formatDistance, formatMoney, formatNairaInput, fromLocalInput, nairaInputToKobo, toLocalInput, toMetres } from '@jump/shared/format';
 import { EMPTY_PRIZES, fundingForPrize, PRIZE_KIND, prizeProblem, prizesPayload, type PrizeDraft } from '@jump/shared/prizes';
 import { draftFor, scoringPayload, type ScoringDraft } from '@jump/shared/scoring-draft';
 import { templateById } from '@jump/shared/templates';
-import type { Club, CompetitionTable } from '@jump/shared/types';
+import type { Club, CompetitionTable, SeriesCadence } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -37,9 +37,11 @@ function prizeSummary(draft: PrizeDraft) {
   return `${first.productName.trim()} (${PRIZE_KIND[first.kind].label.toLowerCase()})${named.length > 1 ? ` + ${named.length - 1} more` : ''} · ${winners} ${winners === 1 ? 'winner' : 'winners'} · ${draft.selection === 'draw' ? 'random draw' : 'top finishers'}`;
 }
 
-function publishSummary(publish: 'now' | 'schedule' | 'draft', at: string | null, repeat: 'none' | 'weekly' | 'monthly', auto: boolean) {
+type Repeat = 'none' | SeriesCadence;
+
+function publishSummary(publish: 'now' | 'schedule' | 'draft', at: string | null, repeat: Repeat, auto: boolean, everyDays: string) {
   const when = publish === 'now' ? 'Publish now' : publish === 'draft' ? 'Save as draft' : at ? `Opens ${formatDateTime(at)}` : 'Schedule';
-  const series = repeat === 'none' ? 'once' : `${repeat}${auto ? ', auto-publish' : ', confirm each edition'}`;
+  const series = repeat === 'none' ? 'once' : `${cadenceLabel(repeat, Number(everyDays) || null).toLowerCase()}${auto ? ', auto-publish' : ', confirm each edition'}`;
   return `${when} · ${series}`;
 }
 
@@ -76,7 +78,9 @@ export default function NewCompetitionScreen() {
   const [prizes, setPrizes] = useState<PrizeDraft>(EMPTY_PRIZES);
   const [publish, setPublish] = useState<'now' | 'schedule' | 'draft'>('now');
   const [publishAt, setPublishAt] = useState(() => toLocalInput(new Date(Date.now() + 86_400_000)));
-  const [repeat, setRepeat] = useState<'none' | 'weekly' | 'monthly'>('none');
+  const [repeat, setRepeat] = useState<Repeat>('none');
+  const [everyDays, setEveryDays] = useState('14');
+  const [carryOver, setCarryOver] = useState(true);
   const [autoPublish, setAutoPublish] = useState(true);
   const [sheet, setSheet] = useState<'entry' | 'prizes' | 'publish' | 'opponent' | 'invites' | null>(null);
   const [opponent, setOpponent] = useState<Opponent | null>(null);
@@ -195,7 +199,8 @@ export default function NewCompetitionScreen() {
     club: clubId && !club.data ? 'This club could not be loaded.' : club.data?.suspended ? 'Jump has suspended this club, so it can’t host competitions.' : undefined,
     prizes: clubPrizesOn && prizesOn ? prizeProblem(prizes, capacityNumber) ?? undefined : undefined,
     publishAt: later && publish === 'schedule' && (!publishIso || new Date(publishIso) <= new Date() || (scoringIso && new Date(publishIso) >= new Date(scoringIso))) ? 'Schedule it for a time in the future, before it ends.' : undefined,
-    series: clubExtras && repeat !== 'none' && endless ? 'A series needs an end date for each edition.' : undefined,
+    series: clubExtras && repeat !== 'none' && endless ? 'A series needs an end date for each edition.'
+      : clubExtras && repeat === 'custom' && !(Number(everyDays) >= 1 && Number(everyDays) <= 365 && Number.isInteger(Number(everyDays))) ? 'Repeat every 1 to 365 days.' : undefined,
   };
   // The first thing stopping you, shown under the pinned Create button.
   const blocker = title.trim().length < 3 ? 'Give it a name of at least 3 characters.' : Object.values(errors).find(Boolean) ?? null;
@@ -242,7 +247,7 @@ export default function NewCompetitionScreen() {
       ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
       ...(clubPrizesOn && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
       ...(asDraft ? { publish: 'draft' } : later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
-      ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish } } : {}),
+      ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish, carryOver, ...(repeat === 'custom' ? { intervalDays: Number(everyDays) } : {}) } } : {}),
       ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
       ...(mode !== 'paid' ? { format, visibility: format === 'open' ? 'public' : 'private' } : {}),
       ...(!draftOnCreate && invitePhones.length ? { invitePhones } : {}),
@@ -420,7 +425,7 @@ export default function NewCompetitionScreen() {
           <SheetRow title="Who can enter" onOpen={() => setSheet('entry')} summary={eligibleCountries.length ? `${eligibleCountries.map(countryName).join(', ')} only` : 'Anyone, anywhere'} />
           {clubPrizesOn && <SheetRow title="Club prizes" tone={prizesOn ? 'on' : 'default'} error={errors.prizes} onOpen={() => { if (!prizesOn) setPrizesOn(true); setSheet('prizes'); }}
             summary={prizesOn ? prizeSummary(prizes) : 'None yet. Add products, discounts or experiences.'} />}
-          {clubExtras && <SheetRow title="Publishing" error={errors.publishAt ?? errors.series} onOpen={() => setSheet('publish')} summary={publishSummary(publish, publishIso ?? null, repeat, autoPublish)} />}
+          {clubExtras && <SheetRow title="Publishing" error={errors.publishAt ?? errors.series} onOpen={() => setSheet('publish')} summary={publishSummary(publish, publishIso ?? null, repeat, autoPublish, everyDays)} />}
         </View>}
 
         {headToHead && !draftOnCreate
@@ -467,12 +472,20 @@ export default function NewCompetitionScreen() {
         <View style={{ marginTop: 24, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 20 }}>
           <FieldLabel label="Repeat" />
           <View style={styles.repeat}>
-            {([['none', 'Once'], ['weekly', 'Weekly'], ['monthly', 'Monthly']] as const).map(([value, label]) => <Pressable key={value} onPress={() => { haptic(); setRepeat(value); }} accessibilityRole="radio" accessibilityState={{ checked: repeat === value }}
+            {([['none', 'Once'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly'], ['custom', 'Custom']] as const).map(([value, label]) => <Pressable key={value} onPress={() => { haptic(); setRepeat(value); }} accessibilityRole="radio" accessibilityState={{ checked: repeat === value }}
               style={[styles.repeatOption, repeat === value && styles.repeatActive]}>
               <Txt size={14} weight="bold" color={repeat === value ? 'ink' : 'ink2'}>{label}</Txt>
             </Pressable>)}
           </View>
           {repeat !== 'none' && <>
+            {repeat === 'custom' && <TextField label="Repeat every (days)" keyboardType="number-pad" value={everyDays} onChangeText={setEveryDays} maxLength={3} style={{ marginTop: 16 }} />}
+            <View style={[styles.switchRow, styles.autoPublish]}>
+              <View style={{ flex: 1 }}>
+                <Txt size={14} weight="bold">Keep entrants for the next edition</Txt>
+                <Txt size={12.5} color="ink3">Everyone in one edition is entered into the next, starting from zero. They can leave any time.</Txt>
+              </View>
+              <Switch value={carryOver} onValueChange={setCarryOver} trackColor={{ true: colors.ink, false: colors.line }} thumbColor={colors.white} />
+            </View>
             <View style={[styles.switchRow, styles.autoPublish]}>
               <View style={{ flex: 1 }}>
                 <Txt size={14} weight="bold">Publish each new edition automatically</Txt>
@@ -480,7 +493,7 @@ export default function NewCompetitionScreen() {
               </View>
               <Switch value={autoPublish} onValueChange={setAutoPublish} trackColor={{ true: colors.ink, false: colors.line }} thumbColor={colors.white} />
             </View>
-            <Txt size={12.5} color="ink3" leading={1.5} style={{ marginTop: 12 }}>Each edition copies these rules and prizes, with its own dates, leaderboard and winners. It’s created a week before it starts, and you manage the series from the club dashboard.</Txt>
+            <Txt size={12.5} color="ink3" leading={1.5} style={{ marginTop: 12 }}>Each edition copies these rules and prizes, with its own dates, leaderboard and winners. Results lock 12 hours after each edition ends, then medals go out. You manage the series from the club dashboard.</Txt>
             {errors.series ? <Hint error>{errors.series}</Hint> : null}
           </>}
         </View>

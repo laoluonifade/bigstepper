@@ -14,6 +14,9 @@ import { CountriesField, EMPTY_PRIZES, PRIZE_KIND, PrizeEditor, prizeProblem, pr
 import { Sheet, SheetRow } from '../components/Sheet';
 import { OpponentPicker, opponentLabel, type Opponent } from '../components/OpponentPicker';
 import { templateById } from '../lib/templates';
+import { EditionHistory, ResultsPending } from '../components/Editions';
+import { cadenceLabel, personalTargetLine } from '@jump/shared/competition';
+import type { SeriesCadence } from '@jump/shared/types';
 // import { StravaButton } from './Strava'; (back with Join with Strava)
 import { toast } from '../lib/toast';
 import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
@@ -588,9 +591,11 @@ function prizeSummary(draft: PrizeDraft) {
   return `${first.productName.trim()} (${PRIZE_KIND[first.kind].label.toLowerCase()})${named.length > 1 ? ` + ${named.length - 1} more` : ''} · ${winners} ${winners === 1 ? 'winner' : 'winners'} · ${draft.selection === 'draw' ? 'random draw' : 'top finishers'}`;
 }
 
-function publishSummary(publish: 'now' | 'schedule' | 'draft', at: string | null, repeat: 'none' | 'weekly' | 'monthly', auto: boolean) {
+type Repeat = 'none' | SeriesCadence;
+
+function publishSummary(publish: 'now' | 'schedule' | 'draft', at: string | null, repeat: Repeat, auto: boolean, everyDays: string) {
   const when = publish === 'now' ? 'Publish now' : publish === 'draft' ? 'Save as draft' : at ? `Opens ${formatDateTime(at)}` : 'Schedule';
-  const series = repeat === 'none' ? 'once' : `${repeat}${auto ? ', auto-publish' : ', confirm each edition'}`;
+  const series = repeat === 'none' ? 'once' : `${cadenceLabel(repeat, Number(everyDays) || null).toLowerCase()}${auto ? ', auto-publish' : ', confirm each edition'}`;
   return `${when} · ${series}`;
 }
 
@@ -619,7 +624,9 @@ export function NewCompetitionPage() {
   const [prizes, setPrizes] = useState<PrizeDraft>(EMPTY_PRIZES);
   const [publish, setPublish] = useState<'now' | 'schedule' | 'draft'>('now');
   const [publishAt, setPublishAt] = useState(() => toLocalInput(new Date(Date.now() + 86_400_000)));
-  const [repeat, setRepeat] = useState<'none' | 'weekly' | 'monthly'>('none');
+  const [repeat, setRepeat] = useState<Repeat>('none');
+  const [everyDays, setEveryDays] = useState('14');
+  const [carryOver, setCarryOver] = useState(true);
   const [autoPublish, setAutoPublish] = useState(true);
   const [sheet, setSheet] = useState<'entry' | 'prizes' | 'publish' | 'opponent' | null>(null);
   const [opponent, setOpponent] = useState<Opponent | null>(null);
@@ -714,7 +721,8 @@ export function NewCompetitionPage() {
     club: clubId && !club.data ? 'This club could not be loaded.' : club.data?.suspended ? 'Jump has suspended this club, so it can’t host competitions.' : undefined,
     prizes: clubPrizesOn && prizesOn ? prizeProblem(prizes, capacityNumber) ?? undefined : undefined,
     publishAt: later && publish === 'schedule' && (!publishIso || new Date(publishIso) <= new Date() || (scoringIso && new Date(publishIso) >= new Date(scoringIso))) ? 'Schedule it for a time in the future, before it ends.' : undefined,
-    series: clubExtras && repeat !== 'none' && endless ? 'A series needs an end date for each edition.' : undefined,
+    series: clubExtras && repeat !== 'none' && endless ? 'A series needs an end date for each edition.'
+      : clubExtras && repeat === 'custom' && !(Number(everyDays) >= 1 && Number(everyDays) <= 365 && Number.isInteger(Number(everyDays))) ? 'Repeat every 1 to 365 days.' : undefined,
   };
   // The first thing stopping you, shown under the pinned Create button.
   const blocker = title.trim().length < 3 ? 'Give it a name of at least 3 characters.' : Object.values(errors).find(Boolean) ?? null;
@@ -739,7 +747,7 @@ export function NewCompetitionPage() {
         ...(clubHost && eligibleCountries.length ? { eligibleCountries } : {}),
         ...(clubPrizesOn && prizesOn ? { clubPrizes: prizesPayload(prizes) } : {}),
         ...(later ? { publish, ...(publishIso ? { publishAt: publishIso } : {}) } : {}),
-        ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish } } : {}),
+        ...(clubExtras && repeat !== 'none' ? { series: { cadence: repeat, autoPublish, carryOver, ...(repeat === 'custom' ? { intervalDays: Number(everyDays) } : {}) } } : {}),
         ...(!draftOnCreate && inviteEmails.length ? { inviteEmails } : {}),
         ...(mode !== 'paid' ? { format, visibility: format === 'open' ? 'public' : 'private' } : {}),
         ...(!draftOnCreate && invitePhones.length ? { invitePhones } : {}),
@@ -1030,7 +1038,7 @@ export function NewCompetitionPage() {
             {clubPrizesOn && <SheetRow title="Club prizes" tone={prizesOn ? 'on' : 'default'} onOpen={() => { if (!prizesOn) setPrizesOn(true); setSheet('prizes'); }} error={errors.prizes}
               summary={prizesOn ? prizeSummary(prizes) : 'None yet. Add products, discounts or experiences.'} />}
             {clubExtras && <SheetRow title="Publishing" onOpen={() => setSheet('publish')} error={errors.publishAt ?? errors.series}
-              summary={publishSummary(publish, publishIso ?? null, repeat, autoPublish)} />}
+              summary={publishSummary(publish, publishIso ?? null, repeat, autoPublish, everyDays)} />}
           </div>}
 
           <Sheet open={sheet === 'entry'} onOpenChange={(open) => setSheet(open ? 'entry' : null)} title="Who can enter"
@@ -1068,17 +1076,24 @@ export function NewCompetitionPage() {
             </Field></div>}
             <div className="mt-6 border-t border-line pt-5">
               <p className="label">Repeat</p>
-              <div className="grid grid-cols-3 rounded-xl bg-ink/[0.06] p-1">
-                {([['none', 'Once'], ['weekly', 'Weekly'], ['monthly', 'Monthly']] as const).map(([value, label]) =>
+              <div className="grid grid-cols-5 rounded-xl bg-ink/[0.06] p-1">
+                {([['none', 'Once'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly'], ['custom', 'Custom']] as const).map(([value, label]) =>
                   <button key={value} type="button" aria-pressed={repeat === value} onClick={() => setRepeat(value)}
                     className={cx('h-10 rounded-lg text-[14px] font-bold transition-colors', repeat === value ? 'bg-card text-ink shadow-[0_0_0_1.5px_#121212]' : 'text-ink-2')}>{label}</button>)}
               </div>
               {repeat !== 'none' && <>
+                {repeat === 'custom' && <div className="mt-4"><Field label="Repeat every (days)">
+                  {(props) => <input {...props} className="field" inputMode="numeric" maxLength={3} value={everyDays} onChange={(event) => setEveryDays(event.target.value.replace(/\D/g, ''))} />}
+                </Field></div>}
                 <label className="mt-4 flex items-start gap-3 rounded-xl border border-line p-3.5 text-[14px]">
+                  <input type="checkbox" className="mt-1" checked={carryOver} onChange={(event) => setCarryOver(event.target.checked)} />
+                  <span><b>Keep entrants for the next edition</b><span className="block text-[12.5px] text-ink-3">Everyone in one edition is entered into the next, starting from zero. They can leave any time.</span></span>
+                </label>
+                <label className="mt-3 flex items-start gap-3 rounded-xl border border-line p-3.5 text-[14px]">
                   <input type="checkbox" className="mt-1" checked={autoPublish} onChange={(event) => setAutoPublish(event.target.checked)} />
                   <span><b>Publish each new edition automatically</b><span className="block text-[12.5px] text-ink-3">Otherwise each edition waits as a draft so you can change its theme and prizes first.</span></span>
                 </label>
-                <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">Each edition copies these rules and prizes, with its own dates, leaderboard and winners. It’s created a week before it starts, and you manage the series from the club dashboard.</p>
+                <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">Each edition copies these rules and prizes, with its own dates, leaderboard and winners. Results lock 12 hours after each edition ends, then medals go out. You manage the series from the club dashboard.</p>
                 {errors.series && <p className="hint font-semibold text-bad">{errors.series}</p>}
               </>}
             </div>
@@ -1257,7 +1272,7 @@ export function CompetitionDetailPage() {
           {t.description && <p className="mt-4 max-w-xl whitespace-pre-line break-words text-[15px] leading-relaxed">{t.description}</p>}
           {t.club && <Link to="/clubs/$id" params={{ id: t.club.slug }} search={{}} className="mt-4 inline-flex max-w-full items-center gap-2.5 rounded-full border-[1.5px] border-ink bg-card py-1.5 pl-1.5 pr-4 transition-shadow hover:shadow-hard-sm">
             {t.club.logoUrl ? <img src={t.club.logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" /> : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: t.club.accentColor }}>{t.club.name.charAt(0)}</span>}
-            <span className="min-w-0 truncate text-[13px]"><b>{t.club.name}</b>{t.club.verified && <VerifiedTick size={13} className="ml-1 inline-block align-[-2px]" />}{t.club.seriesTitle && t.edition ? ` · ${t.club.seriesCadence === 'monthly' ? 'Monthly' : 'Weekly'} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</span>
+            <span className="min-w-0 truncate text-[13px]"><b>{t.club.name}</b>{t.club.verified && <VerifiedTick size={13} className="ml-1 inline-block align-[-2px]" />}{t.club.seriesTitle && t.edition ? ` · ${cadenceLabel(t.club.seriesCadence)} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</span>
           </Link>}
           {t.latitude != null && t.longitude != null && <a href={`https://www.google.com/maps/dir/?api=1&destination=${t.latitude},${t.longitude}`} target="_blank" rel="noreferrer noopener"
             className="mt-3 flex max-w-md items-center gap-2.5 rounded-xl border-[1.5px] border-ink bg-card py-2 pl-2 pr-4 transition-shadow hover:shadow-hard-sm">
@@ -1270,6 +1285,7 @@ export function CompetitionDetailPage() {
         {/* The join box: sticky beside the story on desktop, straight after the intro on phones */}
         <aside className="space-y-4 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
           {!unpublished && <EntryPanel table={t} joined={registration.data?.joined} joinedRank={me?.rank} joinedScore={me ? scoreText(me, t, unit) : undefined} entrants={entrants} faces={rows} now={now} />}
+          {registration.data?.joined && personalTargetLine(t, me, now) ? <Notice title="Your own target">{personalTargetLine(t, me, now)}</Notice> : null}
           {!['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED', 'DRAFT', 'SCHEDULED'].includes(t.status) && <ShareBox table={t} url={shareUrl} rows={standings.data ?? []} viewerId={user?.id} unit={unit} />}
         </aside>
 
@@ -1305,7 +1321,9 @@ export function CompetitionDetailPage() {
                 {showAll ? 'Show top 10' : `See all ${rows.length} runners`}
               </button>
             )}
+            <ResultsPending table={t} now={now} className="mt-3" />
           </section>
+          <EditionHistory table={t} seriesTitle={t.club?.seriesTitle} unit={unit} />
           {t.productPrizes && <PrizeTerms terms={t.productPrizes} clubName={t.club?.name} />}
           {!me && !isHost && <HowItWorks table={t} unit={unit} />}
 

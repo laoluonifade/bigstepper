@@ -1,7 +1,8 @@
 import { formatDate, ordinal } from '@jump/shared/format';
+import type { MedalKind } from '@jump/shared/types';
 import { useQuery } from '@tanstack/react-query';
 import { router, usePathname, type Href } from 'expo-router';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,11 +21,18 @@ export interface Trophy {
   endedAt: string; rank: number; entrants: number; score: number | null;
   /** A won duel: tableId is the duel's id and there's no code. */
   kind?: 'competition' | 'duel';
+  /** Older servers leave it out: then the rank says which metal. */
+  medal?: MedalKind;
 }
 
 /** Where a trophy opens: the competition's final board, or the duel. */
 const trophyPath = (trophy: Trophy): Href => (trophy.kind === 'duel' ? `/duels/${trophy.tableId}` : `/competitions/${trophy.code}`);
-export type TrophyCabinetData = { wins: number; podiums: number; trophies: Trophy[] };
+export type TrophyCabinetData = {
+  wins: number; podiums: number; trophies: Trophy[];
+  /** Medals for hitting a competition's target, rather than placing. */
+  completions?: Trophy[];
+  medals?: { gold: number; silver: number; bronze: number; completed: number };
+};
 
 const METAL_FOR = { 1: METALS.gold, 2: METALS.silver, 3: METALS.bronze } as const;
 
@@ -38,9 +46,12 @@ export function useTrophies(username?: string) {
 }
 
 /** A 3D podium medal on a ribbon, the same make as the milestone medals: gold, silver or bronze. */
-export function TrophyMedal({ rank, size = 64 }: { rank: number; size?: number }) {
+export function TrophyMedal({ rank, size = 64, medal }: { rank: number; size?: number; medal?: MedalKind }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const metal = METAL_FOR[Math.min(3, Math.max(1, rank)) as 1 | 2 | 3];
+  // A completion medal is volt, with a tick where a placing medal has its number.
+  const completion = medal === 'completion';
+  const metal = completion ? METALS.volt : METAL_FOR[Math.min(3, Math.max(1, rank)) as 1 | 2 | 3];
+  const mark = completion ? '✓' : String(rank);
   return <Svg viewBox="0 0 72 84" width={size} height={size * (84 / 72)} accessibilityElementsHidden>
     <Defs>
       <LinearGradient id={`rim-${uid}`} x1="0" y1="0" x2="0.4" y2="1"><Stop offset="0" stopColor={metal.rim[0]} /><Stop offset="1" stopColor={metal.rim[1]} /></LinearGradient>
@@ -60,8 +71,8 @@ export function TrophyMedal({ rank, size = 64 }: { rank: number; size?: number }
     <Circle cx="36" cy="46.8" r="22" fill={`url(#face-${uid})`} />
     <Circle cx="36" cy="46" r="25.5" fill="none" stroke="#fff" strokeOpacity={0.45} strokeWidth="0.8" strokeDasharray="1.2 2.2" />
     {/* The place, embossed: a light offset under the dark numeral reads as raised metal. */}
-    <SvgText x="36.8" y="56.6" textAnchor="middle" fontSize="28" fontFamily="ArchivoNarrow-Bold" fill="#fff" fillOpacity={0.6}>{rank}</SvgText>
-    <SvgText x="36" y="55.6" textAnchor="middle" fontSize="28" fontFamily="ArchivoNarrow-Bold" fill={metal.ink} fillOpacity={0.9}>{rank}</SvgText>
+    <SvgText x="36.8" y="56.6" textAnchor="middle" fontSize="28" fontFamily="ArchivoNarrow-Bold" fill="#fff" fillOpacity={0.6}>{mark}</SvgText>
+    <SvgText x="36" y="55.6" textAnchor="middle" fontSize="28" fontFamily="ArchivoNarrow-Bold" fill={metal.ink} fillOpacity={0.9}>{mark}</SvgText>
     <G clipPath={`url(#clip-${uid})`}>
       <Ellipse cx="29" cy="32" rx="20" ry="11" fill={`url(#gloss-${uid})`} transform="rotate(-20 29 32)" />
     </G>
@@ -69,27 +80,45 @@ export function TrophyMedal({ rank, size = 64 }: { rank: number; size?: number }
 }
 
 /**
- * The trophy cabinet: a shelf of medals, one per podium finish, each engraved with the competition and
- * when it ended. Tap one for its final board. Shown on your profile and on anyone's public profile.
+ * The trophy cabinet: a count of every medal, then a shelf of them, newest first: gold, silver and bronze for
+ * podium finishes, and a volt medal for each competition target hit. Each is engraved with the competition
+ * and when it ended; tap one for its final board. Shown on your profile and on anyone's public profile.
  */
 export function TrophyCabinet({ username, own = false }: { username?: string; own?: boolean }) {
   const cabinet = useTrophies(username);
   const data = cabinet.data;
-  if (!data || (!data.trophies.length && !own)) return null;
+  const shelf = useMemo(() => [...(data?.trophies ?? []), ...(data?.completions ?? [])]
+    .sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()), [data]);
+  if (!data || (!shelf.length && !own)) return null;
+  const medals = data.medals;
   return <View>
-    <SectionTitle aside={data.podiums ? `${data.wins} ${data.wins === 1 ? 'win' : 'wins'} · ${data.podiums} ${data.podiums === 1 ? 'podium' : 'podiums'}` : undefined}>Trophy cabinet</SectionTitle>
-    {!data.trophies.length
+    <SectionTitle aside={!medals && data.podiums ? `${data.wins} ${data.wins === 1 ? 'win' : 'wins'} · ${data.podiums} ${data.podiums === 1 ? 'podium' : 'podiums'}` : undefined}>Trophy cabinet</SectionTitle>
+    {medals && shelf.length > 0 && <View style={styles.counts} accessibilityRole="summary"
+      accessibilityLabel={`${medals.gold} gold, ${medals.silver} silver, ${medals.bronze} bronze, ${medals.completed} completed`}>
+      {([['gold', medals.gold, 'Gold'], ['silver', medals.silver, 'Silver'], ['bronze', medals.bronze, 'Bronze'], ['completion', medals.completed, 'Completed']] as const).map(([kind, count, label]) =>
+        <View key={kind} style={[styles.count, !count && { opacity: 0.45 }]}>
+          <TrophyMedal rank={kind === 'gold' ? 1 : kind === 'silver' ? 2 : 3} medal={kind === 'completion' ? 'completion' : undefined} size={26} />
+          <View>
+            <Txt size={17} weight="extrabold" num>{count}</Txt>
+            <Txt size={11} color="ink3">{label}</Txt>
+          </View>
+        </View>)}
+    </View>}
+    {!shelf.length
       ? <View style={styles.empty}>
         <View style={{ opacity: 0.35 }}><TrophyMedal rank={1} size={44} /></View>
-        <Txt size={13} color="ink2" leading={1.45} style={{ flex: 1 }}>Finish in the top three of a competition and your medal lands here.</Txt>
+        <Txt size={13} color="ink2" leading={1.45} style={{ flex: 1 }}>Finish in the top three of a competition, or hit a target competition’s goal, and your medal lands here.</Txt>
       </View>
       : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }}>
-        {data.trophies.map((trophy) => <Pressable key={trophy.tableId} onPress={() => { haptic(); router.push(trophyPath(trophy)); }}
-          accessibilityRole="button" accessibilityLabel={`${ordinal(trophy.rank)} in ${trophy.title}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]}>
-          <TrophyMedal rank={trophy.rank} size={58} />
-          <Txt size={13} weight="bold" numberOfLines={2} align="center" style={{ marginTop: 6 }}>{trophy.title}</Txt>
-          <Txt size={11} color="ink3" align="center" style={{ marginTop: 2 }}>{`${ordinal(trophy.rank)} of ${trophy.entrants} · ${formatDate(trophy.endedAt)}`}</Txt>
-        </Pressable>)}
+        {shelf.map((trophy) => {
+          const completion = trophy.medal === 'completion';
+          return <Pressable key={`${trophy.kind ?? 'competition'}-${trophy.tableId}`} onPress={() => { haptic(); router.push(trophyPath(trophy)); }}
+            accessibilityRole="button" accessibilityLabel={completion ? `Completed ${trophy.title}` : `${ordinal(trophy.rank)} in ${trophy.title}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]}>
+            <TrophyMedal rank={trophy.rank} medal={trophy.medal} size={58} />
+            <Txt size={13} weight="bold" numberOfLines={2} align="center" style={{ marginTop: 6 }}>{trophy.title}</Txt>
+            <Txt size={11} color="ink3" align="center" style={{ marginTop: 2 }}>{completion ? `Completed · ${formatDate(trophy.endedAt)}` : `${ordinal(trophy.rank)} of ${trophy.entrants} · ${formatDate(trophy.endedAt)}`}</Txt>
+          </Pressable>;
+        })}
       </ScrollView>}
   </View>;
 }
@@ -179,6 +208,8 @@ export function TrophyCelebration() {
 }
 
 const styles = StyleSheet.create({
+  counts: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 14 },
+  count: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   empty: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, padding: 14 },
   tile: { width: 120, alignItems: 'center', borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, paddingVertical: 12, paddingHorizontal: 8 },
   screen: { flex: 1, backgroundColor: brand.ink, paddingHorizontal: 24, alignItems: 'center' },

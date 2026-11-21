@@ -1,7 +1,8 @@
 import { countryName } from '@jump/shared/countries';
 import { formatDate, formatDateTime, fromLocalInput, toLocalInput } from '@jump/shared/format';
 import { EMPTY_PRIZES, PRIZE_KIND, prizeProblem, prizesPayload, type PrizeDraft } from '@jump/shared/prizes';
-import type { ClubClaim, ClubDashboard, ClubSeries, CompetitionTable } from '@jump/shared/types';
+import { cadenceLabel } from '@jump/shared/competition';
+import type { ClubClaim, ClubDashboard, ClubSeries, CompetitionTable, SeriesCadence } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -227,20 +228,32 @@ function ScheduleSheet({ title, onClose, onSchedule, pending, error }: { title: 
 
 function RepeatSheet({ code, title, clubRef, onClose }: { code: string; title: string; clubRef: string; onClose: () => void }) {
   const refresh = useRefresh(clubRef);
-  const [cadence, setCadence] = useState<'weekly' | 'monthly'>('weekly');
+  const [cadence, setCadence] = useState<SeriesCadence>('weekly');
+  const [everyDays, setEveryDays] = useState('14');
+  const [carryOver, setCarryOver] = useState(true);
   const [autoPublish, setAutoPublish] = useState(true);
+  const days = Number(everyDays);
+  const validDays = Number.isInteger(days) && days >= 1 && days <= 365;
   const create = useMutation({
-    mutationFn: () => post<ClubSeries>(`/clubs/${clubRef}/series`, { fromCode: code, cadence, autoPublish }),
-    async onSuccess() { await refresh(); haptic('success'); toast({ tone: 'ok', message: 'Series started. The next edition appears a week before it starts.' }); onClose(); },
+    mutationFn: () => post<ClubSeries>(`/clubs/${clubRef}/series`, { fromCode: code, cadence, autoPublish, carryOver, ...(cadence === 'custom' ? { intervalDays: days } : {}) }),
+    async onSuccess() { await refresh(); haptic('success'); toast({ tone: 'ok', message: 'Series started. You’ll find each edition on your dashboard.' }); onClose(); },
   });
-  return <Sheet open onOpenChange={(open) => !open && onClose()} title="Make it a series" footer={<Button full title={create.isPending ? 'Starting…' : 'Start series'} loading={create.isPending} onPress={() => create.mutate()} />}>
+  return <Sheet open onOpenChange={(open) => !open && onClose()} title="Make it a series" footer={<Button full title={create.isPending ? 'Starting…' : 'Start series'} loading={create.isPending} disabled={cadence === 'custom' && !validDays} onPress={() => create.mutate()} />}>
     <View style={{ gap: 16 }}>
       <Txt size={14} color="ink2"><Txt size={14} weight="bold">{title}</Txt> becomes edition 1. Each new edition copies its rules, branding and prizes, with its own dates, leaderboard and winners.</Txt>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {(['weekly', 'monthly'] as const).map((value) => <Pressable key={value} onPress={() => { haptic(); setCadence(value); }} accessibilityRole="radio" accessibilityState={{ checked: cadence === value }}
-          style={[styles.choice, cadence === value && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
-          <Txt size={14} weight="bold" color={cadence === value ? 'paper' : 'ink'}>{value === 'weekly' ? 'Every week' : 'Every month'}</Txt>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {([['daily', 'Every day'], ['weekly', 'Every week'], ['monthly', 'Every month'], ['custom', 'Custom']] as const).map(([value, label]) => <Pressable key={value} onPress={() => { haptic(); setCadence(value); }} accessibilityRole="radio" accessibilityState={{ checked: cadence === value }}
+          style={[styles.choice, { flexBasis: '47%' }, cadence === value && { borderColor: colors.edge, backgroundColor: colors.ink }]}>
+          <Txt size={14} weight="bold" color={cadence === value ? 'paper' : 'ink'}>{label}</Txt>
         </Pressable>)}
+      </View>
+      {cadence === 'custom' && <TextField label="Repeat every (days)" keyboardType="number-pad" value={everyDays} onChangeText={setEveryDays} maxLength={3} error={validDays ? undefined : 'Choose 1 to 365 days.'} />}
+      <View style={styles.switchRow}>
+        <View style={{ flex: 1 }}>
+          <Txt size={14} weight="bold">Keep entrants for the next edition</Txt>
+          <Txt size={12} color="ink3">Everyone in one edition is entered into the next, starting from zero. They can leave any time.</Txt>
+        </View>
+        <Switch value={carryOver} onValueChange={setCarryOver} trackColor={{ true: colors.ink, false: colors.line }} thumbColor={colors.white} />
       </View>
       <View style={styles.switchRow}>
         <View style={{ flex: 1 }}>
@@ -329,11 +342,11 @@ function SeriesCard({ series, clubRef, limit }: { series: ClubSeries; clubRef: s
   return <View style={[styles.card, { borderColor: series.active ? colors.ink : colors.line }]}>
     <View style={{ padding: 16 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Pill label={series.active ? (series.cadence === 'weekly' ? 'Weekly' : 'Monthly') : 'Paused'} bg={series.active ? colors.track : colors.inkFaint} fg={series.active ? colors.white : colors.ink2} />
+        <Pill label={series.active ? cadenceLabel(series.cadence, series.intervalDays) : 'Paused'} bg={series.active ? colors.track : colors.inkFaint} fg={series.active ? colors.white : colors.ink2} />
         <Pill label={`${series.lastEdition} ${series.lastEdition === 1 ? 'edition' : 'editions'}`} bg={colors.inkWash} fg={colors.ink} />
       </View>
       <Txt size={16} weight="bold" style={{ marginTop: 6 }}>{series.title}</Txt>
-      <Txt size={13} color="ink2" style={{ marginTop: 2 }}>{series.active ? `Next edition starts ${formatDateTime(series.nextStartsAt)}, created ${series.leadDays} days before.` : 'Paused. No new editions are made.'}</Txt>
+      <Txt size={13} color="ink2" style={{ marginTop: 2 }}>{series.active ? `Next edition starts ${formatDateTime(series.nextStartsAt)}${series.leadDays ? `, created ${series.leadDays} ${series.leadDays === 1 ? 'day' : 'days'} before` : ''}.` : 'Paused. No new editions are made.'}</Txt>
       <View style={[styles.switchRow, { marginTop: 12 }]}>
         <View style={{ flex: 1 }}>
           <Txt size={13}>Publish new editions automatically</Txt>

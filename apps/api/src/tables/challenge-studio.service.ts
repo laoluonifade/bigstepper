@@ -1,12 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityManager } from 'typeorm';
 import { planOf } from '../clubs/club-plans';
 import { PrizeAwardsService } from '../prizes/prize-awards.service';
 import { CloudinaryService } from '../profiles/cloudinary.service';
 import { AVATAR_TYPES } from '../profiles/profiles.service';
 import {
-  announceCompetition, assertClubCanHost, canManageTable, ChallengeTemplate, checkClubPrizes, createFromTemplate, nextStart, openTable, prizeColumns, savePrizes,
-  templateOf, UNPUBLISHED,
+  announceCompetition, assertClubCanHost, canManageTable, carryOverEntrants, ChallengeTemplate, checkClubPrizes, createFromTemplate, defaultLeadDays, editionLabel, nextStart, openTable,
+  prizeColumns, savePrizes, SeriesCadence, templateOf, UNPUBLISHED,
 } from './club-challenges';
 import { retotal } from './competition-credits';
 import { CompetitionTable } from './competition-table.entity';
@@ -14,9 +15,13 @@ import { CreateSeriesDto, EditDraftDto, UpdateSeriesDto } from './dto/club-chall
 import { RANK_ORDER } from './scoring-engine';
 
 type Series = {
-  id: string; clubId: string; title: string; cadence: 'weekly' | 'monthly'; template: ChallengeTemplate; autoPublish: boolean;
+  id: string; clubId: string; title: string; cadence: SeriesCadence; template: ChallengeTemplate; autoPublish: boolean;
   leadDays: number; nextStartsAt: Date; lastEdition: number; active: boolean; createdByUserId: string | null;
+  intervalDays: number | null; fillsPeriod: boolean; carryOver: boolean; hostJoins: boolean;
 };
+
+const zoneOf = (template: ChallengeTemplate) => (typeof template.timeZone === 'string' && template.timeZone) || 'Africa/Lagos';
+export const seriesNext = (from: Date, series: Pick<Series, 'cadence' | 'template' | 'intervalDays'>) => nextStart(from, series.cadence, zoneOf(series.template), series.intervalDays);
 
 @Injectable()
 export class ChallengeStudioService {
@@ -26,6 +31,7 @@ export class ChallengeStudioService {
     private readonly dataSource: DataSource,
     private readonly cloudinary: CloudinaryService,
     private readonly awards: PrizeAwardsService,
+    private readonly config: ConfigService,
   ) {}
 
   private async managed(manager: EntityManager, tableId: string, userId: string) {
@@ -131,13 +137,16 @@ export class ChallengeStudioService {
       const plan = planOf(club.plan, club.planRenewsAt);
       const [{ active }] = await manager.query(`SELECT count(*)::integer AS "active" FROM "challenge_series" WHERE "clubId" = $1 AND "active"`, [clubId]) as Array<{ active: number }>;
       if (active >= plan.activeSeries) throw new ConflictException(`Your club can run ${plan.activeSeries} series at a time on the ${plan.label} plan. Pause one first.`);
+      if (input.cadence === 'custom' && !input.intervalDays) throw new BadRequestException('Choose how many days apart the editions are');
       const template = await templateOf(manager, table);
-      let next = nextStart(table.startsAt!, input.cadence);
-      while (next.getTime() + template.durationMs <= Date.now()) next = nextStart(next, input.cadence);
+      const shape = { cadence: input.cadence, template, intervalDays: input.cadence === 'custom' ? input.intervalDays! : null };
+      let next = seriesNext(table.startsAt!, shape);
+      while (next.getTime() + template.durationMs <= Date.now()) next = seriesNext(next, shape);
       const [series] = await manager.query(
-        `INSERT INTO "challenge_series" ("clubId","title","cadence","template","autoPublish","nextStartsAt","lastEdition","createdByUserId")
-         VALUES ($1,$2,$3,$4,$5,$6,1,$7) RETURNING *`,
-        [clubId, table.title, input.cadence, JSON.stringify(template), input.autoPublish, next, userId],
+        `INSERT INTO "challenge_series" ("clubId","title","cadence","template","autoPublish","nextStartsAt","lastEdition","createdByUserId","intervalDays","fillsPeriod","carryOver","leadDays")
+         VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10,$11) RETURNING *`,
+        [clubId, table.title, input.cadence, JSON.stringify(template), input.autoPublish, next, userId, shape.intervalDays, input.fillsPeriod ?? false, input.carryOver ?? true,
+          defaultLeadDays(input.cadence, shape.intervalDays)],
       ) as Series[];
       await manager.update(CompetitionTable, { id: table.id }, { seriesId: series.id, edition: 1 });
       return series;
@@ -154,7 +163,7 @@ export class ChallengeStudioService {
         const [{ active }] = await manager.query(`SELECT count(*)::integer AS "active" FROM "challenge_series" WHERE "clubId" = $1 AND "active"`, [series.clubId]) as Array<{ active: number }>;
         if (active >= plan.activeSeries) throw new ConflictException(`Your club can run ${plan.activeSeries} series at a time on the ${plan.label} plan`);
         let next = new Date(series.nextStartsAt);
-        while (next.getTime() + series.template.durationMs <= Date.now()) next = nextStart(next, series.cadence);
+        while (next.getTime() + series.template.durationMs <= Date.now()) next = seriesNext(next, series);
         series.nextStartsAt = next;
       }
       if (input.templateFromCode) {
@@ -190,33 +199,71 @@ export class ChallengeStudioService {
     return made;
   }
 
+  async assignPersonalDue() {
+    const due = await this.dataSource.query(
+      `SELECT t."id" FROM "competition_tables" t
+       WHERE t."personal" IS NOT NULL AND t."startsAt" <= now() AND t."resultsFinalizedAt" IS NULL AND t."deletedAt" IS NULL
+         AND t."status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED')
+         AND EXISTS (SELECT 1 FROM "table_registrations" r WHERE r."tableId" = t."id" AND r."personalTarget" IS NULL)
+       LIMIT 50`,
+    ) as Array<{ id: string }>;
+    for (const { id } of due) {
+      try { await this.dataSource.transaction((manager) => retotal(manager, [id])); }
+      catch (error) { this.logger.error(`Could not set personal targets for ${id}`, error instanceof Error ? error.stack : String(error)); }
+    }
+    return due.length;
+  }
+
+  private officialSlug() {
+    return this.config.get<string>('COMMUNITY_CLUB_SLUG') ?? 'jump-community-club';
+  }
+
   private async makeEdition(seriesId: string, { force = false } = {}) {
     const result = await this.dataSource.transaction(async (manager) => {
       const [series] = await manager.query(`SELECT * FROM "challenge_series" WHERE "id" = $1 FOR UPDATE`, [seriesId]) as Series[];
       if (!series?.active) return null;
       if (!force && new Date(series.nextStartsAt).getTime() - series.leadDays * 86_400_000 > Date.now()) return null;
       const [club] = await manager.query(`SELECT "ownerUserId","suspendedAt","plan","planRenewsAt","slug","name" FROM "clubs" WHERE "id" = $1`, [series.clubId]) as Array<{ ownerUserId: string; suspendedAt: Date | null; plan: string; planRenewsAt: Date | null; slug: string; name: string }>;
+      const official = club.slug === this.officialSlug();
       const creatorId = series.createdByUserId && (await manager.query(`SELECT 1 FROM "club_memberships" WHERE "clubId"=$1 AND "userId"=$2 AND "role" IN ('owner','admin')`, [series.clubId, series.createdByUserId]) as unknown[]).length
         ? series.createdByUserId : club.ownerUserId;
       const [{ live }] = await manager.query(
         `SELECT count(*)::integer AS "live" FROM "competition_tables" WHERE "communityId" = $1 AND "status" IN ('OPEN_FOR_ENTRY','ACTIVE','ENTRY_CLOSED','SCHEDULED') AND ("scoringClosesAt" IS NULL OR "scoringClosesAt" > now())`,
         [series.clubId],
       ) as Array<{ live: number }>;
-      const canOpen = series.autoPublish && !club.suspendedAt && live < planOf(club.plan, club.planRenewsAt).liveChallenges;
+      const canOpen = series.autoPublish && !club.suspendedAt && (official || live < planOf(club.plan, club.planRenewsAt).liveChallenges);
       const edition = series.lastEdition + 1;
       const startsAt = new Date(series.nextStartsAt);
+      const following = seriesNext(startsAt, series);
+      const endsAt = series.fillsPeriod ? following : new Date(startsAt.getTime() + series.template.durationMs);
       const table = await createFromTemplate(manager, series.template, {
-        creatorId, communityId: series.clubId, startsAt, status: canOpen ? 'OPEN_FOR_ENTRY' : 'DRAFT', seriesId, edition, title: `${series.title} #${edition}`,
+        creatorId, communityId: series.clubId, startsAt, endsAt, status: canOpen ? 'OPEN_FOR_ENTRY' : 'DRAFT', seriesId, edition,
+        title: `${series.title} · ${editionLabel(startsAt, endsAt, series.cadence, zoneOf(series.template))}`,
+        joinHost: series.hostJoins, quiet: official || series.cadence === 'daily',
       });
-      if (canOpen) await announceCompetition(manager, table);
-      await manager.query(`UPDATE "challenge_series" SET "lastEdition" = $2, "nextStartsAt" = $3, "updatedAt" = now() WHERE "id" = $1`, [seriesId, edition, nextStart(startsAt, series.cadence)]);
-      await manager.query(
-        `INSERT INTO "notifications" ("userId","type","title","body","link")
-         SELECT "userId",'CLUB_SERIES',$2,$3,$4 FROM "club_memberships" WHERE "clubId" = $1 AND "role" IN ('owner','admin')`,
-        [series.clubId, canOpen ? `${table.title} is live` : `${table.title} is ready to review`,
-          canOpen ? 'The next edition of your series opened. Share it with your community.' : 'The next edition of your series is saved as a draft. Check its theme and prizes, then publish it.',
-          `/clubs/${club.slug}/dashboard`],
-      );
+      if (canOpen && !official && series.cadence !== 'daily') await announceCompetition(manager, table);
+      const carried = series.carryOver ? await carryOverEntrants(manager, table) : [];
+      await manager.query(`UPDATE "challenge_series" SET "lastEdition" = $2, "nextStartsAt" = $3, "updatedAt" = now() WHERE "id" = $1`, [seriesId, edition, following]);
+      if (canOpen && carried.length && series.cadence !== 'daily') {
+        const period = series.cadence === 'weekly' ? 'week' : series.cadence === 'monthly' ? 'month' : 'round';
+        const started = startsAt <= new Date();
+        await manager.query(
+          `INSERT INTO "notifications" ("userId","type","title","body","link")
+           SELECT x, 'COMPETITION_EDITION', $2, $3, $4 FROM unnest($1::uuid[]) AS x`,
+          [carried, started ? `A new ${period} of ${series.title} has started` : `The next ${period} of ${series.title} is set`,
+            started ? 'You’re in again. Everyone starts from zero. Defend your position!' : `You’re in. It starts ${startsAt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: zoneOf(series.template) })}.`,
+            `/competitions/${table.code}`],
+        );
+      }
+      if (!official) {
+        await manager.query(
+          `INSERT INTO "notifications" ("userId","type","title","body","link")
+           SELECT "userId",'CLUB_SERIES',$2,$3,$4 FROM "club_memberships" WHERE "clubId" = $1 AND "role" IN ('owner','admin')`,
+          [series.clubId, canOpen ? `${table.title} is live` : `${table.title} is ready to review`,
+            canOpen ? 'The next edition of your series opened. Share it with your community.' : 'The next edition of your series is saved as a draft. Check its theme and prizes, then publish it.',
+            `/clubs/${club.slug}/dashboard`],
+        );
+      }
       return table;
     });
     return result;

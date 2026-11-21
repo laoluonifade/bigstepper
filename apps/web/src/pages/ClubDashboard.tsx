@@ -10,7 +10,8 @@ import { api, isApiError, patch, post } from '../lib/api';
 import { countryName } from '../lib/countries';
 import { formatDate, formatDateTime, fromLocalInput, toLocalInput } from '../lib/format';
 import { toast } from '../lib/toast';
-import type { ClubClaim, ClubDashboard, ClubSeries, CompetitionTable } from '../lib/types';
+import type { ClubClaim, ClubDashboard, ClubSeries, CompetitionTable, SeriesCadence } from '../lib/types';
+import { cadenceLabel } from '@jump/shared/competition';
 
 type Tab = 'competitions' | 'series' | 'prizes' | 'results' | 'performance';
 type Competition = ClubDashboard['challenges'][number];
@@ -200,25 +201,38 @@ function ScheduleSheet({ title, onClose, onSchedule, pending, error }: { title: 
 
 function RepeatSheet({ code, title, clubRef, onClose }: { code: string; title: string; clubRef: string; onClose: () => void }) {
   const refresh = useRefresh(clubRef);
-  const [cadence, setCadence] = useState<'weekly' | 'monthly'>('weekly');
+  const [cadence, setCadence] = useState<SeriesCadence>('weekly');
+  const [everyDays, setEveryDays] = useState('14');
+  const [carryOver, setCarryOver] = useState(true);
   const [autoPublish, setAutoPublish] = useState(true);
+  const days = Number(everyDays);
+  const validDays = Number.isInteger(days) && days >= 1 && days <= 365;
   const create = useMutation({
-    mutationFn: () => post<ClubSeries>(`/clubs/${clubRef}/series`, { fromCode: code, cadence, autoPublish }),
-    async onSuccess() { await refresh(); toast({ tone: 'ok', message: 'Series started. The next edition appears a week before it starts.' }); onClose(); },
+    mutationFn: () => post<ClubSeries>(`/clubs/${clubRef}/series`, { fromCode: code, cadence, autoPublish, carryOver, ...(cadence === 'custom' ? { intervalDays: days } : {}) }),
+    async onSuccess() { await refresh(); toast({ tone: 'ok', message: 'Series started. You’ll find each edition on your dashboard.' }); onClose(); },
   });
   return <Modal title="Make it a series" onClose={onClose}>
     <div className="space-y-4">
       <p className="text-[14px] text-ink-2"><b className="text-ink">{title}</b> becomes edition 1. Each new edition copies its rules, branding and prizes, with its own dates, leaderboard and winners.</p>
       <div className="grid grid-cols-2 gap-2">
-        {(['weekly', 'monthly'] as const).map((value) => <button key={value} type="button" aria-pressed={cadence === value} onClick={() => setCadence(value)}
-          className={cx('h-11 rounded-lg border-[1.5px] text-[14px] font-bold', cadence === value ? 'border-ink bg-ink text-paper' : 'border-line bg-card')}>{value === 'weekly' ? 'Every week' : 'Every month'}</button>)}
+        {([['daily', 'Every day'], ['weekly', 'Every week'], ['monthly', 'Every month'], ['custom', 'Custom']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={cadence === value} onClick={() => setCadence(value)}
+          className={cx('h-11 rounded-lg border-[1.5px] text-[14px] font-bold', cadence === value ? 'border-ink bg-ink text-paper' : 'border-line bg-card')}>{label}</button>)}
       </div>
+      {cadence === 'custom' && <label className="block text-[14px]">
+        <span className="label">Repeat every (days)</span>
+        <input className="field" inputMode="numeric" maxLength={3} value={everyDays} onChange={(event) => setEveryDays(event.target.value.replace(/\D/g, ''))} aria-invalid={!validDays} />
+        {!validDays && <span className="hint font-semibold text-bad">Choose 1 to 365 days.</span>}
+      </label>}
+      <label className="flex items-start gap-2 text-[14px]">
+        <input type="checkbox" className="mt-1" checked={carryOver} onChange={(event) => setCarryOver(event.target.checked)} />
+        <span><b>Keep entrants for the next edition</b><span className="block text-[12px] text-ink-3">Everyone in one edition is entered into the next, starting from zero. They can leave any time.</span></span>
+      </label>
       <label className="flex items-start gap-2 text-[14px]">
         <input type="checkbox" className="mt-1" checked={autoPublish} onChange={(event) => setAutoPublish(event.target.checked)} />
         <span><b>Publish each edition automatically</b><span className="block text-[12px] text-ink-3">Otherwise each one waits as a draft for you to confirm.</span></span>
       </label>
       <ErrorNotice error={create.error} />
-      <button type="button" className="btn-primary w-full" disabled={create.isPending} onClick={() => create.mutate()}>{create.isPending ? 'Starting…' : 'Start series'}</button>
+      <button type="button" className="btn-primary w-full" disabled={create.isPending || (cadence === 'custom' && !validDays)} onClick={() => create.mutate()}>{create.isPending ? 'Starting…' : 'Start series'}</button>
     </div>
   </Modal>;
 }
@@ -305,11 +319,11 @@ function SeriesCard({ series, clubRef, limit }: { series: ClubSeries; clubRef: s
   return <article className={cx('rounded-2xl border-[1.5px] bg-card', series.active ? 'border-ink' : 'border-line')}>
     <div className="p-4">
       <p className="flex flex-wrap items-center gap-1.5">
-        <span className={cx('rounded-full px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-[0.06em]', series.active ? 'bg-track text-white' : 'bg-ink/10 text-ink-2')}>{series.active ? (series.cadence === 'weekly' ? 'Weekly' : 'Monthly') : 'Paused'}</span>
+        <span className={cx('rounded-full px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-[0.06em]', series.active ? 'bg-track text-white' : 'bg-ink/10 text-ink-2')}>{series.active ? cadenceLabel(series.cadence, series.intervalDays) : 'Paused'}</span>
         <span className="rounded-full bg-ink/[0.06] px-2 py-0.5 text-[10.5px] font-bold">{series.lastEdition} {series.lastEdition === 1 ? 'edition' : 'editions'}</span>
       </p>
       <h3 className="mt-1.5 text-[16px] font-bold">{series.title}</h3>
-      <p className="mt-0.5 text-[13px] text-ink-2">{series.active ? `Next edition starts ${formatDateTime(series.nextStartsAt)}, created ${series.leadDays} days before.` : 'Paused. No new editions are made.'}</p>
+      <p className="mt-0.5 text-[13px] text-ink-2">{series.active ? `Next edition starts ${formatDateTime(series.nextStartsAt)}${series.leadDays ? `, created ${series.leadDays} ${series.leadDays === 1 ? 'day' : 'days'} before` : ''}.` : 'Paused. No new editions are made.'}</p>
       <label className="mt-3 flex items-start gap-2 text-[13px]">
         <input type="checkbox" className="mt-0.5" checked={series.autoPublish} disabled={update.isPending} onChange={(event) => update.mutate({ autoPublish: event.target.checked })} />
         <span>Publish new editions automatically <span className="block text-[12px] text-ink-3">Off: each edition waits as a draft so you can change its theme and prizes.</span></span>
