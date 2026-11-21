@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimatedCalories } from './calories';
+import { estimatedCalories, stepCalories } from './calories';
 import type { Activity } from './types';
 
 const run = {
@@ -18,5 +18,17 @@ describe('estimated calories', () => {
     expect(estimatedCalories(run, null)).toBeNull();
     expect(estimatedCalories({ ...run, verificationStatus: 'FLAGGED' }, 70)).toBeNull();
     expect(estimatedCalories({ ...run, movingSeconds: 0 }, 70)).toBeNull();
+  });
+});
+
+describe('step calories', () => {
+  it('costs walking at about half a kcal per kg per km', () => {
+    expect(stepCalories(10_000, 7000, 70)).toBe(245);
+    expect(stepCalories(10_000, null, 70)).toBe(252);
+  });
+
+  it('needs a body weight and some steps', () => {
+    expect(stepCalories(10_000, 7000, null)).toBeNull();
+    expect(stepCalories(0, 0, 70)).toBeNull();
   });
 });

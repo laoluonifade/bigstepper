@@ -1,3 +1,4 @@
+import { stepCalories } from '@jump/shared/calories';
 import { formatDistanceNumber, formatRelative } from '@jump/shared/format';
 import type { AppleHealthStatus, DailySteps, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -8,7 +9,7 @@ import Svg, { Path } from 'react-native-svg';
 import { api, patch, post } from '@/lib/api';
 import { appleHealthAvailable, requestAppleHealth, startBackgroundSync, stopBackgroundSync, syncAppleHealth } from '@/lib/apple-health';
 import { confirm } from '@/lib/dialog';
-import { keys } from '@/lib/queries';
+import { keys, useProfile } from '@/lib/queries';
 import { colors, fontFamily, radius, score } from '@/lib/theme';
 import { ErrorNotice, Txt } from './ui';
 
@@ -58,9 +59,11 @@ function localDay(date: Date) {
 /** Today's steps and walking distance from Apple Health with the last seven days as bars, in the dashboard's tile style. */
 export function HealthToday({ unit }: { unit: Unit }) {
   const days = useDailySteps();
+  const weightKg = useProfile().data?.weightKg;
   const byDay = new Map((days.data ?? []).map((row) => [row.day, row]));
   const today = byDay.get(localDay(new Date()));
   if (!days.data?.length) return null;
+  const calories = stepCalories(today?.steps ?? 0, today?.distanceMetres, weightKg);
   const week = Array.from({ length: 7 }, (_, index) => {
     const date = new Date();
     date.setDate(date.getDate() - (6 - index));
@@ -70,13 +73,16 @@ export function HealthToday({ unit }: { unit: Unit }) {
   const average = counted.length ? Math.round(counted.reduce((sum, day) => sum + day.steps, 0) / counted.length) : 0;
   const most = Math.max(1000, ...week.map((day) => day.steps));
   return <Pressable onPress={() => router.push('/activities')} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]} accessibilityRole="button"
-    accessibilityLabel={`Steps today, ${(today?.steps ?? 0).toLocaleString('en-GB')}, from Apple Health`}>
+    accessibilityLabel={`Steps today, ${(today?.steps ?? 0).toLocaleString('en-GB')}${calories !== null ? `, about ${calories} calories` : ''}, from Apple Health`}>
     <View style={{ flex: 1, minWidth: 0 }}>
       <View style={styles.via}><HealthMark size={11} color={HEALTH_RED} /><Txt size={11} weight="bold" upper tracking={0.1} style={{ color: HEALTH_RED }}>Steps today</Txt></View>
       <Text style={styles.big}>{(today?.steps ?? 0).toLocaleString('en-GB')}</Text>
       <Txt size={12} color="ink2" num>
         {today?.distanceMetres != null ? `${formatDistanceNumber(today.distanceMetres, unit)} ${unit} · ` : ''}{`avg ${average.toLocaleString('en-GB')}/day`}
       </Txt>
+      {/* Calories need your weight; without it, say how to see them rather than guess. */}
+      {calories !== null ? <Txt size={12} weight="bold" num style={{ marginTop: 2, color: colors.track }}>{`🔥 ${calories.toLocaleString('en-GB')} kcal burned walking`}</Txt>
+        : weightKg ? null : <Txt size={12} color="ink3" style={{ marginTop: 2 }}>Add your weight in You to see calories</Txt>}
     </View>
     <View style={styles.week} accessible={false}>
       {week.map((day, index) => <View key={day.key} style={styles.weekColumn}>

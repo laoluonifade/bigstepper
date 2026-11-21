@@ -13,3 +13,14 @@ export function estimatedCalories(activity: Activity, weightKg: number | null | 
   const met = activity.activityType === 'walk' ? 4.0 : activity.activityType === 'cycle' ? 6.8 : 10.5;
   return Math.round(met * weightKg * activity.movingSeconds / 3600);
 }
+
+/**
+ * Energy spent walking a day's steps, over and above resting. ACSM's walking equation puts the cost of
+ * walking on the flat at 0.1 mL O₂ per kg per metre, about 0.5 kcal per kg per km at 5 kcal per litre.
+ * Uses the phone's walking distance when it has one, else the steps at an average stride.
+ */
+export function stepCalories(steps: number, distanceMetres: number | null | undefined, weightKg: number | null | undefined): number | null {
+  if (!weightKg || weightKg < 20 || weightKg > 300 || steps <= 0) return null;
+  const metres = distanceMetres && distanceMetres > 0 ? distanceMetres : steps * 0.72;
+  return Math.round(0.5 * weightKg * metres / 1000);
+}
