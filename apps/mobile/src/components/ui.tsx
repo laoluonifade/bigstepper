@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, SvgXml } from 'react-native-svg';
 import { isApiError } from '@/lib/api';
 import { AccentSurface, useTextColor } from '@/lib/surface';
-import { brand, colors, eyebrow, fontFamily, GUTTER, radius, score, wideLabel, type Color, type Weight, type Width } from '@/lib/theme';
+import { brand, colors, CONTENT_MAX, eyebrow, fontFamily, GUTTER, radius, score, wideLabel, type Color, type Weight, type Width } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, InfoIcon } from './icons';
 
@@ -352,7 +352,7 @@ export function Screen({ ref, children, refreshing, onRefresh, padded = true, co
       automaticallyAdjustKeyboardInsets={!ownKeyboard}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
-      contentContainerStyle={[padded && { paddingHorizontal: GUTTER, paddingTop: 16, paddingBottom: 48 }, contentStyle]}
+      contentContainerStyle={[{ width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' }, padded && { paddingHorizontal: GUTTER, paddingTop: 16, paddingBottom: 48 }, contentStyle]}
       refreshControl={onRefresh ? <RefreshControl refreshing={pulling.active} onRefresh={() => { pulling.start(); onRefresh(); }} tintColor={colors.ink} colors={[colors.track]} /> : undefined}
     >
       {children}

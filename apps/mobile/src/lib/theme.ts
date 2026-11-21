@@ -173,6 +173,8 @@ export const radius = { sm: 2, base: 4, md: 6, lg: 8, xl: 12, '2xl': 16, sheet: 
 
 /** The 16px gutter every screen shares. */
 export const GUTTER = 16;
+/** On an iPad the page stays a readable column in the middle instead of stretching edge to edge. */
+export const CONTENT_MAX = 640;
 
 export type Weight = 'regular' | 'medium' | 'semibold' | 'bold' | 'extrabold' | 'black';
 /** Archivo's width axis: `wide` is the web's `font-stretch: 125%`, `narrow` its 72% (scores). */

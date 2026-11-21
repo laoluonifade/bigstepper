@@ -10,7 +10,7 @@ import { JumpLogo } from '@/components/icons';
 import { Avatar, Button, Txt } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { brand, colors, fontFamily, GUTTER, radius, wideLabel } from '@/lib/theme';
+import { brand, colors, CONTENT_MAX, fontFamily, GUTTER, radius, wideLabel } from '@/lib/theme';
 
 type Leader = { rank: number; userId: string; metres: number; displayName: string; avatarUrl: string | null; avatarStyle?: AvatarStyle };
 
@@ -81,16 +81,16 @@ export default function Index() {
     staleTime: 60_000,
   });
   if (status === 'signed-in') return <Redirect href="/dashboard" />;
-  // As big as the phone allows: "COMPETE." is the widest line, about 6.5 times the font size.
-  const size = Math.min(84, (width - GUTTER * 2) / 6.2);
+  // As big as the column allows: "COMPETE." is the widest line, about 6.5 times the font size.
+  const size = Math.min(84, (Math.min(width, CONTENT_MAX) - GUTTER * 2) / 6.8);
   const type = { fontFamily: fontFamily('black', 'wide'), fontSize: size, lineHeight: size * 0.98, letterSpacing: -size * 0.04, color: colors.ink };
   const movers = (leaders.data?.rows ?? []).filter((row) => row.metres > 0);
 
   return <View style={{ flex: 1, backgroundColor: colors.paper, paddingTop: insets.top }}>
     <View style={styles.bar}><JumpLogo height={24} /></View>
-    <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: GUTTER }}>
-      <Line delay={0}><Text style={type}>MOVE.</Text></Line>
-      <Line delay={90}><Text style={type}>COMPETE.</Text></Line>
+    <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: GUTTER, width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' }}>
+      <Line delay={0}><Text style={type} numberOfLines={1} adjustsFontSizeToFit>MOVE.</Text></Line>
+      <Line delay={90}><Text style={type} numberOfLines={1} adjustsFontSizeToFit>COMPETE.</Text></Line>
       <Line delay={180}><Win size={size} /></Line>
       <Animated.View entering={FadeInDown.delay(350).duration(520)}>
         <Txt size={17} leading={1.5} color="ink2" style={{ marginTop: 22 }}>Turn your everyday walks, runs and rides into a race. Compete with friends, clubs and your city, climb the leaderboard, and win real prizes.</Txt>
@@ -114,5 +114,5 @@ const styles = StyleSheet.create({
   highlight: { position: 'absolute', left: 0, backgroundColor: brand.volt },
   chips: { flexDirection: 'row', gap: 10, paddingLeft: 10 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingLeft: 4, paddingRight: 14, paddingVertical: 4 },
-  actions: { gap: 12, paddingHorizontal: GUTTER, paddingTop: 12 },
+  actions: { gap: 12, paddingHorizontal: GUTTER, paddingTop: 12, width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' },
 });
