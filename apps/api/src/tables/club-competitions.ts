@@ -1,7 +1,7 @@
 import { EntityManager } from 'typeorm';
 import { creditActivities } from './competition-credits';
 
-export async function enrolClubMembers(manager: EntityManager, scope: { tableId: string } | { clubId: string; userId: string }) {
+export async function enrolClubMembers(manager: EntityManager, scope: { tableId: string } | { clubId: string; userId: string }, { notify = true } = {}) {
   const [filter, params] = 'tableId' in scope
     ? ['t."id" = $1', [scope.tableId]]
     : ['t."communityId" = $1 AND m."userId" = $2', [scope.clubId, scope.userId]];
@@ -36,7 +36,7 @@ export async function enrolClubMembers(manager: EntityManager, scope: { tableId:
     params,
   ) as Array<{ tableId: string; userId: string }>;
   for (const row of enrolled) await creditActivities(manager, row);
-  if (enrolled.length) {
+  if (notify && enrolled.length) {
     await manager.query(
       `INSERT INTO "notifications" ("userId", "type", "title", "body", "link")
        SELECT e."userId", 'CHALLENGE_INVITE', 'You’re in a club competition',

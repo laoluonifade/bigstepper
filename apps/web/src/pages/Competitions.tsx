@@ -19,7 +19,7 @@ import { cadenceLabel, personalTargetLine } from '@jump/shared/competition';
 import type { SeriesCadence } from '@jump/shared/types';
 // import { StravaButton } from './Strava'; (back with Join with Strava)
 import { toast } from '../lib/toast';
-import { ChallengeMark, CompetitionCard, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
+import { ChallengeMark, CompetitionCard, CoverArt, CompetitionPreviewCard, PhaseTag, TypeTag, canEnter, cardTheme, challengeHeadline, competitionPhase, prizeSplit } from '../components/competition';
 import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CrownIcon, EditIcon, LockIcon, PinIcon, PlusIcon, SearchIcon, ShareIcon, SlidersIcon, TableIcon, TrashIcon, UsersIcon } from '../components/icons';
 import { Leaderboard, LeaderboardRow, RankBadge } from '../components/Leaderboard';
 import {
@@ -61,7 +61,7 @@ import { countryName } from '../lib/countries';
 import { draftFor, ScoringPicker, scoringPayload, type ScoringDraft } from '../components/ScoringPicker';
 import { ACTIVITY_RULES, FORMATS, METRICS, type CompetitionFormat } from '@jump/shared/competition-rules';
 import { fundingForPrize } from '@jump/shared/prizes';
-import { activityLabel, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '../lib/scoring';
+import { activityLabel, formatScore, hasScored, howToWin, metricOf, rulesLines, scoreHeader, winsLabel } from '../lib/scoring';
 import { OPEN_PAYMENT_STATUSES, savePayment, useSavedPayments } from '../lib/payments';
 import { keys, useCreator, useDiscover, useFinalResult, useProfile, useStandings, useUnit, useWallet, type DiscoverView } from '../lib/queries';
 import type { ChallengeType, CheckoutResponse, Club, CompetitionTable, Profile, StandingRow, Unit } from '../lib/types';
@@ -1270,6 +1270,11 @@ export function CompetitionDetailPage() {
             </p>
           </div>
           {t.description && <p className="mt-4 max-w-xl whitespace-pre-line break-words text-[15px] leading-relaxed">{t.description}</p>}
+          <a href="#rules" className="mt-4 block max-w-xl rounded-md border border-line bg-card p-4 transition-opacity hover:opacity-90">
+            <span className="wide block text-[11px] font-bold uppercase tracking-[0.14em] text-ink-2">How to win</span>
+            <span className="mt-1.5 block text-[14px] leading-normal">{howToWin(t, unit)}</span>
+            <span className="mt-2 block text-[13px] font-bold text-ink-2">See the full rules ›</span>
+          </a>
           {t.club && <Link to="/clubs/$id" params={{ id: t.club.slug }} search={{}} className="mt-4 inline-flex max-w-full items-center gap-2.5 rounded-full border-[1.5px] border-ink bg-card py-1.5 pl-1.5 pr-4 transition-shadow hover:shadow-hard-sm">
             {t.club.logoUrl ? <img src={t.club.logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" /> : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: t.club.accentColor }}>{t.club.name.charAt(0)}</span>}
             <span className="min-w-0 truncate text-[13px]"><b>{t.club.name}</b>{t.club.verified && <VerifiedTick size={13} className="ml-1 inline-block align-[-2px]" />}{t.club.seriesTitle && t.edition ? ` · ${cadenceLabel(t.club.seriesCadence)} series, edition ${t.edition}` : ` · ${t.club.followerCount} ${t.club.followerCount === 1 ? 'follower' : 'followers'}`}</span>
@@ -1330,7 +1335,7 @@ export function CompetitionDetailPage() {
 
           <KeyDates table={t} now={now} />
           {manages && !['PENDING_FUNDING', 'PENDING_APPROVAL', 'CANCELLED', 'DRAFT', 'SCHEDULED'].includes(t.status) && <HostTools table={t} now={now} />}
-          <Rules table={t} unit={unit} />
+          <div id="rules" className="scroll-mt-20"><Rules table={t} unit={unit} /></div>
           {isHost && t.status === 'OPEN_FOR_ENTRY' && <InvitationsPanel table={t} />}
         </div>
       </div>
@@ -1374,18 +1379,14 @@ export function ChallengeCover({ table, unit, now }: { table: CompetitionTable; 
   const theme = cardTheme(table);
   const hero = challengeHeadline(table, unit);
   return (
-    <div className={cx('relative overflow-hidden rounded-xl border-[1.5px] border-ink px-5 pb-6 pt-4 sm:px-7 sm:pb-8', banner ? 'flex aspect-[2/1] flex-col justify-between bg-ink text-paper' : theme.band)}>
+    <div className={cx('relative overflow-hidden rounded-xl border-[1.5px] border-ink px-5 pb-6 pt-4 sm:px-7 sm:pb-8', banner ? 'flex aspect-[2/1] flex-col justify-between bg-ink text-paper' : 'text-white')}>
       {banner ? (
         <>
           <img src={banner} alt={`${table.title} banner`} className="absolute inset-0 h-full w-full object-cover" />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-black/5 to-black/75" aria-hidden="true" />
         </>
       ) : (
-        <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.13]" preserveAspectRatio="none" viewBox="0 0 400 200" aria-hidden="true">
-          {[0, 1, 2, 3, 4, 5].map((lane) => (
-            <path key={lane} d={`M-20 ${200 - lane * 26}C120 ${180 - lane * 30} 240 ${120 - lane * 22} 420 ${60 - lane * 18}`} fill="none" stroke="currentColor" strokeWidth="3" />
-          ))}
-        </svg>
+        <CoverArt table={table} animated />
       )}
       <div className="relative flex flex-wrap items-center gap-1.5">
         <TypeTag table={table} />
@@ -1395,7 +1396,7 @@ export function ChallengeCover({ table, unit, now }: { table: CompetitionTable; 
       <div className={cx('relative flex items-end justify-between gap-4', banner ? 'mt-4 [text-shadow:0_1px_6px_rgba(0,0,0,0.45)]' : 'mt-10 sm:mt-14')}>
         <div className="min-w-0">
           <p className="score whitespace-nowrap text-[clamp(44px,13vw,88px)] uppercase leading-[0.85]">{hero.big}</p>
-          <p className={cx('mt-2 text-[12px] font-bold uppercase tracking-[0.14em]', banner ? 'opacity-90' : 'opacity-75')}>{hero.small}</p>
+          <p className={cx('mt-2 text-[12px] font-bold uppercase tracking-[0.14em]', banner && 'opacity-90')} style={banner ? undefined : { color: theme.accent }}>{hero.small}</p>
         </div>
         <ChallengeMark type={table.challengeType} code={table.code} size={64} />
       </div>

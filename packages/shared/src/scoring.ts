@@ -4,7 +4,7 @@ import type { CompetitionTable, Unit } from './types';
 
 /** The scoring fields of a competition: enough to label, format and explain its scores. */
 export type Scored = Pick<CompetitionTable, 'challengeType' | 'scoringMethod' | 'targetDistanceMetres'> &
-  Partial<Pick<CompetitionTable, 'targetSteps' | 'targetSeconds' | 'targetSessions' | 'dailyTarget' | 'minSessions' | 'minActivityMetres' | 'minActivitySeconds' | 'eligibleActivities' | 'timeZone' | 'rulesVersion' | 'distanceCapMetres' | 'type'>>;
+  Partial<Pick<CompetitionTable, 'targetSteps' | 'targetSeconds' | 'targetSessions' | 'dailyTarget' | 'minSessions' | 'minActivityMetres' | 'minActivitySeconds' | 'eligibleActivities' | 'timeZone' | 'rulesVersion' | 'distanceCapMetres' | 'type' | 'hourFrom' | 'hourTo'>>;
 
 export function metricOf(method: ScoringMethod | string): MetricDefinition {
   return METRICS[method as ScoringMethod] ?? METRICS.FARTHEST_DISTANCE;
@@ -175,6 +175,47 @@ function list(words: string[]) {
   return words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
 }
 
+export function hourLabel(hour: number) {
+  if (hour === 0 || hour === 24) return 'midnight';
+  if (hour === 12) return 'noon';
+  return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
+}
+
+const PERSONAL_SUMMARY: Record<string, string> = {
+  PERSONAL_TARGET: 'Reach the target set for you to finish.',
+  PERSONAL_DAYS: 'Hit the daily target set for you on as many days as you can.',
+};
+
+/** The short "how to win" near the top of a competition, in plain words from its settings. The full detail is in rulesLines. */
+export function howToWin(table: Scored, unit: Unit): string {
+  const window = table.hourFrom != null && table.hourTo != null ? ` Only steps between ${hourLabel(table.hourFrom)} and ${hourLabel(table.hourTo)} count.` : '';
+  return `${winning(table, unit)}${window}`;
+}
+
+function winning(table: Scored, unit: Unit): string {
+  const metric = metricOf(table.scoringMethod);
+  const daily = formatDaily(table, unit);
+  const target = targetText(table, unit);
+  const steps = table.challengeType === 'STEP';
+  const level = `Tied? ${metric.tieBreak}`;
+  switch (table.scoringMethod) {
+    case 'MOST_STEPS': return table.hourFrom != null ? 'Most steps wins.' : 'Most steps wins. Every measured step between the start and the end counts.';
+    case 'FIRST_TO_STEPS': return target ? `First to ${target} wins. If nobody gets there, whoever is closest wins.` : 'First to the step target wins.';
+    case 'MOST_STEPS_ONE_DAY': return 'Your biggest single day counts. The biggest day wins.';
+    case 'AVERAGE_DAILY_STEPS': return 'Your average steps per day so far counts. The highest average wins.';
+    case 'MOST_ACTIVE_DAYS':
+      if (daily) return `Every day you reach ${daily} is an active day. Most active days wins. ${level}`;
+      if (steps) return `Every day you walk counts as an active day, however far. Most active days wins. ${level}`;
+      break;
+    case 'TARGET_DAYS': if (daily) return `Reach ${daily} in a day on as many days as you can. Most days wins. ${level}`; break;
+    case 'LONGEST_STREAK': if (daily) return `Reach ${daily} every day without missing one. The longest run of days wins. ${level}`; break;
+    case 'PERSONAL_TARGET': return 'You get your own target from your recent steps, so it’s as hard for a beginner as for a regular walker. Reach it to finish. The board ranks how far along your target everyone is.';
+    case 'PERSONAL_DAYS': return 'You get your own daily target from your recent steps. Hit it on as many days as you can. The board ranks the days you hit yours.';
+  }
+  const [wins] = rulesLines(table, unit);
+  return metric.aggregate === 'activeDays' || metric.aggregate === 'targetDays' || metric.aggregate === 'streak' ? `${wins} ${level}` : wins;
+}
+
 /** Plain-language scoring rules for the competition page: how it's won, what counts, ties and data. */
 export function rulesLines(table: Scored, unit: Unit): string[] {
   const metric = metricOf(table.scoringMethod);
@@ -185,7 +226,7 @@ export function rulesLines(table: Scored, unit: Unit): string[] {
   const daily = formatDaily(table, unit);
   const lines: string[] = [];
 
-  lines.push(`${winsLabel(table, unit)}. ${option?.summary ?? 'The best verified score wins.'}`);
+  lines.push(`${winsLabel(table, unit)}. ${option?.summary ?? PERSONAL_SUMMARY[table.scoringMethod] ?? 'The best verified score wins.'}`);
   if (metric.aggregate === 'fastest' && table.targetDistanceMetres) {
     lines.push(`Your fastest ${target} inside any one ${ACTIVITY_RULES[table.challengeType]?.sessions.replace(/s$/, '') ?? 'activity'} counts, timed from its GPS track on the clock (pauses included). A longer ${table.challengeType === 'CYCLING' ? 'ride' : 'run'} counts its best ${target} stretch.`);
   }

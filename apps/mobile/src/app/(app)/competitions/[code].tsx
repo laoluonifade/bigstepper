@@ -2,7 +2,7 @@ import { cadenceLabel, canEnter, challengeHeadline, competitionPhase, personalTa
 import { joinConflictCopy } from '@jump/shared/copy';
 import { countryName } from '@jump/shared/countries';
 import { formatCountdown, formatDate, formatDateTime, formatDistance, formatMoney, formatNairaInput, fromLocalInput, nairaInputToKobo, ordinal, toLocalInput } from '@jump/shared/format';
-import { activityLabel, formatGap, formatScore, hasScored, metricOf, rulesLines, scoreHeader, winsLabel } from '@jump/shared/scoring';
+import { activityLabel, formatGap, formatScore, hasScored, howToWin, metricOf, rulesLines, scoreHeader, winsLabel } from '@jump/shared/scoring';
 import type { CheckoutResponse, CompetitionTable, StandingRow, Unit } from '@jump/shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
@@ -13,7 +13,7 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { PrizeTerms } from '@/components/ClubPrizes';
 import { PrizeAds } from '@/components/PrizeAd';
 import { EditionHistory, ResultsPending } from '@/components/Editions';
-import { ChallengeMark, PhaseTag, TypeTag, cardTheme } from '@/components/competition';
+import { ChallengeMark, CoverArt, PhaseTag, TypeTag, cardTheme } from '@/components/competition';
 import { ActionMenu, type MenuAction } from '@/components/ActionMenu';
 import { DateTimePicker } from '@/components/DateTimePicker';
 import { ChevronRightIcon, EditIcon, LockIcon, PinIcon, ShareIcon } from '@/components/icons';
@@ -204,6 +204,12 @@ export default function CompetitionDetailScreen() {
       {menu.length > 0 && <ActionMenu label="Competition options" actions={menu} />}
     </View>
     {t.description ? <Txt size={15} leading={1.55} style={{ marginTop: 16 }}>{t.description}</Txt> : null}
+    <Pressable onPress={() => { haptic(); if (listY !== null && rulesY !== null) scroller.current?.scrollTo({ y: Math.max(0, listY + rulesY - 12), animated: true }); }}
+      accessibilityRole="button" accessibilityHint="Shows the full rules" style={({ pressed }) => [styles.howToWin, pressed && { opacity: 0.8 }]}>
+      <Eyebrow style={{ marginBottom: 6 }}>How to win</Eyebrow>
+      <Txt size={14} leading={1.5}>{howToWin(t, unit)}</Txt>
+      <Txt size={13} weight="bold" color="ink2" style={{ marginTop: 8 }}>See the full rules ›</Txt>
+    </Pressable>
     {t.club && <Pressable onPress={() => router.push(`/clubs/${t.club!.slug}`)} style={({ pressed }) => [styles.club, pressed && { opacity: 0.8 }]} accessibilityRole="link">
       {t.club.logoUrl ? <Image source={{ uri: t.club.logoUrl }} style={styles.clubLogo} /> : <View style={[styles.clubLogo, { backgroundColor: t.club.accentColor, alignItems: 'center', justifyContent: 'center' }]}><Txt size={13} weight="extrabold">{t.club.name.charAt(0)}</Txt></View>}
       <Txt size={13} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{t.club.name}</Txt>
@@ -315,7 +321,7 @@ function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: U
   // The host's banner fills the card; the same details sit on top of it, over a dark fade so they
   // read on any photo.
   const banner = table.bannerUrl;
-  const theme = banner ? { band: brand.ink, text: brand.paper } : cardTheme(table);
+  const theme = banner ? { band: brand.ink, text: brand.paper, accent: brand.paper } : cardTheme(table);
   const hero = challengeHeadline(table, unit);
   return <View style={[styles.cover, { backgroundColor: theme.band }, banner && styles.bannerCover]}>
     {banner ? <>
@@ -328,9 +334,7 @@ function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: U
         </LinearGradient></Defs>
         <Rect width="10" height="10" fill="url(#fade)" />
       </Svg>
-    </> : <Svg style={StyleSheet.absoluteFill} viewBox="0 0 400 200" preserveAspectRatio="none" opacity={0.13}>
-      {[0, 1, 2, 3, 4, 5].map((lane) => <Path key={lane} d={`M-20 ${200 - lane * 26}C120 ${180 - lane * 30} 240 ${120 - lane * 22} 420 ${60 - lane * 18}`} fill="none" stroke={theme.text} strokeWidth="3" />)}
-    </Svg>}
+    </> : <CoverArt table={table} animated />}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
       <TypeTag table={table} />
       <Tag background={colors.paper}>{activityLabel(table)}</Tag>
@@ -339,7 +343,7 @@ function ChallengeCover({ table, unit, now }: { table: CompetitionTable; unit: U
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginTop: banner ? 16 : 40 }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} adjustsFontSizeToFit style={[score(64), { color: theme.text, textTransform: 'uppercase', lineHeight: 60 }, banner && styles.onPhoto]}>{hero.big}</Text>
-        <Text style={[wideLabel(12, 0.14), { color: theme.text, opacity: banner ? 0.9 : 0.75, marginTop: 8, fontFamily: 'Archivo-Bold' }, banner && styles.onPhoto]}>{hero.small}</Text>
+        <Text style={[wideLabel(12, 0.14), { color: theme.accent, opacity: banner ? 0.9 : 1, marginTop: 8, fontFamily: 'Archivo-Bold' }, banner && styles.onPhoto]}>{hero.small}</Text>
       </View>
       <ChallengeMark type={table.challengeType} code={table.code} size={64} />
     </View>
@@ -752,6 +756,7 @@ function Faces({ faces, count, capacity }: { faces: LeaderboardRow[]; count: num
 const STEP_NUMBER = scheme === 'dark' ? colors.onAccent : colors.volt;
 
 const styles = StyleSheet.create({
+  howToWin: { marginTop: 16, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, padding: 16 },
   private: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 20, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 12, paddingVertical: 4 },
   place: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, paddingVertical: 8, paddingLeft: 8, paddingRight: 14 },
   placePin: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.volt, alignItems: 'center', justifyContent: 'center' },

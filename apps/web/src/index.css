@@ -209,3 +209,46 @@
 .maplibregl-ctrl-attrib {
   font-size: 10px;
 }
+
+/* Competition cover art: a drifting glow, sonar rings, a sweeping clock hand, waves along steps and days, streaks down the lanes. */
+.cover-glow {
+  animation: cover-glow 7s ease-in-out infinite;
+}
+@keyframes cover-glow {
+  0%, 100% { transform: translate(0, 14px); }
+  25% { transform: translate(24px, 0); }
+  50% { transform: translate(0, -14px); }
+  75% { transform: translate(-24px, 0); }
+}
+.cover-ripple {
+  transform-box: view-box;
+  transform-origin: 330px 140px;
+  animation: cover-ripple 3.5s ease-out infinite;
+}
+@keyframes cover-ripple {
+  0% { transform: scale(0.07); opacity: 0.45; }
+  100% { transform: scale(1); opacity: 0; }
+}
+.cover-hand {
+  transform-box: view-box;
+  transform-origin: 290px 95px;
+  animation: cover-hand 7s linear infinite;
+}
+@keyframes cover-hand {
+  to { transform: rotate(360deg); }
+}
+.cover-wave {
+  animation: cover-wave 7s linear infinite;
+}
+@keyframes cover-wave {
+  0%, 18%, 100% { opacity: var(--rest); }
+  8% { opacity: var(--lit); }
+}
+.cover-streak {
+  stroke-dasharray: 50 600;
+  animation: cover-streak 7s linear infinite;
+}
+@keyframes cover-streak {
+  from { stroke-dashoffset: 650; }
+  to { stroke-dashoffset: 0; }
+}

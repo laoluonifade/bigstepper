@@ -1,5 +1,5 @@
 import { formatCountdown, formatMoney } from './format';
-import { activityLabel, formatScore, hasScored, headline, winsLabel } from './scoring';
+import { activityLabel, formatScore, hasScored, headline, hourLabel, winsLabel } from './scoring';
 import type { CompetitionTable, SeriesCadence, StandingRow, Unit } from './types';
 
 export type CompetitionPhase = 'pending' | 'upcoming' | 'open' | 'entry-closed' | 'scoring-closed' | 'final';
@@ -197,8 +197,3 @@ export function personalTargetLine(table: Pick<CompetitionTable, 'scoringMethod'
   return `Your target: ${steps(row.personalTarget)} steps${window}${from}.`;
 }
 
-function hourLabel(hour: number) {
-  if (hour === 0 || hour === 24) return 'midnight';
-  if (hour === 12) return 'noon';
-  return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
-}

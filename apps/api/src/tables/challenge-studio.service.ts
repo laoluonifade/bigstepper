@@ -10,6 +10,7 @@ import {
   prizeColumns, savePrizes, SeriesCadence, templateOf, UNPUBLISHED,
 } from './club-challenges';
 import { retotal } from './competition-credits';
+import { enrolClubMembers } from './club-competitions';
 import { CompetitionTable } from './competition-table.entity';
 import { CreateSeriesDto, EditDraftDto, UpdateSeriesDto } from './dto/club-challenge.dto';
 import { RANK_ORDER } from './scoring-engine';
@@ -243,6 +244,7 @@ export class ChallengeStudioService {
       });
       if (canOpen && !official && series.cadence !== 'daily') await announceCompetition(manager, table);
       const carried = series.carryOver ? await carryOverEntrants(manager, table) : [];
+      if (canOpen && official && edition === 1) await enrolClubMembers(manager, { tableId: table.id }, { notify: false });
       await manager.query(`UPDATE "challenge_series" SET "lastEdition" = $2, "nextStartsAt" = $3, "updatedAt" = now() WHERE "id" = $1`, [seriesId, edition, following]);
       if (canOpen && carried.length && series.cadence !== 'daily') {
         const period = series.cadence === 'weekly' ? 'week' : series.cadence === 'monthly' ? 'month' : 'round';

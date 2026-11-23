@@ -1,12 +1,14 @@
 import { canEnter, challengeHeadline, competitionPhase, phaseLine, prizeLabel, windowProgress } from '@jump/shared/competition';
 import { formatCountdown, formatDateTime, formatDistance, formatMoney } from '@jump/shared/format';
 import { activityLabel, formatScore, metricOf, towardLeader, winsLabel } from '@jump/shared/scoring';
+import { COVER_CLOCK, COVER_RINGS, coverArt, coverTheme, coverWave, type Covered } from '@jump/shared/cover';
 import type { AvatarStyle, ChallengeType, CompetitionTable, Unit } from '@jump/shared/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { ReactNode, useId, useState } from 'react';
+import { ReactNode, useEffect, useId, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { cancelAnimation, Easing, type SharedValue, useAnimatedProps, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -86,10 +88,111 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
 
 /** The card's colour comes from the activity: runs orange, walks/steps volt, anything else ink. */
 /** A competition's colours: brand artwork, so the same in light and dark mode (dark text on orange and volt). */
-export function cardTheme(table: Pick<CompetitionTable, 'challengeType'>) {
-  if (table.challengeType === 'RUN') return { band: brand.track, text: brand.ink, accent: brand.ink };
-  if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: brand.volt, text: brand.ink, accent: brand.ink };
-  return { band: brand.ink, text: brand.paper, accent: brand.volt };
+const ACircle = Animated.createAnimatedComponent(Circle);
+const AEllipse = Animated.createAnimatedComponent(Ellipse);
+const ARect = Animated.createAnimatedComponent(Rect);
+const APath = Animated.createAnimatedComponent(Path);
+
+/** A competition's cover colours: `band` behind the art, white type, and an accent for the small line. */
+export function cardTheme(table: Covered) {
+  const theme = coverTheme(table);
+  return { ...theme, band: theme.to };
+}
+
+type Loop = SharedValue<number>;
+
+function Glow({ loop, cx, cy, r, fill }: { loop: Loop; cx: number; cy: number; r: number; fill: string }) {
+  const props = useAnimatedProps(() => ({ cx: cx + Math.sin(loop.value * 2 * Math.PI) * 24, cy: cy + Math.cos(loop.value * 2 * Math.PI) * 14 }));
+  return <ACircle animatedProps={props} r={r} fill={fill} />;
+}
+
+function Ripple({ loop, offset, color }: { loop: Loop; offset: number; color: string }) {
+  const props = useAnimatedProps(() => {
+    const t = (loop.value * 2 + offset) % 1;
+    return { r: 12 + t * 160, strokeOpacity: 0.45 * (1 - t) };
+  });
+  return <ACircle animatedProps={props} cx={COVER_RINGS.cx} cy={COVER_RINGS.cy} fill="none" stroke={color} strokeWidth="2.5" />;
+}
+
+function DayBar({ loop, bar, index, accent }: { loop: Loop; bar: ReturnType<typeof coverArt>['days'][number]; index: number; accent: string }) {
+  const props = useAnimatedProps(() => ({ fillOpacity: (bar.hit ? 0.3 : 0.1) + (bar.hit ? 0.35 : 0.08) * coverWave(loop.value, index / 7) }));
+  return <ARect animatedProps={props} x={bar.x} y={bar.y} width={bar.width} height={bar.height} rx={bar.width / 2} fill={bar.hit ? accent : '#FFFFFF'} />;
+}
+
+function Footprint({ loop, step, index, accent }: { loop: Loop; step: ReturnType<typeof coverArt>['steps'][number]; index: number; accent: string }) {
+  const props = useAnimatedProps(() => ({ fillOpacity: step.opacity + 0.4 * coverWave(loop.value, index / 10) }));
+  return <AEllipse animatedProps={props} cx={step.x} cy={step.y} rx="7" ry="11" fill={accent} transform={`rotate(60 ${step.x} ${step.y})`} />;
+}
+
+function ClockHand({ loop, color }: { loop: Loop; color: string }) {
+  const props = useAnimatedProps(() => {
+    const angle = loop.value * 2 * Math.PI - Math.PI / 2;
+    return { d: `M${COVER_CLOCK.cx} ${COVER_CLOCK.cy}L${COVER_CLOCK.cx + 70 * Math.cos(angle)} ${COVER_CLOCK.cy + 70 * Math.sin(angle)}` };
+  });
+  return <APath animatedProps={props} stroke={color} strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round" />;
+}
+
+function Streak({ loop, d, offset, color }: { loop: Loop; d: string; offset: number; color: string }) {
+  const props = useAnimatedProps(() => ({ strokeDashoffset: 650 * (1 - ((loop.value + offset) % 1)) }));
+  return <APath animatedProps={props} d={d} fill="none" stroke={color} strokeOpacity="0.6" strokeWidth="3" strokeLinecap="round" strokeDasharray="50 600" />;
+}
+
+/**
+ * The art behind a competition's cover: a deep gradient with a glow, and a pattern that says how it's won.
+ * Rings for your own target, a clock for an hour window, a week of days for day counts, footsteps for
+ * steps and track lanes for distance. With `animated` (the competition page) it moves gently, unless the
+ * phone asks for reduced motion.
+ */
+export function CoverArt({ table, animated = false }: { table: Covered; animated?: boolean }) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const art = coverArt(table);
+  const { theme } = art;
+  const reduced = useReducedMotion();
+  const moving = animated && !reduced;
+  const loop = useSharedValue(0);
+  useEffect(() => {
+    if (!moving) return;
+    loop.value = withRepeat(withTiming(1, { duration: 7000, easing: Easing.linear }), -1, false);
+    return () => cancelAnimation(loop);
+  }, [moving, loop]);
+  const line = { fill: 'none', stroke: '#FFFFFF', strokeOpacity: 0.14 } as const;
+  return <Svg style={StyleSheet.absoluteFill} viewBox="0 0 400 200" preserveAspectRatio="xMaxYMax slice">
+    <Defs>
+      <LinearGradient id={`${uid}bg`} x1="0" y1="0" x2="1" y2="1">
+        <Stop offset="0" stopColor={theme.from} />
+        <Stop offset="1" stopColor={theme.to} />
+      </LinearGradient>
+      <RadialGradient id={`${uid}glow`} cx="0.5" cy="0.5" r="0.5">
+        <Stop offset="0" stopColor={theme.glow} stopOpacity="0.55" />
+        <Stop offset="1" stopColor={theme.glow} stopOpacity="0" />
+      </RadialGradient>
+    </Defs>
+    <Rect width="400" height="200" fill={`url(#${uid}bg)`} />
+    {moving ? <Glow loop={loop} {...art.glow} fill={`url(#${uid}glow)`} /> : <Circle {...art.glow} fill={`url(#${uid}glow)`} />}
+    {art.pattern === 'rings' && <G>
+      {COVER_RINGS.radii.map((r) => <Circle key={r} cx={COVER_RINGS.cx} cy={COVER_RINGS.cy} r={r} {...line} strokeWidth="2" />)}
+      {moving && <><Ripple loop={loop} offset={0} color={theme.accent} /><Ripple loop={loop} offset={0.5} color={theme.accent} /></>}
+      <Circle cx={COVER_RINGS.cx} cy={COVER_RINGS.cy} r="12" fill={theme.accent} fillOpacity="0.45" />
+    </G>}
+    {art.pattern === 'clock' && <G>
+      <Circle cx={COVER_CLOCK.cx} cy={COVER_CLOCK.cy} r={COVER_CLOCK.r} {...line} strokeWidth="2" />
+      {art.ticks.map((d) => <Path key={d} d={d} {...line} strokeWidth="2" />)}
+      <Path d={art.arc} fill="none" stroke={theme.accent} strokeOpacity="0.7" strokeWidth="10" strokeLinecap="round" />
+      {moving && <ClockHand loop={loop} color="#FFFFFF" />}
+    </G>}
+    {art.pattern === 'days' && <G>
+      {art.days.map((bar, index) => moving ? <DayBar key={index} loop={loop} bar={bar} index={index} accent={theme.accent} />
+        : <Rect key={index} x={bar.x} y={bar.y} width={bar.width} height={bar.height} rx={bar.width / 2} fill={bar.hit ? theme.accent : '#FFFFFF'} fillOpacity={bar.hit ? 0.3 : 0.1} />)}
+    </G>}
+    {art.pattern === 'steps' && <G>
+      {art.steps.map((step, index) => moving ? <Footprint key={index} loop={loop} step={step} index={index} accent="#FFFFFF" />
+        : <Ellipse key={index} cx={step.x} cy={step.y} rx="7" ry="11" fill="#FFFFFF" fillOpacity={step.opacity} transform={`rotate(60 ${step.x} ${step.y})`} />)}
+    </G>}
+    {art.pattern === 'lanes' && <G>
+      {art.lanes.map((d) => <Path key={d} d={d} {...line} strokeWidth="3" />)}
+      {moving && <><Streak loop={loop} d={art.lanes[1]} offset={0} color={theme.accent} /><Streak loop={loop} d={art.lanes[4]} offset={0.45} color={theme.accent} /></>}
+    </G>}
+  </Svg>;
 }
 
 /** One row in a competition list: tile, title, what wins, who's in, time left, prize. */
@@ -233,9 +336,10 @@ export function TrendingCard({ table, unit, now }: { table: CompetitionTable; un
     {({ pressed }) => <HardShadow pressed={pressed} radius={radius.md}>
       <View style={[styles.trending]}>
         <View style={[styles.band, { backgroundColor: theme.band }]}>
+          <CoverArt table={table} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={1} style={[score(30), { color: theme.text, textTransform: 'uppercase', lineHeight: 30 }]}>{hero.big}</Text>
-            <Text numberOfLines={1} style={[styles.bandSmall, { color: theme.text }]}>{hero.small}</Text>
+            <Text numberOfLines={1} style={[styles.bandSmall, { color: theme.accent, opacity: 1 }]}>{hero.small}</Text>
           </View>
           <ChallengeMark type={table.challengeType} code={table.code} size={38} />
         </View>
@@ -260,7 +364,8 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
   return <Pressable onPress={() => openCompetition(table.code)} accessibilityRole="button" accessibilityLabel={table.title}>
     {({ pressed }) => <HardShadow pressed={pressed} radius={radius.md}>
       <View style={styles.card}>
-        <View style={{ backgroundColor: theme.band, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}>
+        <View style={{ backgroundColor: theme.band, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, overflow: 'hidden' }}>
+          <CoverArt table={table} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <View style={{ flexDirection: 'row', gap: 6 }}><TypeTag table={table} /><Tag background={colors.paper}>{activityLabel(table)}</Tag></View>
             <PhaseTag table={table} now={now} />
@@ -268,7 +373,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 16 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} style={[score(46), { color: theme.text, textTransform: 'uppercase', lineHeight: 44 }]}>{hero.big}</Text>
-              <Text style={[styles.bandSmall, { color: theme.text, marginTop: 6 }]}>{hero.small}</Text>
+              <Text style={[styles.bandSmall, { color: theme.accent, opacity: 1, marginTop: 6 }]}>{hero.small}</Text>
             </View>
             <ChallengeMark type={table.challengeType} code={table.code} />
           </View>
@@ -349,7 +454,7 @@ const styles = StyleSheet.create({
   inPill: { borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.edge, paddingHorizontal: 12, paddingVertical: 4 },
   joinPill: { height: 36, borderRadius: radius.full, backgroundColor: colors.ink, paddingHorizontal: 20, justifyContent: 'center' },
   trending: { width: 230, minHeight: 150, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
-  band: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 },
+  band: { overflow: 'hidden', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 },
   bandSmall: { fontFamily: fontFamily('bold'), fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', opacity: 0.75, marginTop: 4 },
   card: { borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.edge, backgroundColor: colors.card, overflow: 'hidden' },
   progress: { height: 6, borderRadius: 3, backgroundColor: colors.inkFaint, marginTop: 16 },

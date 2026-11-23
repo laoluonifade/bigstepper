@@ -1,7 +1,8 @@
 import { canEnter, challengeHeadline, competitionPhase, phaseLine, prizeLabel, windowProgress } from '@jump/shared/competition';
+import { COVER_CLOCK, COVER_RINGS, coverArt, coverTheme, type Covered } from '@jump/shared/cover';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { type ReactNode, useId, useState } from 'react';
+import { type CSSProperties, type ReactNode, useId, useState } from 'react';
 import { post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
@@ -85,11 +86,62 @@ export function PhaseTag({ table, now }: { table: CompetitionTable; now?: number
   );
 }
 
-/** The card's colour comes from the activity: runs orange, walks/steps volt, anything else ink. */
-export function cardTheme(table: CompetitionTable) {
-  if (table.challengeType === 'RUN') return { band: 'bg-track text-ink', accent: 'bg-ink' };
-  if (table.challengeType === 'WALK' || table.challengeType === 'STEP') return { band: 'bg-volt text-ink', accent: 'bg-ink' };
-  return { band: 'bg-ink text-paper', accent: 'bg-volt' };
+/** A competition's cover colours: a deep gradient, white type, and an accent for the small line. */
+export function cardTheme(table: Covered) {
+  return coverTheme(table);
+}
+
+/**
+ * The art behind a competition's cover: a deep gradient with a glow, and a pattern that says how it's won.
+ * Rings for your own target, a clock for an hour window, a week of days for day counts, footsteps for
+ * steps and track lanes for distance. With `animated` (the competition page) it moves gently; the
+ * reduced-motion rule in index.css stills it.
+ */
+export function CoverArt({ table, animated = false }: { table: Covered; animated?: boolean }) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const art = coverArt(table);
+  const { theme } = art;
+  const line = { fill: 'none', stroke: '#FFFFFF', strokeOpacity: 0.14 } as const;
+  const wave = (index: number, count: number, rest: number, lit: number) => animated
+    ? { className: 'cover-wave', style: { '--rest': rest, '--lit': lit, animationDelay: `${(index / count) * 7 - 7}s` } as CSSProperties, opacity: rest }
+    : { opacity: rest };
+  return <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 400 200" preserveAspectRatio="xMaxYMax slice" aria-hidden="true">
+    <defs>
+      <linearGradient id={`${uid}bg`} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor={theme.from} />
+        <stop offset="1" stopColor={theme.to} />
+      </linearGradient>
+      <radialGradient id={`${uid}glow`} cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stopColor={theme.glow} stopOpacity="0.55" />
+        <stop offset="1" stopColor={theme.glow} stopOpacity="0" />
+      </radialGradient>
+    </defs>
+    <rect width="400" height="200" fill={`url(#${uid}bg)`} />
+    <circle className={animated ? 'cover-glow' : undefined} {...art.glow} fill={`url(#${uid}glow)`} />
+    {art.pattern === 'rings' && <g>
+      {COVER_RINGS.radii.map((r) => <circle key={r} cx={COVER_RINGS.cx} cy={COVER_RINGS.cy} r={r} {...line} strokeWidth="2" />)}
+      {animated && [0, -1.75].map((delay) => <circle key={delay} className="cover-ripple" style={{ animationDelay: `${delay}s` }} cx={COVER_RINGS.cx} cy={COVER_RINGS.cy} r="172" fill="none" stroke={theme.accent} strokeWidth="2.5" vectorEffect="non-scaling-stroke" />)}
+      <circle cx={COVER_RINGS.cx} cy={COVER_RINGS.cy} r="12" fill={theme.accent} fillOpacity="0.45" />
+    </g>}
+    {art.pattern === 'clock' && <g>
+      <circle cx={COVER_CLOCK.cx} cy={COVER_CLOCK.cy} r={COVER_CLOCK.r} {...line} strokeWidth="2" />
+      {art.ticks.map((d) => <path key={d} d={d} {...line} strokeWidth="2" />)}
+      <path d={art.arc} fill="none" stroke={theme.accent} strokeOpacity="0.7" strokeWidth="10" strokeLinecap="round" />
+      {animated && <path className="cover-hand" d={`M${COVER_CLOCK.cx} ${COVER_CLOCK.cy}V${COVER_CLOCK.cy - 70}`} stroke="#FFFFFF" strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round" />}
+    </g>}
+    {art.pattern === 'days' && <g>
+      {art.days.map((bar, index) => <rect key={index} x={bar.x} y={bar.y} width={bar.width} height={bar.height} rx={bar.width / 2} fill={bar.hit ? theme.accent : '#FFFFFF'}
+        {...wave(index, 7, bar.hit ? 0.3 : 0.1, bar.hit ? 0.65 : 0.18)} />)}
+    </g>}
+    {art.pattern === 'steps' && <g>
+      {art.steps.map((step, index) => <ellipse key={index} cx={step.x} cy={step.y} rx="7" ry="11" fill="#FFFFFF" transform={`rotate(60 ${step.x} ${step.y})`}
+        {...wave(index, 10, step.opacity, step.opacity + 0.4)} />)}
+    </g>}
+    {art.pattern === 'lanes' && <g>
+      {art.lanes.map((d) => <path key={d} d={d} {...line} strokeWidth="3" />)}
+      {animated && [[1, 0], [4, -3.15]].map(([lane, delay]) => <path key={lane} className="cover-streak" style={{ animationDelay: `${delay}s` }} d={art.lanes[lane]} fill="none" stroke={theme.accent} strokeOpacity="0.6" strokeWidth="3" strokeLinecap="round" />)}
+    </g>}
+  </svg>;
 }
 
 /** One row in a competition list: tile, title, what wins, who's in, time left, prize. Sits inside a bordered list. */
@@ -132,11 +184,9 @@ function Face({ face, size = 28, ring }: { face: { displayName: string; avatarUr
  */
 function DrawnBanner({ table, headline }: { table: CompetitionTable; headline: { big: string; small: string } }) {
   const theme = cardTheme(table);
-  return <div className={cx('relative -mx-4 -mt-4 mb-3.5 flex aspect-[3/1] w-[calc(100%+2rem)] flex-col justify-end overflow-hidden border-b-[1.5px] border-ink px-4 pb-3', theme.band)} aria-hidden="true">
-    <svg className="absolute inset-0 h-full w-full opacity-[0.18]" viewBox="0 0 400 134" preserveAspectRatio="none">
-      {[0, 1, 2, 3, 4, 5].map((lane) => <path key={lane} d={`M-20 ${150 - lane * 22}C120 ${128 - lane * 26} 260 ${78 - lane * 18} 420 ${36 - lane * 14}`} fill="none" stroke="currentColor" strokeWidth="3" />)}
-    </svg>
-    <p className="wide relative text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{activityLabel(table)}</p>
+  return <div className="relative -mx-4 -mt-4 mb-3.5 flex aspect-[3/1] w-[calc(100%+2rem)] flex-col justify-end overflow-hidden border-b-[1.5px] border-ink px-4 pb-3 text-white" aria-hidden="true">
+    <CoverArt table={table} />
+    <p className="wide relative text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: theme.accent }}>{activityLabel(table)}</p>
     <p className="display relative truncate text-[clamp(26px,4.2vw,40px)] leading-[0.95]">{headline.big}</p>
   </div>;
 }
@@ -239,10 +289,11 @@ export function TrendingCard({ table, unit, now }: { table: CompetitionTable; un
   const theme = cardTheme(table);
   const hero = challengeHeadline(table, unit);
   return <Link to="/competitions/$code" params={{ code: table.code }} className="group flex w-[230px] shrink-0 snap-start flex-col overflow-hidden rounded-md border-[1.5px] border-ink bg-card shadow-hard transition-transform hover:-translate-y-0.5 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
-    <div className={cx('flex items-end justify-between gap-2 px-3 pb-2.5 pt-3', theme.band)}>
-      <div className="min-w-0">
+    <div className="relative flex items-end justify-between gap-2 overflow-hidden px-3 pb-2.5 pt-3 text-white">
+      <CoverArt table={table} />
+      <div className="relative min-w-0">
         <p className="score truncate text-[30px] uppercase leading-[0.85]">{hero.big}</p>
-        <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.1em] opacity-75">{hero.small}</p>
+        <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: theme.accent }}>{hero.small}</p>
       </div>
       <ChallengeMark type={table.challengeType} code={table.code} size={38} />
     </div>
@@ -271,7 +322,8 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
       className="group flex flex-col overflow-hidden rounded-2xl border-2 border-ink bg-card shadow-hard transition-transform duration-150 ease-out hover:-translate-y-0.5 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
     >
       {/* Colour band with the headline figure; the host's banner photo behind it when there is one, darkened so the type reads. */}
-      <div className={cx('relative flex h-44 flex-col justify-between overflow-hidden px-4 pb-4 pt-3', table.bannerUrl ? 'bg-ink text-paper' : theme.band)}>
+      <div className={cx('relative flex h-44 flex-col justify-between overflow-hidden px-4 pb-4 pt-3', table.bannerUrl ? 'bg-ink text-paper' : 'text-white')}>
+        {!table.bannerUrl && <CoverArt table={table} />}
         {table.bannerUrl && <>
           <img src={table.bannerUrl} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]" />
           <span className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/40 to-ink/15" aria-hidden="true" />
@@ -288,7 +340,7 @@ export function CompetitionCard({ table, unit, now }: { table: CompetitionTable;
             <p className="score truncate text-[46px] uppercase leading-[0.85] transition-transform duration-300 ease-out group-hover:-translate-y-0.5">
               {hero.big}
             </p>
-            <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{hero.small}</p>
+            <p className={cx('mt-1.5 text-[11px] font-bold uppercase tracking-[0.12em]', table.bannerUrl && 'opacity-75')} style={table.bannerUrl ? undefined : { color: theme.accent }}>{hero.small}</p>
           </div>
           <ChallengeMark type={table.challengeType} code={table.code} />
         </div>
